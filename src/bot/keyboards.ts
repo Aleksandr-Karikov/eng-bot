@@ -20,7 +20,7 @@ export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordI
     .text("😐 С трудом", encodeCb({ k: "rate", cardId, reps, answer: "hard" }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
-  return kb.row().text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+  return kb.row().text("✏️ Изменить", encodeCb({ k: "edit", wordId })).text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
 export function learnKeyboard(): InlineKeyboard {
@@ -94,8 +94,10 @@ export function hoursKeyboard(): InlineKeyboard {
   return kb;
 }
 
-export function deleteKeyboard(wordId: number): InlineKeyboard {
-  return new InlineKeyboard().text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+export function wordActionsKeyboard(wordId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
+    .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
 export function confirmDeleteKeyboard(wordId: number): InlineKeyboard {
@@ -119,7 +121,8 @@ export function pickerKeyboard(picker: Picker): InlineKeyboard {
   const pages = pickerPageCount(picker);
   const page = Math.min(picker.page, pages - 1);
   for (const item of picker.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
-    kb.text(shorten(item.label), encodeCb({ k: "del", wordId: item.wordId })).row();
+    const cb = picker.action === "edit" ? encodeCb({ k: "edit", wordId: item.wordId }) : encodeCb({ k: "del", wordId: item.wordId });
+    kb.text(shorten(item.label), cb).row();
   }
   addPageNav(kb, page, pages, (p) => encodeCb({ k: "delPage", id: picker.id, page: p }));
   return kb.text("Отмена", encodeCb({ k: "delCancel" }));

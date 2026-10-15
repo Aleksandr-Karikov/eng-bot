@@ -91,3 +91,28 @@ export async function deleteWord(db: Db, wordId: number): Promise<Word | undefin
   await db.delete(words).where(eq(words.id, wordId));
   return word;
 }
+
+/**
+ * Исправляет слово, не трогая карточки (прогресс у всех сохраняется).
+ * Если term меняется и совпадает с другим словом комнаты — duplicate.
+ */
+export async function updateWord(
+  db: Db,
+  wordId: number,
+  patch: { term?: string; translation: string; explanation: string; example: string },
+): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
+  const word = await getWord(db, wordId);
+  if (!word) return { status: "missing" };
+  const term = patch.term?.trim() || word.term;
+  const termNormalized = normalizeTerm(term);
+  if (termNormalized !== word.termNormalized) {
+    const clash = await findWord(db, word.roomId, term);
+    if (clash && clash.id !== word.id) return { status: "duplicate" };
+  }
+  const [updated] = await db
+    .update(words)
+    .set({ term, termNormalized, translation: patch.translation, explanation: patch.explanation, example: patch.example })
+    .where(eq(words.id, wordId))
+    .returning();
+  return { status: "updated", word: updated };
+}

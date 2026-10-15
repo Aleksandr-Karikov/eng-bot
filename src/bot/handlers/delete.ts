@@ -1,12 +1,12 @@
 import type { Bot } from "grammy";
 import type { User, Word } from "../../db/schema";
 import { isMember } from "../../services/rooms";
-import { deleteWord, getWord, listRoomWords } from "../../services/words";
+import { deleteWord, getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { confirmBatchDeleteKeyboard, confirmDeleteKeyboard, pickerKeyboard, pickerPageCount } from "../keyboards";
 import { esc, plural } from "../texts";
-import { resolveRoom } from "../word-flow";
+import { pickWord } from "../word-picker";
 
 /** Удалять может любой участник комнаты, где лежит слово. */
 const canDelete = (deps: Deps, user: User, word: Word) => isMember(deps.db, word.roomId, user.id);
@@ -18,24 +18,10 @@ async function askConfirm(ctx: BotContext, word: Word): Promise<void> {
   );
 }
 
-async function startDelete(ctx: BotContext, deps: Deps, fragment: string): Promise<void> {
-  const room = await resolveRoom(ctx, deps);
-  if (!room) return;
-  const found = await listRoomWords(deps.db, room.id, fragment);
-  if (found.length === 0) {
-    return void (await ctx.reply(fragment ? `Не нашёл «${esc(fragment)}» в комнате` : "В комнате пока нет слов", HTML));
-  }
-  if (fragment && found.length === 1) return askConfirm(ctx, found[0]);
-  const picker = deps.pickers.create(
-    ctx.user.id,
-    found.map((w) => ({ wordId: w.id, label: `${w.term} — ${w.translation}` })),
-  );
-  const head = fragment ? `Нашёл ${found.length} с «${esc(fragment)}»` : "Последние добавленные сверху";
-  await ctx.reply(`🗑 Что удалить? ${head}:`, { ...HTML, reply_markup: pickerKeyboard(picker) });
-}
-
 export function registerDelete(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("delete", (ctx) => background(ctx, () => startDelete(ctx, deps, ctx.match.trim())));
+  bot.command("delete", (ctx) =>
+    background(ctx, () => pickWord(ctx, deps, ctx.match.trim(), "delete", (word) => askConfirm(ctx, word))),
+  );
 
   bot.callbackQuery(/^x:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);

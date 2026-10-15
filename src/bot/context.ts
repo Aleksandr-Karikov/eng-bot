@@ -5,6 +5,7 @@ import type { WordEnricher } from "../llm/enricher";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
+import type { EditStore } from "./edits";
 import type { PickerStore } from "./pickers";
 
 export type BotContext = Context & { user: User };
@@ -16,6 +17,7 @@ export interface Deps {
   drafts: DraftStore;
   batches: BatchStore;
   pickers: PickerStore;
+  edits: EditStore;
   now: () => Date;
   botUsername: string;
 }

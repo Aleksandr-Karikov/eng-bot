@@ -4,6 +4,7 @@ import { PickerStore } from "../src/bot/pickers";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
+import { EditStore } from "../src/bot/edits";
 import { setupBot } from "../src/bot/setup";
 import type { CheckResult, Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { Notifier } from "../src/notifier";
@@ -53,7 +54,7 @@ export function botHarness(opts: {
     extract: async (): Promise<ExtractedItem[]> => [],
     check: async (): Promise<CheckResult> => ({ corrected: "", fixes: [], natural: "" }),
   };
-  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

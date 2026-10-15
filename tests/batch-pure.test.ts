@@ -70,6 +70,7 @@ describe("batch callbacks", () => {
       { k: "batch", id: 3, action: "review" },
       { k: "batch", id: 3, action: "cancel" },
       { k: "batchPage", id: 3, page: 2 },
+      { k: "edit", wordId: 41 },
       { k: "del", wordId: 41 },
       { k: "delOk", wordId: 41 },
       { k: "delCancel" },
