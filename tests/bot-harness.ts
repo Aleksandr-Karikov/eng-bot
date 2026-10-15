@@ -77,6 +77,26 @@ export function botHarness(opts: {
         },
       } as Update;
     },
+    /** Сообщение в группе chatId; replyToBot — ответ на сообщение бота. */
+    groupMessage(userId: number, chatId: number, text: string, replyToBot = false): Update {
+      seq++;
+      const group = { id: chatId, type: "group" as const, title: "Group" };
+      const command = text.startsWith("/") ? text.split(" ")[0] : undefined;
+      return {
+        update_id: seq,
+        message: {
+          message_id: seq,
+          date: 0,
+          chat: group,
+          from: from(userId),
+          text,
+          entities: command ? [{ type: "bot_command", offset: 0, length: command.length }] : undefined,
+          reply_to_message: replyToBot
+            ? { message_id: 1, date: 0, chat: group, from: { id: BOT_INFO.id, is_bot: true, first_name: "Bot" }, text: "prompt" }
+            : undefined,
+        },
+      } as Update;
+    },
     /** Команда `text` от userId ответом на сообщение `original` другого участника. */
     replyTo(userId: number, text: string, original: { messageId: number; fromId: number; text: string }): Update {
       const update = this.message(userId, text);

@@ -45,7 +45,9 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;
     if (text.startsWith("/")) return next();
-    const awaiting = deps.drafts.findAwaiting(ctx.user.id, ctx.chat.id);
+    // В группе бот видит всю переписку, поэтому перевод принимаем только ответом на сообщение бота.
+    const repliesToBot = ctx.message.reply_to_message?.from?.id === ctx.me.id;
+    const awaiting = ctx.chat.type === "private" || repliesToBot ? deps.drafts.findAwaiting(ctx.user.id, ctx.chat.id) : undefined;
     if (awaiting) {
       awaiting.translation = text.trim();
       awaiting.awaitingEdit = false;

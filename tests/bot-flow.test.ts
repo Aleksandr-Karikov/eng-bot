@@ -49,4 +49,27 @@ describe("bot flows", () => {
       expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("счастливая случайность"))).toBe(true),
     );
   });
+
+  it("in a group, takes a corrected translation only from a reply to the bot", async () => {
+    const h = botHarness();
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    await createRoom(h.db, { name: "R", createdBy: user.id, now: T0, telegramChatId: -500 });
+    await h.bot.handleUpdate(h.groupMessage(100, -500, "/add bank"));
+    const editButton = () => {
+      const kb = [...h.calls].reverse().find((c) => c.payload.reply_markup && "inline_keyboard" in (c.payload.reply_markup as object));
+      return (kb!.payload.reply_markup as { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> }).inline_keyboard
+        .flat()
+        .find((b) => b.text.startsWith("✏️"))!.callback_data;
+    };
+    await vi.waitFor(() => expect(() => editButton()).not.toThrow());
+    await h.bot.handleUpdate(h.callback(100, editButton()));
+
+    const previews = () => h.calls.filter((c) => c.method === "sendMessage" && String(c.payload.text).includes("<b>bank</b> —"));
+    const before = previews().length;
+    await h.bot.handleUpdate(h.groupMessage(100, -500, "lol unrelated chatter"));
+    expect(previews()).toHaveLength(before);
+    await h.bot.handleUpdate(h.groupMessage(100, -500, "берег", true));
+    expect(String(previews().at(-1)!.payload.text)).toContain("берег");
+    expect(previews()).toHaveLength(before + 1);
+  });
 });
