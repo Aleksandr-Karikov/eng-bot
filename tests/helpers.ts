@@ -1,4 +1,6 @@
 import { createDb, type Db } from "../src/db/client";
+import type { User } from "../src/db/schema";
+import { upsertUser } from "../src/services/users";
 
 export const MIN = 60_000;
 export const HOUR = 60 * MIN;
@@ -9,4 +11,8 @@ export const at = (ms: number) => new Date(T0.getTime() + ms);
 
 export function testDb(): Db {
   return createDb(":memory:");
+}
+
+export function makeUser(db: Db, telegramId: number, firstName = `User${telegramId}`): Promise<User> {
+  return upsertUser(db, { id: telegramId, first_name: firstName }, T0);
 }
