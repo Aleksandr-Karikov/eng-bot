@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
+import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { userMiddleware } from "./middleware";
 
@@ -17,6 +18,7 @@ export const COMMANDS = [
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   bot.use(userMiddleware(deps));
   registerRooms(bot, deps);
+  registerLearn(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».
   bot.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
