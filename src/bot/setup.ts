@@ -1,4 +1,5 @@
 import type { Bot } from "grammy";
+import { ignoreHarmlessErrors } from "./api-errors";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
 import { registerLearn } from "./handlers/learn";
@@ -17,6 +18,7 @@ export const COMMANDS = [
 ];
 
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
+  bot.api.config.use(ignoreHarmlessErrors);
   bot.use(userMiddleware(deps));
   registerRooms(bot, deps);
   registerLearn(bot, deps);

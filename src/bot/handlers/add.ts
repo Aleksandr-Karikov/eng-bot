@@ -4,7 +4,7 @@ import type { Enrichment } from "../../llm/enricher";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { findWord, parseAddInput, saveWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
-import { HTML, type BotContext, type Deps } from "../context";
+import { background, HTML, type BotContext, type Deps } from "../context";
 import type { Draft } from "../drafts";
 import { draftKeyboard, knowKeyboard } from "../keyboards";
 import { announceText, draftText, esc, knowPrompt } from "../texts";
@@ -80,7 +80,7 @@ async function broadcastWord(deps: Deps, word: Word, members: User[], adder: Use
 }
 
 export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("add", (ctx) => startAdd(ctx, deps, ctx.match));
+  bot.command("add", (ctx) => background(ctx, () => startAdd(ctx, deps, ctx.match)));
 
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;
@@ -91,7 +91,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       awaiting.awaitingEdit = false;
       return sendPreview(ctx, awaiting);
     }
-    if (ctx.chat.type === "private") return startAdd(ctx, deps, text);
+    if (ctx.chat.type === "private") return background(ctx, () => startAdd(ctx, deps, text));
     return next();
   });
 
@@ -124,6 +124,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
     await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, HTML);
-    await broadcastWord(deps, result.word, result.members, ctx.user, ctx.chat?.id);
+    const { word, members } = result;
+    background(ctx, () => broadcastWord(deps, word, members, ctx.user, ctx.chat?.id));
   });
 }

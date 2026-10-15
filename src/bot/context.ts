@@ -21,3 +21,11 @@ export const HTML = { parse_mode: "HTML" } as const;
 export function inviteLink(botUsername: string, room: Room): string {
   return `https://t.me/${botUsername}?start=join_${room.inviteCode}`;
 }
+
+/** Запускает долгую работу (LLM, рассылки) вне обработки update, чтобы бот не замирал для остальных. */
+export function background(ctx: BotContext, task: () => Promise<void>): void {
+  task().catch(async (err) => {
+    console.error("Background task failed", err);
+    await ctx.reply("Что-то пошло не так 😔").catch(() => {});
+  });
+}
