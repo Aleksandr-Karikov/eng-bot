@@ -16,8 +16,8 @@ export interface WordEnricher {
   extract(text: string): Promise<ExtractedItem[]>;
 }
 
-/** Telegram допускает ~100 кнопок на сообщение: 50 слов + управляющие кнопки помещаются с запасом. */
-export const MAX_EXTRACT = 50;
+/** В клавиатуре пачки слова листаются страницами, так что 100 пунктов укладываются в лимит кнопок Telegram. */
+export const MAX_EXTRACT = 100;
 
 const enrichmentSchema = z.object({
   translation: z.string().trim().min(1),
@@ -50,18 +50,10 @@ export function parseEnrichment(text: string): Enrichment {
 
 const extractedItemSchema = enrichmentSchema.extend({ term: z.string().trim().min(1) });
 
-/** Срезает префиксы экспорта чата Telegram вида "[14/10/2026 21:31] Имя Фамилия: " и пустые строки. */
-export function stripChatExport(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => line.replace(/^\s*\[[^\]]*\d{1,2}:\d{2}[^\]]*\]\s*[^:]{1,64}:\s*/, "").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function buildExtractPrompt(text: string): string {
   return [
     "Ниже английский текст ИЛИ список слов и фраз, которые пользователь выписал сам. Определи, что это.",
+    "Строки могут начинаться с префикса экспорта чата вроде «[14/10/2026 21:31] Имя:» — это не часть фразы, игнорируй его.",
     "Если это список (по пункту на строку) — возьми каждый пункт, ничего не пропускай и не сокращай фразу до одного слова;",
     "глагольную форму можно привести к начальной (snagging yourself a peerage → snag yourself a peerage), но смысл фразы сохрани.",
     "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",

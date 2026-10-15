@@ -1,21 +1,19 @@
 import type { Bot } from "grammy";
-import { stripChatExport, type ExtractedItem } from "../../llm/enricher";
+import type { ExtractedItem } from "../../llm/enricher";
 import { filterNewItems, saveWord, type WordDraft } from "../../services/words";
 import type { Batch } from "../batches";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { Draft } from "../drafts";
-import { batchKeyboard } from "../keyboards";
+import { batchKeyboard, batchPageCount } from "../keyboards";
 import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, resolveRoom, sendPreview } from "../word-flow";
 
 const USAGE = "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met";
-const MAX_TEXT = 4000;
 
 async function startText(ctx: BotContext, deps: Deps, input: string): Promise<void> {
-  const text = stripChatExport(input);
+  const text = input.trim();
   if (!text) return void (await ctx.reply(USAGE));
-  if (text.length > MAX_TEXT) return void (await ctx.reply(`Слишком длинно — пришли до ${MAX_TEXT} символов за раз`));
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
 
@@ -86,6 +84,18 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
     }
     batch.toggle(cb.index);
     await ctx.answerCallbackQuery();
+    await ctx.editMessageReplyMarkup({ reply_markup: batchKeyboard(batch) });
+  });
+
+  bot.callbackQuery(/^bp:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const batch = cb?.k === "batchPage" ? deps.batches.get(cb.id) : undefined;
+    if (cb?.k !== "batchPage" || !batch || batch.userId !== ctx.user.id) {
+      return void (await ctx.answerCallbackQuery({ text: "Это не твоя пачка или она уже неактуальна" }));
+    }
+    await ctx.answerCallbackQuery();
+    if (cb.page === batch.page || cb.page < 0 || cb.page >= batchPageCount(batch)) return;
+    batch.page = cb.page;
     await ctx.editMessageReplyMarkup({ reply_markup: batchKeyboard(batch) });
   });
 

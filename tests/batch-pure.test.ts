@@ -3,7 +3,7 @@ import { BatchStore } from "../src/bot/batches";
 import { decodeCb, encodeCb, type Cb } from "../src/bot/callbacks";
 import { batchKeyboard } from "../src/bot/keyboards";
 import { batchSummaryText } from "../src/bot/texts";
-import { buildExtractPrompt, MAX_EXTRACT, parseExtraction, stripChatExport } from "../src/llm/enricher";
+import { buildExtractPrompt, MAX_EXTRACT, parseExtraction } from "../src/llm/enricher";
 import { createRoom } from "../src/services/rooms";
 import { filterNewItems, saveWord } from "../src/services/words";
 import { T0, makeUser, testDb } from "./helpers";
@@ -31,25 +31,19 @@ describe("parseExtraction", () => {
   });
 });
 
-describe("stripChatExport", () => {
-  it("removes Telegram export prefixes and keeps plain lines", () => {
-    const text = [
-      "[14/10/2026 21:31] Александр Кариков: Contraction",
-      "[14/10/2026 21:41] Александр Кариков: something of a niggle: regarding deals",
-      "plain line",
-      "",
-      "Shell company",
-    ].join("\n");
-    expect(stripChatExport(text)).toBe("Contraction\nsomething of a niggle: regarding deals\nplain line\nShell company");
-  });
-});
-
 describe("extraction limits", () => {
-  it("allows a list of ~50 items and fits Telegram's 100-button keyboard", () => {
-    expect(MAX_EXTRACT).toBeGreaterThanOrEqual(50);
+  it("allows 100 items and pages them to stay under Telegram's 100-button limit", () => {
+    expect(MAX_EXTRACT).toBe(100);
     const store = new BatchStore();
     const batch = store.create({ userId: 1, chatId: 1, roomId: 1, items: Array.from({ length: MAX_EXTRACT }, (_, i) => item(`w${i}`)) });
-    expect(batchKeyboard(batch).inline_keyboard.flat().length).toBeLessThanOrEqual(100);
+    const labels = () => batchKeyboard(batch).inline_keyboard.flat().map((b) => b.text);
+    expect(labels().length).toBeLessThanOrEqual(100);
+    expect(labels()).toContain("1/4");
+    expect(labels()).toContain("✅ Добавить (100)");
+    batch.page = 3;
+    batch.toggle(99);
+    expect(labels().some((l) => l.startsWith("⬜️ w99"))).toBe(true);
+    expect(labels()).toContain("✅ Добавить (99)");
   });
 
   it("tells the model to keep every item of a list", () => {
@@ -75,6 +69,7 @@ describe("batch callbacks", () => {
       { k: "batch", id: 3, action: "add" },
       { k: "batch", id: 3, action: "review" },
       { k: "batch", id: 3, action: "cancel" },
+      { k: "batchPage", id: 3, page: 2 },
       { k: "draft", id: 7, action: "skip" },
       { k: "draft", id: 7, action: "stop" },
     ];

@@ -68,6 +68,19 @@ describe("/text batches", () => {
     await vi.waitFor(() => expect(String(sentTo(h.calls, 200).at(-1)?.payload.text)).toContain("hangar"));
   });
 
+  it("pages through a long list and keeps ticks across pages", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => item(`w${i}`));
+    const h = botHarness({ enricher: enricher(many) });
+    await room(h);
+    await h.bot.handleUpdate(h.message(100, "/text long list"));
+    await vi.waitFor(() => expect(lastKeyboard(h.calls).some((b) => b.text === "1/2")).toBe(true));
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "▶")));
+    expect(lastKeyboard(h.calls).some((b) => b.text.startsWith("✅ w29"))).toBe(true);
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "✅ w29")));
+    expect(lastKeyboard(h.calls).some((b) => b.text === "✅ Добавить (29)")).toBe(true);
+    expect(lastKeyboard(h.calls).some((b) => b.text === "2/2")).toBe(true);
+  });
+
   it("ignores taps on someone else's batch", async () => {
     const h = botHarness({ enricher: enricher([item("serendipity")]) });
     const { friend } = await room(h);

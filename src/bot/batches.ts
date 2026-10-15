@@ -6,6 +6,8 @@ export class Batch {
   readonly selected: boolean[];
   /** Индексы выбранных слов для режима «по одному» и текущая позиция в нём. */
   queue: number[] = [];
+  /** Текущая страница списка с галочками. */
+  page = 0;
   position = 0;
   readonly saved: Word[] = [];
 

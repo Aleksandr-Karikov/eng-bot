@@ -8,6 +8,7 @@ export type Cb =
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
   | { k: "batchToggle"; id: number; index: number }
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
+  | { k: "batchPage"; id: number; page: number }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "hour"; hour: number };
@@ -29,6 +30,7 @@ export function encodeCb(cb: Cb): string {
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
+    case "batchPage": return `bp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "hour": return `t:${cb.hour}`;
@@ -60,6 +62,10 @@ export function decodeCb(data: string): Cb | null {
     case "bt": {
       const id = int(a), index = int(b);
       return id !== null && index !== null ? { k: "batchToggle", id, index } : null;
+    }
+    case "bp": {
+      const id = int(a), page = int(b);
+      return id !== null && page !== null ? { k: "batchPage", id, page } : null;
     }
     case "b": {
       const id = int(a), action = b ? BATCH_ACTIONS[b as keyof typeof BATCH_ACTIONS] : undefined;

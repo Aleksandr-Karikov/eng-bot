@@ -40,12 +40,27 @@ export function draftKeyboard(id: number, inBatch = false): InlineKeyboard {
 const BUTTON_LABEL_MAX = 40;
 const shorten = (s: string) => (s.length > BUTTON_LABEL_MAX ? `${s.slice(0, BUTTON_LABEL_MAX - 1)}…` : s);
 
+/** Слов на странице: 25 + навигация + управление — далеко от лимита Telegram в 100 кнопок. */
+const BATCH_PAGE_SIZE = 25;
+
+export function batchPageCount(batch: Batch): number {
+  return Math.max(1, Math.ceil(batch.items.length / BATCH_PAGE_SIZE));
+}
+
 export function batchKeyboard(batch: Batch): InlineKeyboard {
   const kb = new InlineKeyboard();
-  batch.items.forEach((item, index) => {
+  const pages = batchPageCount(batch);
+  const page = Math.min(batch.page, pages - 1);
+  const start = page * BATCH_PAGE_SIZE;
+  batch.items.slice(start, start + BATCH_PAGE_SIZE).forEach((item, offset) => {
+    const index = start + offset;
     const mark = batch.selected[index] ? "✅" : "⬜️";
     kb.text(shorten(`${mark} ${item.term} — ${item.translation}`), encodeCb({ k: "batchToggle", id: batch.id, index })).row();
   });
+  if (pages > 1) {
+    const go = (p: number) => encodeCb({ k: "batchPage", id: batch.id, page: Math.min(Math.max(p, 0), pages - 1) });
+    kb.text("◀", go(page - 1)).text(`${page + 1}/${pages}`, go(page)).text("▶", go(page + 1)).row();
+  }
   return kb
     .text(`✅ Добавить (${batch.selectedItems().length})`, encodeCb({ k: "batch", id: batch.id, action: "add" }))
     .text("🔍 По одному", encodeCb({ k: "batch", id: batch.id, action: "review" }))
