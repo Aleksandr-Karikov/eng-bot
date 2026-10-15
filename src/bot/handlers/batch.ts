@@ -5,7 +5,7 @@ import type { Batch } from "../batches";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { Draft } from "../drafts";
-import { batchKeyboard, batchPageCount } from "../keyboards";
+import { batchKeyboard, batchPageCount, batchUndoKeyboard } from "../keyboards";
 import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, resolveRoom, sendPreview } from "../word-flow";
 
@@ -41,8 +41,11 @@ async function saveItems(deps: Deps, batch: Batch, items: WordDraft[]): Promise<
 }
 
 async function finish(ctx: BotContext, deps: Deps, batch: Batch): Promise<void> {
-  deps.batches.delete(batch.id);
-  await ctx.reply(batchDoneText(batch.saved), HTML);
+  batch.finished = true;
+  await ctx.reply(batchDoneText(batch.saved), {
+    ...HTML,
+    reply_markup: batch.saved.length ? batchUndoKeyboard(batch.id, batch.saved.length) : undefined,
+  });
   const saved = [...batch.saved];
   background(ctx, () => broadcastBatch(deps, batch.roomId, saved, ctx.user, ctx.chat?.id));
 }
@@ -60,7 +63,7 @@ async function showCurrent(ctx: BotContext, deps: Deps, batch: Batch): Promise<v
 export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, action: "ok" | "skip" | "stop"): Promise<void> {
   const batch = draft.batchId !== undefined ? deps.batches.get(draft.batchId) : undefined;
   deps.drafts.delete(draft.id);
-  if (!batch) return void (await ctx.editMessageText("Эта пачка уже неактуальна"));
+  if (!batch || batch.finished) return void (await ctx.editMessageText("Эта пачка уже неактуальна"));
 
   if (action === "ok") {
     await saveItems(deps, batch, [{ term: draft.term, translation: draft.translation, explanation: draft.explanation, example: draft.example }]);
@@ -79,7 +82,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^bt:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const batch = cb?.k === "batchToggle" ? deps.batches.get(cb.id) : undefined;
-    if (cb?.k !== "batchToggle" || !batch || batch.userId !== ctx.user.id) {
+    if (cb?.k !== "batchToggle" || !batch || batch.finished || batch.userId !== ctx.user.id) {
       return void (await ctx.answerCallbackQuery({ text: "Это не твоя пачка или она уже неактуальна" }));
     }
     batch.toggle(cb.index);
@@ -90,7 +93,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^bp:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const batch = cb?.k === "batchPage" ? deps.batches.get(cb.id) : undefined;
-    if (cb?.k !== "batchPage" || !batch || batch.userId !== ctx.user.id) {
+    if (cb?.k !== "batchPage" || !batch || batch.finished || batch.userId !== ctx.user.id) {
       return void (await ctx.answerCallbackQuery({ text: "Это не твоя пачка или она уже неактуальна" }));
     }
     await ctx.answerCallbackQuery();
@@ -102,7 +105,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^b:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const batch = cb?.k === "batch" ? deps.batches.get(cb.id) : undefined;
-    if (cb?.k !== "batch" || !batch || batch.userId !== ctx.user.id) {
+    if (cb?.k !== "batch" || !batch || batch.finished || batch.userId !== ctx.user.id) {
       return void (await ctx.answerCallbackQuery({ text: "Это не твоя пачка или она уже неактуальна" }));
     }
     if (cb.action === "cancel") {

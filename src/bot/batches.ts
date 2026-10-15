@@ -10,6 +10,8 @@ export class Batch {
   page = 0;
   position = 0;
   readonly saved: Word[] = [];
+  /** Пачка уже сохранена: кнопки списка недействительны, но её ещё можно отменить целиком. */
+  finished = false;
 
   constructor(
     readonly id: number,

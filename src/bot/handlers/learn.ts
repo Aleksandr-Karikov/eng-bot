@@ -46,13 +46,14 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^s:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const item = cb?.k === "show" ? await getDueItemByCard(deps.db, ctx.user.id, cb.cardId) : undefined;
+    if (cb?.k === "show" && !item) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
     if (cb?.k !== "show" || !item || item.card.reps !== cb.reps) {
       return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     }
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(draftText(item.word), {
       ...HTML,
-      reply_markup: rateKeyboard(item.card.id, item.card.reps, item.card.state === State.New),
+      reply_markup: rateKeyboard(item.card.id, item.card.reps, item.card.state === State.New, item.word.id),
     });
   });
 
@@ -75,7 +76,8 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^k:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const word = cb?.k === "know" ? await getWord(deps.db, cb.wordId) : undefined;
-    if (cb?.k !== "know" || !word) return void (await ctx.answerCallbackQuery());
+    if (cb?.k !== "know") return void (await ctx.answerCallbackQuery());
+    if (!word) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
     if (!cb.knows) {
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`${draftText(word)}\n\n📚 Добавлено в изучение — встретится в /learn`, HTML));

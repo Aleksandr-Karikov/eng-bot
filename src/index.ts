@@ -3,6 +3,7 @@ import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
+import { PickerStore } from "./bot/pickers";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
@@ -32,6 +33,7 @@ setupBot(bot, {
   enricher: new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs }),
   drafts: new DraftStore(),
   batches: new BatchStore(),
+  pickers: new PickerStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

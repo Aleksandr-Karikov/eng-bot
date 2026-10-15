@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { BatchStore } from "../src/bot/batches";
+import { PickerStore } from "../src/bot/pickers";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
@@ -52,7 +53,7 @@ export function botHarness(opts: {
     extract: async (): Promise<ExtractedItem[]> => [],
     check: async (): Promise<CheckResult> => ({ corrected: "", fixes: [], natural: "" }),
   };
-  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
@@ -126,3 +127,24 @@ export function botHarness(opts: {
 }
 
 export const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type Button = { text: string; callback_data: string };
+
+/** Кнопки последнего сообщения/редактирования с inline-клавиатурой. */
+export function lastButtons(calls: ApiCall[]): Button[] {
+  const call = [...calls].reverse().find((c) => {
+    const markup = c.payload.reply_markup as { inline_keyboard?: unknown } | undefined;
+    return markup?.inline_keyboard !== undefined;
+  });
+  return call ? (call.payload.reply_markup as { inline_keyboard: Button[][] }).inline_keyboard.flat() : [];
+}
+
+/** callback_data самой свежей кнопки, чей текст начинается с prefix. */
+export function buttonData(calls: ApiCall[], prefix: string): string {
+  const found = [...calls]
+    .reverse()
+    .flatMap((c) => (c.payload.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard?.flat() ?? [])
+    .find((b) => b.text.startsWith(prefix));
+  if (!found) throw new Error(`No button "${prefix}" in ${JSON.stringify(lastButtons(calls).map((b) => b.text))}`);
+  return found.callback_data;
+}

@@ -9,6 +9,12 @@ export type Cb =
   | { k: "batchToggle"; id: number; index: number }
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
   | { k: "batchPage"; id: number; page: number }
+  | { k: "del"; wordId: number }
+  | { k: "delOk"; wordId: number }
+  | { k: "delCancel" }
+  | { k: "delBatch"; id: number }
+  | { k: "delBatchOk"; id: number }
+  | { k: "delPage"; id: number; page: number }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "hour"; hour: number };
@@ -31,6 +37,12 @@ export function encodeCb(cb: Cb): string {
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
     case "batchPage": return `bp:${cb.id}:${cb.page}`;
+    case "del": return `x:${cb.wordId}`;
+    case "delOk": return `xo:${cb.wordId}`;
+    case "delCancel": return "xc";
+    case "delBatch": return `xb:${cb.id}`;
+    case "delBatchOk": return `xbo:${cb.id}`;
+    case "delPage": return `xp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "hour": return `t:${cb.hour}`;
@@ -62,6 +74,21 @@ export function decodeCb(data: string): Cb | null {
     case "bt": {
       const id = int(a), index = int(b);
       return id !== null && index !== null ? { k: "batchToggle", id, index } : null;
+    }
+    case "x":
+    case "xo": {
+      const wordId = int(a);
+      return wordId === null ? null : tag === "x" ? { k: "del", wordId } : { k: "delOk", wordId };
+    }
+    case "xc": return { k: "delCancel" };
+    case "xb":
+    case "xbo": {
+      const id = int(a);
+      return id === null ? null : tag === "xb" ? { k: "delBatch", id } : { k: "delBatchOk", id };
+    }
+    case "xp": {
+      const id = int(a), page = int(b);
+      return id !== null && page !== null ? { k: "delPage", id, page } : null;
     }
     case "bp": {
       const id = int(a), page = int(b);

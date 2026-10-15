@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { words, type User, type Word } from "../db/schema";
+import { cards, reviewLogs, words, type User, type Word } from "../db/schema";
 import { createCards } from "./cards";
 import { listMembers } from "./rooms";
 
@@ -72,4 +72,22 @@ export async function filterNewItems<T extends { term: string }>(db: Db, roomId:
     fresh.push({ ...item, term: item.term.trim() });
   }
   return fresh;
+}
+
+/** Слова комнаты, новые сверху; fragment — подстрока без учёта регистра и лишних пробелов. */
+export async function listRoomWords(db: Db, roomId: number, fragment?: string): Promise<Word[]> {
+  const all = await db.select().from(words).where(eq(words.roomId, roomId)).orderBy(desc(words.createdAt), desc(words.id));
+  const needle = fragment ? normalizeTerm(fragment) : "";
+  return needle ? all.filter((w) => w.termNormalized.includes(needle)) : all;
+}
+
+/** Удаляет слово у всех: историю повторений, карточки и само слово. Возвращает удалённое или undefined. */
+export async function deleteWord(db: Db, wordId: number): Promise<Word | undefined> {
+  const word = await getWord(db, wordId);
+  if (!word) return undefined;
+  const cardIds = (await db.select({ id: cards.id }).from(cards).where(eq(cards.wordId, wordId))).map((c) => c.id);
+  if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
+  await db.delete(cards).where(eq(cards.wordId, wordId));
+  await db.delete(words).where(eq(words.id, wordId));
+  return word;
 }

@@ -3,6 +3,7 @@ import type { Enrichment } from "../../llm/enricher";
 import { findWord, parseAddInput, saveWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
+import { deleteKeyboard } from "../keyboards";
 import { draftText, esc } from "../texts";
 import { askForTranslation, broadcastWord, resolveRoom, sendPreview } from "../word-flow";
 import { onBatchDraft } from "./batch";
@@ -90,7 +91,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
     }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
-    await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, HTML);
+    await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: deleteKeyboard(result.word.id) });
     const { word, members } = result;
     background(ctx, () => broadcastWord(deps, word, members, ctx.user, ctx.chat?.id));
   });

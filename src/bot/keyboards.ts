@@ -1,6 +1,7 @@
 import { InlineKeyboard } from "grammy";
 import type { Room } from "../db/schema";
 import type { Batch } from "./batches";
+import type { Picker } from "./pickers";
 import { encodeCb } from "./callbacks";
 
 export function knowKeyboard(wordId: number): InlineKeyboard {
@@ -13,13 +14,13 @@ export function showKeyboard(cardId: number, reps: number): InlineKeyboard {
   return new InlineKeyboard().text("👀 Показать", encodeCb({ k: "show", cardId, reps }));
 }
 
-export function rateKeyboard(cardId: number, reps: number, isNew: boolean): InlineKeyboard {
+export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))
     .text("😐 С трудом", encodeCb({ k: "rate", cardId, reps, answer: "hard" }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
-  return kb;
+  return kb.row().text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
 export function learnKeyboard(): InlineKeyboard {
@@ -40,27 +41,33 @@ export function draftKeyboard(id: number, inBatch = false): InlineKeyboard {
 const BUTTON_LABEL_MAX = 40;
 const shorten = (s: string) => (s.length > BUTTON_LABEL_MAX ? `${s.slice(0, BUTTON_LABEL_MAX - 1)}…` : s);
 
-/** Слов на странице: 25 + навигация + управление — далеко от лимита Telegram в 100 кнопок. */
-const BATCH_PAGE_SIZE = 25;
+/** Строк на странице: 25 + навигация + управление — далеко от лимита Telegram в 100 кнопок. */
+const PAGE_SIZE = 25;
+
+const pageCount = (total: number) => Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+/** Ряд ◀ p/n ▶, если страниц больше одной; go(p) кодирует переход на страницу p. */
+function addPageNav(kb: InlineKeyboard, page: number, pages: number, go: (p: number) => string): void {
+  if (pages <= 1) return;
+  const to = (p: number) => go(Math.min(Math.max(p, 0), pages - 1));
+  kb.text("◀", to(page - 1)).text(`${page + 1}/${pages}`, to(page)).text("▶", to(page + 1)).row();
+}
 
 export function batchPageCount(batch: Batch): number {
-  return Math.max(1, Math.ceil(batch.items.length / BATCH_PAGE_SIZE));
+  return pageCount(batch.items.length);
 }
 
 export function batchKeyboard(batch: Batch): InlineKeyboard {
   const kb = new InlineKeyboard();
   const pages = batchPageCount(batch);
   const page = Math.min(batch.page, pages - 1);
-  const start = page * BATCH_PAGE_SIZE;
-  batch.items.slice(start, start + BATCH_PAGE_SIZE).forEach((item, offset) => {
+  const start = page * PAGE_SIZE;
+  batch.items.slice(start, start + PAGE_SIZE).forEach((item, offset) => {
     const index = start + offset;
     const mark = batch.selected[index] ? "✅" : "⬜️";
     kb.text(shorten(`${mark} ${item.term} — ${item.translation}`), encodeCb({ k: "batchToggle", id: batch.id, index })).row();
   });
-  if (pages > 1) {
-    const go = (p: number) => encodeCb({ k: "batchPage", id: batch.id, page: Math.min(Math.max(p, 0), pages - 1) });
-    kb.text("◀", go(page - 1)).text(`${page + 1}/${pages}`, go(page)).text("▶", go(page + 1)).row();
-  }
+  addPageNav(kb, page, pages, (p) => encodeCb({ k: "batchPage", id: batch.id, page: p }));
   return kb
     .text(`✅ Добавить (${batch.selectedItems().length})`, encodeCb({ k: "batch", id: batch.id, action: "add" }))
     .text("🔍 По одному", encodeCb({ k: "batch", id: batch.id, action: "review" }))
@@ -85,4 +92,35 @@ export function hoursKeyboard(): InlineKeyboard {
     kb.text(`${String(hour).padStart(2, "0")}:00`, encodeCb({ k: "hour", hour }));
   });
   return kb;
+}
+
+export function deleteKeyboard(wordId: number): InlineKeyboard {
+  return new InlineKeyboard().text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+}
+
+export function confirmDeleteKeyboard(wordId: number): InlineKeyboard {
+  return new InlineKeyboard().text("🗑 Да", encodeCb({ k: "delOk", wordId })).text("Отмена", encodeCb({ k: "delCancel" }));
+}
+
+export function batchUndoKeyboard(batchId: number, count: number): InlineKeyboard {
+  return new InlineKeyboard().text(`🗑 Удалить всё (${count})`, encodeCb({ k: "delBatch", id: batchId }));
+}
+
+export function confirmBatchDeleteKeyboard(batchId: number): InlineKeyboard {
+  return new InlineKeyboard().text("🗑 Да", encodeCb({ k: "delBatchOk", id: batchId })).text("Отмена", encodeCb({ k: "delCancel" }));
+}
+
+export function pickerPageCount(picker: Picker): number {
+  return pageCount(picker.items.length);
+}
+
+export function pickerKeyboard(picker: Picker): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  const pages = pickerPageCount(picker);
+  const page = Math.min(picker.page, pages - 1);
+  for (const item of picker.items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
+    kb.text(shorten(item.label), encodeCb({ k: "del", wordId: item.wordId })).row();
+  }
+  addPageNav(kb, page, pages, (p) => encodeCb({ k: "delPage", id: picker.id, page: p }));
+  return kb.text("Отмена", encodeCb({ k: "delCancel" }));
 }
