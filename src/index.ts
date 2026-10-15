@@ -6,6 +6,7 @@ import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
 import { Notifier } from "./notifier";
+import { startReminderLoop } from "./reminder-loop";
 
 try {
   process.loadEnvFile(".env");
@@ -33,8 +34,14 @@ setupBot(bot, {
 });
 await bot.api.setMyCommands(COMMANDS);
 
-process.once("SIGINT", () => bot.stop());
-process.once("SIGTERM", () => bot.stop());
+const stopReminders = startReminderLoop({ db, notifier, now });
+
+const shutdown = () => {
+  stopReminders();
+  void bot.stop();
+};
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
 
 console.log(`@${bot.botInfo.username} started`);
 await bot.start();
