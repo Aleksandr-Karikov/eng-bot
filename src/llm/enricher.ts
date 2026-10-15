@@ -16,7 +16,8 @@ export interface WordEnricher {
   extract(text: string): Promise<ExtractedItem[]>;
 }
 
-export const MAX_EXTRACT = 20;
+/** Telegram допускает ~100 кнопок на сообщение: 50 слов + управляющие кнопки помещаются с запасом. */
+export const MAX_EXTRACT = 50;
 
 const enrichmentSchema = z.object({
   translation: z.string().trim().min(1),
@@ -49,11 +50,23 @@ export function parseEnrichment(text: string): Enrichment {
 
 const extractedItemSchema = enrichmentSchema.extend({ term: z.string().trim().min(1) });
 
+/** Срезает префиксы экспорта чата Telegram вида "[14/10/2026 21:31] Имя Фамилия: " и пустые строки. */
+export function stripChatExport(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/^\s*\[[^\]]*\d{1,2}:\d{2}[^\]]*\]\s*[^:]{1,64}:\s*/, "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildExtractPrompt(text: string): string {
   return [
-    "Ниже текст или список на английском. Выдели из него слова и фразы, которые стоит выучить русскоязычному человеку:",
-    "фразовые глаголы, идиомы, устойчивые выражения и не самые базовые слова. Пропусти очевидное (the, is, go, имена собственные).",
-    `Не больше ${MAX_EXTRACT} пунктов, слова — в начальной форме, без повторов.`,
+    "Ниже английский текст ИЛИ список слов и фраз, которые пользователь выписал сам. Определи, что это.",
+    "Если это список (по пункту на строку) — возьми каждый пункт, ничего не пропускай и не сокращай фразу до одного слова;",
+    "глагольную форму можно привести к начальной (snagging yourself a peerage → snag yourself a peerage), но смысл фразы сохрани.",
+    "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
+    "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
+    `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
     'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "..."}], где',
     "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
     "example — короткое предложение на английском.",

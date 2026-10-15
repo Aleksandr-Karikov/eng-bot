@@ -10,8 +10,8 @@ import {
   type WordEnricher,
 } from "./enricher";
 
-/** Разбор текста отвечает длиннее, чем подсказка к одному слову. */
-const EXTRACT_TIMEOUT_MS = 60_000;
+/** Разбор списка до 50 пунктов отвечает намного дольше, чем подсказка к одному слову. */
+const EXTRACT_TIMEOUT_MS = 120_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
 export class ClaudeCodeEnricher implements WordEnricher {

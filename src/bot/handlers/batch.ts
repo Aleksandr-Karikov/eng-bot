@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import type { ExtractedItem } from "../../llm/enricher";
+import { stripChatExport, type ExtractedItem } from "../../llm/enricher";
 import { filterNewItems, saveWord, type WordDraft } from "../../services/words";
 import type { Batch } from "../batches";
 import { decodeCb } from "../callbacks";
@@ -10,10 +10,10 @@ import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, resolveRoom, sendPreview } from "../word-flow";
 
 const USAGE = "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met";
-const MAX_TEXT = 3000;
+const MAX_TEXT = 4000;
 
 async function startText(ctx: BotContext, deps: Deps, input: string): Promise<void> {
-  const text = input.trim();
+  const text = stripChatExport(input);
   if (!text) return void (await ctx.reply(USAGE));
   if (text.length > MAX_TEXT) return void (await ctx.reply(`Слишком длинно — пришли до ${MAX_TEXT} символов за раз`));
   const room = await resolveRoom(ctx, deps);

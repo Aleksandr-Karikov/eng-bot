@@ -3,7 +3,7 @@ import { BatchStore } from "../src/bot/batches";
 import { decodeCb, encodeCb, type Cb } from "../src/bot/callbacks";
 import { batchKeyboard } from "../src/bot/keyboards";
 import { batchSummaryText } from "../src/bot/texts";
-import { buildExtractPrompt, MAX_EXTRACT, parseExtraction } from "../src/llm/enricher";
+import { buildExtractPrompt, MAX_EXTRACT, parseExtraction, stripChatExport } from "../src/llm/enricher";
 import { createRoom } from "../src/services/rooms";
 import { filterNewItems, saveWord } from "../src/services/words";
 import { T0, makeUser, testDb } from "./helpers";
@@ -28,6 +28,32 @@ describe("parseExtraction", () => {
 
   it("puts the text into the prompt", () => {
     expect(buildExtractPrompt("It was pure serendipity")).toContain("It was pure serendipity");
+  });
+});
+
+describe("stripChatExport", () => {
+  it("removes Telegram export prefixes and keeps plain lines", () => {
+    const text = [
+      "[14/10/2026 21:31] Александр Кариков: Contraction",
+      "[14/10/2026 21:41] Александр Кариков: something of a niggle: regarding deals",
+      "plain line",
+      "",
+      "Shell company",
+    ].join("\n");
+    expect(stripChatExport(text)).toBe("Contraction\nsomething of a niggle: regarding deals\nplain line\nShell company");
+  });
+});
+
+describe("extraction limits", () => {
+  it("allows a list of ~50 items and fits Telegram's 100-button keyboard", () => {
+    expect(MAX_EXTRACT).toBeGreaterThanOrEqual(50);
+    const store = new BatchStore();
+    const batch = store.create({ userId: 1, chatId: 1, roomId: 1, items: Array.from({ length: MAX_EXTRACT }, (_, i) => item(`w${i}`)) });
+    expect(batchKeyboard(batch).inline_keyboard.flat().length).toBeLessThanOrEqual(100);
+  });
+
+  it("tells the model to keep every item of a list", () => {
+    expect(buildExtractPrompt("a\nb")).toMatch(/каждый пункт/);
   });
 });
 
