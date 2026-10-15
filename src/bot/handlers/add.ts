@@ -1,38 +1,13 @@
 import type { Bot } from "grammy";
-import type { Room, User, Word } from "../../db/schema";
 import type { Enrichment } from "../../llm/enricher";
-import { findRoomByChat, getRoom } from "../../services/rooms";
 import { findWord, parseAddInput, saveWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
-import type { Draft } from "../drafts";
-import { draftKeyboard, knowKeyboard } from "../keyboards";
-import { announceText, draftText, esc, knowPrompt } from "../texts";
+import { draftText, esc } from "../texts";
+import { askForTranslation, broadcastWord, resolveRoom, sendPreview } from "../word-flow";
+import { onBatchDraft } from "./batch";
 
 const USAGE = "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег";
-
-async function resolveRoom(ctx: BotContext, deps: Deps): Promise<Room | undefined> {
-  if (ctx.chat?.type === "private") {
-    const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
-    if (!room) await ctx.reply("Сначала создай комнату (/newroom) или вступи по ссылке друга");
-    return room;
-  }
-  const room = ctx.chat ? await findRoomByChat(deps.db, ctx.chat.id) : undefined;
-  if (!room) await ctx.reply("Эта группа ещё не привязана к комнате — отправь /link");
-  return room;
-}
-
-async function askForTranslation(ctx: BotContext, draft: Draft, reason: string): Promise<void> {
-  draft.awaitingEdit = true;
-  await ctx.reply(`${reason} <b>${esc(draft.term)}</b> — пришли перевод ответом на это сообщение.`, {
-    ...HTML,
-    reply_markup: { force_reply: true },
-  });
-}
-
-async function sendPreview(ctx: BotContext, draft: Draft): Promise<void> {
-  await ctx.reply(draftText(draft), { ...HTML, reply_markup: draftKeyboard(draft.id) });
-}
 
 async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const parsed = parseAddInput(input);
@@ -64,21 +39,6 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
   await sendPreview(ctx, draft);
 }
 
-async function broadcastWord(deps: Deps, word: Word, members: User[], adder: User, currentChatId?: number) {
-  const room = await getRoom(deps.db, word.roomId);
-  if (!room) return;
-  if (room.telegramChatId != null && room.telegramChatId !== currentChatId) {
-    await deps.notifier.group(room.telegramChatId, announceText(adder.firstName, word), HTML);
-  }
-  for (const member of members) {
-    if (member.id === adder.id) continue;
-    await deps.notifier.dm(member, knowPrompt(adder.firstName, word, room.name), {
-      ...HTML,
-      reply_markup: knowKeyboard(word.id),
-    });
-  }
-}
-
 export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("add", (ctx) => background(ctx, () => startAdd(ctx, deps, ctx.match)));
 
@@ -101,15 +61,20 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "draft" || !draft || draft.userId !== ctx.user.id) {
       return void (await ctx.answerCallbackQuery({ text: "Этот черновик уже неактуален" }));
     }
+    if (cb.action === "edit") {
+      await ctx.answerCallbackQuery();
+      return askForTranslation(ctx, draft, "Исправляем перевод для");
+    }
+    if (draft.batchId !== undefined && cb.action !== "cancel") {
+      await ctx.answerCallbackQuery();
+      return onBatchDraft(ctx, deps, draft, cb.action);
+    }
     if (cb.action === "cancel") {
       deps.drafts.delete(draft.id);
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText("❌ Отменено"));
     }
-    if (cb.action === "edit") {
-      await ctx.answerCallbackQuery();
-      return askForTranslation(ctx, draft, "Исправляем перевод для");
-    }
+    if (cb.action !== "ok") return void (await ctx.answerCallbackQuery());
 
     deps.drafts.delete(draft.id);
     const result = await saveWord(deps.db, {

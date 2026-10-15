@@ -1,6 +1,7 @@
 import { Bot } from "grammy";
 import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
+import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
@@ -30,6 +31,7 @@ setupBot(bot, {
   now,
   enricher: new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs }),
   drafts: new DraftStore(),
+  batches: new BatchStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

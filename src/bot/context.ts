@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import type { Room, User } from "../db/schema";
 import type { WordEnricher } from "../llm/enricher";
 import type { Notifier } from "../notifier";
+import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
 
 export type BotContext = Context & { user: User };
@@ -12,6 +13,7 @@ export interface Deps {
   enricher: WordEnricher;
   notifier: Notifier;
   drafts: DraftStore;
+  batches: BatchStore;
   now: () => Date;
   botUsername: string;
 }

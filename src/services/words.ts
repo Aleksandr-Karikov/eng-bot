@@ -59,3 +59,17 @@ export async function saveWord(
   await createCards(db, members.map((m) => m.id), [word.id], input.now);
   return { status: "saved", word, members };
 }
+
+/** Убирает слова, которые уже есть в комнате, и повторы внутри самой пачки (с учётом регистра и пробелов). */
+export async function filterNewItems<T extends { term: string }>(db: Db, roomId: number, items: T[]): Promise<T[]> {
+  const existing = await db.select({ term: words.termNormalized }).from(words).where(eq(words.roomId, roomId));
+  const seen = new Set(existing.map((w) => w.term));
+  const fresh: T[] = [];
+  for (const item of items) {
+    const key = normalizeTerm(item.term);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    fresh.push({ ...item, term: item.term.trim() });
+  }
+  return fresh;
+}

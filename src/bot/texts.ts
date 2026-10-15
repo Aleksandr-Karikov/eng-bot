@@ -64,6 +64,27 @@ export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow
   return lines.join("\n");
 }
 
+const SUMMARY_MAX_TERMS = 15;
+
+export function termsList(words: Array<{ term: string }>): string {
+  const shown = words.slice(0, SUMMARY_MAX_TERMS).map((w) => `<b>${esc(w.term)}</b>`).join(", ");
+  const rest = words.length - SUMMARY_MAX_TERMS;
+  return rest > 0 ? `${shown} и ещё ${rest}` : shown;
+}
+
+export function batchSummaryText(adderName: string, words: Array<{ term: string }>, roomName: string): string {
+  const n = words.length;
+  return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}» ${n} ${plural(n, "слово", "слова", "слов")}: ${termsList(words)}\n\nОни уже ждут в /learn`;
+}
+
+export function batchListText(n: number): string {
+  return `🧺 Нашёл ${n} ${plural(n, "слово или фразу", "слова или фразы", "слов и фраз")}. Сними галочки с ненужного:`;
+}
+
+export function batchDoneText(words: Array<{ term: string }>): string {
+  return words.length ? `✅ Добавлено: ${words.length} — ${termsList(words)}` : "Ничего не добавлено";
+}
+
 export function welcomeText(): string {
   return [
     "👋 Привет! Я помогаю учить английские слова вместе с друзьями.",
@@ -71,6 +92,7 @@ export function welcomeText(): string {
     "/room — твои комнаты и приглашения",
     "/newroom название — создать комнату",
     "/add слово — добавить слово (можно с переводом: bank — берег)",
+    "/text текст или список — найду, что выучить, и добавлю пачкой",
     "/learn — повторить слова",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",

@@ -1,9 +1,10 @@
 import { Bot } from "grammy";
+import { BatchStore } from "../src/bot/batches";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
 import { setupBot } from "../src/bot/setup";
-import type { Enrichment, WordEnricher } from "../src/llm/enricher";
+import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { Notifier } from "../src/notifier";
 import { T0, testDb } from "./helpers";
 
@@ -48,8 +49,9 @@ export function botHarness(opts: {
   );
   const enricher: WordEnricher = opts.enricher ?? {
     enrich: async (): Promise<Enrichment> => ({ translation: "перевод", explanation: "", example: "" }),
+    extract: async (): Promise<ExtractedItem[]> => [],
   };
-  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

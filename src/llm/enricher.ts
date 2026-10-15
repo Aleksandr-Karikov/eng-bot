@@ -6,9 +6,17 @@ export interface Enrichment {
   example: string;
 }
 
+export interface ExtractedItem extends Enrichment {
+  term: string;
+}
+
 export interface WordEnricher {
   enrich(term: string, translationHint?: string): Promise<Enrichment>;
+  /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
+  extract(text: string): Promise<ExtractedItem[]>;
 }
+
+export const MAX_EXTRACT = 20;
 
 const enrichmentSchema = z.object({
   translation: z.string().trim().min(1),
@@ -37,4 +45,33 @@ export function parseEnrichment(text: string): Enrichment {
   const end = text.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
   return enrichmentSchema.parse(JSON.parse(text.slice(start, end + 1)));
+}
+
+const extractedItemSchema = enrichmentSchema.extend({ term: z.string().trim().min(1) });
+
+export function buildExtractPrompt(text: string): string {
+  return [
+    "Ниже текст или список на английском. Выдели из него слова и фразы, которые стоит выучить русскоязычному человеку:",
+    "фразовые глаголы, идиомы, устойчивые выражения и не самые базовые слова. Пропусти очевидное (the, is, go, имена собственные).",
+    `Не больше ${MAX_EXTRACT} пунктов, слова — в начальной форме, без повторов.`,
+    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "..."}], где',
+    "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
+    "example — короткое предложение на английском.",
+    "",
+    "Текст:",
+    text,
+  ].join("\n");
+}
+
+/** Невалидные пункты отбрасываются; если в ответе вообще нет массива — бросает. */
+export function parseExtraction(text: string): ExtractedItem[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
+  const raw: unknown = JSON.parse(text.slice(start, end + 1));
+  if (!Array.isArray(raw)) throw new Error("LLM response is not an array");
+  return raw
+    .map((entry) => extractedItemSchema.safeParse(entry))
+    .flatMap((r) => (r.success ? [r.data] : []))
+    .slice(0, MAX_EXTRACT);
 }

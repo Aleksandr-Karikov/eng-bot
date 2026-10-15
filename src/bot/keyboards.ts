@@ -1,5 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import type { Room } from "../db/schema";
+import type { Batch } from "./batches";
 import { encodeCb } from "./callbacks";
 
 export function knowKeyboard(wordId: number): InlineKeyboard {
@@ -25,11 +26,31 @@ export function learnKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("▶️ Начать", encodeCb({ k: "learn" }));
 }
 
-export function draftKeyboard(id: number): InlineKeyboard {
-  return new InlineKeyboard()
+export function draftKeyboard(id: number, inBatch = false): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("✅ Ок", encodeCb({ k: "draft", id, action: "ok" }))
-    .text("✏️ Исправить", encodeCb({ k: "draft", id, action: "edit" }))
-    .text("❌ Отмена", encodeCb({ k: "draft", id, action: "cancel" }));
+    .text("✏️ Исправить", encodeCb({ k: "draft", id, action: "edit" }));
+  if (!inBatch) return kb.text("❌ Отмена", encodeCb({ k: "draft", id, action: "cancel" }));
+  return kb
+    .text("⏭ Пропустить", encodeCb({ k: "draft", id, action: "skip" }))
+    .row()
+    .text("⏹ Хватит", encodeCb({ k: "draft", id, action: "stop" }));
+}
+
+const BUTTON_LABEL_MAX = 40;
+const shorten = (s: string) => (s.length > BUTTON_LABEL_MAX ? `${s.slice(0, BUTTON_LABEL_MAX - 1)}…` : s);
+
+export function batchKeyboard(batch: Batch): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  batch.items.forEach((item, index) => {
+    const mark = batch.selected[index] ? "✅" : "⬜️";
+    kb.text(shorten(`${mark} ${item.term} — ${item.translation}`), encodeCb({ k: "batchToggle", id: batch.id, index })).row();
+  });
+  return kb
+    .text(`✅ Добавить (${batch.selectedItems().length})`, encodeCb({ k: "batch", id: batch.id, action: "add" }))
+    .text("🔍 По одному", encodeCb({ k: "batch", id: batch.id, action: "review" }))
+    .row()
+    .text("❌ Отмена", encodeCb({ k: "batch", id: batch.id, action: "cancel" }));
 }
 
 export function roomKeyboard(otherRooms: Room[], hasCurrent: boolean): InlineKeyboard {

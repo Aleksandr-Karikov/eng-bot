@@ -2,6 +2,7 @@ import type { Bot } from "grammy";
 import { ignoreHarmlessErrors } from "./api-errors";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
+import { registerBatch } from "./handlers/batch";
 import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { registerStats } from "./handlers/stats";
@@ -10,6 +11,7 @@ import { userMiddleware } from "./middleware";
 export const COMMANDS = [
   { command: "learn", description: "Повторить слова" },
   { command: "add", description: "Добавить слово" },
+  { command: "text", description: "Разобрать текст и добавить пачкой" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "room", description: "Комнаты и приглашения" },
   { command: "newroom", description: "Создать комнату" },
@@ -23,6 +25,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerRooms(bot, deps);
   registerLearn(bot, deps);
   registerStats(bot, deps);
+  registerBatch(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».
   bot.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());

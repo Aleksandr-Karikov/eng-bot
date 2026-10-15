@@ -5,13 +5,16 @@ export type Cb =
   | { k: "show"; cardId: number; reps: number }
   | { k: "rate"; cardId: number; reps: number; answer: Answer }
   | { k: "learn" }
-  | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" }
+  | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
+  | { k: "batchToggle"; id: number; index: number }
+  | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "hour"; hour: number };
 
 const ANSWERS: Record<string, Answer> = { a: "again", h: "hard", g: "good", e: "easy" };
-const DRAFT_ACTIONS = { o: "ok", e: "edit", c: "cancel" } as const;
+const DRAFT_ACTIONS = { o: "ok", e: "edit", c: "cancel", s: "skip", x: "stop" } as const;
+const BATCH_ACTIONS = { a: "add", r: "review", c: "cancel" } as const;
 const ROOM_ACTIONS = { n: "new", i: "invite" } as const;
 
 const short = <T extends string>(map: Record<string, T>, value: T) =>
@@ -24,6 +27,8 @@ export function encodeCb(cb: Cb): string {
     case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}`;
     case "learn": return "l";
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
+    case "batchToggle": return `bt:${cb.id}:${cb.index}`;
+    case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "hour": return `t:${cb.hour}`;
@@ -51,6 +56,14 @@ export function decodeCb(data: string): Cb | null {
     case "d": {
       const id = int(a), action = b ? DRAFT_ACTIONS[b as keyof typeof DRAFT_ACTIONS] : undefined;
       return id !== null && action ? { k: "draft", id, action } : null;
+    }
+    case "bt": {
+      const id = int(a), index = int(b);
+      return id !== null && index !== null ? { k: "batchToggle", id, index } : null;
+    }
+    case "b": {
+      const id = int(a), action = b ? BATCH_ACTIONS[b as keyof typeof BATCH_ACTIONS] : undefined;
+      return id !== null && action ? { k: "batch", id, action } : null;
     }
     case "rm": {
       const action = a ? ROOM_ACTIONS[a as keyof typeof ROOM_ACTIONS] : undefined;

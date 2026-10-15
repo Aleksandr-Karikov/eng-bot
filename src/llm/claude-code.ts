@@ -1,17 +1,37 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { buildPrompt, parseEnrichment, SYSTEM_PROMPT, type Enrichment, type WordEnricher } from "./enricher";
+import {
+  buildExtractPrompt,
+  buildPrompt,
+  parseEnrichment,
+  parseExtraction,
+  SYSTEM_PROMPT,
+  type Enrichment,
+  type ExtractedItem,
+  type WordEnricher,
+} from "./enricher";
+
+/** Разбор текста отвечает длиннее, чем подсказка к одному слову. */
+const EXTRACT_TIMEOUT_MS = 60_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
 export class ClaudeCodeEnricher implements WordEnricher {
   constructor(private readonly opts: { model: string; timeoutMs: number }) {}
 
   async enrich(term: string, translationHint?: string): Promise<Enrichment> {
+    return parseEnrichment(await this.ask(buildPrompt(term, translationHint), this.opts.timeoutMs));
+  }
+
+  async extract(text: string): Promise<ExtractedItem[]> {
+    return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+  }
+
+  private async ask(prompt: string, timeoutMs: number): Promise<string> {
     const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), this.opts.timeoutMs);
+    const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {
       let result: string | undefined;
       for await (const message of query({
-        prompt: buildPrompt(term, translationHint),
+        prompt,
         options: {
           abortController,
           model: this.opts.model,
@@ -28,7 +48,7 @@ export class ClaudeCodeEnricher implements WordEnricher {
         }
       }
       if (result === undefined) throw new Error("Claude Code returned no result");
-      return parseEnrichment(result);
+      return result;
     } finally {
       clearTimeout(timer);
     }

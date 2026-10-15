@@ -6,6 +6,9 @@ export interface Draft extends WordDraft {
   chatId: number;
   roomId: number;
   awaitingEdit: boolean;
+  /** Черновик из пачки /text в режиме «по одному»: id пачки и подпись «3/6». */
+  batchId?: number;
+  progress?: string;
 }
 
 /** Черновики живут в памяти: после перезапуска бота слово нужно добавить заново. */
