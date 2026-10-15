@@ -11,6 +11,7 @@ const item = (term: string): ExtractedItem => ({ term, translation: `t-${term}`,
 const enricher = (items: ExtractedItem[]): WordEnricher => ({
   enrich: async () => ({ translation: "x", explanation: "", example: "" }),
   extract: async () => items,
+  check: async () => ({ corrected: "", fixes: [], natural: "" }),
 });
 
 /** Два участника комнаты: автор (100) и друг (200), оба нажали Start. */

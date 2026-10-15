@@ -1,10 +1,13 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import {
+  buildCheckPrompt,
   buildExtractPrompt,
   buildPrompt,
   parseEnrichment,
+  parseCheck,
   parseExtraction,
   SYSTEM_PROMPT,
+  type CheckResult,
   type Enrichment,
   type ExtractedItem,
   type WordEnricher,
@@ -23,6 +26,10 @@ export class ClaudeCodeEnricher implements WordEnricher {
 
   async extract(text: string): Promise<ExtractedItem[]> {
     return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+  }
+
+  async check(text: string): Promise<CheckResult> {
+    return parseCheck(await this.ask(buildCheckPrompt(text), this.opts.timeoutMs));
   }
 
   private async ask(prompt: string, timeoutMs: number): Promise<string> {

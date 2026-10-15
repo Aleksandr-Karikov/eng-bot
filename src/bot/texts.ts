@@ -1,4 +1,5 @@
 import type { Word } from "../db/schema";
+import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
 
@@ -85,6 +86,18 @@ export function batchDoneText(words: Array<{ term: string }>): string {
   return words.length ? `✅ Добавлено: ${words.length} — ${termsList(words)}` : "Ничего не добавлено";
 }
 
+/** Экранирует текст и превращает **…** от модели в жирный. */
+function boldMarked(s: string): string {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+}
+
+export function checkText(r: CheckResult): string {
+  const natural = r.natural ? `💬 <b>Естественнее:</b> ${esc(r.natural)}` : "";
+  if (r.fixes.length === 0) return natural ? `👍 Ошибок нет\n\n${natural}` : "👍 Ошибок нет";
+  const fixes = r.fixes.map((f) => `• <s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>${f.why ? ` — ${esc(f.why)}` : ""}`);
+  return [`✍️ <b>Исправлено:</b>\n${boldMarked(r.corrected)}`, fixes.join("\n"), natural].filter(Boolean).join("\n\n");
+}
+
 export function welcomeText(): string {
   return [
     "👋 Привет! Я помогаю учить английские слова вместе с друзьями.",
@@ -93,6 +106,7 @@ export function welcomeText(): string {
     "/newroom название — создать комнату",
     "/add слово — добавить слово (можно с переводом: bank — берег)",
     "/text текст или список — найду, что выучить, и добавлю пачкой",
+    "/check — ответом на сообщение: проверю английский и подскажу, как естественнее",
     "/learn — повторить слова",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",

@@ -10,10 +10,20 @@ export interface ExtractedItem extends Enrichment {
   term: string;
 }
 
+export interface CheckResult {
+  /** Исправленный текст; изменённые места обёрнуты в **…**. Если ошибок нет — исходный текст. */
+  corrected: string;
+  fixes: Array<{ wrong: string; right: string; why: string }>;
+  /** Вариант, который звучит естественнее, или "" если и так нормально. */
+  natural: string;
+}
+
 export interface WordEnricher {
   enrich(term: string, translationHint?: string): Promise<Enrichment>;
   /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
   extract(text: string): Promise<ExtractedItem[]>;
+  /** Проверяет английский текст: ошибки обязательно, «как естественнее» — отдельно. */
+  check(text: string): Promise<CheckResult>;
 }
 
 /** В клавиатуре пачки слова листаются страницами, так что 100 пунктов укладываются в лимит кнопок Telegram. */
@@ -79,4 +89,36 @@ export function parseExtraction(text: string): ExtractedItem[] {
     .map((entry) => extractedItemSchema.safeParse(entry))
     .flatMap((r) => (r.success ? [r.data] : []))
     .slice(0, MAX_EXTRACT);
+}
+
+const checkSchema = z.object({
+  corrected: z.string(),
+  fixes: z
+    .array(z.object({ wrong: z.string(), right: z.string(), why: z.string().default("") }))
+    .default([]),
+  natural: z.string().trim().default(""),
+});
+
+export function buildCheckPrompt(text: string): string {
+  return [
+    "Проверь английский текст, который написал русскоязычный человек.",
+    "1) Исправь все грамматические, орфографические и лексические ошибки. Не трогай то, что и так правильно.",
+    "2) Если фраза звучит не по-английски (калька с русского, странный порядок слов, неуместное слово), предложи вариант естественнее.",
+    "Не предлагай его ради мелочей — сокращений вроде we're, синонимов, «a bit» вместо «a little bit». Если фраза и так звучит нормально, оставь пустую строку.",
+    "Пунктуацию и регистр в разговорных сообщениях не считай ошибкой, если смысл не страдает.",
+    'Верни JSON: {"corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "..."}], "natural": "..."}, где',
+    "corrected — исправленный текст, в котором изменённые слова обёрнуты в **двойные звёздочки** (если ошибок нет — исходный текст),",
+    "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила на русском,",
+    "natural — более естественный вариант всей фразы или пустая строка.",
+    "",
+    "Текст:",
+    text,
+  ].join("\n");
+}
+
+export function parseCheck(text: string): CheckResult {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  return checkSchema.parse(JSON.parse(text.slice(start, end + 1)));
 }
