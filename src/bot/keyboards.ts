@@ -10,10 +10,10 @@ export function knowKeyboard(wordId: number): InlineKeyboard {
     .text("📚 Не знаю", encodeCb({ k: "know", wordId, knows: false }));
 }
 
+/** Две оценки — «не вспомнил / вспомнил»: «С трудом» убрана, а в старых сообщениях она по-прежнему обрабатывается. */
 export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))
-    .text("😐 С трудом", encodeCb({ k: "rate", cardId, reps, answer: "hard" }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
   return kb.row().text("✏️ Изменить", encodeCb({ k: "edit", wordId })).text("🗑 Удалить", encodeCb({ k: "del", wordId }));

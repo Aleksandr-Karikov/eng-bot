@@ -22,6 +22,8 @@ describe("answers under a spoiler", () => {
     expect(labels).toContain("😎 Помню");
     expect(labels).toContain("✅ Уже знаю");
     expect(labels).not.toContain("👀 Показать");
+    expect(labels).toContain("😵 Забыл");
+    expect(labels).not.toContain("😐 С трудом");
   });
 
   it("«знаешь?» carries the translation under a spoiler", () => {
