@@ -15,6 +15,13 @@
       "when": 1792171833526,
       "tag": "0001_smiling_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792172755579,
+      "tag": "0002_short_red_hulk",
+      "breakpoints": true
     }
   ]
 }

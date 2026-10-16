@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, words, type User, type Word } from "../db/schema";
+import { cards, clozeSentences, reviewLogs, words, type User, type Word } from "../db/schema";
 import { createCards } from "./cards";
 import { listMembers } from "./rooms";
 
@@ -103,6 +103,7 @@ export async function deleteWord(db: Db, wordId: number): Promise<Word | undefin
   if (!word) return undefined;
   const cardIds = (await db.select({ id: cards.id }).from(cards).where(eq(cards.wordId, wordId))).map((c) => c.id);
   if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
+  await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
   await db.delete(cards).where(eq(cards.wordId, wordId));
   await db.delete(words).where(eq(words.id, wordId));
   return word;
@@ -132,6 +133,10 @@ export async function updateWord(
   if (termNormalized !== word.termNormalized) {
     const clash = await findWord(db, word.roomId, term);
     if (clash && clash.id !== word.id) return { status: "duplicate" };
+  }
+  // Предложения с пропуском писались под старое слово/значение — пересоздадутся позже.
+  if (termNormalized !== word.termNormalized || patch.translation.trim() !== word.translation.trim()) {
+    await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
   }
   const [updated] = await db
     .update(words)

@@ -9,7 +9,10 @@ export interface TgUser {
 }
 
 export type UserPatch = Partial<
-  Pick<User, "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent">
+  Pick<
+    User,
+    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze"
+  >
 >;
 
 export async function upsertUser(db: Db, tg: TgUser, now: Date): Promise<User> {
