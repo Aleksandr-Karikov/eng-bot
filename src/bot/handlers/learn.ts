@@ -4,8 +4,8 @@ import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "
 import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
-import { rateKeyboard, showKeyboard } from "../keyboards";
-import { cardFront, doneText, draftText } from "../texts";
+import { rateKeyboard } from "../keyboards";
+import { cardText, doneText, draftText } from "../texts";
 
 /** Сколько карточек пользователь ответил в текущей сессии /learn (только для итогового сообщения). */
 const sessionCounts = new Map<number, number>();
@@ -15,8 +15,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Pr
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
   if (item) {
-    text = cardFront(item.word);
-    replyMarkup = showKeyboard(item.card.id, item.card.reps);
+    text = cardText(item.word);
+    replyMarkup = rateKeyboard(item.card.id, item.card.reps, item.card.state === State.New, item.word.id);
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
@@ -43,6 +43,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     await startSession(ctx, deps);
   });
 
+  // Кнопка «Показать» осталась только в старых сообщениях — до того, как ответ стал спойлером.
   bot.callbackQuery(/^s:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const item = cb?.k === "show" ? await getDueItemByCard(deps.db, ctx.user.id, cb.cardId) : undefined;

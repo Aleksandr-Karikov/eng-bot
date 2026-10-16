@@ -10,10 +10,6 @@ export function knowKeyboard(wordId: number): InlineKeyboard {
     .text("📚 Не знаю", encodeCb({ k: "know", wordId, knows: false }));
 }
 
-export function showKeyboard(cardId: number, reps: number): InlineKeyboard {
-  return new InlineKeyboard().text("👀 Показать", encodeCb({ k: "show", cardId, reps }));
-}
-
 export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))

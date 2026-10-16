@@ -27,12 +27,16 @@ export function draftText(d: WordDraft): string {
   return text;
 }
 
-export function cardFront(word: Word): string {
-  return `<b>${esc(word.term)}</b>\n\nВспомни перевод и нажми «Показать»`;
+/** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
+export function cardText(word: WordDraft): string {
+  let answer = esc(word.translation);
+  if (word.explanation) answer += `\n\n${esc(word.explanation)}`;
+  if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  return `<b>${esc(word.term)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {
-  return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b>\n\nЗнаешь это слово?`;
+  return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b> — <tg-spoiler>${esc(word.translation)}</tg-spoiler>\n\nЗнаешь это слово?`;
 }
 
 export function announceText(adderName: string, word: Word): string {
