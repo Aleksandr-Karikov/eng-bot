@@ -149,6 +149,18 @@ export function drillResultText(q: DrillQuestion, chosen: number): string {
   return [verdict, filled, q.explanation ? esc(q.explanation) : ""].filter(Boolean).join("\n\n");
 }
 
+/** name — чьи ошибки (undefined — свои), categories — темы исправленных ошибок. */
+export function mistakesSavedText(name: string | undefined, categories: string[]): string {
+  const topics = [...new Set(categories.map((c) => c.trim()).filter(Boolean))];
+  const whom = name ? `для ${esc(name)}` : "для тебя";
+  const about = topics.length ? `: ${topics.map(esc).join(", ")}` : "";
+  return `🧠 Сохранил ${whom} в работу над ошибками${about}. Посмотреть — /mistakes`;
+}
+
+export function mistakesNotSavedText(name: string, botUsername: string): string {
+  return `🧠 ${esc(name)} ещё не пользуется ботом — ошибки не сохранены. Открой https://t.me/${botUsername} и нажми Start, чтобы бот собирал частые ошибки и подбирал по ним упражнения.`;
+}
+
 export function mistakesText(p: MistakeProfile): string {
   if (p.total === 0) return "🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение на английском.";
   const lines = p.categories.map((c) => {

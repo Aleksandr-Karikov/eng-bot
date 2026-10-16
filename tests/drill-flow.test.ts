@@ -39,7 +39,8 @@ describe("/check records mistakes for whoever made them", () => {
     const caller = await makeUser(h.db, 100);
     const author = await makeUser(h.db, 200);
     await h.bot.handleUpdate(h.groupReplyTo(100, -500, "/check", { messageId: 5, fromId: 200, text: "I go there" }));
-    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("🧠 Запомнил"))).toBe(true));
+    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("🧠 Сохранил для User200"))).toBe(true));
+    expect(sent(h).find((t) => t.includes("🧠 Сохранил"))).toContain("времена: Present вместо Past");
     expect(await recentMistakes(h.db, author.id, T0)).toHaveLength(1);
     expect(await recentMistakes(h.db, caller.id, T0)).toHaveLength(0);
   });
@@ -49,11 +50,14 @@ describe("/check records mistakes for whoever made them", () => {
     const caller = await makeUser(h.db, 100);
     await h.bot.handleUpdate(h.groupReplyTo(100, -500, "/check", { messageId: 5, fromId: 999_001, text: "I go there" }));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Исправлено"))).toBe(true));
-    expect(sent(h).some((t) => t.includes("🧠 Запомнил"))).toBe(false);
+    const notSaved = sent(h).find((t) => t.includes("Исправлено"))!;
+    expect(notSaved).toContain("User999001 ещё не пользуется ботом");
+    expect(notSaved).toContain("https://t.me/test_bot");
     expect(await recentMistakes(h.db, caller.id, T0)).toHaveLength(0);
 
     await h.bot.handleUpdate(h.message(100, "/check I go there"));
     await vi.waitFor(async () => expect(await recentMistakes(h.db, caller.id, T0)).toHaveLength(1));
+    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("🧠 Сохранил для тебя"))).toBe(true));
   });
 });
 
