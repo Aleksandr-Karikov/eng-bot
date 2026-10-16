@@ -108,9 +108,9 @@ describe("drill questions in /learn", () => {
     expect(String(sent(h).at(-1))).not.toContain("🧠");
   });
 
-  it("does not prepare questions with fewer than 3 mistakes or with the mode off", async () => {
+  it("does not prepare questions without any mistakes or with the mode off", async () => {
     const a = harness();
-    await learner(a.h, 2);
+    await learner(a.h, 0);
     await a.h.bot.handleUpdate(a.h.message(100, "/learn"));
     const b = harness();
     await learner(b.h, 5, false);
@@ -118,6 +118,13 @@ describe("drill questions in /learn", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(a.drill).not.toHaveBeenCalled();
     expect(b.drill).not.toHaveBeenCalled();
+  });
+
+  it("starts from a single mistake", async () => {
+    const { h, drill } = harness();
+    await learner(h, 1);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await vi.waitFor(() => expect(drill).toHaveBeenCalled());
   });
 
   it("/drill runs the questions on their own", async () => {

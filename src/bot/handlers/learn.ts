@@ -100,7 +100,7 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   const questions = ready.length ? ready.splice(0) : await prepareDrill(deps, ctx.user);
   const [first, ...rest] = questions;
   if (!first) {
-    return void (await ctx.reply("🧠 Пока мало ошибок для упражнений — нужно хотя бы 3. Их собирает /check ответом на сообщение."));
+    return void (await ctx.reply("🧠 Пока не записано ни одной ошибки. Их собирает /check — ответом на сообщение на английском."));
   }
   deps.drills.set(ctx.user.id, { questions: rest, current: first, standalone: true, lastAtCount: 0 });
   await sendDrillQuestion(ctx, first, "reply");

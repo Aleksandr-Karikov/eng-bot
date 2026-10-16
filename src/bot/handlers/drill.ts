@@ -6,8 +6,8 @@ import { HTML, type BotContext, type Deps } from "../context";
 import { drillKeyboard, mistakesKeyboard } from "../keyboards";
 import { drillQuestionText, mistakesText } from "../texts";
 
-/** Профиль строится только при наборе хотя бы стольких ошибок. */
-export const MIN_MISTAKES = 3;
+/** Вопросы готовятся, как только есть хотя бы одна ошибка. */
+export const MIN_MISTAKES = 1;
 const QUESTIONS_PER_BATCH = 3;
 
 export async function prepareDrill(deps: Deps, user: User): Promise<DrillQuestion[]> {
