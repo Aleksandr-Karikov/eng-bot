@@ -120,6 +120,14 @@ describe("drill questions in /learn", () => {
     expect(b.drill).not.toHaveBeenCalled();
   });
 
+  it("prepares questions even when the session was not started with /learn (e.g. after a bot restart)", async () => {
+    const { h, drill } = harness();
+    const user = await learner(h, 1);
+    await answerCards(h, user.id, 5);
+    expect(drill).toHaveBeenCalledTimes(1);
+    expect(sent(h).at(-1)).toContain("🧠");
+  });
+
   it("starts from a single mistake", async () => {
     const { h, drill } = harness();
     await learner(h, 1);

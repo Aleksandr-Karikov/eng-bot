@@ -8,7 +8,7 @@ import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
-import { prefetchDrill, prepareDrill, sendDrillQuestion } from "./drill";
+import { ensureDrill, prefetchDrill, prepareDrill, sendDrillQuestion } from "./drill";
 import { clozeKeyboard, rateKeyboard } from "../keyboards";
 import {
   cardText,
@@ -31,6 +31,7 @@ const DRILL_EVERY = 5;
 
 /** Если подошла очередь и вопрос готов — показывает его вместо карточки. */
 async function maybeDrill(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<boolean> {
+  ensureDrill(ctx, deps);
   const count = sessionCounts.get(ctx.user.id) ?? 0;
   const state = deps.drills.get(ctx.user.id);
   if (!ctx.user.modeDrill || !state || state.standalone || count === 0 || count % DRILL_EVERY !== 0) return false;

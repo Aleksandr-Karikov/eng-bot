@@ -16,21 +16,38 @@ export async function prepareDrill(deps: Deps, user: User): Promise<DrillQuestio
   return deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH);
 }
 
-/** В начале /learn готовит вопросы в фоне, если их нет и режим включён. */
-export function prefetchDrill(ctx: BotContext, deps: Deps): void {
+const RETRY_AFTER_MS = 10 * 60_000;
+
+/**
+ * Готовит вопросы в фоне, если их нет и режим включён. Вызывается и в начале /learn, и на каждом ответе —
+ * чтобы сессия, продолженная без /learn (например после перезапуска бота), тоже получила вопросы.
+ */
+export function ensureDrill(ctx: BotContext, deps: Deps): void {
   if (!ctx.user.modeDrill) return;
   let state = deps.drills.get(ctx.user.id);
   if (!state || state.standalone) {
     state = { questions: state?.questions ?? [], standalone: false, lastAtCount: 0 };
     deps.drills.set(ctx.user.id, state);
   }
-  state.lastAtCount = 0;
-  if (state.questions.length || state.loading) return;
+  if (state.questions.length || state.loading || (state.retryAfter ?? 0) > Date.now()) return;
   const target = state;
   target.loading = prepareDrill(deps, ctx.user)
-    .then((qs) => void target.questions.push(...qs))
-    .catch((err) => console.error("Drill generation failed", err))
+    .then((qs) => {
+      target.questions.push(...qs);
+      target.retryAfter = qs.length ? undefined : Date.now() + RETRY_AFTER_MS;
+    })
+    .catch((err) => {
+      target.retryAfter = Date.now() + RETRY_AFTER_MS;
+      console.error("Drill generation failed", err);
+    })
     .finally(() => (target.loading = undefined));
+}
+
+/** Начало сессии /learn: счёт подмешивания с нуля, вопросы — в фоне. */
+export function prefetchDrill(ctx: BotContext, deps: Deps): void {
+  ensureDrill(ctx, deps);
+  const state = deps.drills.get(ctx.user.id);
+  if (state) state.lastAtCount = 0;
 }
 
 export async function sendDrillQuestion(ctx: BotContext, q: DrillQuestion, mode: "reply" | "edit"): Promise<void> {

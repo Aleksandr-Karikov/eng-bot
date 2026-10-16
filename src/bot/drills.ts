@@ -9,6 +9,8 @@ export interface DrillState {
   /** После какого по счёту ответа в /learn уже показали вопрос — чтобы не показать дважды. */
   lastAtCount: number;
   loading?: Promise<void>;
+  /** Если генерация упала или Claude не дал вопросов — не дёргать его снова до этого момента (мс). */
+  retryAfter?: number;
 }
 
 export class DrillStore {
