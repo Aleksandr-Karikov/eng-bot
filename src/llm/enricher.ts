@@ -21,12 +21,18 @@ export interface CheckResult {
   natural: string;
 }
 
+/** Предыдущее сообщение чата — для понимания, что и почему, а не для исправления. */
+export interface ContextMessage {
+  author: string;
+  text: string;
+}
+
 export interface WordEnricher {
   enrich(term: string, translationHint?: string): Promise<Enrichment>;
   /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
   extract(text: string): Promise<ExtractedItem[]>;
   /** Проверяет английский текст: ошибки обязательно, «как естественнее» — отдельно. */
-  check(text: string): Promise<CheckResult>;
+  check(text: string, context?: ContextMessage[]): Promise<CheckResult>;
 }
 
 /** В клавиатуре пачки слова листаются страницами, так что 100 пунктов укладываются в лимит кнопок Telegram. */
@@ -117,8 +123,16 @@ const checkSchema = z.object({
   natural: z.string().trim().default(""),
 });
 
-export function buildCheckPrompt(text: string): string {
+export function buildCheckPrompt(text: string, context: ContextMessage[] = []): string {
+  const contextLines = context.length
+    ? [
+        "Предыдущие сообщения чата — только контекст, их не исправляй. Используй их, чтобы понять смысл и объяснить, почему нужно именно так:",
+        ...context.map((m) => `${m.author}: ${m.text}`),
+        "",
+      ]
+    : [];
   return [
+    ...contextLines,
     "Проверь английский текст, который написал русскоязычный человек.",
     "1) Исправь все грамматические, орфографические и лексические ошибки. Не трогай то, что и так правильно.",
     "2) Если фраза звучит не по-английски (калька с русского, странный порядок слов, неуместное слово), предложи вариант естественнее.",
@@ -129,7 +143,7 @@ export function buildCheckPrompt(text: string): string {
     "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила на русском,",
     "natural — более естественный вариант всей фразы или пустая строка.",
     "",
-    "Текст:",
+    context.length ? "Проверь только это сообщение:" : "Текст:",
     text,
   ].join("\n");
 }

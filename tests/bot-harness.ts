@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { BatchStore } from "../src/bot/batches";
+import { ChatHistory } from "../src/bot/history";
 import { PickerStore } from "../src/bot/pickers";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
@@ -54,7 +55,7 @@ export function botHarness(opts: {
     extract: async (): Promise<ExtractedItem[]> => [],
     check: async (): Promise<CheckResult> => ({ corrected: "", fixes: [], natural: "" }),
   };
-  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
@@ -98,6 +99,18 @@ export function botHarness(opts: {
             : undefined,
         },
       } as Update;
+    },
+    /** Сообщение в группе ответом на сообщение original. */
+    groupReplyTo(userId: number, chatId: number, text: string, original: { messageId: number; fromId: number; text: string }): Update {
+      const update = this.groupMessage(userId, chatId, text);
+      update.message!.reply_to_message = {
+        message_id: original.messageId,
+        date: 0,
+        chat: update.message!.chat,
+        from: from(original.fromId),
+        text: original.text,
+      } as never;
+      return update;
     },
     /** Команда `text` от userId ответом на сообщение `original` другого участника. */
     replyTo(userId: number, text: string, original: { messageId: number; fromId: number; text: string }): Update {

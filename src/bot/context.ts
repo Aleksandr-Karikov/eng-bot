@@ -6,6 +6,7 @@ import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
 import type { EditStore } from "./edits";
+import type { ChatHistory } from "./history";
 import type { PickerStore } from "./pickers";
 
 export type BotContext = Context & { user: User };
@@ -18,6 +19,7 @@ export interface Deps {
   batches: BatchStore;
   pickers: PickerStore;
   edits: EditStore;
+  history: ChatHistory;
   now: () => Date;
   botUsername: string;
 }

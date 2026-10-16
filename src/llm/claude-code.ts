@@ -8,6 +8,7 @@ import {
   parseExtraction,
   SYSTEM_PROMPT,
   type CheckResult,
+  type ContextMessage,
   type Enrichment,
   type ExtractedItem,
   type WordEnricher,
@@ -28,8 +29,8 @@ export class ClaudeCodeEnricher implements WordEnricher {
     return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
   }
 
-  async check(text: string): Promise<CheckResult> {
-    return parseCheck(await this.ask(buildCheckPrompt(text), this.opts.timeoutMs));
+  async check(text: string, context?: ContextMessage[]): Promise<CheckResult> {
+    return parseCheck(await this.ask(buildCheckPrompt(text, context), this.opts.timeoutMs));
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */

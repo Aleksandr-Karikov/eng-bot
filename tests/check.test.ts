@@ -51,7 +51,7 @@ describe("/check", () => {
     });
     await h.bot.handleUpdate(h.replyTo(100, "/check", { messageId: 555, fromId: 200, text: "he go to work" }));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("<b>goes</b>"))).toBe(true));
-    expect(check).toHaveBeenCalledWith("he go to work");
+    expect(check).toHaveBeenCalledWith("he go to work", []);
     const answer = h.calls.find((c) => c.method === "sendMessage" && String(c.payload.text).includes("<b>goes</b>"))!;
     expect(answer.payload.reply_parameters).toMatchObject({ message_id: 555 });
   });
@@ -63,7 +63,7 @@ describe("/check", () => {
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("Ответь"))).toBe(true));
     expect(check).not.toHaveBeenCalled();
     await h.bot.handleUpdate(h.message(100, "/check he go to work"));
-    await vi.waitFor(() => expect(check).toHaveBeenCalledWith("he go to work"));
+    await vi.waitFor(() => expect(check).toHaveBeenCalledWith("he go to work", []));
   });
 
   it("reports when the check could not be done", async () => {

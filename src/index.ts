@@ -4,6 +4,7 @@ import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
 import { EditStore } from "./bot/edits";
+import { ChatHistory } from "./bot/history";
 import { PickerStore } from "./bot/pickers";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
@@ -36,6 +37,7 @@ setupBot(bot, {
   batches: new BatchStore(),
   pickers: new PickerStore(),
   edits: new EditStore(),
+  history: new ChatHistory(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);
