@@ -20,8 +20,23 @@ export function formatDateTime(date: Date, timeZone: string): string {
   }).format(date);
 }
 
+const ipa = (s: string) => `/${s.trim().replace(/^[/[\]\s]+|[/[\]\s]+$/g, "")}/`;
+
+/** «🇬🇧 /…/ · 🇺🇸 /…/», одна запись с двумя флагами, если они совпадают, или "" если транскрипции нет. */
+export function transcriptionLine(d: { transcriptionUk?: string; transcriptionUs?: string }): string {
+  const uk = d.transcriptionUk?.trim() ? ipa(d.transcriptionUk) : "";
+  const us = d.transcriptionUs?.trim() ? ipa(d.transcriptionUs) : "";
+  if (uk && uk === us) return `🇬🇧🇺🇸 ${esc(uk)}`;
+  return [uk && `🇬🇧 ${esc(uk)}`, us && `🇺🇸 ${esc(us)}`].filter(Boolean).join(" · ");
+}
+
+const withTranscription = (d: WordDraft) => {
+  const line = transcriptionLine(d);
+  return line ? `\n${line}` : "";
+};
+
 export function draftText(d: WordDraft): string {
-  let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}`;
+  let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
   return text;
@@ -32,11 +47,11 @@ export function cardText(word: WordDraft): string {
   let answer = esc(word.translation);
   if (word.explanation) answer += `\n\n${esc(word.explanation)}`;
   if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  return `<b>${esc(word.term)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
+  return `<b>${esc(word.term)}</b>${withTranscription(word)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {
-  return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b> — <tg-spoiler>${esc(word.translation)}</tg-spoiler>\n\nЗнаешь это слово?`;
+  return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b> — <tg-spoiler>${esc(word.translation)}</tg-spoiler>${withTranscription(word)}\n\nЗнаешь это слово?`;
 }
 
 export function announceText(adderName: string, word: Word): string {

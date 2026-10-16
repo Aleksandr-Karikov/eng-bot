@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
 import type { Enrichment } from "../../llm/enricher";
-import { findWord, parseAddInput, saveWord } from "../../services/words";
+import { findWord, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { wordActionsKeyboard } from "../keyboards";
@@ -35,6 +35,8 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
     translation: parsed.translation ?? enrichment?.translation ?? "",
     explanation: enrichment?.explanation ?? "",
     example: enrichment?.example ?? "",
+    transcriptionUk: enrichment?.transcriptionUk ?? "",
+    transcriptionUs: enrichment?.transcriptionUs ?? "",
   });
   if (!draft.translation) return askForTranslation(ctx, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);
@@ -83,7 +85,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     const result = await saveWord(deps.db, {
       roomId: draft.roomId,
       addedBy: ctx.user.id,
-      draft: { term: draft.term, translation: draft.translation, explanation: draft.explanation, example: draft.example },
+      draft: toWordDraft(draft),
       now: deps.now(),
     });
     if (result.status === "duplicate") {

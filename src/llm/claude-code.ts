@@ -32,7 +32,8 @@ export class ClaudeCodeEnricher implements WordEnricher {
     return parseCheck(await this.ask(buildCheckPrompt(text), this.opts.timeoutMs));
   }
 
-  private async ask(prompt: string, timeoutMs: number): Promise<string> {
+  /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
+  async ask(prompt: string, timeoutMs: number): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {

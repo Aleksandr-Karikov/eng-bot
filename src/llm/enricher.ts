@@ -4,6 +4,9 @@ export interface Enrichment {
   translation: string;
   explanation: string;
   example: string;
+  /** IPA в британском и американском произношении, например "/bæŋk/"; "" если Claude не дал. */
+  transcriptionUk?: string;
+  transcriptionUs?: string;
 }
 
 export interface ExtractedItem extends Enrichment {
@@ -29,11 +32,24 @@ export interface WordEnricher {
 /** В клавиатуре пачки слова листаются страницами, так что 100 пунктов укладываются в лимит кнопок Telegram. */
 export const MAX_EXTRACT = 100;
 
-const enrichmentSchema = z.object({
+const enrichmentFields = {
   translation: z.string().trim().min(1),
   explanation: z.string().trim().default(""),
   example: z.string().trim().default(""),
-});
+  transcription_uk: z.string().trim().default(""),
+  transcription_us: z.string().trim().default(""),
+};
+
+const toEnrichment = <T extends { transcription_uk: string; transcription_us: string }>({
+  transcription_uk,
+  transcription_us,
+  ...rest
+}: T) => ({ ...rest, transcriptionUk: transcription_uk, transcriptionUs: transcription_us });
+
+const enrichmentSchema = z.object(enrichmentFields).transform(toEnrichment);
+
+const TRANSCRIPTION_HINT =
+  "transcription_uk и transcription_us — транскрипция IPA в британском (RP) и американском произношении в слешах, для фразы — целиком.";
 
 export const SYSTEM_PROMPT =
   "Ты помогаешь русскоязычным людям учить английский. Отвечай строго одним JSON-объектом, без пояснений и без markdown.";
@@ -42,10 +58,11 @@ export function buildPrompt(term: string, translationHint?: string): string {
   return [
     `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
-    'Верни JSON: {"translation": "...", "explanation": "...", "example": "..."}, где',
+    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",
-    "example — короткое естественное предложение на английском с этим словом.",
+    "example — короткое естественное предложение на английском с этим словом,",
+    TRANSCRIPTION_HINT,
   ]
     .filter(Boolean)
     .join("\n");
@@ -58,7 +75,7 @@ export function parseEnrichment(text: string): Enrichment {
   return enrichmentSchema.parse(JSON.parse(text.slice(start, end + 1)));
 }
 
-const extractedItemSchema = enrichmentSchema.extend({ term: z.string().trim().min(1) });
+const extractedItemSchema = z.object({ ...enrichmentFields, term: z.string().trim().min(1) }).transform(toEnrichment);
 
 export function buildExtractPrompt(text: string): string {
   return [
@@ -69,9 +86,10 @@ export function buildExtractPrompt(text: string): string {
     "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
     "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
     `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "..."}], где',
+    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}], где',
     "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
-    "example — короткое предложение на английском.",
+    "example — короткое предложение на английском,",
+    TRANSCRIPTION_HINT,
     "",
     "Текст:",
     text,

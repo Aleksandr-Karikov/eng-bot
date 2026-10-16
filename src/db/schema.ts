@@ -46,6 +46,8 @@ export const words = sqliteTable(
     translation: text("translation").notNull(),
     explanation: text("explanation").notNull().default(""),
     example: text("example").notNull().default(""),
+    transcriptionUk: text("transcription_uk").notNull().default(""),
+    transcriptionUs: text("transcription_us").notNull().default(""),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("words_room_term_idx").on(t.roomId, t.termNormalized)],

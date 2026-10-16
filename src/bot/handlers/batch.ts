@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
 import type { ExtractedItem } from "../../llm/enricher";
-import { filterNewItems, saveWord, type WordDraft } from "../../services/words";
+import { filterNewItems, saveWord, toWordDraft, type WordDraft } from "../../services/words";
 import type { Batch } from "../batches";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
@@ -66,7 +66,7 @@ export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, ac
   if (!batch || batch.finished) return void (await ctx.editMessageText("Эта пачка уже неактуальна"));
 
   if (action === "ok") {
-    await saveItems(deps, batch, [{ term: draft.term, translation: draft.translation, explanation: draft.explanation, example: draft.example }]);
+    await saveItems(deps, batch, [toWordDraft(draft)]);
     await ctx.editMessageText(`✅ <b>${esc(draft.term)}</b>`, HTML);
   } else {
     await ctx.editMessageText(`⏭ <b>${esc(draft.term)}</b>`, HTML);

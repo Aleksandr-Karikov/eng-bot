@@ -5,11 +5,11 @@ const ok = { translation: "счастливая случайность", explana
 
 describe("parseEnrichment", () => {
   it("parses plain JSON", () => {
-    expect(parseEnrichment(JSON.stringify(ok))).toEqual(ok);
+    expect(parseEnrichment(JSON.stringify(ok))).toMatchObject(ok);
   });
 
   it("parses JSON wrapped in a code fence with chatter", () => {
-    expect(parseEnrichment("Вот ответ:\n```json\n" + JSON.stringify(ok) + "\n```")).toEqual(ok);
+    expect(parseEnrichment("Вот ответ:\n```json\n" + JSON.stringify(ok) + "\n```")).toMatchObject(ok);
   });
 
   it("throws on garbage and on missing translation", () => {

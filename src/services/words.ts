@@ -9,6 +9,20 @@ export interface WordDraft {
   translation: string;
   explanation: string;
   example: string;
+  transcriptionUk?: string;
+  transcriptionUs?: string;
+}
+
+/** Только поля слова — без служебных полей черновика/пачки. */
+export function toWordDraft(d: WordDraft): WordDraft {
+  return {
+    term: d.term,
+    translation: d.translation,
+    explanation: d.explanation,
+    example: d.example,
+    transcriptionUk: d.transcriptionUk ?? "",
+    transcriptionUs: d.transcriptionUs ?? "",
+  };
 }
 
 export function normalizeTerm(term: string): string {
@@ -52,6 +66,8 @@ export async function saveWord(
       translation: input.draft.translation,
       explanation: input.draft.explanation,
       example: input.draft.example,
+      transcriptionUk: input.draft.transcriptionUk ?? "",
+      transcriptionUs: input.draft.transcriptionUs ?? "",
       createdAt: input.now,
     })
     .returning();
@@ -99,7 +115,15 @@ export async function deleteWord(db: Db, wordId: number): Promise<Word | undefin
 export async function updateWord(
   db: Db,
   wordId: number,
-  patch: { term?: string; translation: string; explanation: string; example: string },
+  patch: {
+    term?: string;
+    translation: string;
+    explanation: string;
+    example: string;
+    /** undefined — оставить как есть. */
+    transcriptionUk?: string;
+    transcriptionUs?: string;
+  },
 ): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
   const word = await getWord(db, wordId);
   if (!word) return { status: "missing" };
@@ -111,7 +135,15 @@ export async function updateWord(
   }
   const [updated] = await db
     .update(words)
-    .set({ term, termNormalized, translation: patch.translation, explanation: patch.explanation, example: patch.example })
+    .set({
+      term,
+      termNormalized,
+      translation: patch.translation,
+      explanation: patch.explanation,
+      example: patch.example,
+      transcriptionUk: patch.transcriptionUk ?? word.transcriptionUk,
+      transcriptionUs: patch.transcriptionUs ?? word.transcriptionUs,
+    })
     .where(eq(words.id, wordId))
     .returning();
   return { status: "updated", word: updated };

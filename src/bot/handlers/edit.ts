@@ -41,6 +41,9 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     translation,
     explanation: enrichment?.explanation ?? word.explanation,
     example: enrichment?.example ?? word.example,
+    // Если слово переименовали, а Claude не ответил, старая транскрипция уже неверна.
+    transcriptionUk: enrichment?.transcriptionUk ?? (term === word.term ? undefined : ""),
+    transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
   });
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));
   if (result.status === "duplicate") return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
