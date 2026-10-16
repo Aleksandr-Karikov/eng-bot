@@ -13,12 +13,22 @@ import {
   type ExtractedItem,
   type WordEnricher,
 } from "./enricher";
+import {
+  buildClozePrompt,
+  buildJudgePrompt,
+  parseCloze,
+  parseJudgement,
+  type ExerciseTutor,
+  type JudgeInput,
+  type Judgement,
+} from "./tutor";
+import type { ClozeDraft } from "../services/cloze";
 
 /** Разбор списка до 100 пунктов отвечает намного дольше, чем подсказка к одному слову (46 пунктов ≈ 30 с). */
 const EXTRACT_TIMEOUT_MS = 180_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
-export class ClaudeCodeEnricher implements WordEnricher {
+export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   constructor(private readonly opts: { model: string; timeoutMs: number }) {}
 
   async enrich(term: string, translationHint?: string): Promise<Enrichment> {
@@ -31,6 +41,14 @@ export class ClaudeCodeEnricher implements WordEnricher {
 
   async check(text: string, context?: ContextMessage[]): Promise<CheckResult> {
     return parseCheck(await this.ask(buildCheckPrompt(text, context), this.opts.timeoutMs));
+  }
+
+  async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
+    return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000)));
+  }
+
+  async judge(input: JudgeInput): Promise<Judgement> {
+    return parseJudgement(await this.ask(buildJudgePrompt(input), this.opts.timeoutMs));
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */

@@ -6,9 +6,12 @@ import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
 import { EditStore } from "../src/bot/edits";
+import { ExerciseStore } from "../src/bot/exercises";
 import { setupBot } from "../src/bot/setup";
 import type { CheckResult, Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
+import type { ExerciseTutor } from "../src/llm/tutor";
 import { Notifier } from "../src/notifier";
+import { ClozeGenerator } from "../src/services/cloze-generator";
 import { T0, testDb } from "./helpers";
 
 export interface ApiCall {
@@ -29,6 +32,7 @@ const BOT_INFO = {
 /** Настоящие обработчики бота поверх фейкового Telegram API. */
 export function botHarness(opts: {
   enricher?: WordEnricher;
+  tutor?: ExerciseTutor;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
 } = {}) {
@@ -55,7 +59,12 @@ export function botHarness(opts: {
     extract: async (): Promise<ExtractedItem[]> => [],
     check: async (): Promise<CheckResult> => ({ corrected: "", fixes: [], natural: "" }),
   };
-  setupBot(bot, { db, notifier, enricher, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), now: () => T0, botUsername: BOT_INFO.username });
+  const tutor: ExerciseTutor = opts.tutor ?? {
+    cloze: async () => [1, 2, 3].map((i) => ({ sentence: `Sentence ${i} with ___.`, answer: "x", translation: `Перевод ${i}` })),
+    judge: async () => ({ correct: false, explanation: "", tip: "" }),
+  };
+  const clozeGen = new ClozeGenerator(db, tutor, () => T0);
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
@@ -65,6 +74,7 @@ export function botHarness(opts: {
     bot,
     db,
     calls,
+    clozeGen,
     message(userId: number, text: string): Update {
       seq++;
       const command = text.startsWith("/") ? text.split(" ")[0] : undefined;

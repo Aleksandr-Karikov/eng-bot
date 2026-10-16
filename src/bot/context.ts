@@ -2,10 +2,13 @@ import type { Context } from "grammy";
 import type { Db } from "../db/client";
 import type { Room, User } from "../db/schema";
 import type { WordEnricher } from "../llm/enricher";
+import type { ExerciseTutor } from "../llm/tutor";
+import type { ClozeGenerator } from "../services/cloze-generator";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
 import type { EditStore } from "./edits";
+import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
 import type { PickerStore } from "./pickers";
 
@@ -14,12 +17,15 @@ export type BotContext = Context & { user: User };
 export interface Deps {
   db: Db;
   enricher: WordEnricher;
+  tutor: ExerciseTutor;
+  clozeGen: ClozeGenerator;
   notifier: Notifier;
   drafts: DraftStore;
   batches: BatchStore;
   pickers: PickerStore;
   edits: EditStore;
   history: ChatHistory;
+  exercises: ExerciseStore;
   now: () => Date;
   botUsername: string;
 }

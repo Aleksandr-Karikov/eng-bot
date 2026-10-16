@@ -1,5 +1,6 @@
 import { InlineKeyboard } from "grammy";
-import type { Room } from "../db/schema";
+import type { Room, User } from "../db/schema";
+import type { Stage } from "../services/exercises";
 import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
 import { encodeCb } from "./callbacks";
@@ -122,4 +123,27 @@ export function pickerKeyboard(picker: Picker): InlineKeyboard {
   }
   addPageNav(kb, page, pages, (p) => encodeCb({ k: "delPage", id: picker.id, page: p }));
   return kb.text("Отмена", encodeCb({ k: "delCancel" }));
+}
+
+export function clozeKeyboard(cardId: number, reps: number, wordId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps }))
+    .row()
+    .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
+    .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+}
+
+const MODE_LABELS: Array<[Stage, string, keyof User]> = [
+  ["en_ru", "EN → RU", "modeEnRu"],
+  ["ru_en", "RU → EN", "modeRuEn"],
+  ["cloze", "Вставь по смыслу", "modeCloze"],
+];
+
+/** Часы напоминания + переключатели режимов тренажёра. */
+export function settingsKeyboard(user: User): InlineKeyboard {
+  const kb = hoursKeyboard().row();
+  for (const [stage, label, field] of MODE_LABELS) {
+    kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
+  }
+  return kb;
 }

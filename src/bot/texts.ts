@@ -1,4 +1,5 @@
-import type { Word } from "../db/schema";
+import type { ClozeSentence, User, Word } from "../db/schema";
+import type { Judgement } from "../llm/tutor";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
@@ -103,6 +104,47 @@ export function batchListText(n: number): string {
 
 export function batchDoneText(words: Array<{ term: string }>): string {
   return words.length ? `✅ Добавлено: ${words.length} — ${termsList(words)}` : "Ничего не добавлено";
+}
+
+/** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
+export function reverseCardText(word: WordDraft): string {
+  let answer = `<b>${esc(word.term)}</b>${withTranscription(word)}`;
+  if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
+}
+
+/** Предложение с ответом на месте пропуска, ответ — жирным. */
+export function clozeFull(s: Pick<ClozeSentence, "sentence" | "answer">): string {
+  return esc(s.sentence).replace("___", `<b>${esc(s.answer)}</b>`);
+}
+
+export function clozeText(s: ClozeSentence): string {
+  return `✍️ Вставь пропущенное слово или фразу:\n\n<i>${esc(s.sentence)}</i>\n\n🇷🇺 ${esc(s.translation)}\n\nНапиши ответ сообщением.`;
+}
+
+export function clozeCorrectText(s: ClozeSentence): string {
+  return `✅ Верно!\n\n${clozeFull(s)}`;
+}
+
+export function clozeJudgedText(s: ClozeSentence, j: Judgement): string {
+  const parts = [j.correct ? "✅ Засчитано" : "❌ Не то", clozeFull(s)];
+  if (j.explanation) parts.push(esc(j.explanation));
+  if (j.tip) parts.push(`💡 ${esc(j.tip)}`);
+  return parts.join("\n\n");
+}
+
+export function clozeUnknownText(s: ClozeSentence): string {
+  return `🤷 Правильно так:\n\n${clozeFull(s)}\n\n🇷🇺 ${esc(s.translation)}`;
+}
+
+export function settingsText(user: User): string {
+  return [
+    `⏰ Напоминаю в ${user.reminderTime} (${user.timezone}). Выбери час или отправь /settings ЧЧ:ММ`,
+    "",
+    "🎯 Режимы тренажёра — по мере того как слово запоминается:",
+    "1. EN → RU · 2. RU → EN · 3. Вставь по смыслу",
+    "Выключенные пропускаются.",
+  ].join("\n");
 }
 
 /** Экранирует текст и превращает **…** от модели в жирный. */

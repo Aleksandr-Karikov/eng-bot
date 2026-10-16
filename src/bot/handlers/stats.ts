@@ -5,8 +5,15 @@ import { updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
-import { hoursKeyboard } from "../keyboards";
-import { statsText } from "../texts";
+import { settingsKeyboard } from "../keyboards";
+import { settingsText, statsText } from "../texts";
+import type { Stage } from "../../services/exercises";
+
+const MODE_FIELDS: Record<Stage, "modeEnRu" | "modeRuEn" | "modeCloze"> = {
+  en_ru: "modeEnRu",
+  ru_en: "modeRuEn",
+  cloze: "modeCloze",
+};
 
 export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("stats", async (ctx) => {
@@ -25,18 +32,28 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
       await updateUser(deps.db, ctx.user.id, { reminderTime: time });
       return void (await ctx.reply(`⏰ Буду напоминать в ${time}`));
     }
-    await ctx.reply(
-      `⏰ Сейчас напоминаю в ${ctx.user.reminderTime} (${ctx.user.timezone}).\nВыбери час или отправь /settings ЧЧ:ММ`,
-      { reply_markup: hoursKeyboard() },
-    );
+    await ctx.reply(settingsText(ctx.user), { reply_markup: settingsKeyboard(ctx.user) });
+  });
+
+  bot.callbackQuery(/^m:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "mode") return void (await ctx.answerCallbackQuery());
+    const field = MODE_FIELDS[cb.stage];
+    const next = { modeEnRu: ctx.user.modeEnRu, modeRuEn: ctx.user.modeRuEn, modeCloze: ctx.user.modeCloze, [field]: !ctx.user[field] };
+    if (!next.modeEnRu && !next.modeRuEn && !next.modeCloze) {
+      return void (await ctx.answerCallbackQuery({ text: "Хотя бы один режим должен остаться включённым" }));
+    }
+    const user = await updateUser(deps.db, ctx.user.id, next);
+    await ctx.answerCallbackQuery({ text: "Сохранено" });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
   });
 
   bot.callbackQuery(/^t:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "hour") return void (await ctx.answerCallbackQuery());
     const time = `${String(cb.hour).padStart(2, "0")}:00`;
-    await updateUser(deps.db, ctx.user.id, { reminderTime: time });
-    await ctx.answerCallbackQuery({ text: "Сохранено" });
-    await ctx.editMessageText(`⏰ Буду напоминать в ${time}`);
+    const user = await updateUser(deps.db, ctx.user.id, { reminderTime: time });
+    await ctx.answerCallbackQuery({ text: `Буду напоминать в ${time}` });
+    await ctx.editMessageText(settingsText(user), { reply_markup: settingsKeyboard(user) });
   });
 }

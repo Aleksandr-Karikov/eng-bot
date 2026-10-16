@@ -1,3 +1,4 @@
+import { STAGES, type Stage } from "../services/exercises";
 import type { Answer } from "../srs/srs";
 
 export type Cb =
@@ -5,6 +6,8 @@ export type Cb =
   | { k: "show"; cardId: number; reps: number }
   | { k: "rate"; cardId: number; reps: number; answer: Answer }
   | { k: "learn" }
+  | { k: "dunno"; cardId: number; reps: number }
+  | { k: "mode"; stage: Stage }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
   | { k: "batchToggle"; id: number; index: number }
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
@@ -34,6 +37,8 @@ export function encodeCb(cb: Cb): string {
     case "show": return `s:${cb.cardId}:${cb.reps}`;
     case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}`;
     case "learn": return "l";
+    case "dunno": return `u:${cb.cardId}:${cb.reps}`;
+    case "mode": return `m:${cb.stage}`;
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
@@ -69,6 +74,11 @@ export function decodeCb(data: string): Cb | null {
       return cardId !== null && reps !== null && answer ? { k: "rate", cardId, reps, answer } : null;
     }
     case "l": return { k: "learn" };
+    case "u": {
+      const cardId = int(a), reps = int(b);
+      return cardId !== null && reps !== null ? { k: "dunno", cardId, reps } : null;
+    }
+    case "m": return (STAGES as readonly string[]).includes(a ?? "") ? { k: "mode", stage: a as Stage } : null;
     case "d": {
       const id = int(a), action = b ? DRAFT_ACTIONS[b as keyof typeof DRAFT_ACTIONS] : undefined;
       return id !== null && action ? { k: "draft", id, action } : null;

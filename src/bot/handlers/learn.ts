@@ -1,22 +1,60 @@
 import type { Bot, InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
+import type { Judgement } from "../../llm/tutor";
+import { listCloze, pickCloze } from "../../services/cloze";
+import { chooseStage, isExactAnswer, targetStage } from "../../services/exercises";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
-import { HTML, type BotContext, type Deps } from "../context";
-import { rateKeyboard } from "../keyboards";
-import { cardText, doneText, draftText } from "../texts";
+import { background, HTML, type BotContext, type Deps } from "../context";
+import type { PendingCloze } from "../exercises";
+import { clozeKeyboard, rateKeyboard } from "../keyboards";
+import {
+  cardText,
+  clozeCorrectText,
+  clozeFull,
+  clozeJudgedText,
+  clozeText,
+  clozeUnknownText,
+  doneText,
+  draftText,
+  reverseCardText,
+} from "../texts";
 
 /** Сколько карточек пользователь ответил в текущей сессии /learn (только для итогового сообщения). */
 const sessionCounts = new Map<number, number>();
 
+const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
+
+/** Если карточка дорастает до «вставь по смыслу», заранее готовим предложения в фоне. */
+async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promise<void> {
+  if (!ctx.user.modeCloze) return;
+  const item = await getDueItemByCard(deps.db, ctx.user.id, cardId);
+  if (item && targetStage(item.card) === "cloze") void deps.clozeGen.ensure(item.word);
+}
+
 async function showNext(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<void> {
+  deps.exercises.delete(ctx.user.id);
+  deps.edits.delete(ctx.user.id);
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
   if (item) {
-    text = cardText(item.word);
-    replyMarkup = rateKeyboard(item.card.id, item.card.reps, item.card.state === State.New, item.word.id);
+    const { card, word } = item;
+    const modes = { en_ru: ctx.user.modeEnRu, ru_en: ctx.user.modeRuEn, cloze: ctx.user.modeCloze };
+    const target = targetStage(card);
+    const sentences = target === "cloze" && modes.cloze ? await listCloze(deps.db, word.id) : [];
+    if (target === "cloze" && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
+    const stage = chooseStage(target, modes, sentences.length > 0);
+    const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
+    if (sentence && ctx.chat) {
+      deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
+      text = clozeText(sentence);
+      replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
+    } else {
+      text = stage === "ru_en" ? reverseCardText(word) : cardText(word);
+      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id);
+    }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
@@ -35,8 +73,81 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
   await showNext(ctx, deps, "reply");
 }
 
+async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: "good" | "again"): Promise<boolean> {
+  const result = await answerCard(deps.db, {
+    userId: ctx.user.id,
+    cardId: pending.cardId,
+    expectedReps: pending.reps,
+    answer,
+    now: deps.now(),
+  });
+  if (result === "stale") {
+    await ctx.reply("Уже учтено");
+    return false;
+  }
+  countAnswer(ctx.user.id);
+  await prefetchCloze(ctx, deps, pending.cardId);
+  return true;
+}
+
+/** Ответ на «вставь по смыслу»: точное совпадение — сразу, иначе судит Claude. */
+async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: string): Promise<void> {
+  const s = pending.sentence;
+  if (isExactAnswer(answer, { answer: s.answer, term: pending.term })) {
+    if (!(await rate(ctx, deps, pending, "good"))) return;
+    await ctx.reply(clozeCorrectText(s), HTML);
+    return showNext(ctx, deps, "reply");
+  }
+  await ctx.replyWithChatAction("typing");
+  const word = await getWord(deps.db, pending.wordId);
+  let judgement: Judgement;
+  try {
+    judgement = await deps.tutor.judge({
+      sentence: s.sentence,
+      expected: s.answer,
+      term: pending.term,
+      translation: word?.translation ?? "",
+      answer,
+    });
+  } catch (err) {
+    console.error("Cloze judge failed", err);
+    await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
+      ...HTML,
+      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId),
+    });
+    return;
+  }
+  if (!(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
+  await ctx.reply(clozeJudgedText(s, judgement), HTML);
+  await showNext(ctx, deps, "reply");
+}
+
 export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("learn", (ctx) => startSession(ctx, deps));
+
+  bot.callbackQuery(/^u:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "dunno") return void (await ctx.answerCallbackQuery());
+    const item = await getDueItemByCard(deps.db, ctx.user.id, cb.cardId);
+    if (!item) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
+    const pending = deps.exercises.get(ctx.user.id);
+    const sentence = pending?.cardId === cb.cardId ? pending.sentence : pickCloze(await listCloze(deps.db, item.word.id), cb.reps);
+    const result = await answerCard(deps.db, { userId: ctx.user.id, cardId: cb.cardId, expectedReps: cb.reps, answer: "again", now: deps.now() });
+    if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+    await ctx.answerCallbackQuery();
+    countAnswer(ctx.user.id);
+    await ctx.editMessageText(sentence ? clozeUnknownText(sentence) : draftText(item.word), HTML);
+    await showNext(ctx, deps, "reply");
+  });
+
+  // Ответ на «вставь по смыслу». Регистрируется раньше общего обработчика текста (иначе ответ стал бы /add).
+  bot.on("message:text", async (ctx, next) => {
+    const text = ctx.message.text;
+    const pending = deps.exercises.get(ctx.user.id);
+    if (text.startsWith("/") || !pending || pending.chatId !== ctx.chat.id) return next();
+    deps.exercises.delete(ctx.user.id);
+    background(ctx, () => checkCloze(ctx, deps, pending, text));
+  });
 
   bot.callbackQuery(/^l$/, async (ctx) => {
     await ctx.answerCallbackQuery();
@@ -70,7 +181,8 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
-    sessionCounts.set(ctx.user.id, (sessionCounts.get(ctx.user.id) ?? 0) + 1);
+    countAnswer(ctx.user.id);
+    await prefetchCloze(ctx, deps, cb.cardId);
     await showNext(ctx, deps, "edit");
   });
 
