@@ -15,9 +15,12 @@ import {
 } from "./enricher";
 import {
   buildClozePrompt,
+  buildDrillPrompt,
   buildJudgePrompt,
   parseCloze,
+  parseDrill,
   parseJudgement,
+  type DrillQuestion,
   type ExerciseTutor,
   type JudgeInput,
   type Judgement,
@@ -45,6 +48,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
     return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000)));
+  }
+
+  async drill(profile: string, count: number): Promise<DrillQuestion[]> {
+    return parseDrill(await this.ask(buildDrillPrompt(profile, count), Math.max(this.opts.timeoutMs, 60_000)));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {

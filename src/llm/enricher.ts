@@ -16,7 +16,8 @@ export interface ExtractedItem extends Enrichment {
 export interface CheckResult {
   /** Исправленный текст; изменённые места обёрнуты в **…**. Если ошибок нет — исходный текст. */
   corrected: string;
-  fixes: Array<{ wrong: string; right: string; why: string }>;
+  /** category — тип ошибки по-русски («времена: Present Continuous вместо Future Simple»), для профиля слабых мест. */
+  fixes: Array<{ wrong: string; right: string; why: string; category?: string }>;
   /** Вариант, который звучит естественнее, или "" если и так нормально. */
   natural: string;
 }
@@ -118,7 +119,7 @@ export function parseExtraction(text: string): ExtractedItem[] {
 const checkSchema = z.object({
   corrected: z.string(),
   fixes: z
-    .array(z.object({ wrong: z.string(), right: z.string(), why: z.string().default("") }))
+    .array(z.object({ wrong: z.string(), right: z.string(), why: z.string().default(""), category: z.string().trim().default("") }))
     .default([]),
   natural: z.string().trim().default(""),
 });
@@ -138,7 +139,8 @@ export function buildCheckPrompt(text: string, context: ContextMessage[] = []): 
     "2) Если фраза звучит не по-английски (калька с русского, странный порядок слов, неуместное слово), предложи вариант естественнее.",
     "Не предлагай его ради мелочей — сокращений вроде we're, синонимов, «a bit» вместо «a little bit». Если фраза и так звучит нормально, оставь пустую строку.",
     "Пунктуацию и регистр в разговорных сообщениях не считай ошибкой, если смысл не страдает.",
-    'Верни JSON: {"corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "..."}], "natural": "..."}, где',
+    'Верни JSON: {"corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "..."}], "natural": "..."}, где',
+    "category — тип ошибки по-русски, кратко и единообразно: «тема: суть», например «времена: Past Simple вместо Present Simple», «артикли: пропущен the», «предлоги места»,",
     "corrected — исправленный текст, в котором изменённые слова обёрнуты в **двойные звёздочки** (если ошибок нет — исходный текст),",
     "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила на русском,",
     "natural — более естественный вариант всей фразы или пустая строка.",

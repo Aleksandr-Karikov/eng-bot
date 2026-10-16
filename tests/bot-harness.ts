@@ -62,6 +62,7 @@ export function botHarness(opts: {
   const tutor: ExerciseTutor = opts.tutor ?? {
     cloze: async () => [1, 2, 3].map((i) => ({ sentence: `Sentence ${i} with ___.`, answer: "x", translation: `Перевод ${i}` })),
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
+    drill: async () => [],
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), now: () => T0, botUsername: BOT_INFO.username });

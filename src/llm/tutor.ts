@@ -16,10 +16,20 @@ export interface JudgeInput {
   answer: string;
 }
 
-/** Упражнения тренажёра: предложения с пропуском и проверка ответа. */
+/** Вопрос «работы над ошибками»: предложение с пропуском и варианты, правильный — options[correct]. */
+export interface DrillQuestion {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation: string;
+  category: string;
+}
+
+/** Упражнения тренажёра: предложения с пропуском, проверка ответа, вопросы по слабым местам. */
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  drill(profile: string, count: number): Promise<DrillQuestion[]>;
 }
 
 export const CLOZE_COUNT = 3;
@@ -78,4 +88,40 @@ export function parseJudgement(text: string): Judgement {
   const end = text.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
   return judgement.parse(JSON.parse(text.slice(start, end + 1)));
+}
+
+export function buildDrillPrompt(profile: string, count: number): string {
+  return [
+    "Русскоязычный человек учит английский. Вот его типичные ошибки (тема ×сколько раз: как было → как правильно):",
+    profile,
+    "",
+    `Составь ${count} вопроса с вариантами ответа на эти темы, чаще — на самые частые. Каждый вопрос — естественное английское`,
+    "предложение с одним пропуском ___ и 3–4 короткими вариантами. Ровно один вариант верный, неверные — как раз его типичные ошибки.",
+    "Не повторяй его примеры дословно — нужны новые предложения на то же правило.",
+    'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "..."}], где',
+    "correct — индекс верного варианта (с нуля), explanation — 1–2 предложения по-русски: правило и почему остальные не подходят,",
+    "category — тема из списка выше.",
+  ].join("\n");
+}
+
+const drillQuestion = z
+  .object({
+    question: z.string().trim().includes("___"),
+    options: z.array(z.string().trim().min(1)).min(2).max(4),
+    correct: z.number().int().min(0),
+    explanation: z.string().trim().default(""),
+    category: z.string().trim().default(""),
+  })
+  .refine((q) => q.correct < q.options.length);
+
+export function parseDrill(text: string): DrillQuestion[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
+  const raw: unknown = JSON.parse(text.slice(start, end + 1));
+  if (!Array.isArray(raw)) throw new Error("LLM response is not an array");
+  return raw.flatMap((entry) => {
+    const r = drillQuestion.safeParse(entry);
+    return r.success ? [r.data] : [];
+  });
 }

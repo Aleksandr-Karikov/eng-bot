@@ -17,6 +17,7 @@ export const users = sqliteTable("users", {
   modeEnRu: integer("mode_en_ru", { mode: "boolean" }).notNull().default(true),
   modeRuEn: integer("mode_ru_en", { mode: "boolean" }).notNull().default(true),
   modeCloze: integer("mode_cloze", { mode: "boolean" }).notNull().default(true),
+  modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -86,6 +87,16 @@ export const clozeSentences = sqliteTable("cloze_sentences", {
   createdAt: createdAt(),
 });
 
+/** Ошибки из /check — записываются автору проверенного текста; из них строится профиль слабых мест. */
+export const mistakes = sqliteTable("mistakes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  category: text("category").notNull(),
+  wrong: text("wrong").notNull(),
+  right: text("right").notNull(),
+  createdAt: createdAt(),
+});
+
 export const reviewLogs = sqliteTable("review_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -100,3 +111,4 @@ export type Word = typeof words.$inferSelect;
 export type CardRow = typeof cards.$inferSelect;
 export type ReviewLog = typeof reviewLogs.$inferSelect;
 export type ClozeSentence = typeof clozeSentences.$inferSelect;
+export type Mistake = typeof mistakes.$inferSelect;

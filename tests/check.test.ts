@@ -11,7 +11,7 @@ const result: CheckResult = {
 
 describe("parseCheck", () => {
   it("parses a fenced JSON answer and defaults missing fields", () => {
-    expect(parseCheck("```json\n" + JSON.stringify(result) + "\n```")).toEqual(result);
+    expect(parseCheck("```json\n" + JSON.stringify(result) + "\n```")).toMatchObject(result);
     expect(parseCheck(JSON.stringify({ corrected: "All good" }))).toEqual({ corrected: "All good", fixes: [], natural: "" });
   });
 
