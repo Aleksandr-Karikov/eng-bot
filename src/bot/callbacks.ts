@@ -8,6 +8,9 @@ export type Cb =
   | { k: "learn" }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
+  | { k: "drillPick"; index: number }
+  | { k: "drillMode" }
+  | { k: "mistakesClear" }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
   | { k: "batchToggle"; id: number; index: number }
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
@@ -39,6 +42,9 @@ export function encodeCb(cb: Cb): string {
     case "learn": return "l";
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
+    case "drillPick": return `q:${cb.index}`;
+    case "drillMode": return "md";
+    case "mistakesClear": return "mz";
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
@@ -78,6 +84,12 @@ export function decodeCb(data: string): Cb | null {
       const cardId = int(a), reps = int(b);
       return cardId !== null && reps !== null ? { k: "dunno", cardId, reps } : null;
     }
+    case "q": {
+      const index = int(a);
+      return index !== null ? { k: "drillPick", index } : null;
+    }
+    case "md": return { k: "drillMode" };
+    case "mz": return { k: "mistakesClear" };
     case "m": return (STAGES as readonly string[]).includes(a ?? "") ? { k: "mode", stage: a as Stage } : null;
     case "d": {
       const id = int(a), action = b ? DRAFT_ACTIONS[b as keyof typeof DRAFT_ACTIONS] : undefined;

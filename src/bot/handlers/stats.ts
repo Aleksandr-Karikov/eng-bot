@@ -35,6 +35,12 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.reply(settingsText(ctx.user), { reply_markup: settingsKeyboard(ctx.user) });
   });
 
+  bot.callbackQuery(/^md$/, async (ctx) => {
+    const user = await updateUser(deps.db, ctx.user.id, { modeDrill: !ctx.user.modeDrill });
+    await ctx.answerCallbackQuery({ text: user.modeDrill ? "Включено" : "Выключено" });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+  });
+
   bot.callbackQuery(/^m:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "mode") return void (await ctx.answerCallbackQuery());

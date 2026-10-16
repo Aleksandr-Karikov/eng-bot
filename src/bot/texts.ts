@@ -1,5 +1,6 @@
 import type { ClozeSentence, User, Word } from "../db/schema";
-import type { Judgement } from "../llm/tutor";
+import type { DrillQuestion, Judgement } from "../llm/tutor";
+import type { MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
@@ -137,6 +138,26 @@ export function clozeUnknownText(s: ClozeSentence): string {
   return `🤷 Правильно так:\n\n${clozeFull(s)}\n\n🇷🇺 ${esc(s.translation)}`;
 }
 
+export function drillQuestionText(q: DrillQuestion): string {
+  const topic = q.category ? ` · <i>${esc(q.category)}</i>` : "";
+  return `🧠 Работа над ошибками${topic}\n\n${esc(q.question)}\n\nВыбери вариант:`;
+}
+
+export function drillResultText(q: DrillQuestion, chosen: number): string {
+  const verdict = chosen === q.correct ? "✅ Верно!" : `❌ Ты выбрал «${esc(q.options[chosen] ?? "")}»`;
+  const filled = esc(q.question).replace("___", `<b>${esc(q.options[q.correct])}</b>`);
+  return [verdict, filled, q.explanation ? esc(q.explanation) : ""].filter(Boolean).join("\n\n");
+}
+
+export function mistakesText(p: MistakeProfile): string {
+  if (p.total === 0) return "🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение на английском.";
+  const lines = p.categories.map((c) => {
+    const example = c.examples[0] ? ` — <s>${esc(c.examples[0].wrong)}</s> → ${esc(c.examples[0].right)}` : "";
+    return `• ${esc(c.category)} ×${c.count}${example}`;
+  });
+  return [`🧠 Твои частые ошибки (последние ${p.total}):`, ...lines, "", "По ним бот подбирает вопросы в /learn и /drill."].join("\n");
+}
+
 export function settingsText(user: User): string {
   return [
     `⏰ Напоминаю в ${user.reminderTime} (${user.timezone}). Выбери час или отправь /settings ЧЧ:ММ`,
@@ -171,6 +192,7 @@ export function welcomeText(): string {
     "/edit кусок — исправить слово или фразу (без текста — список последних)",
     "/delete кусок — удалить слово или фразу (без текста — список последних)",
     "/learn — повторить слова",
+    "/drill — вопросы по твоим частым ошибкам, /mistakes — что бот о них знает",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",

@@ -5,6 +5,7 @@ import { PickerStore } from "../src/bot/pickers";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
+import { DrillStore } from "../src/bot/drills";
 import { EditStore } from "../src/bot/edits";
 import { ExerciseStore } from "../src/bot/exercises";
 import { setupBot } from "../src/bot/setup";
@@ -65,7 +66,7 @@ export function botHarness(opts: {
     drill: async () => [],
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

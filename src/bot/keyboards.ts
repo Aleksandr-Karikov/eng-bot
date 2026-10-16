@@ -1,5 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import type { Room, User } from "../db/schema";
+import type { DrillQuestion } from "../llm/tutor";
 import type { Stage } from "../services/exercises";
 import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
@@ -145,5 +146,15 @@ export function settingsKeyboard(user: User): InlineKeyboard {
   for (const [stage, label, field] of MODE_LABELS) {
     kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
   }
+  return kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" }));
+}
+
+export function drillKeyboard(q: DrillQuestion): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  q.options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "drillPick", index })).row());
   return kb;
+}
+
+export function mistakesKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
 }

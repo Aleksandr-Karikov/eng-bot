@@ -34,6 +34,11 @@ export async function upsertUser(db: Db, tg: TgUser, now: Date): Promise<User> {
   return created;
 }
 
+export async function getUserByTelegramId(db: Db, telegramId: number): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId));
+  return user;
+}
+
 export async function getUser(db: Db, id: number): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user;

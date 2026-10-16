@@ -7,6 +7,7 @@ import type { ClozeGenerator } from "../services/cloze-generator";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
+import type { DrillStore } from "./drills";
 import type { EditStore } from "./edits";
 import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
@@ -26,6 +27,7 @@ export interface Deps {
   edits: EditStore;
   history: ChatHistory;
   exercises: ExerciseStore;
+  drills: DrillStore;
   now: () => Date;
   botUsername: string;
 }

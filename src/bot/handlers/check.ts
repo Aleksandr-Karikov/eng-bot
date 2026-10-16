@@ -1,6 +1,8 @@
 import type { Bot } from "grammy";
 import type { CheckResult } from "../../llm/enricher";
 import { background, HTML, type BotContext, type Deps } from "../context";
+import { recordMistakes } from "../../services/mistakes";
+import { getUserByTelegramId } from "../../services/users";
 import { checkText } from "../texts";
 
 const USAGE = "Ответь командой /check на сообщение на английском — проверю ошибки.\nИли пришли текст сразу: /check he go to work";
@@ -34,7 +36,12 @@ async function runCheck(ctx: BotContext, deps: Deps): Promise<void> {
     console.error("Check failed", err);
     return void (await ctx.reply("Не получилось проверить 😔 Попробуй ещё раз чуть позже"));
   }
-  await ctx.reply(checkText(result), {
+  // Ошибки записываем тому, кто их совершил: автору сообщения, а при /check текст — отправителю команды.
+  const authorTg = original?.from ?? message.from;
+  const author = result.fixes.length && !authorTg.is_bot ? await getUserByTelegramId(deps.db, authorTg.id) : undefined;
+  if (author) await recordMistakes(deps.db, author.id, result.fixes, deps.now());
+  const remembered = author ? "\n\n🧠 Запомнил для работы над ошибками" : "";
+  await ctx.reply(checkText(result) + remembered, {
     ...HTML,
     reply_parameters: { message_id: original?.message_id ?? message.message_id, allow_sending_without_reply: true },
   });

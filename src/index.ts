@@ -3,6 +3,7 @@ import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
+import { DrillStore } from "./bot/drills";
 import { EditStore } from "./bot/edits";
 import { ExerciseStore } from "./bot/exercises";
 import { ChatHistory } from "./bot/history";
@@ -45,6 +46,7 @@ setupBot(bot, {
   edits: new EditStore(),
   history: new ChatHistory(),
   exercises: new ExerciseStore(),
+  drills: new DrillStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

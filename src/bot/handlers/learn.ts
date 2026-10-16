@@ -8,6 +8,7 @@ import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
+import { prefetchDrill, prepareDrill, sendDrillQuestion } from "./drill";
 import { clozeKeyboard, rateKeyboard } from "../keyboards";
 import {
   cardText,
@@ -18,11 +19,28 @@ import {
   clozeUnknownText,
   doneText,
   draftText,
+  drillResultText,
   reverseCardText,
 } from "../texts";
 
-/** Сколько карточек пользователь ответил в текущей сессии /learn (только для итогового сообщения). */
+/** Сколько карточек пользователь ответил в текущей сессии /learn. */
 const sessionCounts = new Map<number, number>();
+
+/** Вопрос «работы над ошибками» подмешивается после каждых DRILL_EVERY ответов. */
+const DRILL_EVERY = 5;
+
+/** Если подошла очередь и вопрос готов — показывает его вместо карточки. */
+async function maybeDrill(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<boolean> {
+  const count = sessionCounts.get(ctx.user.id) ?? 0;
+  const state = deps.drills.get(ctx.user.id);
+  if (!ctx.user.modeDrill || !state || state.standalone || count === 0 || count % DRILL_EVERY !== 0) return false;
+  if (state.lastAtCount === count || state.questions.length === 0) return false;
+  state.lastAtCount = count;
+  state.current = state.questions.shift();
+  if (!state.current) return false;
+  await sendDrillQuestion(ctx, state.current, mode);
+  return true;
+}
 
 const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
 
@@ -36,6 +54,7 @@ async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promi
 async function showNext(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<void> {
   deps.exercises.delete(ctx.user.id);
   deps.edits.delete(ctx.user.id);
+  if (await maybeDrill(ctx, deps, mode)) return;
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
@@ -70,7 +89,21 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
   sessionCounts.set(ctx.user.id, 0);
+  prefetchDrill(ctx, deps);
   await showNext(ctx, deps, "reply");
+}
+
+/** /drill — вопросы по ошибкам подряд, без карточек. */
+async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
+  const ready = deps.drills.get(ctx.user.id)?.questions ?? [];
+  if (ready.length === 0) await ctx.reply("🧠 Готовлю вопросы по твоим ошибкам, это секунд 15…");
+  const questions = ready.length ? ready.splice(0) : await prepareDrill(deps, ctx.user);
+  const [first, ...rest] = questions;
+  if (!first) {
+    return void (await ctx.reply("🧠 Пока мало ошибок для упражнений — нужно хотя бы 3. Их собирает /check ответом на сообщение."));
+  }
+  deps.drills.set(ctx.user.id, { questions: rest, current: first, standalone: true, lastAtCount: 0 });
+  await sendDrillQuestion(ctx, first, "reply");
 }
 
 async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: "good" | "again"): Promise<boolean> {
@@ -124,6 +157,26 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
 
 export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("learn", (ctx) => startSession(ctx, deps));
+
+  bot.command("drill", (ctx) => background(ctx, () => startDrill(ctx, deps)));
+
+  bot.callbackQuery(/^q:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const state = deps.drills.get(ctx.user.id);
+    const q = state?.current;
+    if (cb?.k !== "drillPick" || !state || !q) return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    state.current = undefined;
+    await ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" });
+    await ctx.editMessageText(drillResultText(q, cb.index), HTML);
+    if (!state.standalone) return showNext(ctx, deps, "reply");
+    const next = state.questions.shift();
+    if (next) {
+      state.current = next;
+      return sendDrillQuestion(ctx, next, "reply");
+    }
+    deps.drills.delete(ctx.user.id);
+    await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn.");
+  });
 
   bot.callbackQuery(/^u:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);

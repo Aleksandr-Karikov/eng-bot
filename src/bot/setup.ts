@@ -5,6 +5,7 @@ import { registerAdd } from "./handlers/add";
 import { registerBatch } from "./handlers/batch";
 import { registerCheck } from "./handlers/check";
 import { registerDelete } from "./handlers/delete";
+import { registerMistakes } from "./handlers/drill";
 import { registerEdit } from "./handlers/edit";
 import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
@@ -16,6 +17,8 @@ export const COMMANDS = [
   { command: "add", description: "Добавить слово" },
   { command: "text", description: "Разобрать текст и добавить пачкой" },
   { command: "check", description: "Проверить английский (ответом на сообщение)" },
+  { command: "drill", description: "Вопросы по твоим частым ошибкам" },
+  { command: "mistakes", description: "Твои частые ошибки" },
   { command: "edit", description: "Исправить слово (можно по кусочку)" },
   { command: "delete", description: "Удалить слово (можно по кусочку)" },
   { command: "stats", description: "Прогресс твой и друзей" },
@@ -33,6 +36,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerStats(bot, deps);
   registerBatch(bot, deps);
   registerCheck(bot, deps);
+  registerMistakes(bot, deps);
   registerDelete(bot, deps);
   registerEdit(bot, deps);
   registerAdd(bot, deps);
