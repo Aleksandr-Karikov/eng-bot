@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ignoreHarmlessErrors } from "./api-errors";
+import { ignoreHarmlessErrors, slowApiCallLogger } from "./api-errors";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
 import { registerBatch } from "./handlers/batch";
@@ -11,6 +11,9 @@ import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { registerStats } from "./handlers/stats";
 import { userMiddleware } from "./middleware";
+
+/** Порог, после которого обработка нажатия или вызов Telegram пишется в лог как медленный. */
+const SLOW_MS = 2000;
 
 export const COMMANDS = [
   { command: "learn", description: "Повторить слова" },
@@ -30,6 +33,13 @@ export const COMMANDS = [
 
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   bot.api.config.use(ignoreHarmlessErrors);
+  bot.api.config.use(slowApiCallLogger(SLOW_MS));
+  bot.use(async (ctx, next) => {
+    const started = Date.now();
+    await next();
+    const ms = Date.now() - started;
+    if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${ctx.callbackQuery?.data ?? ctx.message?.text?.slice(0, 40) ?? "other"}`);
+  });
   bot.use(userMiddleware(deps));
   registerRooms(bot, deps);
   registerLearn(bot, deps);

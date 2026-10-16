@@ -167,7 +167,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const q = state?.current;
     if (cb?.k !== "drillPick" || !state || !q) return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
     state.current = undefined;
-    await ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" });
+    void ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" }).catch(() => {});
     await ctx.editMessageText(drillResultText(q, cb.index), HTML);
     if (!state.standalone) return showNext(ctx, deps, "reply");
     const next = state.questions.shift();
@@ -234,7 +234,8 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       now: deps.now(),
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
-    await ctx.answerCallbackQuery();
+    // Не ждём: «часики» снимаются параллельно с обновлением карточки — на одну задержку сети меньше.
+    void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(ctx.user.id);
     await prefetchCloze(ctx, deps, cb.cardId);
     await showNext(ctx, deps, "edit");

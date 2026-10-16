@@ -13,3 +13,15 @@ export const ignoreHarmlessErrors: Transformer = async (prev, method, payload, s
   }
   return res;
 };
+
+/** Пишет в лог вызовы Telegram API дольше thresholdMs — чтобы отличать медленную сеть от медленного кода. */
+export function slowApiCallLogger(thresholdMs: number, log: (line: string) => void = console.warn): Transformer {
+  return async (prev, method, payload, signal) => {
+    const started = Date.now();
+    const res = await prev(method, payload, signal);
+    const ms = Date.now() - started;
+    // getUpdates — long polling, он и должен висеть подолгу.
+    if (ms > thresholdMs && method !== "getUpdates") log(`Telegram ${method} took ${ms} ms`);
+    return res;
+  };
+}
