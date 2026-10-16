@@ -61,6 +61,25 @@ describe("/check records mistakes for whoever made them", () => {
   });
 });
 
+describe("/check slips", () => {
+  it("shows a typo fix but does not save it or claim it was saved", async () => {
+    const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [] };
+    const h = botHarness({
+      tutor,
+      enricher: {
+        enrich: async () => ({ translation: "", explanation: "", example: "" }),
+        extract: async () => [],
+        check: async () => ({ corrected: "**thx**", fixes: [{ wrong: "ths", right: "thx", why: "опечатка", category: "орфография", slip: true }], natural: "" }),
+      },
+    });
+    const user = await makeUser(h.db, 100);
+    await h.bot.handleUpdate(h.message(100, "/check ths"));
+    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Исправлено"))).toBe(true));
+    expect(sent(h).some((t) => t.includes("🧠"))).toBe(false);
+    expect(await recentMistakes(h.db, user.id, T0)).toHaveLength(0);
+  });
+});
+
 describe("/mistakes", () => {
   it("shows the profile and resets it", async () => {
     const { h } = harness();

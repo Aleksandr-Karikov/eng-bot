@@ -32,6 +32,13 @@ describe("mistakes", () => {
     expect(profile.text).toContain("he come tomorrow → he is coming tomorrow");
   });
 
+  it("does not record slips (typos, chat abbreviations)", async () => {
+    const db = testDb();
+    const alice = await makeUser(db, 1);
+    await recordMistakes(db, alice.id, [{ ...fix("орфография", "ths", "thx"), slip: true }, fix("времена", "I go yesterday", "I went yesterday")], T0);
+    expect((await recentMistakes(db, alice.id, at(DAY))).map((m) => m.wrong)).toEqual(["I go yesterday"]);
+  });
+
   it("clears a user's mistakes only", async () => {
     const db = testDb();
     const alice = await makeUser(db, 1);
@@ -45,6 +52,11 @@ describe("mistakes", () => {
 });
 
 describe("check categories and drill parsing", () => {
+  it("reads the slip flag from /check, defaulting to a real mistake", () => {
+    const r = parseCheck(JSON.stringify({ corrected: "x", fixes: [{ wrong: "ths", right: "thx", slip: true }, { wrong: "go", right: "went" }] }));
+    expect(r.fixes.map((f) => f.slip)).toEqual([true, false]);
+  });
+
   it("keeps the category of each fix from /check", () => {
     const r = parseCheck(JSON.stringify({ corrected: "x", fixes: [{ wrong: "a", right: "b", why: "c", category: "артикли" }, { wrong: "d", right: "e" }] }));
     expect(r.fixes.map((f) => f.category)).toEqual(["артикли", ""]);

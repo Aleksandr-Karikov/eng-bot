@@ -10,12 +10,14 @@ const EXAMPLES_PER_CATEGORY = 2;
 export async function recordMistakes(
   db: Db,
   userId: number,
-  fixes: Array<{ wrong: string; right: string; why?: string; category?: string }>,
+  fixes: Array<{ wrong: string; right: string; why?: string; category?: string; slip?: boolean }>,
   now: Date,
 ): Promise<void> {
-  if (fixes.length === 0) return;
+  // Описки показываем в /check, но в работу над ошибками не берём — это не пробел в знаниях.
+  const real = fixes.filter((f) => !f.slip);
+  if (real.length === 0) return;
   await db.insert(mistakes).values(
-    fixes.map((f) => ({ userId, category: f.category?.trim() || "другое", wrong: f.wrong, right: f.right, createdAt: now })),
+    real.map((f) => ({ userId, category: f.category?.trim() || "другое", wrong: f.wrong, right: f.right, createdAt: now })),
   );
 }
 

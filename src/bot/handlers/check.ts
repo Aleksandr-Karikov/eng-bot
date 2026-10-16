@@ -38,13 +38,14 @@ async function runCheck(ctx: BotContext, deps: Deps): Promise<void> {
   }
   // Ошибки записываем тому, кто их совершил: автору сообщения, а при /check текст — отправителю команды.
   const authorTg = original?.from ?? message.from;
-  const author = result.fixes.length && !authorTg.is_bot ? await getUserByTelegramId(deps.db, authorTg.id) : undefined;
-  if (author) await recordMistakes(deps.db, author.id, result.fixes, deps.now());
+  const real = result.fixes.filter((f) => !f.slip);
+  const author = real.length && !authorTg.is_bot ? await getUserByTelegramId(deps.db, authorTg.id) : undefined;
+  if (author) await recordMistakes(deps.db, author.id, real, deps.now());
   const self = authorTg.id === message.from.id;
-  const note = !result.fixes.length || authorTg.is_bot
+  const note = !real.length || authorTg.is_bot
     ? ""
     : author
-      ? mistakesSavedText(self ? undefined : author.firstName, result.fixes.map((f) => f.category ?? ""))
+      ? mistakesSavedText(self ? undefined : author.firstName, real.map((f) => f.category ?? ""))
       : mistakesNotSavedText(authorTg.first_name, deps.botUsername);
   await ctx.reply(note ? `${checkText(result)}\n\n${note}` : checkText(result), {
     ...HTML,

@@ -17,7 +17,8 @@ export interface CheckResult {
   /** Исправленный текст; изменённые места обёрнуты в **…**. Если ошибок нет — исходный текст. */
   corrected: string;
   /** category — тип ошибки по-русски («времена: Present Continuous вместо Future Simple»), для профиля слабых мест. */
-  fixes: Array<{ wrong: string; right: string; why: string; category?: string }>;
+  /** slip — описка (опечатка, пропущенная буква, чатовое сокращение), а не пробел в знаниях: в профиль не идёт. */
+  fixes: Array<{ wrong: string; right: string; why: string; category?: string; slip?: boolean }>;
   /** Вариант, который звучит естественнее, или "" если и так нормально. */
   natural: string;
 }
@@ -119,7 +120,15 @@ export function parseExtraction(text: string): ExtractedItem[] {
 const checkSchema = z.object({
   corrected: z.string(),
   fixes: z
-    .array(z.object({ wrong: z.string(), right: z.string(), why: z.string().default(""), category: z.string().trim().default("") }))
+    .array(
+      z.object({
+        wrong: z.string(),
+        right: z.string(),
+        why: z.string().default(""),
+        category: z.string().trim().default(""),
+        slip: z.boolean().default(false),
+      }),
+    )
     .default([]),
   natural: z.string().trim().default(""),
 });
@@ -157,7 +166,9 @@ export function buildCheckPrompt(text: string, context: ContextMessage[] = []): 
     "Это переписка в чате: общепринятые сокращения и сленг (thx, ty, pls, u, btw, gonna) — не ошибка.",
     "Если слово похоже на опечатку или сокращение, выбирай вариант по смыслу сообщения и разговора, а не ближайший по написанию:",
     "например, «ths» в ответ на пожелание — это thx (thanks), а не this.",
-    'Верни JSON: {"corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "..."}], "natural": "..."}, где',
+    'Верни JSON: {"corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "...", "slip": false}], "natural": "..."}, где',
+    "slip — true, если это описка, а не незнание: опечатка, пропущенная или переставленная буква, чатовое сокращение (ths вместо thx, teh вместо the);",
+    "false — грамматика, неверное слово или слово, которое человек явно не умеет писать (beautifull, recieve),",
     `category — одна тема из списка: ${MISTAKE_CATEGORIES.join(", ")}. Только название темы, подробности — в wrong/right/why,`,
     "corrected — исправленный текст, в котором изменённые слова обёрнуты в **двойные звёздочки** (если ошибок нет — исходный текст),",
     "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила на русском,",
