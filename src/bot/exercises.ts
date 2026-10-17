@@ -1,4 +1,5 @@
 import type { ClozeSentence } from "../db/schema";
+import { isFresh } from "./pending";
 
 /** Упражнение «вставь по смыслу», на которое ждём ответ сообщением. Одно на пользователя, в памяти. */
 export interface PendingCloze {
@@ -11,14 +12,16 @@ export interface PendingCloze {
 }
 
 export class ExerciseStore {
-  private readonly pending = new Map<number, PendingCloze>();
+  private readonly pending = new Map<number, PendingCloze & { since: number }>();
 
   set(userId: number, exercise: PendingCloze): void {
-    this.pending.set(userId, exercise);
+    this.pending.set(userId, { ...exercise, since: Date.now() });
   }
 
   get(userId: number): PendingCloze | undefined {
-    return this.pending.get(userId);
+    const exercise = this.pending.get(userId);
+    if (exercise && !isFresh(exercise.since)) this.pending.delete(userId);
+    return exercise && isFresh(exercise.since) ? exercise : undefined;
   }
 
   delete(userId: number): void {

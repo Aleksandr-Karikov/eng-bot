@@ -38,7 +38,7 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
     transcriptionUk: enrichment?.transcriptionUk ?? "",
     transcriptionUs: enrichment?.transcriptionUs ?? "",
   });
-  if (!draft.translation) return askForTranslation(ctx, draft, "Не получилось подобрать перевод для");
+  if (!draft.translation) return askForTranslation(ctx, deps, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);
 }
 
@@ -68,7 +68,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     }
     if (cb.action === "edit") {
       await ctx.answerCallbackQuery();
-      return askForTranslation(ctx, draft, "Исправляем перевод для");
+      return askForTranslation(ctx, deps, draft, "Исправляем перевод для");
     }
     if (draft.batchId !== undefined && cb.action !== "cancel") {
       await ctx.answerCallbackQuery();

@@ -1,4 +1,5 @@
 import type { WordDraft } from "../services/words";
+import { isFresh } from "./pending";
 
 export interface Draft extends WordDraft {
   id: number;
@@ -6,6 +7,8 @@ export interface Draft extends WordDraft {
   chatId: number;
   roomId: number;
   awaitingEdit: boolean;
+  /** Когда бот попросил прислать перевод — ожидание истекает через PENDING_TTL_MS. */
+  awaitingSince?: number;
   /** Черновик из пачки /text в режиме «по одному»: id пачки и подпись «3/6». */
   batchId?: number;
   progress?: string;
@@ -28,8 +31,14 @@ export class DraftStore {
   }
 
   findAwaiting(userId: number, chatId: number): Draft | undefined {
-    for (const d of this.drafts.values()) if (d.userId === userId && d.chatId === chatId && d.awaitingEdit) return d;
+    for (const d of this.drafts.values()) {
+      if (d.userId === userId && d.chatId === chatId && d.awaitingEdit && isFresh(d.awaitingSince ?? 0)) return d;
+    }
     return undefined;
+  }
+
+  clearAwaiting(userId: number): void {
+    for (const d of this.drafts.values()) if (d.userId === userId) d.awaitingEdit = false;
   }
 
   delete(id: number): void {

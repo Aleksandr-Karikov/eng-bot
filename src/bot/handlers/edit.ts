@@ -8,12 +8,13 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingEdit } from "../edits";
 import { wordActionsKeyboard } from "../keyboards";
 import { draftText, esc } from "../texts";
+import { clearPendingInputs } from "../pending";
 import { pickWord } from "../word-picker";
 
 async function askEdit(ctx: BotContext, deps: Deps, word: Word): Promise<void> {
   if (!ctx.chat) return;
+  clearPendingInputs(deps, ctx.user.id);
   deps.edits.set(ctx.user.id, { wordId: word.id, chatId: ctx.chat.id });
-  deps.exercises.delete(ctx.user.id);
   await ctx.reply(
     `✏️ Сейчас:\n\n${draftText(word)}\n\nПришли исправление ответом на это сообщение: новый перевод — или «слово — перевод», если опечатка в самом слове.`,
     { ...HTML, reply_markup: { force_reply: true } },

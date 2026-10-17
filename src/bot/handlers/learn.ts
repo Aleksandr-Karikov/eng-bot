@@ -8,6 +8,7 @@ import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
+import { clearPendingInputs } from "../pending";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import { audioKeyboard, clozeKeyboard, rateKeyboard } from "../keyboards";
 import {
@@ -55,8 +56,7 @@ async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promi
 async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
-  deps.exercises.delete(ctx.user.id);
-  deps.edits.delete(ctx.user.id);
+  clearPendingInputs(deps, ctx.user.id);
   if (await maybeDrill(ctx, deps, mode)) return;
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;

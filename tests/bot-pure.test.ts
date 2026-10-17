@@ -60,6 +60,7 @@ describe("DraftStore", () => {
     const second = store.create({ ...base, term: "b" });
     expect(store.get(first.id)).toBeUndefined();
     second.awaitingEdit = true;
+    second.awaitingSince = Date.now();
     expect(store.findAwaiting(1, 10)?.term).toBe("b");
     expect(store.findAwaiting(1, 11)).toBeUndefined();
     store.delete(second.id);

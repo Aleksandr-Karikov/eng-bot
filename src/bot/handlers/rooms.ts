@@ -8,6 +8,7 @@ import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { HTML, inviteLink, type BotContext, type Deps } from "../context";
 import { confirmRoomDeleteKeyboard, roomKeyboard } from "../keyboards";
+import { clearPendingInputs } from "../pending";
 import { esc, plural, welcomeText } from "../texts";
 
 async function roomMenu(deps: Deps, user: User) {
@@ -32,6 +33,7 @@ const MAX_ROOM_NAME = 64;
 
 async function askRoomName(ctx: BotContext, deps: Deps, renameRoomId?: number): Promise<void> {
   if (!ctx.chat) return;
+  clearPendingInputs(deps, ctx.user.id);
   deps.roomNames.ask(ctx.user.id, ctx.chat.id, renameRoomId);
   const question = renameRoomId ? "Как переименовать комнату?" : "Как назвать комнату?";
   await ctx.reply(`${question} Пришли название ответом на это сообщение.`, { reply_markup: { force_reply: true } });

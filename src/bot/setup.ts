@@ -12,6 +12,7 @@ import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { registerStats } from "./handlers/stats";
 import { userMiddleware } from "./middleware";
+import { clearPendingInputs } from "./pending";
 
 /** Порог, после которого обработка нажатия или вызов Telegram пишется в лог как медленный. */
 const SLOW_MS = 2000;
@@ -42,6 +43,11 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
     if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${ctx.callbackQuery?.data ?? ctx.message?.text?.slice(0, 40) ?? "other"}`);
   });
   bot.use(userMiddleware(deps));
+  // Любая команда отменяет брошенные «пришли ответом» — чтобы следующий текст не ушёл не туда.
+  bot.use(async (ctx, next) => {
+    if (ctx.message?.text?.startsWith("/")) clearPendingInputs(deps, ctx.user.id);
+    await next();
+  });
   registerRooms(bot, deps);
   registerAudio(bot, deps);
   registerLearn(bot, deps);

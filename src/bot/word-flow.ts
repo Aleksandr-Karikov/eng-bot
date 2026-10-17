@@ -2,6 +2,7 @@ import type { Room, User, Word } from "../db/schema";
 import { findRoomByChat, getRoom, listMembers } from "../services/rooms";
 import { HTML, type BotContext, type Deps } from "./context";
 import type { Draft } from "./drafts";
+import { clearPendingInputs } from "./pending";
 import { draftKeyboard, knowKeyboard } from "./keyboards";
 import { announceText, batchSummaryText, draftText, esc, knowPrompt } from "./texts";
 
@@ -17,8 +18,10 @@ export async function resolveRoom(ctx: BotContext, deps: Deps): Promise<Room | u
   return room;
 }
 
-export async function askForTranslation(ctx: BotContext, draft: Draft, reason: string): Promise<void> {
+export async function askForTranslation(ctx: BotContext, deps: Deps, draft: Draft, reason: string): Promise<void> {
+  clearPendingInputs(deps, ctx.user.id);
   draft.awaitingEdit = true;
+  draft.awaitingSince = Date.now();
   await ctx.reply(`${reason} <b>${esc(draft.term)}</b> — пришли перевод ответом на это сообщение.`, {
     ...HTML,
     reply_markup: { force_reply: true },
