@@ -71,6 +71,7 @@ describe("batch callbacks", () => {
       { k: "batch", id: 3, action: "cancel" },
       { k: "batchPage", id: 3, page: 2 },
       { k: "edit", wordId: 41 },
+      { k: "roomRename", roomId: 2 },
       { k: "roomDel", roomId: 2 },
       { k: "roomDelOk", roomId: 2 },
       { k: "audio", wordId: 41, accent: "uk" },

@@ -88,13 +88,17 @@ export function batchKeyboard(batch: Batch): InlineKeyboard {
     .text("❌ Отмена", encodeCb({ k: "batch", id: batch.id, action: "cancel" }));
 }
 
-/** canDelete — текущую комнату может удалить только её создатель. */
-export function roomKeyboard(otherRooms: Room[], current?: Room, canDelete = false): InlineKeyboard {
+/** canManage — переименовать и удалить текущую комнату может только её создатель. */
+export function roomKeyboard(otherRooms: Room[], current?: Room, canManage = false): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (current) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
   kb.text("➕ Новая комната", encodeCb({ k: "room", action: "new" }));
   for (const room of otherRooms) kb.row().text(`→ ${room.name}`, encodeCb({ k: "roomsw", roomId: room.id }));
-  if (current && canDelete) kb.row().text("🗑 Удалить комнату", encodeCb({ k: "roomDel", roomId: current.id }));
+  if (current && canManage) {
+    kb.row()
+      .text("✏️ Переименовать", encodeCb({ k: "roomRename", roomId: current.id }))
+      .text("🗑 Удалить комнату", encodeCb({ k: "roomDel", roomId: current.id }));
+  }
   return kb;
 }
 

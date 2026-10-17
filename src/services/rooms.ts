@@ -115,3 +115,7 @@ export async function deleteRoom(db: Db, roomId: number): Promise<void> {
     await updateUser(db, member.id, { currentRoomId: other?.id ?? null });
   }
 }
+
+export async function renameRoom(db: Db, roomId: number, name: string): Promise<void> {
+  await db.update(rooms).set({ name }).where(eq(rooms.id, roomId));
+}

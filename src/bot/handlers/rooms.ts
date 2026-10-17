@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import type { User } from "../../db/schema";
 import {
-  createRoom, deleteRoom, findRoomByChat, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
+  createRoom, deleteRoom, findRoomByChat, renameRoom, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
 } from "../../services/rooms";
 import { getUser, updateUser } from "../../services/users";
 import { listRoomWords } from "../../services/words";
@@ -30,10 +30,11 @@ async function roomMenu(deps: Deps, user: User) {
 
 const MAX_ROOM_NAME = 64;
 
-async function askRoomName(ctx: BotContext, deps: Deps): Promise<void> {
+async function askRoomName(ctx: BotContext, deps: Deps, renameRoomId?: number): Promise<void> {
   if (!ctx.chat) return;
-  deps.roomNames.ask(ctx.user.id, ctx.chat.id);
-  await ctx.reply("Как назвать комнату? Пришли название ответом на это сообщение.", { reply_markup: { force_reply: true } });
+  deps.roomNames.ask(ctx.user.id, ctx.chat.id, renameRoomId);
+  const question = renameRoomId ? "Как переименовать комнату?" : "Как назвать комнату?";
+  await ctx.reply(`${question} Пришли название ответом на это сообщение.`, { reply_markup: { force_reply: true } });
 }
 
 async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
@@ -98,10 +99,25 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
 
   // Ответ с названием новой комнаты. Регистрируется раньше общего обработчика текста (иначе стал бы /add).
   bot.on("message:text", async (ctx, next) => {
-    if (ctx.message.text.startsWith("/") || ctx.chat.type !== "private" || !deps.roomNames.take(ctx.user.id, ctx.chat.id)) {
-      return next();
+    const pending =
+      ctx.message.text.startsWith("/") || ctx.chat.type !== "private" ? undefined : deps.roomNames.take(ctx.user.id, ctx.chat.id);
+    if (!pending) return next();
+    const name = ctx.message.text.trim().slice(0, MAX_ROOM_NAME);
+    if (pending.renameRoomId === undefined) return createNamedRoom(ctx, deps, name);
+    const room = await getRoom(deps.db, pending.renameRoomId);
+    if (!room || room.createdBy !== ctx.user.id) return void (await ctx.reply("Переименовать комнату может только её создатель"));
+    await renameRoom(deps.db, room.id, name);
+    await ctx.reply(`✏️ Комната «${esc(room.name)}» теперь называется «${esc(name)}»`, HTML);
+  });
+
+  bot.callbackQuery(/^rn:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const room = cb?.k === "roomRename" ? await getRoom(deps.db, cb.roomId) : undefined;
+    if (!room || room.createdBy !== ctx.user.id) {
+      return void (await ctx.answerCallbackQuery({ text: "Переименовать комнату может только её создатель" }));
     }
-    await createNamedRoom(ctx, deps, ctx.message.text.trim().slice(0, MAX_ROOM_NAME));
+    await ctx.answerCallbackQuery();
+    await askRoomName(ctx, deps, room.id);
   });
 
   bot.callbackQuery(/^rx:/, async (ctx) => {

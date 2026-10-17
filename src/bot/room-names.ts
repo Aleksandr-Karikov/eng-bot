@@ -1,15 +1,22 @@
-/** Кто сейчас придумывает название новой комнаты и в каком чате ждём ответ. В памяти. */
-export class RoomNameStore {
-  private readonly pending = new Map<number, number>();
+/** Кто сейчас придумывает название комнаты (новой или для переименования) и в каком чате ждём ответ. В памяти. */
+interface PendingName {
+  chatId: number;
+  /** Если задано — переименовываем эту комнату, иначе создаём новую. */
+  renameRoomId?: number;
+}
 
-  ask(userId: number, chatId: number): void {
-    this.pending.set(userId, chatId);
+export class RoomNameStore {
+  private readonly pending = new Map<number, PendingName>();
+
+  ask(userId: number, chatId: number, renameRoomId?: number): void {
+    this.pending.set(userId, { chatId, renameRoomId });
   }
 
-  /** chatId, если ждём название от пользователя в этом чате; ожидание снимается. */
-  take(userId: number, chatId: number): boolean {
-    if (this.pending.get(userId) !== chatId) return false;
+  /** Ожидание от пользователя в этом чате, если оно есть; снимается. */
+  take(userId: number, chatId: number): PendingName | undefined {
+    const entry = this.pending.get(userId);
+    if (entry?.chatId !== chatId) return undefined;
     this.pending.delete(userId);
-    return true;
+    return entry;
   }
 }

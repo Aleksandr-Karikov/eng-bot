@@ -76,4 +76,23 @@ describe("/room management", () => {
     await h.bot.handleUpdate(h.message(100, "/newroom Друзья"));
     expect((await h.db.select().from(rooms)).map((r) => r.name)).toContain("Друзья");
   });
+
+  it("lets the creator rename the current room", async () => {
+    const h = botHarness();
+    const alice = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const bob = await updateUser(h.db, (await makeUser(h.db, 200)).id, { canDm: true });
+    const room = await createRoom(h.db, { name: "Комната Александр", createdBy: alice.id, now: T0 });
+    await joinRoom(h.db, { roomId: room.id, userId: bob.id, now: T0, makeCurrent: true });
+
+    await h.bot.handleUpdate(h.message(200, "/room"));
+    expect(lastButtons(h.calls).map((b) => b.text)).not.toContain("✏️ Переименовать");
+    await h.bot.handleUpdate(h.callback(200, `rn:${room.id}`));
+    expect(h.calls.some((c) => String(c.payload.text).includes("Как назвать"))).toBe(false);
+
+    await h.bot.handleUpdate(h.message(100, "/room"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✏️ Переименовать")));
+    await h.bot.handleUpdate(h.message(100, "English club"));
+    expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["English club"]);
+    expect(h.calls.some((c) => String(c.payload.text).includes("«English club»"))).toBe(true);
+  });
 });
