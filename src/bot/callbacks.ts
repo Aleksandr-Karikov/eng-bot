@@ -8,7 +8,7 @@ export type Cb =
   | { k: "learn" }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
-  | { k: "drillPick"; index: number }
+  | { k: "drillPick"; qid: number; index: number }
   | { k: "drillMode" }
   | { k: "mistakesClear" }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
@@ -46,7 +46,7 @@ export function encodeCb(cb: Cb): string {
     case "learn": return "l";
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
-    case "drillPick": return `q:${cb.index}`;
+    case "drillPick": return `q:${cb.qid}:${cb.index}`;
     case "drillMode": return "md";
     case "mistakesClear": return "mz";
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
@@ -93,8 +93,8 @@ export function decodeCb(data: string): Cb | null {
       return cardId !== null && reps !== null ? { k: "dunno", cardId, reps } : null;
     }
     case "q": {
-      const index = int(a);
-      return index !== null ? { k: "drillPick", index } : null;
+      const qid = int(a), index = int(b);
+      return qid !== null && index !== null ? { k: "drillPick", qid, index } : null;
     }
     case "md": return { k: "drillMode" };
     case "mz": return { k: "mistakesClear" };

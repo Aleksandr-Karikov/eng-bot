@@ -176,9 +176,10 @@ export function settingsKeyboard(user: User): InlineKeyboard {
   return kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" }));
 }
 
-export function drillKeyboard(q: DrillQuestion): InlineKeyboard {
+/** qid — номер показа вопроса: старые кнопки не должны оценивать другой, текущий вопрос. */
+export function drillKeyboard(q: DrillQuestion, qid: number): InlineKeyboard {
   const kb = new InlineKeyboard();
-  q.options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "drillPick", index })).row());
+  q.options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "drillPick", qid, index })).row());
   return kb;
 }
 

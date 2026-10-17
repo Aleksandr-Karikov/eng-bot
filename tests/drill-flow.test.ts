@@ -166,6 +166,21 @@ describe("drill questions in /learn", () => {
     expect(sent(h).at(-1)).toContain("Готово");
   });
 
+  it("rejects a button from an older question instead of grading the current one", async () => {
+    const { h } = harness();
+    await learner(h, 1);
+    await h.bot.handleUpdate(h.message(100, "/drill"));
+    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Q1:"))).toBe(true));
+    const stale = buttonData(h.calls, "am visiting");
+    await h.bot.handleUpdate(h.message(100, "/drill"));
+    await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Q2:"))).toBe(true));
+    const edits = h.calls.filter((c) => c.method === "editMessageText").length;
+    await h.bot.handleUpdate(h.callback(100, stale));
+    expect(h.calls.filter((c) => c.method === "editMessageText")).toHaveLength(edits);
+    const answer = h.calls.filter((c) => c.method === "answerCallbackQuery").at(-1)!;
+    expect(String(answer.payload.text)).toContain("неактуален");
+  });
+
   it("toggles the mode in /settings", async () => {
     const { h } = harness();
     const user = await makeUser(h.db, 100);

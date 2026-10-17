@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import type { User } from "../../db/schema";
 import type { DrillQuestion } from "../../llm/tutor";
+import type { DrillState } from "../drills";
 import { clearMistakes, mistakeProfile, recentMistakes } from "../../services/mistakes";
 import { HTML, type BotContext, type Deps } from "../context";
 import { drillKeyboard, mistakesKeyboard } from "../keyboards";
@@ -47,7 +48,11 @@ export function ensureDrill(ctx: BotContext, deps: Deps): void {
 export function prefetchDrill(ctx: BotContext, deps: Deps): void {
   ensureDrill(ctx, deps);
   const state = deps.drills.get(ctx.user.id);
-  if (state) state.lastAtCount = 0;
+  if (!state) return;
+  state.lastAtCount = 0;
+  // Неотвеченный вопрос прошлой сессии больше не актуален.
+  state.current = undefined;
+  state.currentId = undefined;
 }
 
 /**
@@ -61,8 +66,13 @@ export async function present(ctx: BotContext, text: string, options: object, mo
   if (mode === "replace") await ctx.deleteMessage().catch(() => {});
 }
 
-export async function sendDrillQuestion(ctx: BotContext, q: DrillQuestion, mode: PresentMode): Promise<void> {
-  await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q) }, mode);
+let questionSeq = 0;
+
+/** Делает вопрос текущим (с новым номером показа) и отправляет его. */
+export async function sendDrillQuestion(ctx: BotContext, state: DrillState, q: DrillQuestion, mode: PresentMode): Promise<void> {
+  state.current = q;
+  state.currentId = ++questionSeq;
+  await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q, state.currentId) }, mode);
 }
 
 export function registerMistakes(bot: Bot<BotContext>, deps: Deps): void {

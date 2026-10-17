@@ -4,6 +4,8 @@ import type { DrillQuestion } from "../llm/tutor";
 export interface DrillState {
   questions: DrillQuestion[];
   current?: DrillQuestion;
+  /** Номер текущего показа — зашит в кнопки вариантов. */
+  currentId?: number;
   /** true — запущено через /drill (вопросы подряд), false — подмешиваются в /learn. */
   standalone: boolean;
   /** После какого по счёту ответа в /learn уже показали вопрос — чтобы не показать дважды. */

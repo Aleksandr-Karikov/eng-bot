@@ -38,9 +38,9 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
   if (!ctx.user.modeDrill || !state || state.standalone || count === 0 || count % DRILL_EVERY !== 0) return false;
   if (state.lastAtCount === count || state.questions.length === 0) return false;
   state.lastAtCount = count;
-  state.current = state.questions.shift();
-  if (!state.current) return false;
-  await sendDrillQuestion(ctx, state.current, mode);
+  const q = state.questions.shift();
+  if (!q) return false;
+  await sendDrillQuestion(ctx, state, q, mode);
   return true;
 }
 
@@ -103,8 +103,9 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   if (!first) {
     return void (await ctx.reply("🧠 Пока не записано ни одной ошибки. Их собирает /check — ответом на сообщение на английском."));
   }
-  deps.drills.set(ctx.user.id, { questions: rest, current: first, standalone: true, lastAtCount: 0 });
-  await sendDrillQuestion(ctx, first, "reply");
+  const state = { questions: rest, standalone: true, lastAtCount: 0 };
+  deps.drills.set(ctx.user.id, state);
+  await sendDrillQuestion(ctx, state, first, "reply");
 }
 
 async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: "good" | "again"): Promise<boolean> {
@@ -165,16 +166,16 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     const state = deps.drills.get(ctx.user.id);
     const q = state?.current;
-    if (cb?.k !== "drillPick" || !state || !q) return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    if (cb?.k !== "drillPick" || !state || !q || cb.qid !== state.currentId) {
+      return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    }
     state.current = undefined;
+    state.currentId = undefined;
     void ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" }).catch(() => {});
     await ctx.editMessageText(drillResultText(q, cb.index), HTML);
     if (!state.standalone) return showNext(ctx, deps, "reply");
     const next = state.questions.shift();
-    if (next) {
-      state.current = next;
-      return sendDrillQuestion(ctx, next, "reply");
-    }
+    if (next) return sendDrillQuestion(ctx, state, next, "reply");
     deps.drills.delete(ctx.user.id);
     await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn.");
   });
