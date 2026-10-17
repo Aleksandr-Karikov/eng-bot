@@ -71,6 +71,13 @@
       "when": 1792221841202,
       "tag": "0009_absent_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792221938974,
+      "tag": "0010_magical_firebrand",
+      "breakpoints": true
     }
   ]
 }

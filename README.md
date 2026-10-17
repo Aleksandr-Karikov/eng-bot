@@ -27,6 +27,11 @@ tail -f data/logs/bot.log data/logs/bot.err.log
 Бэкапы: `data/backups/` (14 последних), вручную — `scripts/backup.sh`.
 Восстановить: остановить бота (`uninstall.sh`), скопировать нужный бэкап в `data/eng-bot.sqlite`, снова `install.sh`.
 
+## Статистика
+
+`npx tsx scripts/stats.ts` — сводка за 30 дней (только чтение): «Забыл» по ступеням, забывание новых слов
+при первом показе, трудные слова, активность по людям, частые темы ошибок /check.
+
 ## Разработка
 
 - `npm test` — тесты (SQLite in-memory)

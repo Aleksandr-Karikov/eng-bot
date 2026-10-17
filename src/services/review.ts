@@ -48,21 +48,21 @@ export async function getDueItemByCard(db: Db, userId: number, cardId: number): 
   return row;
 }
 
-async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date): Promise<void> {
+async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date, stage?: string): Promise<void> {
   await db.update(cards).set(review(card.fsrs, answer, now)).where(eq(cards.id, card.id));
-  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, reviewedAt: now });
+  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, stage: stage ?? null, reviewedAt: now });
 }
 
 export async function answerCard(
   db: Db,
-  input: { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date },
+  input: { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string },
 ): Promise<"ok" | "stale"> {
   const [card] = await db
     .select()
     .from(cards)
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return "stale";
-  await applyAnswer(db, card, input.answer, input.now);
+  await applyAnswer(db, card, input.answer, input.now, input.stage);
   return "ok";
 }
 
@@ -75,7 +75,7 @@ export async function markKnown(
     .from(cards)
     .where(and(eq(cards.wordId, input.wordId), eq(cards.userId, input.userId)));
   if (!card || card.state !== State.New || card.reps !== 0) return "stale";
-  await applyAnswer(db, card, "easy", input.now);
+  await applyAnswer(db, card, "easy", input.now, "know");
   return "ok";
 }
 
