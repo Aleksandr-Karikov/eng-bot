@@ -23,8 +23,9 @@ describe("bot flows", () => {
   it("a late rating tap still advances the learn session", async () => {
     const h = botHarness({ fail: (c) => (c.method === "answerCallbackQuery" ? TOO_OLD : undefined) });
     const { card } = await userWithWord(h);
+    const before = h.calls.length;
     await expect(h.bot.handleUpdate(h.callback(100, `r:${card.id}:0:g`))).resolves.toBeUndefined();
-    expect(h.calls.some((c) => c.method === "editMessageText")).toBe(true);
+    expect(h.calls.slice(before).some((c) => c.method === "sendMessage")).toBe(true);
   });
 
   it("pressing «Показать» twice does not surface an error", async () => {

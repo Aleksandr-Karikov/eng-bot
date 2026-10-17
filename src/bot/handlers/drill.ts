@@ -50,10 +50,19 @@ export function prefetchDrill(ctx: BotContext, deps: Deps): void {
   if (state) state.lastAtCount = 0;
 }
 
-export async function sendDrillQuestion(ctx: BotContext, q: DrillQuestion, mode: "reply" | "edit"): Promise<void> {
-  const options = { ...HTML, reply_markup: drillKeyboard(q) };
-  if (mode === "edit") await ctx.editMessageText(drillQuestionText(q), options);
-  else await ctx.reply(drillQuestionText(q), options);
+/**
+ * reply — новым сообщением; replace — новым сообщением, а прежнее (с кнопкой, на которую нажали) удалить.
+ * Редактировать на месте нельзя: мобильный Telegram оставляет спойлер раскрытым после редактирования.
+ */
+export type PresentMode = "reply" | "replace";
+
+export async function present(ctx: BotContext, text: string, options: object, mode: PresentMode): Promise<void> {
+  await ctx.reply(text, options);
+  if (mode === "replace") await ctx.deleteMessage().catch(() => {});
+}
+
+export async function sendDrillQuestion(ctx: BotContext, q: DrillQuestion, mode: PresentMode): Promise<void> {
+  await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q) }, mode);
 }
 
 export function registerMistakes(bot: Bot<BotContext>, deps: Deps): void {

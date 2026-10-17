@@ -8,7 +8,7 @@ import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
-import { ensureDrill, prefetchDrill, prepareDrill, sendDrillQuestion } from "./drill";
+import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import { clozeKeyboard, rateKeyboard } from "../keyboards";
 import {
   cardText,
@@ -30,7 +30,7 @@ const sessionCounts = new Map<number, number>();
 const DRILL_EVERY = 5;
 
 /** Если подошла очередь и вопрос готов — показывает его вместо карточки. */
-async function maybeDrill(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<boolean> {
+async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<boolean> {
   ensureDrill(ctx, deps);
   const count = sessionCounts.get(ctx.user.id) ?? 0;
   const state = deps.drills.get(ctx.user.id);
@@ -52,7 +52,7 @@ async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promi
   if (item && targetStage(item.card) === "cloze") void deps.clozeGen.ensure(item.word);
 }
 
-async function showNext(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Promise<void> {
+async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
   deps.exercises.delete(ctx.user.id);
   deps.edits.delete(ctx.user.id);
   if (await maybeDrill(ctx, deps, mode)) return;
@@ -80,9 +80,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: "reply" | "edit"): Pr
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
     sessionCounts.delete(ctx.user.id);
   }
-  const options = { ...HTML, reply_markup: replyMarkup };
-  if (mode === "edit") await ctx.editMessageText(text, options);
-  else await ctx.reply(text, options);
+  await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode);
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
@@ -238,7 +236,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(ctx.user.id);
     await prefetchCloze(ctx, deps, cb.cardId);
-    await showNext(ctx, deps, "edit");
+    await showNext(ctx, deps, "replace");
   });
 
   bot.callbackQuery(/^k:/, async (ctx) => {
