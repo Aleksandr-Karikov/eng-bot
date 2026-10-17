@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `card_hidden` text DEFAULT '' NOT NULL;

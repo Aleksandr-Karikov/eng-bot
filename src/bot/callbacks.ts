@@ -1,3 +1,4 @@
+import { CARD_PARTS, type CardPart } from "../services/card-view";
 import { STAGES, type Stage } from "../services/exercises";
 import type { Answer } from "../srs/srs";
 
@@ -11,6 +12,7 @@ export type Cb =
   | { k: "mode"; stage: Stage }
   | { k: "drillPick"; qid: number; index: number }
   | { k: "drillMode" }
+  | { k: "cardPart"; part: CardPart }
   | { k: "mistakesClear" }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
   | { k: "batchToggle"; id: number; index: number }
@@ -52,6 +54,7 @@ export function encodeCb(cb: Cb): string {
     case "mode": return `m:${cb.stage}`;
     case "drillPick": return `q:${cb.qid}:${cb.index}`;
     case "drillMode": return "md";
+    case "cardPart": return `cv:${cb.part}`;
     case "mistakesClear": return "mz";
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
@@ -107,6 +110,7 @@ export function decodeCb(data: string): Cb | null {
       return qid !== null && index !== null ? { k: "drillPick", qid, index } : null;
     }
     case "md": return { k: "drillMode" };
+    case "cv": return (CARD_PARTS as readonly string[]).includes(a ?? "") ? { k: "cardPart", part: a as CardPart } : null;
     case "mz": return { k: "mistakesClear" };
     case "m": return (STAGES as readonly string[]).includes(a ?? "") ? { k: "mode", stage: a as Stage } : null;
     case "d": {

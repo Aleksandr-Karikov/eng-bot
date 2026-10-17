@@ -1,6 +1,7 @@
 import { InlineKeyboard } from "grammy";
 import type { Room, User } from "../db/schema";
 import type { DrillQuestion } from "../llm/tutor";
+import { cardView, type CardPart } from "../services/card-view";
 import type { Stage } from "../services/exercises";
 import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
@@ -176,6 +177,15 @@ export function clozeKeyboard(cardId: number, reps: number, wordId: number): Inl
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
+const CARD_PART_LABELS: Array<[CardPart, string]> = [
+  ["transcription", "🔤 Транскрипция"],
+  ["explanation", "📖 Объяснение"],
+  ["example", "✏️ Пример"],
+  ["mnemonic", "💡 Запоминалка"],
+  ["audio", "🔊 Озвучка"],
+  ["picture", "🖼 Картинки"],
+];
+
 const MODE_LABELS: Array<[Stage, string, keyof User]> = [
   ["en_ru", "EN → RU", "modeEnRu"],
   ["ru_en", "RU → EN", "modeRuEn"],
@@ -188,7 +198,13 @@ export function settingsKeyboard(user: User): InlineKeyboard {
   for (const [stage, label, field] of MODE_LABELS) {
     kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
   }
-  return kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" }));
+  kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" })).row();
+  const view = cardView(user);
+  CARD_PART_LABELS.forEach(([part, label], i) => {
+    if (i % 2 === 0 && i > 0) kb.row();
+    kb.text(`${view[part] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "cardPart", part }));
+  });
+  return kb;
 }
 
 /** qid — номер показа вопроса: старые кнопки не должны оценивать другой, текущий вопрос. */

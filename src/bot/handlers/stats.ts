@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import { getRoom } from "../../services/rooms";
 import { personalStats, roomLeaderboard } from "../../services/stats";
+import { toggleCardPart } from "../../services/card-view";
 import { updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
@@ -33,6 +34,14 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
       return void (await ctx.reply(`⏰ Буду напоминать в ${time}`));
     }
     await ctx.reply(settingsText(ctx.user), { reply_markup: settingsKeyboard(ctx.user) });
+  });
+
+  bot.callbackQuery(/^cv:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "cardPart") return void (await ctx.answerCallbackQuery());
+    const user = await updateUser(deps.db, ctx.user.id, { cardHidden: toggleCardPart(ctx.user.cardHidden, cb.part) });
+    await ctx.answerCallbackQuery({ text: "Сохранено" });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
   });
 
   bot.callbackQuery(/^md$/, async (ctx) => {

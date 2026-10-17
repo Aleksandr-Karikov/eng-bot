@@ -1,5 +1,6 @@
 import type { ClozeSentence, User, Word } from "../db/schema";
 import type { DrillQuestion, Judgement } from "../llm/tutor";
+import { ALL_PARTS, type CardView } from "../services/card-view";
 import type { MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
@@ -32,8 +33,8 @@ export function transcriptionLine(d: { transcriptionUk?: string; transcriptionUs
   return [uk && `🇬🇧 ${esc(uk)}`, us && `🇺🇸 ${esc(us)}`].filter(Boolean).join(" · ");
 }
 
-const withTranscription = (d: WordDraft) => {
-  const line = transcriptionLine(d);
+const withTranscription = (d: WordDraft, show = true) => {
+  const line = show ? transcriptionLine(d) : "";
   return line ? `\n${line}` : "";
 };
 
@@ -46,13 +47,13 @@ export function draftText(d: WordDraft): string {
 }
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
-/** Запоминалка прячется под спойлер вместе с ответом, потому что подсказывает его. */
-export function cardText(word: WordDraft, mnemonic = word.mnemonic ?? ""): string {
+/** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
+export function cardText(word: WordDraft, view: CardView = ALL_PARTS): string {
   let answer = esc(word.translation);
-  if (word.explanation) answer += `\n\n${esc(word.explanation)}`;
-  if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (mnemonic) answer += `\n\n💡 ${esc(mnemonic)}`;
-  return `<b>${esc(word.term)}</b>${withTranscription(word)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
+  if (view.explanation && word.explanation) answer += `\n\n${esc(word.explanation)}`;
+  if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
+  return `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {
@@ -131,10 +132,10 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
-export function reverseCardText(word: WordDraft, mnemonic = word.mnemonic ?? ""): string {
-  let answer = `<b>${esc(word.term)}</b>${withTranscription(word)}`;
-  if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (mnemonic) answer += `\n\n💡 ${esc(mnemonic)}`;
+export function reverseCardText(word: WordDraft, view: CardView = ALL_PARTS): string {
+  let answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}`;
+  if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
 }
 
@@ -201,6 +202,8 @@ export function settingsText(user: User): string {
     "🎯 Режимы тренажёра — по мере того как слово запоминается:",
     "1. EN → RU · 2. RU → EN · 3. Вставь по смыслу",
     "Выключенные пропускаются.",
+    "",
+    "🃏 Что показывать на карточке в /learn (перевод — всегда):",
   ].join("\n");
 }
 

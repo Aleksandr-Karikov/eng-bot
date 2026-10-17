@@ -3,6 +3,7 @@ import { State } from "ts-fsrs";
 import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
 import { chooseStage, isExactAnswer, targetStage } from "../../services/exercises";
+import { cardView } from "../../services/card-view";
 import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord } from "../../services/words";
@@ -81,8 +82,16 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
       text = clozeText(sentence);
       replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
     } else {
-      text = stage === "ru_en" ? reverseCardText(word) : cardText(word);
-      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id, stage === "en_ru", Boolean(deps.images));
+      const view = cardView(ctx.user);
+      text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
+      replyMarkup = rateKeyboard(
+        card.id,
+        card.reps,
+        card.state === State.New,
+        word.id,
+        stage === "en_ru" && view.audio,
+        Boolean(deps.images) && view.picture,
+      );
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
