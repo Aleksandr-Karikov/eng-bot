@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, clozeSentences, reviewLogs, words, type User, type Word } from "../db/schema";
 import { createCards } from "./cards";
-import { listMembers } from "./rooms";
+import { getRoom, listMembers } from "./rooms";
 
 export interface WordDraft {
   term: string;
@@ -54,7 +54,9 @@ export async function getWord(db: Db, id: number): Promise<Word | undefined> {
 export async function saveWord(
   db: Db,
   input: { roomId: number; addedBy: number; draft: WordDraft; now: Date },
-): Promise<{ status: "duplicate" } | { status: "saved"; word: Word; members: User[] }> {
+): Promise<{ status: "duplicate" } | { status: "no-room" } | { status: "saved"; word: Word; members: User[] }> {
+  // Черновик мог пережить удаление комнаты.
+  if (!(await getRoom(db, input.roomId))) return { status: "no-room" };
   if (await findWord(db, input.roomId, input.draft.term)) return { status: "duplicate" };
   const [word] = await db
     .insert(words)

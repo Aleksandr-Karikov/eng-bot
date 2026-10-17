@@ -48,7 +48,7 @@ describe("digest schedule", () => {
     expect(digestDue(room, nsk("2026-10-18T19:59"))).toBeNull();
     expect(digestDue(room, nsk("2026-10-18T20:00"))).toBe("2026-10-18");
     expect(digestDue({ lastDigestDate: "2026-10-18" }, nsk("2026-10-18T21:00"))).toBeNull();
-    expect(digestDue(room, nsk("2026-10-19T20:00"))).toBeNull();
+    expect(digestDue({ lastDigestDate: "2026-10-18" }, nsk("2026-10-19T20:00"))).toBeNull();
   });
 });
 

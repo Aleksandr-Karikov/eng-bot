@@ -17,7 +17,7 @@ try {
 
 const dryRun = process.argv.includes("--dry-run");
 const CHUNK = 40;
-const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite");
+const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite", { migrate: false });
 const claude = new ClaudeCodeEnricher({ model: process.env.ENRICH_MODEL || "haiku", timeoutMs: 180_000 });
 const answerSchema = z.array(
   z.object({ i: z.number(), transcription_uk: z.string().default(""), transcription_us: z.string().default("") }),

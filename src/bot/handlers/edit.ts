@@ -26,8 +26,10 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
   if (!word) return void (await ctx.reply("Это слово уже удалили"));
 
   const parsed = parseAddInput(text);
-  const term = parsed?.translation ? parsed.term : word.term;
-  const translation = parsed?.translation ?? text.trim();
+  // «слово — перевод» переименовывает слово, только если слева английский; «сдаться — уступить» — это просто перевод.
+  const rename = Boolean(parsed?.translation && /[A-Za-z]/.test(parsed.term));
+  const term = rename && parsed ? parsed.term : word.term;
+  const translation = rename && parsed?.translation ? parsed.translation : text.trim();
   const clash = normalizeTerm(term) !== word.termNormalized ? await findWord(deps.db, word.roomId, term) : undefined;
   if (clash) return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
 

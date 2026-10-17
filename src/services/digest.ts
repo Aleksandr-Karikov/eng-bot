@@ -1,22 +1,37 @@
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, words, type Room } from "../db/schema";
-import { localParts } from "../time";
+import { localParts, previousDate } from "../time";
 import { listMembers } from "./rooms";
 import { personalStats, roomLeaderboard } from "./stats";
 
 /** Дайджест — по воскресеньям в 20:00 по Новосибирску. */
 const DIGEST_TZ = "Asia/Novosibirsk";
-const DIGEST_WEEKDAY = "Sun";
 const DIGEST_TIME = "20:00";
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 
-/** Локальная дата дайджеста, если пора его отправить, иначе null. */
+/** В Новосибирске нет перехода на летнее время — смещение постоянное. */
+const DIGEST_UTC_OFFSET = "+07:00";
+/** Если бот не работал в воскресенье вечером, дайджест догоняет в течение двух суток. */
+const CATCH_UP_MS = 48 * 60 * 60_000;
+
+/** Последний момент «воскресенье 20:00» по поясу дайджеста, не позже now. */
+function latestDigestMoment(now: Date): { date: string; at: Date } {
+  let day = localParts(DIGEST_TZ, now).date;
+  for (let i = 0; i < 14; i++, day = previousDate(day)) {
+    if (new Date(`${day}T12:00:00Z`).getUTCDay() !== 0) continue;
+    const at = new Date(`${day}T${DIGEST_TIME}:00${DIGEST_UTC_OFFSET}`);
+    if (at.getTime() <= now.getTime()) return { date: day, at };
+  }
+  throw new Error("unreachable: a Sunday within two weeks");
+}
+
+/** Дата (воскресенье) дайджеста, который пора отправить, иначе null. */
 export function digestDue(room: { lastDigestDate: string | null }, now: Date): string | null {
-  const { date, time } = localParts(DIGEST_TZ, now);
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: DIGEST_TZ, weekday: "short" }).format(now);
-  if (weekday !== DIGEST_WEEKDAY || time < DIGEST_TIME || room.lastDigestDate === date) return null;
-  return date;
+  const due = latestDigestMoment(now);
+  if (now.getTime() - due.at.getTime() > CATCH_UP_MS) return null;
+  if ((room.lastDigestDate ?? "") >= due.date) return null;
+  return due.date;
 }
 
 export interface DigestRow {

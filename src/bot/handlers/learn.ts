@@ -98,7 +98,13 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
 async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   const ready = deps.drills.get(ctx.user.id)?.questions ?? [];
   if (ready.length === 0) await ctx.reply("🧠 Готовлю вопросы по твоим ошибкам, это секунд 15…");
-  const questions = ready.length ? ready.splice(0) : await prepareDrill(deps, ctx.user);
+  let questions;
+  try {
+    questions = ready.length ? ready.splice(0) : await prepareDrill(deps, ctx.user);
+  } catch (err) {
+    console.error("Drill generation failed", err);
+    return void (await ctx.reply("Не получилось подготовить вопросы 😔 Попробуй чуть позже — /drill"));
+  }
   const [first, ...rest] = questions;
   if (!first) {
     return void (await ctx.reply("🧠 Пока не записано ни одной ошибки. Их собирает /check — ответом на сообщение на английском."));

@@ -41,13 +41,16 @@ async function runCheck(ctx: BotContext, deps: Deps): Promise<void> {
     console.error("Check failed", err);
     return void (await ctx.reply("Не получилось проверить 😔 Попробуй ещё раз чуть позже"));
   }
-  // Ошибки записываем тому, кто их совершил: автору сообщения, а при /check текст — отправителю команды.
-  const authorTg = original?.from ?? message.from;
+  // Ошибки записываем тому, кто их совершил: автору сообщения, а если текст пришёл в самой команде
+  // (/check текст, в том числе ответом на фото) — её отправителю. Пересланное не записываем: автор неизвестен.
+  const fromOriginal = Boolean((original?.text ?? original?.caption ?? "").trim());
+  const authorTg = fromOriginal && original?.from ? original.from : message.from;
+  const forwarded = fromOriginal && Boolean(original?.forward_origin);
   const real = result.fixes.filter((f) => !f.slip);
-  const author = real.length && !authorTg.is_bot ? await getUserByTelegramId(deps.db, authorTg.id) : undefined;
+  const author = real.length && !authorTg.is_bot && !forwarded ? await getUserByTelegramId(deps.db, authorTg.id) : undefined;
   if (author) await recordMistakes(deps.db, author.id, real, deps.now());
   const self = authorTg.id === message.from.id;
-  const note = !real.length || authorTg.is_bot
+  const note = !real.length || authorTg.is_bot || forwarded
     ? ""
     : author
       ? mistakesSavedText(self ? undefined : author.firstName, real.map((f) => f.category ?? ""))

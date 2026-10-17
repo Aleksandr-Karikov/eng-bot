@@ -76,7 +76,8 @@ export function registerDelete(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     const picker = cb?.k === "delPage" ? deps.pickers.get(cb.id) : undefined;
     if (cb?.k !== "delPage" || !picker || picker.userId !== ctx.user.id) {
-      return void (await ctx.answerCallbackQuery({ text: "Этот список уже неактуален — отправь /delete ещё раз" }));
+      const command = picker?.action === "edit" ? "/edit" : "/delete";
+      return void (await ctx.answerCallbackQuery({ text: `Этот список уже неактуален — отправь ${command} ещё раз` }));
     }
     await ctx.answerCallbackQuery();
     if (cb.page === picker.page || cb.page < 0 || cb.page >= pickerPageCount(picker)) return;

@@ -40,8 +40,9 @@ export async function sendDigests(deps: DigestDeps): Promise<void> {
   for (const { room, rows } of await collectDigests(deps.db, deps.now())) {
     const text = digestText(room.name, rows);
     try {
-      if (room.telegramChatId != null) await deps.notifier.group(room.telegramChatId, text, HTML);
-      else for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+      // Если в группу отправить не вышло (бота убрали из чата), шлём каждому в личку, чтобы итоги не потерялись.
+      const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
+      if (!posted) for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
     } catch (err) {
       console.error("Digest failed", room.id, err);
     }

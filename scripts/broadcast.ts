@@ -22,7 +22,7 @@ const only = process.argv.find((a) => a.startsWith("--only="))?.slice("--only=".
 if (!file || !process.env.BOT_TOKEN) throw new Error("usage: broadcast.ts <file.html> [--dry-run], BOT_TOKEN in .env");
 
 const text = readFileSync(file, "utf8").trim();
-const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite");
+const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite", { migrate: false });
 const recipients = (await db.select().from(users).where(eq(users.canDm, true))).filter(
   (u) => !only || u.username === only || String(u.telegramId) === only,
 );

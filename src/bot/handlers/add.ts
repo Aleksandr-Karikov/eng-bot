@@ -88,6 +88,10 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       draft: toWordDraft(draft),
       now: deps.now(),
     });
+    if (result.status === "no-room") {
+      await ctx.answerCallbackQuery();
+      return void (await ctx.editMessageText("Комнату уже удалили — слово не сохранено. Твои комнаты — /room"));
+    }
     if (result.status === "duplicate") {
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
