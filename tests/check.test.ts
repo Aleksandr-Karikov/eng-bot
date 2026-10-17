@@ -39,6 +39,20 @@ describe("checkText", () => {
   });
 });
 
+describe("checkText length", () => {
+  it("fits Telegram's 4096-character limit by dropping the natural variant and trimming fixes", () => {
+    const long: CheckResult = {
+      corrected: "x".repeat(2500),
+      fixes: Array.from({ length: 40 }, (_, i) => ({ wrong: `w${i}`, right: `r${i}`, why: "объяснение правила ".repeat(4) })),
+      natural: "y".repeat(1500),
+    };
+    const text = checkText(long);
+    expect(text.length).toBeLessThanOrEqual(4000);
+    expect(text).not.toContain("Естественнее");
+    expect(text).toMatch(/и ещё \d+/);
+  });
+});
+
 describe("/check", () => {
   it("checks the replied-to message and answers to it", async () => {
     const check = vi.fn(async () => result);
@@ -64,6 +78,14 @@ describe("/check", () => {
     expect(check).not.toHaveBeenCalled();
     await h.bot.handleUpdate(h.message(100, "/check he go to work"));
     await vi.waitFor(() => expect(check).toHaveBeenCalledWith("he go to work", []));
+  });
+
+  it("refuses an overly long text with a friendly message", async () => {
+    const check = vi.fn(async () => result);
+    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+    await h.bot.handleUpdate(h.message(100, `/check ${"word ".repeat(400)}`));
+    await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("Слишком длинный"))).toBe(true));
+    expect(check).not.toHaveBeenCalled();
   });
 
   it("reports when the check could not be done", async () => {

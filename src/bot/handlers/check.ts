@@ -8,6 +8,8 @@ import { checkText, mistakesNotSavedText, mistakesSavedText } from "../texts";
 const USAGE = "Ответь командой /check на сообщение на английском — проверю ошибки.\nИли пришли текст сразу: /check he go to work";
 /** Сколько предыдущих сообщений отдавать Claude как контекст и насколько они могут быть старше проверяемого. */
 const CONTEXT_MESSAGES = 3;
+/** Длиннее — ответ с исправлениями может не влезть в сообщение Telegram. */
+const MAX_CHECK_CHARS = 1500;
 const CONTEXT_MAX_AGE_SEC = 15 * 60;
 
 const GROUP_USAGE = [
@@ -22,6 +24,9 @@ async function runCheck(ctx: BotContext, deps: Deps): Promise<void> {
   const original = message.reply_to_message;
   const text = (original?.text ?? original?.caption ?? "").trim() || (typeof ctx.match === "string" ? ctx.match.trim() : "");
   if (!text) return void (await ctx.reply(message.chat.type === "private" ? USAGE : GROUP_USAGE));
+  if (text.length > MAX_CHECK_CHARS) {
+    return void (await ctx.reply(`Слишком длинный текст для проверки — пришли до ${MAX_CHECK_CHARS} символов за раз`));
+  }
   const context = original
     ? deps.history
         .before(message.chat.id, { messageId: original.message_id, date: original.date }, CONTEXT_MESSAGES, CONTEXT_MAX_AGE_SEC)

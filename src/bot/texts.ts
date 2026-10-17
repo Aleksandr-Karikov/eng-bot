@@ -200,11 +200,24 @@ function boldMarked(s: string): string {
   return esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 }
 
+/** С запасом под строчку «🧠 Сохранил…» — сообщение Telegram не длиннее 4096 символов. */
+const CHECK_TEXT_LIMIT = 3800;
+
 export function checkText(r: CheckResult): string {
-  const natural = r.natural ? `💬 <b>Естественнее:</b> ${esc(r.natural)}` : "";
+  let natural = r.natural ? `💬 <b>Естественнее:</b> ${esc(r.natural)}` : "";
   if (r.fixes.length === 0) return natural ? `👍 Ошибок нет\n\n${natural}` : "👍 Ошибок нет";
-  const fixes = r.fixes.map((f) => `• <s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>${f.why ? ` — ${esc(f.why)}` : ""}`);
-  return [`✍️ <b>Исправлено:</b>\n${boldMarked(r.corrected)}`, fixes.join("\n"), natural].filter(Boolean).join("\n\n");
+  const all = r.fixes.map((f) => `• <s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>${f.why ? ` — ${esc(f.why)}` : ""}`);
+  const head = `✍️ <b>Исправлено:</b>\n${boldMarked(r.corrected)}`;
+  let shown = all.length;
+  const build = () => {
+    const rest = all.length - shown;
+    const fixes = all.slice(0, shown).join("\n") + (rest ? `\n…и ещё ${rest}` : "");
+    return [head, fixes, natural].filter(Boolean).join("\n\n");
+  };
+  // Не влезает — сначала убираем «естественнее», потом сокращаем список ошибок.
+  if (build().length > CHECK_TEXT_LIMIT) natural = "";
+  while (build().length > CHECK_TEXT_LIMIT && shown > 1) shown--;
+  return build();
 }
 
 export function welcomeText(): string {
