@@ -11,6 +11,11 @@ describe("users", () => {
     expect(b).toMatchObject({ firstName: "Александр", username: "sasha", telegramId: 42 });
   });
 
+  it("gives new users the Novosibirsk timezone", async () => {
+    const db = testDb();
+    expect((await upsertUser(db, { id: 5, first_name: "N" }, T0)).timezone).toBe("Asia/Novosibirsk");
+  });
+
   it("patches fields", async () => {
     const db = testDb();
     const u = await upsertUser(db, { id: 1, first_name: "A" }, T0);

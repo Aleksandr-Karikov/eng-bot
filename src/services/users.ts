@@ -2,6 +2,9 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { users, type User } from "../db/schema";
 
+/** Пояс новых пользователей. В схеме default остался Europe/Moscow: менять его в SQLite — пересоздавать таблицу. */
+export const DEFAULT_TIMEZONE = "Asia/Novosibirsk";
+
 export interface TgUser {
   id: number;
   first_name: string;
@@ -29,7 +32,7 @@ export async function upsertUser(db: Db, tg: TgUser, now: Date): Promise<User> {
   }
   const [created] = await db
     .insert(users)
-    .values({ telegramId: tg.id, firstName: tg.first_name, username, createdAt: now })
+    .values({ telegramId: tg.id, firstName: tg.first_name, username, timezone: DEFAULT_TIMEZONE, createdAt: now })
     .returning();
   return created;
 }
