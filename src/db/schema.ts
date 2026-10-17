@@ -26,6 +26,8 @@ export const rooms = sqliteTable("rooms", {
   name: text("name").notNull(),
   inviteCode: text("invite_code").notNull().unique(),
   telegramChatId: integer("telegram_chat_id").unique(),
+  /** Локальная дата (по поясу дайджеста) последнего еженедельного дайджеста. */
+  lastDigestDate: text("last_digest_date"),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
 });

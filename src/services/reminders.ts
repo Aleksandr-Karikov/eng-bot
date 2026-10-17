@@ -1,13 +1,21 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { users, type User } from "../db/schema";
+import { reviewLogs, users, type User } from "../db/schema";
 import { localParts } from "../time";
 import { countDue } from "./review";
+import { listMembers, listUserRooms } from "./rooms";
 import { updateUser } from "./users";
+
+export interface FriendToday {
+  name: string;
+  reviews: number;
+}
 
 export interface Reminder {
   user: User;
   dueCount: number;
+  /** Самый активный сегодня участник комнат пользователя — для мотивашки. */
+  friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */
   date: string;
 }
@@ -23,7 +31,7 @@ export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
     const { date, time } = localParts(user.timezone, now);
     if (time < user.reminderTime || user.lastReminderDate === date) continue;
     const dueCount = await countDue(db, user.id, now);
-    if (dueCount > 0) reminders.push({ user, dueCount, date });
+    if (dueCount > 0) reminders.push({ user, dueCount, date, friend: await friendToday(db, user, date, now) });
     else await markReminded(db, user.id, date);
   }
   return reminders;
@@ -31,4 +39,24 @@ export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
 
 export async function markReminded(db: Db, userId: number, date: string): Promise<void> {
   await updateUser(db, userId, { lastReminderDate: date });
+}
+
+/** Кто из участников комнат пользователя больше всех повторил сегодня (по его локальной дате). */
+export async function friendToday(db: Db, user: User, today: string, now: Date): Promise<FriendToday | undefined> {
+  // Берём с запасом за двое суток и фильтруем по локальной дате пользователя.
+  const since = new Date(now.getTime() - 2 * 24 * 60 * 60_000);
+  const friends = new Map<number, User>();
+  for (const room of await listUserRooms(db, user.id)) {
+    for (const m of await listMembers(db, room.id)) if (m.id !== user.id) friends.set(m.id, m);
+  }
+  let best: FriendToday | undefined;
+  for (const friend of friends.values()) {
+    const logs = await db
+      .select({ reviewedAt: reviewLogs.reviewedAt })
+      .from(reviewLogs)
+      .where(and(eq(reviewLogs.userId, friend.id), gte(reviewLogs.reviewedAt, since)));
+    const reviews = logs.filter((l) => localParts(user.timezone, l.reviewedAt).date === today).length;
+    if (reviews > 0 && reviews > (best?.reviews ?? 0)) best = { name: friend.firstName, reviews };
+  }
+  return best;
 }

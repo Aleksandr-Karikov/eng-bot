@@ -60,8 +60,23 @@ export function announceText(adderName: string, word: Word): string {
   return `📥 ${esc(adderName)} добавил(а) слово\n\n${draftText(word)}`;
 }
 
-export function reminderText(n: number): string {
-  return `🔔 ${n} ${plural(n, "слово", "слова", "слов")} ${n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут"} повторения`;
+export function reminderText(n: number, friend?: { name: string; reviews: number }): string {
+  const base = `🔔 ${n} ${plural(n, "слово", "слова", "слов")} ${n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут"} повторения`;
+  return friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+export function digestText(roomName: string, rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number }>): string {
+  const lines = rows.map((r, i) => {
+    const parts = [`${r.reviews7d} повт.`];
+    if (r.added) parts.push(`+${r.added} ${plural(r.added, "слово", "слова", "слов")}`);
+    parts.push(`выучено ${r.learned}`);
+    if (r.streak) parts.push(`🔥 ${r.streak} ${plural(r.streak, "день", "дня", "дней")}`);
+    return `${MEDALS[i] ?? "•"} <b>${esc(r.name)}</b> — ${parts.join(" · ")}`;
+  });
+  const hero = rows[0] && rows[0].reviews7d > 0 ? `\n\nГерой недели: <b>${esc(rows[0].name)}</b> 🎉` : "";
+  return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${hero}\n\nНовая неделя — новые слова: /learn`;
 }
 
 export function doneText(reviewed: number, next: Date | undefined, timeZone: string): string {

@@ -1,5 +1,8 @@
 import { learnKeyboard } from "./bot/keyboards";
-import { reminderText } from "./bot/texts";
+import { HTML } from "./bot/context";
+import { digestText, reminderText } from "./bot/texts";
+import { collectDigests } from "./services/digest";
+import { listMembers } from "./services/rooms";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
 import { collectReminders, markReminded } from "./services/reminders";
@@ -13,9 +16,9 @@ export interface ReminderDeps {
 /** Отправляет напоминания тем, кому пора. Возвращает число доставленных. */
 export async function sendReminders(deps: ReminderDeps): Promise<number> {
   let sent = 0;
-  for (const { user, dueCount, date } of await collectReminders(deps.db, deps.now())) {
+  for (const { user, dueCount, date, friend } of await collectReminders(deps.db, deps.now())) {
     try {
-      if (await deps.notifier.dm(user, reminderText(dueCount), { reply_markup: learnKeyboard() })) {
+      if (await deps.notifier.dm(user, reminderText(dueCount, friend), { ...HTML, reply_markup: learnKeyboard() })) {
         await markReminded(deps.db, user.id, date);
         sent++;
       }
@@ -26,13 +29,33 @@ export async function sendReminders(deps: ReminderDeps): Promise<number> {
   return sent;
 }
 
-export function startReminderLoop(deps: ReminderDeps, intervalMs = 60_000): () => void {
+export interface DigestDeps {
+  db: Db;
+  notifier: Pick<Notifier, "dm" | "group">;
+  now: () => Date;
+}
+
+/** Еженедельный дайджест: в привязанную группу, а если её нет — каждому участнику в личку. */
+export async function sendDigests(deps: DigestDeps): Promise<void> {
+  for (const { room, rows } of await collectDigests(deps.db, deps.now())) {
+    const text = digestText(room.name, rows);
+    try {
+      if (room.telegramChatId != null) await deps.notifier.group(room.telegramChatId, text, HTML);
+      else for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+    } catch (err) {
+      console.error("Digest failed", room.id, err);
+    }
+  }
+}
+
+export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => void {
   let running = false;
   const tick = async () => {
     if (running) return;
     running = true;
     try {
       await sendReminders(deps);
+      await sendDigests(deps);
     } catch (err) {
       console.error("Reminder tick failed", err);
     } finally {

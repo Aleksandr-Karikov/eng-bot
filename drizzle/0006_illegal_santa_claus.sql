@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `last_digest_date` text;
