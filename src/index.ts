@@ -58,7 +58,7 @@ setupBot(bot, {
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
-  images: config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude) : undefined,
+  images: config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined,
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

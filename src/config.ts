@@ -5,6 +5,8 @@ export interface Config {
   enrichTimeoutMs: number;
   /** Путь к mflux-generate, если картинки включены (IMAGES_ENABLED=1). */
   mfluxBin?: string;
+  /** Стиль картинок; не задан — по умолчанию (чернильный комикс). */
+  imageStyle?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -16,5 +18,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     enrichModel: env.ENRICH_MODEL || "haiku",
     enrichTimeoutMs: Number(env.ENRICH_TIMEOUT_MS || 30_000),
     ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
+    ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
   };
 }

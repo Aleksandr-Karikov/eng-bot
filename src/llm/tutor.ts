@@ -151,8 +151,10 @@ export function parseMnemonic(text: string): string {
 export function buildImagePromptPrompt(term: string, translation: string, mnemonic: string): string {
   return [
     `Запоминалка к английскому "${term}" (значение "${translation}"): ${mnemonic}`,
-    "Опиши её одной сценой для генератора картинок: по-английски, 20–40 слов, что именно изображено и кто что делает.",
-    "Стиль: яркая мультяшная иллюстрация, простые формы. Никакого текста, букв и надписей на картинке.",
+    "Опиши её одной сценой для генератора картинок: по-английски, 15–25 слов.",
+    "Начни с главного действия крупным планом — того самого момента, который связывает слово со значением;",
+    "1–2 персонажа или предмета, без второстепенного фона и деталей, которые не важны для смысла.",
+    "Только сюжет, без указаний стиля (стиль добавится отдельно). Никакого текста, букв и надписей на картинке.",
     'Верни JSON: {"prompt": "..."}',
   ].join("\n");
 }
@@ -163,5 +165,5 @@ export function parseImagePrompt(text: string): string {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return `${imagePromptSchema.parse(JSON.parse(text.slice(start, end + 1))).prompt}, cartoon illustration, no text`;
+  return imagePromptSchema.parse(JSON.parse(text.slice(start, end + 1))).prompt;
 }

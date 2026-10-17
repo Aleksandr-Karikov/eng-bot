@@ -47,6 +47,9 @@ export class FluxSynth implements ImageSynth {
  * Картинки-ассоциации к словам: Claude превращает запоминалку в описание сцены, рисовалка — в картинку.
  * Рисуется строго по одной (две копии модели не поместятся в память), и не больше одного раза на слово одновременно.
  */
+/** Стиль по умолчанию — выбран по образцам: контрастный чернильный комикс с красным акцентом. */
+export const DEFAULT_IMAGE_STYLE = "black ink comic, bold lines, halftone shading, one accent color red, no text";
+
 export class ImageService {
   private chain: Promise<unknown> = Promise.resolve();
   private waiting = 0;
@@ -55,6 +58,8 @@ export class ImageService {
   constructor(
     private readonly synth: ImageSynth,
     private readonly tutor: ExerciseTutor,
+    /** Стиль дописывается к сцене от Claude (IMAGE_STYLE в .env). */
+    private readonly style = DEFAULT_IMAGE_STYLE,
   ) {}
 
   /** Сколько картинок сейчас рисуется или ждёт очереди. */
@@ -67,7 +72,7 @@ export class ImageService {
     if (running) return running;
     const task = (async () => {
       const prompt = await this.tutor.imagePrompt(word.term, word.translation, word.mnemonic);
-      return this.enqueue(() => this.synth.draw(prompt));
+      return this.enqueue(() => this.synth.draw(`${prompt}, ${this.style}`));
     })().finally(() => this.inFlight.delete(word.id));
     this.inFlight.set(word.id, task);
     return task;

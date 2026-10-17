@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExerciseTutor } from "../src/llm/tutor";
+import { buildImagePromptPrompt, parseImagePrompt, type ExerciseTutor } from "../src/llm/tutor";
 import { ImageService } from "../src/images/images";
 import { rateKeyboard } from "../src/bot/keyboards";
 import { createRoom } from "../src/services/rooms";
@@ -57,7 +57,7 @@ describe("🖼 pictures", () => {
     await vi.waitFor(() => expect(() => buttonData(h.calls, "🖼 Нарисовать")).not.toThrow());
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🖼 Нарисовать")));
     await vi.waitFor(() => expect(photos(h)).toHaveLength(1));
-    expect(draw).toHaveBeenCalledWith("a man surrounded by little devils, cartoon");
+    expect(draw).toHaveBeenCalledWith(expect.stringMatching(/^a man surrounded by little devils, cartoon, .*black ink comic/));
     expect(t.imagePrompt).toHaveBeenCalledWith("beset by", "осаждаемый", "Бесы осадили тебя, как крепость");
     expect(photos(h)[0].payload).toMatchObject({ has_spoiler: true });
     expect(String(photos(h)[0].payload.caption)).toContain("Бесы осадили");
@@ -85,6 +85,18 @@ describe("🖼 pictures", () => {
     await vi.waitFor(async () => expect((await getWord(h.db, word.id))?.imageFileId).not.toBeNull());
     await updateWord(h.db, word.id, { translation: "одолеваемый", explanation: "", example: "" });
     expect((await getWord(h.db, word.id))?.imageFileId).toBeNull();
+  });
+});
+
+describe("picture style", () => {
+  it("adds the configured style to Claude's scene, which itself has no style words", async () => {
+    const draw = vi.fn(async () => Buffer.from("png"));
+    const t = tutor();
+    const service = new ImageService({ draw }, t, "black ink comic, red accent");
+    await service.drawWord({ id: 1, term: "beset by", translation: "t", mnemonic: "m" });
+    expect(draw).toHaveBeenCalledWith("a man surrounded by little devils, cartoon, black ink comic, red accent");
+    expect(buildImagePromptPrompt("beset by", "t", "m")).not.toMatch(/мультяш/i);
+    expect(parseImagePrompt(JSON.stringify({ prompt: "a man and devils" }))).toBe("a man and devils");
   });
 });
 
