@@ -28,6 +28,8 @@ export const rooms = sqliteTable("rooms", {
   telegramChatId: integer("telegram_chat_id").unique(),
   /** Локальная дата (по поясу дайджеста) последнего еженедельного дайджеста. */
   lastDigestDate: text("last_digest_date"),
+  /** Локальная дата последнего «слова дня» в группе. */
+  lastWordOfDayDate: text("last_word_of_day_date"),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
 });
@@ -60,6 +62,8 @@ export const words = sqliteTable(
     audioUsFileId: text("audio_us_file_id"),
     /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
     mnemonic: text("mnemonic").notNull().default(""),
+    /** Когда слово было «словом дня» — чтобы не повторять его месяц. */
+    featuredAt: integer("featured_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("words_room_term_idx").on(t.roomId, t.termNormalized)],

@@ -1,6 +1,7 @@
-import { learnKeyboard } from "./bot/keyboards";
 import { HTML } from "./bot/context";
-import { digestText, reminderText } from "./bot/texts";
+import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
+import { digestText, reminderText, wordOfDayText } from "./bot/texts";
+import { collectWordsOfDay } from "./services/word-of-day";
 import { collectDigests } from "./services/digest";
 import { listMembers } from "./services/rooms";
 import type { Db } from "./db/client";
@@ -49,6 +50,14 @@ export async function sendDigests(deps: DigestDeps): Promise<void> {
   }
 }
 
+/** Слово дня — в привязанные группы. */
+export async function sendWordsOfDay(deps: DigestDeps): Promise<void> {
+  for (const { room, word } of await collectWordsOfDay(deps.db, deps.now())) {
+    if (room.telegramChatId == null) continue;
+    await deps.notifier.group(room.telegramChatId, wordOfDayText(word), { ...HTML, reply_markup: audioKeyboard(word.id) });
+  }
+}
+
 export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => void {
   let running = false;
   const tick = async () => {
@@ -57,6 +66,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
     try {
       await sendReminders(deps);
       await sendDigests(deps);
+      await sendWordsOfDay(deps);
     } catch (err) {
       console.error("Reminder tick failed", err);
     } finally {

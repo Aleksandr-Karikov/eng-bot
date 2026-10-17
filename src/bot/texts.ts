@@ -257,3 +257,8 @@ export function duelResultText(scores: Array<{ name: string; points: number }>):
   const lines = scores.map((s, i) => `${MEDALS[i] ?? "•"} ${esc(s.name)} — ${s.points}`);
   return `⚔️ <b>Итоги дуэли</b>\n\n${lines.join("\n")}\n\n🏆 Победитель: <b>${esc(scores[0].name)}</b>! Реванш — /duel`;
 }
+
+export function wordOfDayText(word: WordDraft): string {
+  const example = word.example ? `\n\n<i>${esc(word.example)}</i>` : "";
+  return `☀️ <b>Слово дня</b>\n\n<b>${esc(word.term)}</b>${withTranscription(word)}\n<tg-spoiler>${esc(word.translation)}</tg-spoiler>${example}\n\nЗнаешь? Проверь себя тапом по скрытому 👆`;
+}
