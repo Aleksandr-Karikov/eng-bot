@@ -7,9 +7,10 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import type { Draft } from "../drafts";
 import { batchKeyboard, batchPageCount, batchUndoKeyboard } from "../keyboards";
 import { batchDoneText, batchListText, esc } from "../texts";
-import { broadcastBatch, resolveRoom, sendPreview } from "../word-flow";
+import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
 
-const USAGE = "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met";
+const USAGE =
+  "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение — разберу его.";
 
 async function startText(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const text = input.trim();
@@ -77,7 +78,7 @@ export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, ac
 }
 
 export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("text", (ctx) => background(ctx, () => startText(ctx, deps, ctx.match)));
+  bot.command("text", (ctx) => background(ctx, () => startText(ctx, deps, commandInput(ctx))));
 
   bot.callbackQuery(/^bt:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);

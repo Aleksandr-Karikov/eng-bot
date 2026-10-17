@@ -62,3 +62,11 @@ export async function broadcastBatch(deps: Deps, roomId: number, words: Word[], 
     if (member.id !== adder.id) await deps.notifier.dm(member, text, HTML);
   }
 }
+
+/** Текст команды, а если он пустой — текст сообщения, на которое ответили командой. */
+export function commandInput(ctx: BotContext): string {
+  const own = typeof ctx.match === "string" ? ctx.match.trim() : "";
+  if (own) return own;
+  const replied = ctx.message?.reply_to_message;
+  return (replied?.text ?? replied?.caption ?? "").trim();
+}

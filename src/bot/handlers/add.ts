@@ -5,10 +5,11 @@ import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { wordActionsKeyboard } from "../keyboards";
 import { draftText, esc } from "../texts";
-import { askForTranslation, broadcastWord, resolveRoom, sendPreview } from "../word-flow";
+import { askForTranslation, broadcastWord, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { onBatchDraft } from "./batch";
 
-const USAGE = "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег";
+const USAGE =
+  "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег\nИли ответь командой /add на сообщение с фразой.";
 
 async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const parsed = parseAddInput(input);
@@ -43,7 +44,7 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
 }
 
 export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("add", (ctx) => background(ctx, () => startAdd(ctx, deps, ctx.match)));
+  bot.command("add", (ctx) => background(ctx, () => startAdd(ctx, deps, commandInput(ctx))));
 
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;
