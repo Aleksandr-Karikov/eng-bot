@@ -4,6 +4,8 @@ import type { Room, User } from "../db/schema";
 import type { WordEnricher } from "../llm/enricher";
 import type { ExerciseTutor } from "../llm/tutor";
 import type { ClozeGenerator } from "../services/cloze-generator";
+import type { SpeechSynth } from "../speech/tts";
+import type { VoiceStore } from "./voices";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
@@ -28,6 +30,8 @@ export interface Deps {
   history: ChatHistory;
   exercises: ExerciseStore;
   drills: DrillStore;
+  speech: SpeechSynth;
+  voices: VoiceStore;
   now: () => Date;
   botUsername: string;
 }

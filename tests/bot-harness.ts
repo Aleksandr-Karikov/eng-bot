@@ -11,6 +11,8 @@ import { ExerciseStore } from "../src/bot/exercises";
 import { setupBot } from "../src/bot/setup";
 import type { CheckResult, Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import type { ExerciseTutor } from "../src/llm/tutor";
+import type { SpeechSynth } from "../src/speech/tts";
+import { VoiceStore } from "../src/bot/voices";
 import { Notifier } from "../src/notifier";
 import { ClozeGenerator } from "../src/services/cloze-generator";
 import { T0, testDb } from "./helpers";
@@ -34,6 +36,7 @@ const BOT_INFO = {
 export function botHarness(opts: {
   enricher?: WordEnricher;
   tutor?: ExerciseTutor;
+  speech?: SpeechSynth;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
 } = {}) {
@@ -45,10 +48,13 @@ export function botHarness(opts: {
     calls.push(call);
     const description = opts.fail?.(call);
     if (description) return { ok: false, error_code: 400, description } as never;
+    const message = { message_id: calls.length, date: 0, chat: { id: call.payload.chat_id, type: "private" } };
     const result =
       method === "sendMessage"
-        ? { message_id: calls.length, date: 0, chat: { id: call.payload.chat_id, type: "private" }, text: call.payload.text }
-        : true;
+        ? { ...message, text: call.payload.text }
+        : method === "sendVoice"
+          ? { ...message, voice: { file_id: `voice-file-${calls.length}`, file_unique_id: "u", duration: 1 } }
+          : true;
     return { ok: true, result } as never;
   });
   const notifier = new Notifier(
@@ -66,7 +72,8 @@ export function botHarness(opts: {
     drill: async () => [],
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), now: () => T0, botUsername: BOT_INFO.username });
+  const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

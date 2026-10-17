@@ -2,6 +2,7 @@ import type { Bot } from "grammy";
 import { ignoreHarmlessErrors, slowApiCallLogger } from "./api-errors";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
+import { registerAudio } from "./handlers/audio";
 import { registerBatch } from "./handlers/batch";
 import { registerCheck } from "./handlers/check";
 import { registerDelete } from "./handlers/delete";
@@ -42,6 +43,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   });
   bot.use(userMiddleware(deps));
   registerRooms(bot, deps);
+  registerAudio(bot, deps);
   registerLearn(bot, deps);
   registerStats(bot, deps);
   registerBatch(bot, deps);

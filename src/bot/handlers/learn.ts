@@ -9,7 +9,7 @@ import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
-import { clozeKeyboard, rateKeyboard } from "../keyboards";
+import { audioKeyboard, clozeKeyboard, rateKeyboard } from "../keyboards";
 import {
   cardText,
   clozeCorrectText,
@@ -53,6 +53,8 @@ async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promi
 }
 
 async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
+  // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
+  for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   deps.exercises.delete(ctx.user.id);
   deps.edits.delete(ctx.user.id);
   if (await maybeDrill(ctx, deps, mode)) return;
@@ -73,7 +75,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
       replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
     } else {
       text = stage === "ru_en" ? reverseCardText(word) : cardText(word);
-      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id);
+      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id, stage === "en_ru");
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
@@ -127,7 +129,7 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
   const s = pending.sentence;
   if (isExactAnswer(answer, { answer: s.answer, term: pending.term })) {
     if (!(await rate(ctx, deps, pending, "good"))) return;
-    await ctx.reply(clozeCorrectText(s), HTML);
+    await ctx.reply(clozeCorrectText(s), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
     return showNext(ctx, deps, "reply");
   }
   await ctx.replyWithChatAction("typing");
@@ -145,12 +147,12 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
     console.error("Cloze judge failed", err);
     await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
       ...HTML,
-      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId),
+      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true),
     });
     return;
   }
   if (!(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
-  await ctx.reply(clozeJudgedText(s, judgement), HTML);
+  await ctx.reply(clozeJudgedText(s, judgement), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
   await showNext(ctx, deps, "reply");
 }
 
@@ -188,7 +190,10 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
     countAnswer(ctx.user.id);
-    await ctx.editMessageText(sentence ? clozeUnknownText(sentence) : draftText(item.word), HTML);
+    await ctx.editMessageText(sentence ? clozeUnknownText(sentence) : draftText(item.word), {
+      ...HTML,
+      reply_markup: audioKeyboard(item.word.id),
+    });
     await showNext(ctx, deps, "reply");
   });
 

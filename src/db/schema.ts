@@ -53,6 +53,9 @@ export const words = sqliteTable(
     example: text("example").notNull().default(""),
     transcriptionUk: text("transcription_uk").notNull().default(""),
     transcriptionUs: text("transcription_us").notNull().default(""),
+    /** Telegram file_id готовой озвучки — чтобы не синтезировать заново. */
+    audioUkFileId: text("audio_uk_file_id"),
+    audioUsFileId: text("audio_us_file_id"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("words_room_term_idx").on(t.roomId, t.termNormalized)],

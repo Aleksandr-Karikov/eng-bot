@@ -13,6 +13,8 @@ import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
+import { MacSaySynth } from "./speech/tts";
+import { VoiceStore } from "./bot/voices";
 import { startReminderLoop } from "./reminder-loop";
 
 try {
@@ -47,6 +49,8 @@ setupBot(bot, {
   history: new ChatHistory(),
   exercises: new ExerciseStore(),
   drills: new DrillStore(),
+  speech: new MacSaySynth(),
+  voices: new VoiceStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

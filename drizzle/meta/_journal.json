@@ -36,6 +36,13 @@
       "when": 1792219041494,
       "tag": "0004_users_timezone_novosibirsk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792219186556,
+      "tag": "0005_dizzy_sprite",
+      "breakpoints": true
     }
   ]
 }

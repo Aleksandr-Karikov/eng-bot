@@ -148,8 +148,14 @@ export async function updateWord(
       example: patch.example,
       transcriptionUk: patch.transcriptionUk ?? word.transcriptionUk,
       transcriptionUs: patch.transcriptionUs ?? word.transcriptionUs,
+      // Озвучка относится к самому слову — при его изменении записывается заново.
+      ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
     })
     .where(eq(words.id, wordId))
     .returning();
   return { status: "updated", word: updated };
+}
+
+export async function setAudioFileId(db: Db, wordId: number, accent: "uk" | "us", fileId: string): Promise<void> {
+  await db.update(words).set(accent === "uk" ? { audioUkFileId: fileId } : { audioUsFileId: fileId }).where(eq(words.id, wordId));
 }

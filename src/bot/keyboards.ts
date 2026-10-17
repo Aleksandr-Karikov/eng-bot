@@ -13,12 +13,27 @@ export function knowKeyboard(wordId: number): InlineKeyboard {
 }
 
 /** Две оценки — «не вспомнил / вспомнил»: «С трудом» убрана, а в старых сообщениях она по-прежнему обрабатывается. */
-export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number): InlineKeyboard {
+/** Ряд «🔊 UK / 🔊 US». */
+export function addAudioRow(kb: InlineKeyboard, wordId: number): InlineKeyboard {
+  return kb
+    .text("🔊 UK", encodeCb({ k: "audio", wordId, accent: "uk" }))
+    .text("🔊 US", encodeCb({ k: "audio", wordId, accent: "us" }))
+    .row();
+}
+
+export function audioKeyboard(wordId: number): InlineKeyboard {
+  return addAudioRow(new InlineKeyboard(), wordId);
+}
+
+/** withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа). */
+export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
-  return kb.row().text("✏️ Изменить", encodeCb({ k: "edit", wordId })).text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+  kb.row();
+  if (withAudio) addAudioRow(kb, wordId);
+  return kb.text("✏️ Изменить", encodeCb({ k: "edit", wordId })).text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
 export function learnKeyboard(): InlineKeyboard {
@@ -93,7 +108,7 @@ export function hoursKeyboard(): InlineKeyboard {
 }
 
 export function wordActionsKeyboard(wordId: number): InlineKeyboard {
-  return new InlineKeyboard()
+  return addAudioRow(new InlineKeyboard(), wordId)
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
