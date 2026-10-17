@@ -10,7 +10,7 @@ import { botHarness } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
 function tutor(mnemonic = vi.fn(async () => "Ангар — огромный «гараж» для самолёта")): ExerciseTutor & { mnemonic: typeof mnemonic } {
-  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonic };
+  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonic, imagePrompt: async () => "a scene" };
 }
 
 async function setup(h: ReturnType<typeof botHarness>) {

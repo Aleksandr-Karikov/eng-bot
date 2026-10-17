@@ -62,6 +62,8 @@ export const words = sqliteTable(
     audioUsFileId: text("audio_us_file_id"),
     /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
     mnemonic: text("mnemonic").notNull().default(""),
+    /** Telegram file_id картинки-ассоциации (по запоминалке). */
+    imageFileId: text("image_file_id"),
     /** Когда слово было «словом дня» — чтобы не повторять его месяц. */
     featuredAt: integer("featured_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),

@@ -17,6 +17,8 @@ export type Cb =
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
   | { k: "batchPage"; id: number; page: number }
   | { k: "edit"; wordId: number }
+  | { k: "mnemonic"; wordId: number }
+  | { k: "picture"; wordId: number }
   | { k: "audio"; wordId: number; accent: "uk" | "us" }
   | { k: "del"; wordId: number }
   | { k: "delOk"; wordId: number }
@@ -56,6 +58,8 @@ export function encodeCb(cb: Cb): string {
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
     case "batchPage": return `bp:${cb.id}:${cb.page}`;
     case "edit": return `e:${cb.wordId}`;
+    case "mnemonic": return `mn:${cb.wordId}`;
+    case "picture": return `im:${cb.wordId}`;
     case "audio": return `a:${cb.wordId}:${cb.accent === "uk" ? "u" : "s"}`;
     case "del": return `x:${cb.wordId}`;
     case "delOk": return `xo:${cb.wordId}`;
@@ -116,6 +120,11 @@ export function decodeCb(data: string): Cb | null {
     case "a": {
       const wordId = int(a);
       return wordId !== null && (b === "u" || b === "s") ? { k: "audio", wordId, accent: b === "u" ? "uk" : "us" } : null;
+    }
+    case "mn":
+    case "im": {
+      const wordId = int(a);
+      return wordId === null ? null : tag === "mn" ? { k: "mnemonic", wordId } : { k: "picture", wordId };
     }
     case "e": {
       const wordId = int(a);

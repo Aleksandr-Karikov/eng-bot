@@ -262,3 +262,13 @@ export function wordOfDayText(word: WordDraft): string {
   const example = word.example ? `\n\n<i>${esc(word.example)}</i>` : "";
   return `☀️ <b>Слово дня</b>\n\n<b>${esc(word.term)}</b>${withTranscription(word)}\n<tg-spoiler>${esc(word.translation)}</tg-spoiler>${example}\n\nЗнаешь? Проверь себя тапом по скрытому 👆`;
 }
+
+/** Запоминалка подсказывает ответ — прячем под спойлер. */
+export function mnemonicText(term: string, mnemonic: string): string {
+  return `💡 <b>${esc(term)}</b>\n\n<tg-spoiler>${esc(mnemonic)}</tg-spoiler>`;
+}
+
+/** Подпись к картинке (лимит подписи в Telegram — 1024 символа). */
+export function pictureCaption(term: string, mnemonic: string): string {
+  return `💡 <b>${esc(term)}</b>\n<tg-spoiler>${esc(mnemonic.slice(0, 900))}</tg-spoiler>`;
+}

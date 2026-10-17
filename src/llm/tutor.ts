@@ -32,6 +32,8 @@ export interface ExerciseTutor {
   drill(profile: string, count: number): Promise<DrillQuestion[]>;
   /** Короткая запоминалка (созвучие, образ, ассоциация) для слова, которое никак не запоминается. */
   mnemonic(term: string, translation: string): Promise<string>;
+  /** Короткое английское описание сцены из запоминалки — для рисовалки картинок. */
+  imagePrompt(term: string, translation: string, mnemonic: string): Promise<string>;
 }
 
 export const CLOZE_COUNT = 3;
@@ -144,4 +146,22 @@ export function parseMnemonic(text: string): string {
   const end = text.lastIndexOf("}");
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
   return mnemonicSchema.parse(JSON.parse(text.slice(start, end + 1))).mnemonic;
+}
+
+export function buildImagePromptPrompt(term: string, translation: string, mnemonic: string): string {
+  return [
+    `Запоминалка к английскому "${term}" (значение "${translation}"): ${mnemonic}`,
+    "Опиши её одной сценой для генератора картинок: по-английски, 20–40 слов, что именно изображено и кто что делает.",
+    "Стиль: яркая мультяшная иллюстрация, простые формы. Никакого текста, букв и надписей на картинке.",
+    'Верни JSON: {"prompt": "..."}',
+  ].join("\n");
+}
+
+const imagePromptSchema = z.object({ prompt: z.string().trim().min(1) });
+
+export function parseImagePrompt(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  return `${imagePromptSchema.parse(JSON.parse(text.slice(start, end + 1))).prompt}, cartoon illustration, no text`;
 }

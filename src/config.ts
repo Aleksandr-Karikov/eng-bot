@@ -3,6 +3,8 @@ export interface Config {
   dbPath: string;
   enrichModel: string;
   enrichTimeoutMs: number;
+  /** Путь к mflux-generate, если картинки включены (IMAGES_ENABLED=1). */
+  mfluxBin?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -13,5 +15,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: env.DB_PATH || "data/eng-bot.sqlite",
     enrichModel: env.ENRICH_MODEL || "haiku",
     enrichTimeoutMs: Number(env.ENRICH_TIMEOUT_MS || 30_000),
+    ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
   };
 }

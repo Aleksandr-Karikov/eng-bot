@@ -8,6 +8,7 @@ import { registerCheck } from "./handlers/check";
 import { registerDelete } from "./handlers/delete";
 import { registerDuel } from "./handlers/duel";
 import { registerMistakes } from "./handlers/drill";
+import { registerMnemonic } from "./handlers/mnemonic";
 import { registerEdit } from "./handlers/edit";
 import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
@@ -52,6 +53,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   });
   registerRooms(bot, deps);
   registerAudio(bot, deps);
+  registerMnemonic(bot, deps);
   registerLearn(bot, deps);
   registerStats(bot, deps);
   registerBatch(bot, deps);

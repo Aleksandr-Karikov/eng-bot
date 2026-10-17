@@ -152,7 +152,7 @@ export async function updateWord(
       // Озвучка относится к самому слову — при его изменении записывается заново.
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
-      ...(meaningChanged ? { mnemonic: "" } : {}),
+      ...(meaningChanged ? { mnemonic: "", imageFileId: null } : {}),
     })
     .where(eq(words.id, wordId))
     .returning();
@@ -165,4 +165,8 @@ export async function setAudioFileId(db: Db, wordId: number, accent: "uk" | "us"
 
 export async function setMnemonic(db: Db, wordId: number, mnemonic: string): Promise<void> {
   await db.update(words).set({ mnemonic }).where(eq(words.id, wordId));
+}
+
+export async function setImageFileId(db: Db, wordId: number, fileId: string): Promise<void> {
+  await db.update(words).set({ imageFileId: fileId }).where(eq(words.id, wordId));
 }

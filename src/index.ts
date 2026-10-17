@@ -15,6 +15,7 @@ import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
+import { FluxSynth, ImageService } from "./images/images";
 import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
@@ -57,6 +58,7 @@ setupBot(bot, {
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
+  images: config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude) : undefined,
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

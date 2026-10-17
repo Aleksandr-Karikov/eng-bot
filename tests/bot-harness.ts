@@ -14,6 +14,7 @@ import { setupBot } from "../src/bot/setup";
 import type { CheckResult, Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import type { ExerciseTutor } from "../src/llm/tutor";
 import type { SpeechSynth } from "../src/speech/tts";
+import { ImageService, type ImageSynth } from "../src/images/images";
 import { VoiceStore } from "../src/bot/voices";
 import { Notifier } from "../src/notifier";
 import { ClozeGenerator } from "../src/services/cloze-generator";
@@ -42,6 +43,8 @@ export function botHarness(opts: {
   speech?: SpeechSynth;
   /** Время на раунд дуэли (мс). */
   duelRoundMs?: number;
+  /** Рисовалка картинок; не задана — картинки выключены. */
+  images?: ImageSynth;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
 } = {}) {
@@ -59,7 +62,9 @@ export function botHarness(opts: {
         ? { ...message, text: call.payload.text }
         : method === "sendVoice"
           ? { ...message, voice: { file_id: `voice-file-${calls.length}`, file_unique_id: "u", duration: 1 } }
-          : true;
+          : method === "sendPhoto"
+            ? { ...message, photo: [{ file_id: `photo-small-${calls.length}` }, { file_id: `photo-file-${calls.length}` }] }
+            : true;
     return { ok: true, result } as never;
   });
   const notifier = new Notifier(
@@ -74,11 +79,11 @@ export function botHarness(opts: {
   const tutor: ExerciseTutor = opts.tutor ?? {
     cloze: async () => [1, 2, 3].map((i) => ({ sentence: `Sentence ${i} with ___.`, answer: "x", translation: `Перевод ${i}` })),
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
-    drill: async () => [], mnemonic: async () => "",
+    drill: async () => [], mnemonic: async () => "", imagePrompt: async () => "",
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), images: opts.images ? new ImageService(opts.images, tutor) : undefined, now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

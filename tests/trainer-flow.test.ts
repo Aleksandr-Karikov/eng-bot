@@ -12,7 +12,7 @@ import { DAY, T0, makeUser } from "./helpers";
 const sentence = { sentence: "We sat on the ___ of the river.", answer: "bank", translation: "Мы сидели на берегу реки." };
 
 function tutor(judge: () => Promise<Judgement>, cloze = vi.fn(async () => [sentence])): ExerciseTutor {
-  return { cloze, judge, drill: async () => [], mnemonic: async () => "" };
+  return { cloze, judge, drill: async () => [], mnemonic: async () => "", imagePrompt: async () => "" };
 }
 
 /** Пользователь 100 с одним словом bank, карточка которого «выучена» на stability дней и уже к повторению. */

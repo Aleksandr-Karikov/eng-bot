@@ -17,10 +17,12 @@ import {
   buildClozePrompt,
   buildDrillPrompt,
   buildJudgePrompt,
+  buildImagePromptPrompt,
   buildMnemonicPrompt,
   parseCloze,
   parseDrill,
   parseJudgement,
+  parseImagePrompt,
   parseMnemonic,
   type DrillQuestion,
   type ExerciseTutor,
@@ -58,6 +60,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async mnemonic(term: string, translation: string): Promise<string> {
     return parseMnemonic(await this.ask(buildMnemonicPrompt(term, translation), this.opts.timeoutMs));
+  }
+
+  async imagePrompt(term: string, translation: string, mnemonic: string): Promise<string> {
+    return parseImagePrompt(await this.ask(buildImagePromptPrompt(term, translation, mnemonic), this.opts.timeoutMs));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {

@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `image_file_id` text;

@@ -33,7 +33,11 @@ export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordI
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
-  return kb.text("✏️ Изменить", encodeCb({ k: "edit", wordId })).text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+  return kb
+    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
+    .row()
+    .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
+    .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
 
 export function learnKeyboard(): InlineKeyboard {
@@ -121,6 +125,8 @@ export function hoursKeyboard(): InlineKeyboard {
 
 export function wordActionsKeyboard(wordId: number): InlineKeyboard {
   return addAudioRow(new InlineKeyboard(), wordId)
+    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
+    .row()
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
@@ -156,6 +162,7 @@ export function pickerKeyboard(picker: Picker): InlineKeyboard {
 export function clozeKeyboard(cardId: number, reps: number, wordId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps }))
+    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
     .row()
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
@@ -191,4 +198,9 @@ export function duelKeyboard(roundId: number, options: string[]): InlineKeyboard
 
 export function mistakesKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
+}
+
+/** Под запоминалкой: нарисовать (или показать уже нарисованную) картинку — если картинки включены. */
+export function mnemonicKeyboard(wordId: number, hasPicture: boolean): InlineKeyboard {
+  return new InlineKeyboard().text(hasPicture ? "🖼 Картинка" : "🖼 Нарисовать", encodeCb({ k: "picture", wordId }));
 }

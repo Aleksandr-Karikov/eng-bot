@@ -27,6 +27,15 @@ tail -f data/logs/bot.log data/logs/bot.err.log
 Бэкапы: `data/backups/` (14 последних), вручную — `scripts/backup.sh`.
 Восстановить: остановить бота (`uninstall.sh`), скопировать нужный бэкап в `data/eng-bot.sqlite`, снова `install.sh`.
 
+## Картинки-ассоциации (локальный FLUX)
+
+Кнопка «💡 Запоминалка» на карточках → под запоминалкой «🖼 Нарисовать»: Claude описывает сцену, локальный
+FLUX.1-schnell рисует её (~20 с, пик памяти ~12 ГБ, по одной картинке за раз), картинка кэшируется на слово.
+
+1. Поставить генератор: `tools/imagegen/README.md` (окружение `tools/imagegen/.venv` с `mflux` и `pillow<13`).
+2. В `.env`: `IMAGES_ENABLED=1` (путь к генератору — `MFLUX_BIN`, по умолчанию `tools/imagegen/.venv/bin/mflux-generate`).
+3. `scripts/launchd/restart.sh`. Выключить — `IMAGES_ENABLED=0` и перезапуск: кнопка «🖼» пропадёт, остальное работает.
+
 ## Статистика
 
 `npx tsx scripts/stats.ts` — сводка за 30 дней (только чтение): «Забыл» по ступеням, забывание новых слов
