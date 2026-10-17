@@ -38,6 +38,7 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
     example: enrichment?.example ?? "",
     transcriptionUk: enrichment?.transcriptionUk ?? "",
     transcriptionUs: enrichment?.transcriptionUs ?? "",
+    mnemonic: enrichment?.mnemonic ?? "",
   });
   if (!draft.translation) return askForTranslation(ctx, deps, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);
@@ -98,7 +99,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
     }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
-    await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id) });
+    await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });
     const { word, members } = result;
     background(ctx, () => broadcastWord(deps, word, members, ctx.user, ctx.chat?.id));
   });

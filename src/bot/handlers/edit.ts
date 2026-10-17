@@ -48,10 +48,11 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     // Если слово переименовали, а Claude не ответил, старая транскрипция уже неверна.
     transcriptionUk: enrichment?.transcriptionUk ?? (term === word.term ? undefined : ""),
     transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
+    mnemonic: enrichment?.mnemonic || undefined,
   });
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));
   if (result.status === "duplicate") return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
-  await ctx.reply(`✏️ Обновлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id) });
+  await ctx.reply(`✏️ Обновлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });
 }
 
 export function registerEdit(bot: Bot<BotContext>, deps: Deps): void {

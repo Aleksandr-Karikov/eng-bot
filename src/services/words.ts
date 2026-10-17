@@ -11,6 +11,7 @@ export interface WordDraft {
   example: string;
   transcriptionUk?: string;
   transcriptionUs?: string;
+  mnemonic?: string;
 }
 
 /** Только поля слова — без служебных полей черновика/пачки. */
@@ -22,6 +23,7 @@ export function toWordDraft(d: WordDraft): WordDraft {
     example: d.example,
     transcriptionUk: d.transcriptionUk ?? "",
     transcriptionUs: d.transcriptionUs ?? "",
+    mnemonic: d.mnemonic ?? "",
   };
 }
 
@@ -70,6 +72,7 @@ export async function saveWord(
       example: input.draft.example,
       transcriptionUk: input.draft.transcriptionUk ?? "",
       transcriptionUs: input.draft.transcriptionUs ?? "",
+      mnemonic: input.draft.mnemonic ?? "",
       createdAt: input.now,
     })
     .returning();
@@ -126,6 +129,8 @@ export async function updateWord(
     /** undefined — оставить как есть. */
     transcriptionUk?: string;
     transcriptionUs?: string;
+    /** undefined — оставить, а при смене значения — сбросить. */
+    mnemonic?: string;
   },
 ): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
   const word = await getWord(db, wordId);
@@ -153,6 +158,7 @@ export async function updateWord(
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
       ...(meaningChanged ? { mnemonic: "", imageFileId: null } : {}),
+      ...(patch.mnemonic !== undefined ? { mnemonic: patch.mnemonic } : {}),
     })
     .where(eq(words.id, wordId))
     .returning();

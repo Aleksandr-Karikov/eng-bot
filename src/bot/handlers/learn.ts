@@ -81,9 +81,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
       text = clozeText(sentence);
       replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
     } else {
-      const mnemonic = word.mnemonic && (await isHard(deps.db, card.id)) ? word.mnemonic : "";
-      text = stage === "ru_en" ? reverseCardText(word, mnemonic) : cardText(word, mnemonic);
-      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id, stage === "en_ru");
+      text = stage === "ru_en" ? reverseCardText(word) : cardText(word);
+      replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id, stage === "en_ru", Boolean(deps.images));
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);

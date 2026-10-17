@@ -41,12 +41,13 @@ export function draftText(d: WordDraft): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
+  if (d.mnemonic) text += `\n\n💡 ${esc(d.mnemonic)}`;
   return text;
 }
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
-/** mnemonic — запоминалка для трудного слова; прячется под спойлер вместе с ответом, потому что подсказывает его. */
-export function cardText(word: WordDraft, mnemonic = ""): string {
+/** Запоминалка прячется под спойлер вместе с ответом, потому что подсказывает его. */
+export function cardText(word: WordDraft, mnemonic = word.mnemonic ?? ""): string {
   let answer = esc(word.translation);
   if (word.explanation) answer += `\n\n${esc(word.explanation)}`;
   if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
@@ -130,7 +131,7 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
-export function reverseCardText(word: WordDraft, mnemonic = ""): string {
+export function reverseCardText(word: WordDraft, mnemonic = word.mnemonic ?? ""): string {
   let answer = `<b>${esc(word.term)}</b>${withTranscription(word)}`;
   if (word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
   if (mnemonic) answer += `\n\n💡 ${esc(mnemonic)}`;

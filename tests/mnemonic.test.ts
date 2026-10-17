@@ -43,7 +43,7 @@ describe("hard words", () => {
     expect(t.mnemonic).toHaveBeenCalledWith("hangar", "ангар");
   });
 
-  it("shows the mnemonic under the spoiler only to whom the word is hard", async () => {
+  it("shows the mnemonic under the spoiler on everyone's cards once it exists", async () => {
     const h = botHarness({ tutor: tutor() });
     const { alice, word } = await setup(h);
     await forget(h, alice.id, 100, 4);
@@ -53,7 +53,7 @@ describe("hard words", () => {
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(String(text(100))).toMatch(/<tg-spoiler>[^]*💡[^]*гараж[^]*<\/tg-spoiler>/);
     await h.bot.handleUpdate(h.message(200, "/learn"));
-    expect(String(text(200))).not.toContain("💡");
+    expect(String(text(200))).toMatch(/<tg-spoiler>[^]*💡[^]*гараж/);
   });
 
   it("forgets the mnemonic when the meaning changes", async () => {

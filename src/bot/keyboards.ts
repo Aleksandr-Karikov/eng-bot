@@ -25,17 +25,26 @@ export function audioKeyboard(wordId: number): InlineKeyboard {
   return addAudioRow(new InlineKeyboard(), wordId);
 }
 
-/** withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа). */
-export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false): InlineKeyboard {
+/**
+ * withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа);
+ * withPicture — картинки включены (картинка приходит под спойлером, так что можно на любой ступени).
+ */
+export function rateKeyboard(
+  cardId: number,
+  reps: number,
+  isNew: boolean,
+  wordId: number,
+  withAudio = false,
+  withPicture = false,
+): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
+  if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
   return kb
-    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
-    .row()
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
@@ -123,10 +132,10 @@ export function hoursKeyboard(): InlineKeyboard {
   return kb;
 }
 
-export function wordActionsKeyboard(wordId: number): InlineKeyboard {
-  return addAudioRow(new InlineKeyboard(), wordId)
-    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
-    .row()
+export function wordActionsKeyboard(wordId: number, withPicture = false): InlineKeyboard {
+  const kb = addAudioRow(new InlineKeyboard(), wordId);
+  if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
+  return kb
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
 }
@@ -162,7 +171,6 @@ export function pickerKeyboard(picker: Picker): InlineKeyboard {
 export function clozeKeyboard(cardId: number, reps: number, wordId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps }))
-    .text("💡 Запоминалка", encodeCb({ k: "mnemonic", wordId }))
     .row()
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));

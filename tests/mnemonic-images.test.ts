@@ -29,9 +29,9 @@ async function setup(h: ReturnType<typeof botHarness>) {
 const photos = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.method === "sendPhoto");
 
 describe("💡 mnemonic on demand", () => {
-  it("is offered on learn cards", () => {
-    const labels = rateKeyboard(1, 0, true, 5).inline_keyboard.flat().map((b) => b.text);
-    expect(labels).toContain("💡 Запоминалка");
+  it("offers 🖼 on learn cards when pictures are on", () => {
+    const labels = rateKeyboard(1, 0, true, 5, false, true).inline_keyboard.flat().map((b) => b.text);
+    expect(labels).toContain("🖼 Картинка");
   });
 
   it("asks Claude once, shows it under a spoiler and reuses it afterwards", async () => {
