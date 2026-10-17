@@ -104,6 +104,14 @@ export const mistakes = sqliteTable("mistakes", {
   createdAt: createdAt(),
 });
 
+/** Очко дуэли: кто первым правильно ответил в раунде. Одна строка на выигранный раунд. */
+export const duelPoints = sqliteTable("duel_points", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: integer("room_id").notNull().references(() => rooms.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  createdAt: createdAt(),
+});
+
 export const reviewLogs = sqliteTable("review_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id),

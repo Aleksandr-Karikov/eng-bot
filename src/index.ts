@@ -3,6 +3,7 @@ import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
+import { DuelStore } from "./bot/duels";
 import { DrillStore } from "./bot/drills";
 import { EditStore } from "./bot/edits";
 import { ExerciseStore } from "./bot/exercises";
@@ -55,6 +56,7 @@ setupBot(bot, {
   speech: new MacSaySynth(),
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
+  duels: new DuelStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

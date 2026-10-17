@@ -183,6 +183,12 @@ export function drillKeyboard(q: DrillQuestion, qid: number): InlineKeyboard {
   return kb;
 }
 
+export function duelKeyboard(roundId: number, options: string[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "duel", roundId, index })).row());
+  return kb;
+}
+
 export function mistakesKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
 }

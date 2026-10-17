@@ -6,6 +6,7 @@ import { registerAudio } from "./handlers/audio";
 import { registerBatch } from "./handlers/batch";
 import { registerCheck } from "./handlers/check";
 import { registerDelete } from "./handlers/delete";
+import { registerDuel } from "./handlers/duel";
 import { registerMistakes } from "./handlers/drill";
 import { registerEdit } from "./handlers/edit";
 import { registerLearn } from "./handlers/learn";
@@ -26,6 +27,7 @@ export const COMMANDS = [
   { command: "mistakes", description: "Твои частые ошибки" },
   { command: "edit", description: "Исправить слово (можно по кусочку)" },
   { command: "delete", description: "Удалить слово (можно по кусочку)" },
+  { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "room", description: "Комнаты и приглашения" },
   { command: "newroom", description: "Создать комнату" },
@@ -56,6 +58,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerCheck(bot, deps);
   registerMistakes(bot, deps);
   registerDelete(bot, deps);
+  registerDuel(bot, deps);
   registerEdit(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».

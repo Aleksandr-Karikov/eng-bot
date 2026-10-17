@@ -7,6 +7,7 @@ import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
 import { DrillStore } from "../src/bot/drills";
+import { DuelStore } from "../src/bot/duels";
 import { EditStore } from "../src/bot/edits";
 import { ExerciseStore } from "../src/bot/exercises";
 import { setupBot } from "../src/bot/setup";
@@ -39,6 +40,8 @@ export function botHarness(opts: {
   enricher?: WordEnricher;
   tutor?: ExerciseTutor;
   speech?: SpeechSynth;
+  /** Время на раунд дуэли (мс). */
+  duelRoundMs?: number;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
 } = {}) {
@@ -75,7 +78,7 @@ export function botHarness(opts: {
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
@@ -144,6 +147,20 @@ export function botHarness(opts: {
         text: original.text,
       } as never;
       return update;
+    },
+    /** Нажатие кнопки в группе chatId. */
+    groupCallback(userId: number, chatId: number, data: string): Update {
+      seq++;
+      return {
+        update_id: seq,
+        callback_query: {
+          id: `cq${seq}`,
+          from: from(userId),
+          chat_instance: "ci",
+          data,
+          message: { message_id: 1, date: 0, chat: { id: chatId, type: "group", title: "Group" }, text: "old" },
+        },
+      } as Update;
     },
     callback(userId: number, data: string): Update {
       seq++;

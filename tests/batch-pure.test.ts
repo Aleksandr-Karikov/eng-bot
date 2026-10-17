@@ -73,6 +73,7 @@ describe("batch callbacks", () => {
       { k: "edit", wordId: 41 },
       { k: "roomRename", roomId: 2 },
       { k: "drillPick", qid: 17, index: 2 },
+      { k: "duel", roundId: 9, index: 3 },
       { k: "roomDel", roomId: 2 },
       { k: "roomDelOk", roomId: 2 },
       { k: "audio", wordId: 41, accent: "uk" },

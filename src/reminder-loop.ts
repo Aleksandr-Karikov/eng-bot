@@ -37,8 +37,8 @@ export interface DigestDeps {
 
 /** Еженедельный дайджест: в привязанную группу, а если её нет — каждому участнику в личку. */
 export async function sendDigests(deps: DigestDeps): Promise<void> {
-  for (const { room, rows } of await collectDigests(deps.db, deps.now())) {
-    const text = digestText(room.name, rows);
+  for (const { room, rows, duels } of await collectDigests(deps.db, deps.now())) {
+    const text = digestText(room.name, rows, duels);
     try {
       // Если в группу отправить не вышло (бота убрали из чата), шлём каждому в личку, чтобы итоги не потерялись.
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));

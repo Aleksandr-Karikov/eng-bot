@@ -2,6 +2,7 @@ import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, words, type Room } from "../db/schema";
 import { localParts, previousDate } from "../time";
+import { weeklyDuelPoints, type DuelScore } from "./duels";
 import { listMembers } from "./rooms";
 import { personalStats, roomLeaderboard } from "./stats";
 
@@ -68,14 +69,18 @@ export async function weeklyDigest(db: Db, roomId: number, now: Date): Promise<D
 }
 
 /** Комнаты, которым пора отправить дайджест; помечает их, а пустые недели (без активности) пропускает. */
-export async function collectDigests(db: Db, now: Date): Promise<Array<{ room: Room; rows: DigestRow[] }>> {
-  const result: Array<{ room: Room; rows: DigestRow[] }> = [];
+export async function collectDigests(
+  db: Db,
+  now: Date,
+): Promise<Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[] }>> {
+  const result: Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[] }> = [];
   for (const room of await db.select().from(rooms)) {
     const date = digestDue(room, now);
     if (!date) continue;
     await db.update(rooms).set({ lastDigestDate: date }).where(eq(rooms.id, room.id));
     const rows = await weeklyDigest(db, room.id, now);
-    if (rows.some((r) => r.added > 0 || r.reviews7d > 0)) result.push({ room, rows });
+    const duels = await weeklyDuelPoints(db, room.id, now);
+    if (rows.some((r) => r.added > 0 || r.reviews7d > 0) || duels.length) result.push({ room, rows, duels });
   }
   return result;
 }

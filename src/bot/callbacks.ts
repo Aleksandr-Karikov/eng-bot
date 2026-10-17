@@ -6,6 +6,7 @@ export type Cb =
   | { k: "show"; cardId: number; reps: number }
   | { k: "rate"; cardId: number; reps: number; answer: Answer }
   | { k: "learn" }
+  | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
   | { k: "drillPick"; qid: number; index: number }
@@ -44,6 +45,7 @@ export function encodeCb(cb: Cb): string {
     case "show": return `s:${cb.cardId}:${cb.reps}`;
     case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}`;
     case "learn": return "l";
+    case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
     case "drillPick": return `q:${cb.qid}:${cb.index}`;
@@ -88,6 +90,10 @@ export function decodeCb(data: string): Cb | null {
       return cardId !== null && reps !== null && answer ? { k: "rate", cardId, reps, answer } : null;
     }
     case "l": return { k: "learn" };
+    case "dv": {
+      const roundId = int(a), index = int(b);
+      return roundId !== null && index !== null ? { k: "duel", roundId, index } : null;
+    }
     case "u": {
       const cardId = int(a), reps = int(b);
       return cardId !== null && reps !== null ? { k: "dunno", cardId, reps } : null;

@@ -69,7 +69,11 @@ export function reminderText(n: number, friend?: { name: string; reviews: number
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
-export function digestText(roomName: string, rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number }>): string {
+export function digestText(
+  roomName: string,
+  rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number }>,
+  duels: Array<{ name: string; points: number }> = [],
+): string {
   const lines = rows.map((r, i) => {
     const parts = [`${r.reviews7d} повт.`];
     if (r.added) parts.push(`+${r.added} ${plural(r.added, "слово", "слова", "слов")}`);
@@ -78,7 +82,8 @@ export function digestText(roomName: string, rows: Array<{ name: string; added: 
     return `${MEDALS[i] ?? "•"} <b>${esc(r.name)}</b> — ${parts.join(" · ")}`;
   });
   const hero = rows[0] && rows[0].reviews7d > 0 ? `\n\nГерой недели: <b>${esc(rows[0].name)}</b> 🎉` : "";
-  return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${hero}\n\nНовая неделя — новые слова: /learn`;
+  const duelLine = duels.length ? `\n⚔️ Дуэли: ${duels.map((d) => `${esc(d.name)} ${d.points}`).join(" · ")}` : "";
+  return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${duelLine}${hero}\n\nНовая неделя — новые слова: /learn`;
 }
 
 export function doneText(reviewed: number, next: Date | undefined, timeZone: string): string {
@@ -239,5 +244,16 @@ export function welcomeText(): string {
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",
+    "/duel — в группе: дуэль, кто быстрее переведёт слова",
   ].join("\n");
+}
+
+export function duelRoundText(round: number, total: number, term: string): string {
+  return `⚔️ <b>Раунд ${round}/${total}</b>\n\nЧто значит <b>${esc(term)}</b>?\nКто первый ответит правильно — получает очко.`;
+}
+
+export function duelResultText(scores: Array<{ name: string; points: number }>): string {
+  if (scores.length === 0) return "⚔️ <b>Итоги дуэли</b>\n\nНикто не набрал очков — реванш? /duel";
+  const lines = scores.map((s, i) => `${MEDALS[i] ?? "•"} ${esc(s.name)} — ${s.points}`);
+  return `⚔️ <b>Итоги дуэли</b>\n\n${lines.join("\n")}\n\n🏆 Победитель: <b>${esc(scores[0].name)}</b>! Реванш — /duel`;
 }

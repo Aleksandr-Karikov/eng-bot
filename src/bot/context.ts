@@ -10,6 +10,7 @@ import type { VoiceStore } from "./voices";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
 import type { DraftStore } from "./drafts";
+import type { DuelStore } from "./duels";
 import type { DrillStore } from "./drills";
 import type { EditStore } from "./edits";
 import type { ExerciseStore } from "./exercises";
@@ -36,6 +37,7 @@ export interface Deps {
   speech: SpeechSynth;
   voices: VoiceStore;
   roomNames: RoomNameStore;
+  duels: DuelStore;
   now: () => Date;
   botUsername: string;
 }
