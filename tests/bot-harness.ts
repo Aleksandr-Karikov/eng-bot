@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import { BatchStore } from "../src/bot/batches";
 import { ChatHistory } from "../src/bot/history";
 import { PickerStore } from "../src/bot/pickers";
+import { RoomNameStore } from "../src/bot/room-names";
 import type { Update, UserFromGetMe } from "grammy/types";
 import type { BotContext } from "../src/bot/context";
 import { DraftStore } from "../src/bot/drafts";
@@ -73,7 +74,7 @@ export function botHarness(opts: {
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

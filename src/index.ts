@@ -8,6 +8,7 @@ import { EditStore } from "./bot/edits";
 import { ExerciseStore } from "./bot/exercises";
 import { ChatHistory } from "./bot/history";
 import { PickerStore } from "./bot/pickers";
+import { RoomNameStore } from "./bot/room-names";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
@@ -51,6 +52,7 @@ setupBot(bot, {
   drills: new DrillStore(),
   speech: new MacSaySynth(),
   voices: new VoiceStore(),
+  roomNames: new RoomNameStore(),
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);

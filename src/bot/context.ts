@@ -14,6 +14,7 @@ import type { EditStore } from "./edits";
 import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
 import type { PickerStore } from "./pickers";
+import type { RoomNameStore } from "./room-names";
 
 export type BotContext = Context & { user: User };
 
@@ -32,6 +33,7 @@ export interface Deps {
   drills: DrillStore;
   speech: SpeechSynth;
   voices: VoiceStore;
+  roomNames: RoomNameStore;
   now: () => Date;
   botUsername: string;
 }

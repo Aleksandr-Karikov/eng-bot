@@ -25,6 +25,8 @@ export type Cb =
   | { k: "delPage"; id: number; page: number }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
+  | { k: "roomDel"; roomId: number }
+  | { k: "roomDelOk"; roomId: number }
   | { k: "hour"; hour: number };
 
 const ANSWERS: Record<string, Answer> = { a: "again", h: "hard", g: "good", e: "easy" };
@@ -60,6 +62,8 @@ export function encodeCb(cb: Cb): string {
     case "delPage": return `xp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
+    case "roomDel": return `rx:${cb.roomId}`;
+    case "roomDelOk": return `rxo:${cb.roomId}`;
     case "hour": return `t:${cb.hour}`;
   }
 }
@@ -135,6 +139,11 @@ export function decodeCb(data: string): Cb | null {
     case "rm": {
       const action = a ? ROOM_ACTIONS[a as keyof typeof ROOM_ACTIONS] : undefined;
       return action ? { k: "room", action } : null;
+    }
+    case "rx":
+    case "rxo": {
+      const roomId = int(a);
+      return roomId === null ? null : tag === "rx" ? { k: "roomDel", roomId } : { k: "roomDelOk", roomId };
     }
     case "rs": {
       const roomId = int(a);

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { roomMembers, rooms, users, words, type Room, type User } from "../db/schema";
+import { cards, clozeSentences, reviewLogs, roomMembers, rooms, users, words, type Room, type User } from "../db/schema";
 import { createCards } from "./cards";
 import { getUser, updateUser } from "./users";
 
@@ -91,4 +91,27 @@ export async function linkGroup(
   if (room?.telegramChatId != null) return "room_has_group";
   await db.update(rooms).set({ telegramChatId: chatId }).where(eq(rooms.id, roomId));
   return "linked";
+}
+
+/**
+ * Удаляет комнату целиком: слова, карточки и историю повторений всех участников, предложения с пропуском.
+ * У кого она была текущей — переключает на другую их комнату (или ни на какую).
+ */
+export async function deleteRoom(db: Db, roomId: number): Promise<void> {
+  const wordIds = (await db.select({ id: words.id }).from(words).where(eq(words.roomId, roomId))).map((w) => w.id);
+  if (wordIds.length) {
+    const cardIds = (await db.select({ id: cards.id }).from(cards).where(inArray(cards.wordId, wordIds))).map((c) => c.id);
+    if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
+    await db.delete(clozeSentences).where(inArray(clozeSentences.wordId, wordIds));
+    await db.delete(cards).where(inArray(cards.wordId, wordIds));
+    await db.delete(words).where(eq(words.roomId, roomId));
+  }
+  const members = await listMembers(db, roomId);
+  await db.delete(roomMembers).where(eq(roomMembers.roomId, roomId));
+  await db.delete(rooms).where(eq(rooms.id, roomId));
+  for (const member of members) {
+    if (member.currentRoomId !== roomId) continue;
+    const [other] = await listUserRooms(db, member.id);
+    await updateUser(db, member.id, { currentRoomId: other?.id ?? null });
+  }
 }

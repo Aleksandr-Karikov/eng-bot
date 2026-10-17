@@ -1,20 +1,21 @@
 import type { Bot } from "grammy";
 import type { User } from "../../db/schema";
 import {
-  createRoom, findRoomByChat, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
+  createRoom, deleteRoom, findRoomByChat, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
 } from "../../services/rooms";
 import { getUser, updateUser } from "../../services/users";
+import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { HTML, inviteLink, type BotContext, type Deps } from "../context";
-import { roomKeyboard } from "../keyboards";
-import { esc, welcomeText } from "../texts";
+import { confirmRoomDeleteKeyboard, roomKeyboard } from "../keyboards";
+import { esc, plural, welcomeText } from "../texts";
 
 async function roomMenu(deps: Deps, user: User) {
   const rooms = await listUserRooms(deps.db, user.id);
   if (rooms.length === 0) {
     return {
       text: "У тебя пока нет комнат. Создай свою или попроси у друга ссылку-приглашение.",
-      kb: roomKeyboard([], false),
+      kb: roomKeyboard([]),
     };
   }
   const current = rooms.find((r) => r.id === user.currentRoomId) ?? rooms[0];
@@ -24,10 +25,18 @@ async function roomMenu(deps: Deps, user: User) {
     `Участники: ${members.map((m) => esc(m.firstName)).join(", ")}`,
     current.telegramChatId != null ? "🔗 Привязана к группе" : "",
   ].filter(Boolean).join("\n");
-  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), true) };
+  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
 }
 
-async function createDefaultRoom(ctx: BotContext, deps: Deps, name: string) {
+const MAX_ROOM_NAME = 64;
+
+async function askRoomName(ctx: BotContext, deps: Deps): Promise<void> {
+  if (!ctx.chat) return;
+  deps.roomNames.ask(ctx.user.id, ctx.chat.id);
+  await ctx.reply("Как назвать комнату? Пришли название ответом на это сообщение.", { reply_markup: { force_reply: true } });
+}
+
+async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
   const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now() });
   await ctx.reply(
     `🎉 Комната «${esc(room.name)}» создана и выбрана текущей.\nПришли друзьям ссылку: ${inviteLink(deps.botUsername, room)}`,
@@ -61,14 +70,16 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
 
   bot.command("newroom", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply("Создать комнату можно в личке со мной"));
-    await createDefaultRoom(ctx, deps, ctx.match.trim() || `Комната ${ctx.user.firstName}`);
+    const name = ctx.match.trim();
+    if (!name) return askRoomName(ctx, deps);
+    await createNamedRoom(ctx, deps, name.slice(0, MAX_ROOM_NAME));
   });
 
   bot.callbackQuery(/^rm:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     await ctx.answerCallbackQuery();
     if (cb?.k !== "room") return;
-    if (cb.action === "new") return createDefaultRoom(ctx, deps, `Комната ${ctx.user.firstName}`);
+    if (cb.action === "new") return askRoomName(ctx, deps);
     const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
     if (!room) return void (await ctx.reply("Сначала создай комнату: /newroom"));
     await ctx.reply(`Ссылка-приглашение в «${esc(room.name)}»:\n${inviteLink(deps.botUsername, room)}`, HTML);
@@ -83,6 +94,39 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.answerCallbackQuery({ text: "Комната переключена" });
     const { text, kb } = await roomMenu(deps, user);
     await ctx.editMessageText(text, { ...HTML, reply_markup: kb });
+  });
+
+  // Ответ с названием новой комнаты. Регистрируется раньше общего обработчика текста (иначе стал бы /add).
+  bot.on("message:text", async (ctx, next) => {
+    if (ctx.message.text.startsWith("/") || ctx.chat.type !== "private" || !deps.roomNames.take(ctx.user.id, ctx.chat.id)) {
+      return next();
+    }
+    await createNamedRoom(ctx, deps, ctx.message.text.trim().slice(0, MAX_ROOM_NAME));
+  });
+
+  bot.callbackQuery(/^rx:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const room = cb?.k === "roomDel" ? await getRoom(deps.db, cb.roomId) : undefined;
+    if (!room || room.createdBy !== ctx.user.id) {
+      return void (await ctx.answerCallbackQuery({ text: "Удалить комнату может только её создатель" }));
+    }
+    await ctx.answerCallbackQuery();
+    const [members, roomWords] = await Promise.all([listMembers(deps.db, room.id), listRoomWords(deps.db, room.id)]);
+    await ctx.reply(
+      `Удалить комнату «${esc(room.name)}» для всех? Пропадут ${roomWords.length} ${plural(roomWords.length, "слово", "слова", "слов")} и прогресс ${members.length} ${plural(members.length, "участника", "участников", "участников")}. Это не отменить.`,
+      { ...HTML, reply_markup: confirmRoomDeleteKeyboard(room.id) },
+    );
+  });
+
+  bot.callbackQuery(/^rxo:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const room = cb?.k === "roomDelOk" ? await getRoom(deps.db, cb.roomId) : undefined;
+    if (!room || room.createdBy !== ctx.user.id) {
+      return void (await ctx.answerCallbackQuery({ text: "Удалить комнату может только её создатель" }));
+    }
+    await deleteRoom(deps.db, room.id);
+    await ctx.answerCallbackQuery({ text: "Удалено" });
+    await ctx.editMessageText(`🗑 Комната «${esc(room.name)}» удалена. Твои комнаты — /room`, HTML);
   });
 
   bot.command("link", async (ctx) => {

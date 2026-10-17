@@ -88,12 +88,20 @@ export function batchKeyboard(batch: Batch): InlineKeyboard {
     .text("❌ Отмена", encodeCb({ k: "batch", id: batch.id, action: "cancel" }));
 }
 
-export function roomKeyboard(otherRooms: Room[], hasCurrent: boolean): InlineKeyboard {
+/** canDelete — текущую комнату может удалить только её создатель. */
+export function roomKeyboard(otherRooms: Room[], current?: Room, canDelete = false): InlineKeyboard {
   const kb = new InlineKeyboard();
-  if (hasCurrent) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
+  if (current) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
   kb.text("➕ Новая комната", encodeCb({ k: "room", action: "new" }));
   for (const room of otherRooms) kb.row().text(`→ ${room.name}`, encodeCb({ k: "roomsw", roomId: room.id }));
+  if (current && canDelete) kb.row().text("🗑 Удалить комнату", encodeCb({ k: "roomDel", roomId: current.id }));
   return kb;
+}
+
+export function confirmRoomDeleteKeyboard(roomId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🗑 Да, удалить", encodeCb({ k: "roomDelOk", roomId }))
+    .text("Отмена", encodeCb({ k: "delCancel" }));
 }
 
 const HOURS = [8, 9, 12, 18, 19, 20, 21, 22];
