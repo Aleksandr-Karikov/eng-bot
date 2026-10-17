@@ -1,4 +1,5 @@
-import type { Bot } from "grammy";
+import type { Bot, InputFile } from "grammy";
+import type { Message } from "grammy/types";
 import type { User } from "../../db/schema";
 import type { DrillQuestion } from "../../llm/tutor";
 import type { DrillState } from "../drills";
@@ -61,11 +62,17 @@ export function prefetchDrill(ctx: BotContext, deps: Deps): void {
  */
 export type PresentMode = "reply" | "replace";
 
-/** photo — file_id картинки: тогда сообщение — фото, а text идёт подписью. */
-export async function present(ctx: BotContext, text: string, options: object, mode: PresentMode, photo?: string): Promise<void> {
-  if (photo) await ctx.replyWithPhoto(photo, { ...options, caption: text });
-  else await ctx.reply(text, options);
+/** photo — file_id или файл картинки: тогда сообщение — фото, а text идёт подписью. Возвращает отправленное. */
+export async function present(
+  ctx: BotContext,
+  text: string,
+  options: object,
+  mode: PresentMode,
+  photo?: string | InputFile,
+): Promise<Message> {
+  const sent = photo ? await ctx.replyWithPhoto(photo, { ...options, caption: text }) : await ctx.reply(text, options);
   if (mode === "replace") await ctx.deleteMessage().catch(() => {});
+  return sent;
 }
 
 let questionSeq = 0;

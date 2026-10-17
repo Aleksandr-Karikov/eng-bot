@@ -7,6 +7,8 @@ export interface Config {
   mfluxBin?: string;
   /** Стиль картинок; не задан — по умолчанию (чернильный комикс). */
   imageStyle?: string;
+  /** Рисовать картинки заранее в фоне (если картинки включены). IMAGES_BACKGROUND=0 — только по кнопке. */
+  imagesBackground: boolean;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -19,5 +21,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     enrichTimeoutMs: Number(env.ENRICH_TIMEOUT_MS || 30_000),
     ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
+    imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
   };
 }

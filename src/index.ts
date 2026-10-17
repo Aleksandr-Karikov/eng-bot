@@ -16,6 +16,8 @@ import { ClaudeCodeEnricher } from "./llm/claude-code";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
 import { FluxSynth, ImageService } from "./images/images";
+import { BackgroundPainter, onAcPower } from "./images/painter";
+import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
@@ -37,6 +39,9 @@ const notifier = new Notifier(
 const now = () => new Date();
 
 const claude = new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs });
+const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined;
+const pictures = images ? new PictureStore("data/images") : undefined;
+const mnemonicGen = new MnemonicGenerator(db, claude);
 
 await bot.init();
 setupBot(bot, {
@@ -46,7 +51,7 @@ setupBot(bot, {
   enricher: claude,
   tutor: claude,
   clozeGen: new ClozeGenerator(db, claude, now),
-  mnemonicGen: new MnemonicGenerator(db, claude),
+  mnemonicGen,
   drafts: new DraftStore(),
   batches: new BatchStore(),
   pickers: new PickerStore(),
@@ -58,15 +63,21 @@ setupBot(bot, {
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
-  images: config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined,
+  images,
+  pictures,
   botUsername: bot.botInfo.username,
 });
 await bot.api.setMyCommands(COMMANDS);
 
 const stopReminders = startReminderLoop({ db, notifier, now });
+const stopPainter =
+  images && pictures && config.imagesBackground
+    ? new BackgroundPainter({ db, images, pictures, mnemonicGen, onPower: onAcPower }).start()
+    : () => {};
 
 const shutdown = () => {
   stopReminders();
+  stopPainter();
   void bot.stop();
 };
 process.once("SIGINT", shutdown);

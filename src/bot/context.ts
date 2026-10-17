@@ -2,6 +2,7 @@ import type { Context } from "grammy";
 import type { Db } from "../db/client";
 import type { Room, User } from "../db/schema";
 import type { ImageService } from "../images/images";
+import type { PictureStore } from "../images/store";
 import type { WordEnricher } from "../llm/enricher";
 import type { ExerciseTutor } from "../llm/tutor";
 import type { ClozeGenerator } from "../services/cloze-generator";
@@ -41,6 +42,8 @@ export interface Deps {
   duels: DuelStore;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
+  /** Картинки, нарисованные заранее в фоне, — до первой отправки. */
+  pictures?: PictureStore;
   now: () => Date;
   botUsername: string;
 }

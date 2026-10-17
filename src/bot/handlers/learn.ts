@@ -1,4 +1,4 @@
-import type { Bot, InlineKeyboard } from "grammy";
+import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
 import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
@@ -6,7 +6,7 @@ import { chooseStage, isExactAnswer, targetStage } from "../../services/exercise
 import { cardView } from "../../services/card-view";
 import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
-import { getWord } from "../../services/words";
+import { getWord, setImageFileId } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
@@ -72,7 +72,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
-  let photo: string | undefined;
+  let photo: string | InputFile | undefined;
+  let photoWordId: number | undefined;
   if (item) {
     const { card, word } = item;
     const modes = userModes(ctx);
@@ -89,7 +90,11 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
       const view = cardView(ctx.user);
       text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
       // Готовая картинка-ассоциация помогает вспомнить — показываем её сразу, текст карточки идёт подписью.
-      if (view.picture && word.imageFileId && text.length <= CAPTION_LIMIT) photo = word.imageFileId;
+      if (view.picture && text.length <= CAPTION_LIMIT) {
+        const painted = word.imageFileId ? undefined : deps.pictures?.find(word);
+        photo = word.imageFileId ?? (painted ? new InputFile(painted) : undefined);
+        if (painted) photoWordId = word.id;
+      }
       replyMarkup = rateKeyboard(
         card.id,
         card.reps,
@@ -104,7 +109,10 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
     sessionCounts.delete(ctx.user.id);
   }
-  await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
+  const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
+  // Картинка, нарисованная в фоне, ушла в Telegram впервые — дальше отправляем по file_id.
+  const best = "photo" in sent ? sent.photo?.at(-1) : undefined;
+  if (photoWordId !== undefined && best) await setImageFileId(deps.db, photoWordId, best.file_id);
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {

@@ -15,6 +15,10 @@ import type { CheckResult, Enrichment, ExtractedItem, WordEnricher } from "../sr
 import type { ExerciseTutor } from "../src/llm/tutor";
 import type { SpeechSynth } from "../src/speech/tts";
 import { ImageService, type ImageSynth } from "../src/images/images";
+import { PictureStore } from "../src/images/store";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { VoiceStore } from "../src/bot/voices";
 import { Notifier } from "../src/notifier";
 import { ClozeGenerator } from "../src/services/cloze-generator";
@@ -45,6 +49,8 @@ export function botHarness(opts: {
   duelRoundMs?: number;
   /** Рисовалка картинок; не задана — картинки выключены. */
   images?: ImageSynth;
+  /** Папка с картинками на диске (по умолчанию — временная, если картинки включены). */
+  pictures?: PictureStore;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
 } = {}) {
@@ -82,8 +88,9 @@ export function botHarness(opts: {
     drill: async () => [], mnemonic: async () => "", imagePrompt: async () => "",
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
+  const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), images: opts.images ? new ImageService(opts.images, tutor) : undefined, now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
@@ -94,6 +101,7 @@ export function botHarness(opts: {
     db,
     calls,
     clozeGen,
+    pictures,
     message(userId: number, text: string): Update {
       seq++;
       const command = text.startsWith("/") ? text.split(" ")[0] : undefined;

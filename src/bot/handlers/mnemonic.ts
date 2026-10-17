@@ -40,6 +40,14 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
       void ctx.answerCallbackQuery().catch(() => {});
       return void (await ctx.replyWithPhoto(word.imageFileId, { ...HTML, caption: pictureCaption(word.term, word.mnemonic), has_spoiler: true }));
     }
+    const painted = deps.pictures?.find(word);
+    if (painted) {
+      void ctx.answerCallbackQuery().catch(() => {});
+      const sent = await ctx.replyWithPhoto(new InputFile(painted), { ...HTML, caption: pictureCaption(word.term, word.mnemonic), has_spoiler: true });
+      const best = sent.photo.at(-1);
+      if (best) await setImageFileId(deps.db, word.id, best.file_id);
+      return;
+    }
     const queue = images.queued;
     await ctx.answerCallbackQuery({ text: queue ? `🖼 В очереди (${queue} до тебя), потом ~20 секунд` : "🖼 Рисую, это около 20 секунд…" });
     background(ctx, async () => {
