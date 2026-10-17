@@ -13,6 +13,20 @@ Telegram-бот для совместного заучивания англий�
 
 Проверить подсказки отдельно: `npx tsx scripts/try-enrich.ts serendipity`.
 
+## Постоянная работа на маке (launchd)
+
+```bash
+scripts/launchd/install.sh     # бот стартует при входе в систему и сам перезапускается при падении,
+                               # мак не засыпает, пока бот работает; бэкап базы каждый день в 04:00
+scripts/launchd/restart.sh     # перезапуск после обновления кода
+scripts/launchd/uninstall.sh   # убрать автозапуск
+tail -f data/logs/bot.log data/logs/bot.err.log
+```
+
+Не запускай `npm start` параллельно с launchd — будет ошибка 409 (два экземпляра бота).
+Бэкапы: `data/backups/` (14 последних), вручную — `scripts/backup.sh`.
+Восстановить: остановить бота (`uninstall.sh`), скопировать нужный бэкап в `data/eng-bot.sqlite`, снова `install.sh`.
+
 ## Разработка
 
 - `npm test` — тесты (SQLite in-memory)
