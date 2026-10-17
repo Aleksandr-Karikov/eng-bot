@@ -31,6 +31,9 @@ const userModes = (ctx: BotContext) => ({ en_ru: ctx.user.modeEnRu, ru_en: ctx.u
 /** Сколько карточек пользователь ответил в текущей сессии /learn. */
 const sessionCounts = new Map<number, number>();
 
+/** Лимит подписи к фото в Telegram. */
+const CAPTION_LIMIT = 1024;
+
 /** Вопрос «работы над ошибками» подмешивается после каждых DRILL_EVERY ответов. */
 const DRILL_EVERY = 5;
 
@@ -69,6 +72,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
+  let photo: string | undefined;
   if (item) {
     const { card, word } = item;
     const modes = userModes(ctx);
@@ -84,13 +88,15 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     } else {
       const view = cardView(ctx.user);
       text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
+      // Готовая картинка-ассоциация помогает вспомнить — показываем её сразу, текст карточки идёт подписью.
+      if (view.picture && word.imageFileId && text.length <= CAPTION_LIMIT) photo = word.imageFileId;
       replyMarkup = rateKeyboard(
         card.id,
         card.reps,
         card.state === State.New,
         word.id,
         stage === "en_ru" && view.audio,
-        Boolean(deps.images) && view.picture,
+        Boolean(deps.images) && view.picture && !photo,
       );
     }
   } else {
@@ -98,7 +104,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
     sessionCounts.delete(ctx.user.id);
   }
-  await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode);
+  await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
