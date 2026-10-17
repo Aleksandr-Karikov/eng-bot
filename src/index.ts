@@ -14,6 +14,7 @@ import { createDb } from "./db/client";
 import { ClaudeCodeEnricher } from "./llm/claude-code";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
+import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { startReminderLoop } from "./reminder-loop";
@@ -43,6 +44,7 @@ setupBot(bot, {
   enricher: claude,
   tutor: claude,
   clozeGen: new ClozeGenerator(db, claude, now),
+  mnemonicGen: new MnemonicGenerator(db, claude),
   drafts: new DraftStore(),
   batches: new BatchStore(),
   pickers: new PickerStore(),

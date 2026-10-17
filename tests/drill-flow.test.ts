@@ -23,7 +23,7 @@ const question = (n: number): DrillQuestion => ({
 });
 
 function harness(drill = vi.fn(async () => [question(1), question(2)])) {
-  const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill };
+  const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill, mnemonic: async () => "" };
   const h = botHarness({
     tutor,
     enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check: async () => checked },
@@ -63,7 +63,7 @@ describe("/check records mistakes for whoever made them", () => {
 
 describe("/check slips", () => {
   it("shows a typo fix but does not save it or claim it was saved", async () => {
-    const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [] };
+    const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonic: async () => "" };
     const h = botHarness({
       tutor,
       enricher: {

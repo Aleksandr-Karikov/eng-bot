@@ -16,6 +16,7 @@ import type { SpeechSynth } from "../src/speech/tts";
 import { VoiceStore } from "../src/bot/voices";
 import { Notifier } from "../src/notifier";
 import { ClozeGenerator } from "../src/services/cloze-generator";
+import { MnemonicGenerator } from "../src/services/hard-words";
 import { T0, testDb } from "./helpers";
 
 export interface ApiCall {
@@ -70,11 +71,11 @@ export function botHarness(opts: {
   const tutor: ExerciseTutor = opts.tutor ?? {
     cloze: async () => [1, 2, 3].map((i) => ({ sentence: `Sentence ${i} with ___.`, answer: "x", translation: `Перевод ${i}` })),
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
-    drill: async () => [],
+    drill: async () => [], mnemonic: async () => "",
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

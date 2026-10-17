@@ -3,6 +3,7 @@ import { State } from "ts-fsrs";
 import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
 import { chooseStage, isExactAnswer, targetStage } from "../../services/exercises";
+import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord } from "../../services/words";
 import { decodeCb } from "../callbacks";
@@ -46,11 +47,15 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
 
 const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
 
-/** Если карточка дорастает до «вставь по смыслу», заранее готовим предложения в фоне. */
-async function prefetchCloze(ctx: BotContext, deps: Deps, cardId: number): Promise<void> {
-  if (!ctx.user.modeCloze) return;
+/**
+ * После ответа на карточку: если она дорастает до «вставь по смыслу» — готовим предложения,
+ * если слово стало трудным — запоминалку. Всё в фоне.
+ */
+async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise<void> {
   const item = await getDueItemByCard(deps.db, ctx.user.id, cardId);
-  if (item && targetStage(item.card) === "cloze") void deps.clozeGen.ensure(item.word);
+  if (!item) return;
+  if (ctx.user.modeCloze && targetStage(item.card) === "cloze") void deps.clozeGen.ensure(item.word);
+  if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
 }
 
 async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
@@ -74,7 +79,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
       text = clozeText(sentence);
       replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
     } else {
-      text = stage === "ru_en" ? reverseCardText(word) : cardText(word);
+      const mnemonic = word.mnemonic && (await isHard(deps.db, card.id)) ? word.mnemonic : "";
+      text = stage === "ru_en" ? reverseCardText(word, mnemonic) : cardText(word, mnemonic);
       replyMarkup = rateKeyboard(card.id, card.reps, card.state === State.New, word.id, stage === "en_ru");
     }
   } else {
@@ -127,7 +133,7 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: 
     return false;
   }
   countAnswer(ctx.user.id);
-  await prefetchCloze(ctx, deps, pending.cardId);
+  await afterAnswer(ctx, deps, pending.cardId);
   return true;
 }
 
@@ -197,6 +203,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
     countAnswer(ctx.user.id);
+    await afterAnswer(ctx, deps, cb.cardId);
     await ctx.editMessageText(sentence ? clozeUnknownText(sentence) : draftText(item.word), {
       ...HTML,
       reply_markup: audioKeyboard(item.word.id),
@@ -247,7 +254,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     // Не ждём: «часики» снимаются параллельно с обновлением карточки — на одну задержку сети меньше.
     void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(ctx.user.id);
-    await prefetchCloze(ctx, deps, cb.cardId);
+    await afterAnswer(ctx, deps, cb.cardId);
     await showNext(ctx, deps, "replace");
   });
 

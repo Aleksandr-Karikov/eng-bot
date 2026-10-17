@@ -58,6 +58,8 @@ export const words = sqliteTable(
     /** Telegram file_id готовой озвучки — чтобы не синтезировать заново. */
     audioUkFileId: text("audio_uk_file_id"),
     audioUsFileId: text("audio_us_file_id"),
+    /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
+    mnemonic: text("mnemonic").notNull().default(""),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("words_room_term_idx").on(t.roomId, t.termNormalized)],

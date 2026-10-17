@@ -4,6 +4,7 @@ import type { Room, User } from "../db/schema";
 import type { WordEnricher } from "../llm/enricher";
 import type { ExerciseTutor } from "../llm/tutor";
 import type { ClozeGenerator } from "../services/cloze-generator";
+import type { MnemonicGenerator } from "../services/hard-words";
 import type { SpeechSynth } from "../speech/tts";
 import type { VoiceStore } from "./voices";
 import type { Notifier } from "../notifier";
@@ -23,6 +24,7 @@ export interface Deps {
   enricher: WordEnricher;
   tutor: ExerciseTutor;
   clozeGen: ClozeGenerator;
+  mnemonicGen: MnemonicGenerator;
   notifier: Notifier;
   drafts: DraftStore;
   batches: BatchStore;

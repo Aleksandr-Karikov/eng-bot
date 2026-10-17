@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `mnemonic` text DEFAULT '' NOT NULL;

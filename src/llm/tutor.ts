@@ -30,6 +30,8 @@ export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
   drill(profile: string, count: number): Promise<DrillQuestion[]>;
+  /** Короткая запоминалка (созвучие, образ, ассоциация) для слова, которое никак не запоминается. */
+  mnemonic(term: string, translation: string): Promise<string>;
 }
 
 export const CLOZE_COUNT = 3;
@@ -124,4 +126,22 @@ export function parseDrill(text: string): DrillQuestion[] {
     const r = drillQuestion.safeParse(entry);
     return r.success ? [r.data] : [];
   });
+}
+
+export function buildMnemonicPrompt(term: string, translation: string): string {
+  return [
+    `Русскоязычный человек никак не может запомнить английское "${term}" (значение: "${translation}").`,
+    "Придумай одну короткую запоминалку по-русски: созвучие с русским словом, яркий образ или ассоциацию,",
+    "которая связывает звучание или вид английского слова с его значением. 1–2 предложения, без пояснений «это мнемоника».",
+    'Верни JSON: {"mnemonic": "..."}',
+  ].join("\n");
+}
+
+const mnemonicSchema = z.object({ mnemonic: z.string().trim().min(1) });
+
+export function parseMnemonic(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  return mnemonicSchema.parse(JSON.parse(text.slice(start, end + 1))).mnemonic;
 }

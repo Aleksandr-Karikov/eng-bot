@@ -137,9 +137,8 @@ export async function updateWord(
     if (clash && clash.id !== word.id) return { status: "duplicate" };
   }
   // Предложения с пропуском писались под старое слово/значение — пересоздадутся позже.
-  if (termNormalized !== word.termNormalized || patch.translation.trim() !== word.translation.trim()) {
-    await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
-  }
+  const meaningChanged = termNormalized !== word.termNormalized || patch.translation.trim() !== word.translation.trim();
+  if (meaningChanged) await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
   const [updated] = await db
     .update(words)
     .set({
@@ -152,6 +151,8 @@ export async function updateWord(
       transcriptionUs: patch.transcriptionUs ?? word.transcriptionUs,
       // Озвучка относится к самому слову — при его изменении записывается заново.
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
+      // Запоминалка писалась под старое значение.
+      ...(meaningChanged ? { mnemonic: "" } : {}),
     })
     .where(eq(words.id, wordId))
     .returning();
@@ -160,4 +161,8 @@ export async function updateWord(
 
 export async function setAudioFileId(db: Db, wordId: number, accent: "uk" | "us", fileId: string): Promise<void> {
   await db.update(words).set(accent === "uk" ? { audioUkFileId: fileId } : { audioUsFileId: fileId }).where(eq(words.id, wordId));
+}
+
+export async function setMnemonic(db: Db, wordId: number, mnemonic: string): Promise<void> {
+  await db.update(words).set({ mnemonic }).where(eq(words.id, wordId));
 }
