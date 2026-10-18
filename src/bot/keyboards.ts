@@ -38,6 +38,8 @@ export function rateKeyboard(
   withAudio = false,
   withPicture = false,
   stage?: Stage,
+  /** На карточке уже картинка — можно перерисовать. */
+  withRedraw = false,
 ): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage }))
@@ -46,6 +48,7 @@ export function rateKeyboard(
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
   if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
+  if (withRedraw) kb.text("🔄 Перерисовать", encodeCb({ k: "redraw", wordId })).row();
   return kb
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
@@ -254,4 +257,20 @@ export function practiceClozeKeyboard(cardId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("🤷 Не знаю", encodeCb({ k: "practiceDunno", cardId }))
     .text("⏹ Хватит", encodeCb({ k: "practiceStop" }));
+}
+
+export function pictureKeyboard(wordId: number): InlineKeyboard {
+  return new InlineKeyboard().text("🔄 Перерисовать", encodeCb({ k: "redraw", wordId }));
+}
+
+export function redrawMenuKeyboard(wordId: number, styles: ReadonlyArray<{ label: string }>): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("🎲 Ещё вариант", encodeCb({ k: "redrawAs", wordId, how: "again" }))
+    .text("✍️ Свой вариант", encodeCb({ k: "redrawAs", wordId, how: "custom" }))
+    .row();
+  styles.forEach((s, i) => {
+    if (i > 0 && i % 3 === 0) kb.row();
+    kb.text(`🎨 ${s.label}`, encodeCb({ k: "redrawAs", wordId, how: i }));
+  });
+  return kb;
 }

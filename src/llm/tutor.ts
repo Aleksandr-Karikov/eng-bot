@@ -12,6 +12,8 @@ export interface ImageSubject {
   translation: string;
   explanation: string;
   example: string;
+  /** Пожелание ученика к картинке («✍️ Свой вариант»), любыми словами. */
+  wish?: string;
 }
 
 export interface Judgement {
@@ -181,6 +183,7 @@ export function buildImagePromptPrompt(word: ImageSubject): string {
     `Английское слово или фраза: "${word.term}" — ${word.translation}.`,
     word.explanation ? `Смысл: ${word.explanation}` : "",
     word.example ? `Пример: ${word.example}` : "",
+    word.wish ? `Ученик хочет такую картинку: «${word.wish}». Нарисуй именно это (переведи на английский), не теряя связи со смыслом слова.` : "",
     "Опиши одну сцену, которая наглядно показывает этот смысл, для генератора картинок: по-английски, 15–25 слов.",
     "Главное действие или предмет крупным планом, 1–2 персонажа или предмета, без второстепенного фона.",
     "Только сюжет, без указаний стиля (стиль добавится отдельно). Никакого текста, букв и надписей на картинке.",

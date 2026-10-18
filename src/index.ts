@@ -10,6 +10,7 @@ import { ExerciseStore } from "./bot/exercises";
 import { ChatHistory } from "./bot/history";
 import { PendingMistakesStore } from "./bot/pending-mistakes";
 import { PickerStore } from "./bot/pickers";
+import { PictureWishStore } from "./bot/picture-wishes";
 import { PracticeStore } from "./bot/practice";
 import { RoomNameStore } from "./bot/room-names";
 import { loadConfig } from "./config";
@@ -68,6 +69,7 @@ setupBot(bot, {
   pendingMistakes: new PendingMistakesStore(),
   random: Math.random,
   practice: new PracticeStore(),
+  pictureWishes: new PictureWishStore(),
   images,
   pictures,
   botUsername: bot.botInfo.username,

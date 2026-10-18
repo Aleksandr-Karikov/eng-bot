@@ -47,13 +47,22 @@ export class FluxSynth implements ImageSynth {
  * Картинки-ассоциации к словам: Claude превращает запоминалку в описание сцены, рисовалка — в картинку.
  * Рисуется строго по одной (две копии модели не поместятся в память), и не больше одного раза на слово одновременно.
  */
-/** Стиль по умолчанию — выбран по образцам: контрастный чернильный комикс с красным акцентом. */
-export const DEFAULT_IMAGE_STYLE = "black ink comic, bold lines, halftone shading, one accent color red, no text";
+/** Стили, которые сравнивали по образцам; первый — по умолчанию (контрастный чернильный комикс). */
+export const STYLE_PRESETS = [
+  { label: "Комикс", style: "black ink comic, bold lines, halftone shading, one accent color red, no text" },
+  { label: "Акварель", style: "watercolor storybook illustration, soft textured paper, gentle colors, no text" },
+  { label: "3D", style: "3d render, pixar style, soft studio lighting, cute characters, no text" },
+  { label: "Пластилин", style: "claymation, plasticine figures, handmade look, warm light, no text" },
+  { label: "Вектор", style: "flat vector illustration, minimal, soft pastel colors, clean shapes, no text" },
+  { label: "Набросок", style: "simple pencil sketch, hand-drawn doodle on notebook paper, no text" },
+] as const;
+
+export const DEFAULT_IMAGE_STYLE: string = STYLE_PRESETS[0].style;
 
 export class ImageService {
   private chain: Promise<unknown> = Promise.resolve();
   private waiting = 0;
-  private readonly inFlight = new Map<number, Promise<Buffer>>();
+  private readonly inFlight = new Map<string, Promise<Buffer>>();
 
   constructor(
     private readonly synth: ImageSynth,
@@ -67,14 +76,19 @@ export class ImageService {
     return this.waiting;
   }
 
-  drawWord(word: { id: number; term: string; translation: string; explanation: string; example: string }): Promise<Buffer> {
-    const running = this.inFlight.get(word.id);
+  /** opts.style — другой стиль, opts.wish — пожелание ученика к сцене (для «Перерисовать»). */
+  drawWord(
+    word: { id: number; term: string; translation: string; explanation: string; example: string },
+    opts: { style?: string; wish?: string } = {},
+  ): Promise<Buffer> {
+    const key = `${word.id}\n${opts.style ?? ""}\n${opts.wish ?? ""}`;
+    const running = this.inFlight.get(key);
     if (running) return running;
     const task = (async () => {
-      const prompt = await this.tutor.imagePrompt(word);
-      return this.enqueue(() => this.synth.draw(`${prompt}, ${this.style}`));
-    })().finally(() => this.inFlight.delete(word.id));
-    this.inFlight.set(word.id, task);
+      const prompt = await this.tutor.imagePrompt({ ...word, ...(opts.wish ? { wish: opts.wish } : {}) });
+      return this.enqueue(() => this.synth.draw(`${prompt}, ${opts.style ?? this.style}`));
+    })().finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, task);
     return task;
   }
 

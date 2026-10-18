@@ -14,4 +14,5 @@ export function clearPendingInputs(deps: Deps, userId: number): void {
   deps.edits.delete(userId);
   deps.exercises.delete(userId);
   deps.drafts.clearAwaiting(userId);
+  deps.pictureWishes.clear(userId);
 }

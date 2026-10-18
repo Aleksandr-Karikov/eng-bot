@@ -113,6 +113,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
         stage === "en_ru" && view.audio,
         Boolean(deps.images) && view.picture && !photo,
         stage,
+        Boolean(deps.images && photo),
       );
     }
   } else {

@@ -19,6 +19,7 @@ import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
 import type { PendingMistakesStore } from "./pending-mistakes";
 import type { PickerStore } from "./pickers";
+import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 
@@ -46,6 +47,7 @@ export interface Deps {
   /** Случайность выбора упражнения (Math.random; в тестах — подменяется). */
   random: () => number;
   practice: PracticeStore;
+  pictureWishes: PictureWishStore;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */
