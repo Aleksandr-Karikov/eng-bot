@@ -9,13 +9,40 @@ import { batchKeyboard, batchPageCount, batchUndoKeyboard } from "../keyboards";
 import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { downloadImage, ImageTooBigError, imageOf, type ImageRef } from "../files";
+import { findYoutubeUrl, YoutubeBlockedError, type Subtitles } from "../../youtube/subtitles";
 
 const USAGE =
   "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение или фото — разберу его.";
 
+/** Сколько субтитров отдавать Claude: примерно 15 минут речи — дальше слов и так наберётся сотня. */
+const MAX_SUBTITLE_CHARS = 15_000;
+
+async function startYoutube(ctx: BotContext, deps: Deps, url: string): Promise<void> {
+  if (!deps.youtube) return void (await ctx.reply("Ссылки на YouTube пока не разбираю — не установлен yt-dlp"));
+  await ctx.reply("🎬 Достаю субтитры…");
+  let subs: Subtitles | undefined;
+  try {
+    subs = await deps.youtube.fetch(url);
+  } catch (err) {
+    if (err instanceof YoutubeBlockedError) {
+      return void (await ctx.reply("YouTube не пустил бота — просит войти в аккаунт 😔 Пока можно скопировать субтитры и прислать текстом: /text …"));
+    }
+    console.error("Subtitles failed", url, err);
+    return void (await ctx.reply("Не получилось достать субтитры 😔 Проверь ссылку или попробуй позже"));
+  }
+  if (!subs) return void (await ctx.reply("У этого видео нет английских субтитров 🤷"));
+  const cut = subs.text.length > MAX_SUBTITLE_CHARS;
+  const text = subs.text.slice(0, MAX_SUBTITLE_CHARS);
+  await ctx.reply(`🎬 ${subs.title ? `«${esc(subs.title)}» — ` : ""}ищу слова${cut ? " (в первой четверти часа)" : ""}…`, HTML);
+  await offerExtracted(ctx, deps, () => deps.enricher.extract(text), "Не получилось разобрать субтитры 😔 Попробуй ещё раз чуть позже");
+}
+
 async function startText(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const text = input.trim();
   if (!text) return void (await ctx.reply(USAGE));
+  const url = findYoutubeUrl(text);
+  // Одна ссылка (возможно, с парой слов вокруг) — разбираем видео, а не текст сообщения.
+  if (url && text.length - url.length < 40) return startYoutube(ctx, deps, url);
   await offerExtracted(ctx, deps, () => deps.enricher.extract(text), "Не получилось разобрать текст 😔 Попробуй ещё раз чуть позже");
 }
 
@@ -103,6 +130,13 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
     const own = typeof ctx.match === "string" ? ctx.match.trim() : "";
     if (image) return background(ctx, () => startImage(ctx, deps, image, own));
     return background(ctx, () => startText(ctx, deps, commandInput(ctx)));
+  });
+
+  // В личке ссылку на YouTube можно прислать просто так. Раньше /add: иначе ссылка стала бы «словом».
+  bot.on("message:text", async (ctx, next) => {
+    const url = ctx.chat.type === "private" && !ctx.message.text.startsWith("/") ? findYoutubeUrl(ctx.message.text) : undefined;
+    if (!url || deps.talks.get(ctx.user.id)) return next();
+    background(ctx, () => startYoutube(ctx, deps, url));
   });
 
   // В личке картинку можно прислать просто так — как и текст.

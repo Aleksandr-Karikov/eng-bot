@@ -14,6 +14,7 @@ describe("loadConfig", () => {
       enrichTimeoutMs: 30_000,
       mnemonicModel: "sonnet",
       imagesBackground: false,
+      ytdlpBin: "tools/ytdlp/.venv/bin/yt-dlp",
     });
   });
 

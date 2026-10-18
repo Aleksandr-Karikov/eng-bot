@@ -24,6 +24,7 @@ import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 import type { TalkStore } from "./talks";
+import type { SubtitleSource } from "../youtube/subtitles";
 
 export type BotContext = Context & { user: User };
 
@@ -52,6 +53,8 @@ export interface Deps {
   practice: PracticeStore;
   pictureWishes: PictureWishStore;
   talks: TalkStore;
+  /** Субтитры YouTube для /text со ссылкой; undefined — yt-dlp не установлен. */
+  youtube?: SubtitleSource;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */

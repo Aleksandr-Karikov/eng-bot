@@ -1,3 +1,4 @@
+import type { SubtitleSource } from "../src/youtube/subtitles";
 import { CollocationGenerator } from "../src/services/collocations";
 import { TalkStore } from "../src/bot/talks";
 import { Bot } from "grammy";
@@ -60,6 +61,7 @@ export function botHarness(opts: {
   pictures?: PictureStore;
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
+  youtube?: SubtitleSource;
 } = {}) {
   const db = testDb();
   const calls: ApiCall[] = [];
@@ -99,7 +101,7 @@ export function botHarness(opts: {
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), youtube: opts.youtube, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });
