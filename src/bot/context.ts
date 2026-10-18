@@ -19,6 +19,7 @@ import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
 import type { PendingMistakesStore } from "./pending-mistakes";
 import type { PickerStore } from "./pickers";
+import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 
 export type BotContext = Context & { user: User };
@@ -44,6 +45,7 @@ export interface Deps {
   pendingMistakes: PendingMistakesStore;
   /** Случайность выбора упражнения (Math.random; в тестах — подменяется). */
   random: () => number;
+  practice: PracticeStore;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */

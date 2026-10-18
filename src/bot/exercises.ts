@@ -9,6 +9,8 @@ export interface PendingCloze {
   term: string;
   chatId: number;
   sentence: ClozeSentence;
+  /** Тренировка вне зачёта: ответ проверяется, но карточка не оценивается. */
+  practice?: boolean;
 }
 
 export class ExerciseStore {

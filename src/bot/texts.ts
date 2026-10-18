@@ -285,3 +285,10 @@ export function mnemonicText(term: string, mnemonic: string): string {
 export function pictureCaption(term: string, translation: string): string {
   return `🖼 <b>${esc(term)}</b> — <tg-spoiler>${esc(translation.slice(0, 900))}</tg-spoiler>`;
 }
+
+/** Шапка карточки тренировки вне зачёта. */
+export const PRACTICE_HEADER = "🔁 <i>Вне зачёта — на расписание повторений не влияет</i>\n\n";
+
+export function practiceDoneText(): string {
+  return "🔁 Тренировка закончена. Когда слова снова придут на повторение — сообщу 🔔";
+}

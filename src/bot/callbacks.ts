@@ -7,6 +7,10 @@ export type Cb =
   | { k: "show"; cardId: number; reps: number }
   | { k: "rate"; cardId: number; reps: number; answer: Answer; stage?: Stage }
   | { k: "learn" }
+  | { k: "practiceStart" }
+  | { k: "practiceRate"; cardId: number; remembered: boolean }
+  | { k: "practiceDunno"; cardId: number }
+  | { k: "practiceStop" }
   | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
@@ -53,6 +57,10 @@ export function encodeCb(cb: Cb): string {
     case "show": return `s:${cb.cardId}:${cb.reps}`;
     case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "learn": return "l";
+    case "practiceStart": return "px";
+    case "practiceRate": return `pr:${cb.cardId}:${cb.remembered ? "g" : "a"}`;
+    case "practiceDunno": return `pu:${cb.cardId}`;
+    case "practiceStop": return "pz";
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
@@ -105,6 +113,16 @@ export function decodeCb(data: string): Cb | null {
       return stage ? { k: "rate", cardId, reps, answer, stage } : { k: "rate", cardId, reps, answer };
     }
     case "l": return { k: "learn" };
+    case "px": return { k: "practiceStart" };
+    case "pz": return { k: "practiceStop" };
+    case "pr": {
+      const cardId = int(a);
+      return cardId !== null && (b === "g" || b === "a") ? { k: "practiceRate", cardId, remembered: b === "g" } : null;
+    }
+    case "pu": {
+      const cardId = int(a);
+      return cardId !== null ? { k: "practiceDunno", cardId } : null;
+    }
     case "dv": {
       const roundId = int(a), index = int(b);
       return roundId !== null && index !== null ? { k: "duel", roundId, index } : null;

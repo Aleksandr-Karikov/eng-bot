@@ -236,3 +236,22 @@ export function mistakesKeyboard(): InlineKeyboard {
 export function mnemonicKeyboard(wordId: number, hasPicture: boolean): InlineKeyboard {
   return new InlineKeyboard().text(hasPicture ? "🖼 Картинка" : "🖼 Нарисовать", encodeCb({ k: "picture", wordId }));
 }
+
+export function practiceStartKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("🔁 Потренироваться вне зачёта", encodeCb({ k: "practiceStart" }));
+}
+
+export function practiceKeyboard(cardId: number, wordId: number, withAudio: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("😵 Забыл", encodeCb({ k: "practiceRate", cardId, remembered: false }))
+    .text("😎 Помню", encodeCb({ k: "practiceRate", cardId, remembered: true }))
+    .row();
+  if (withAudio) addAudioRow(kb, wordId);
+  return kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" }));
+}
+
+export function practiceClozeKeyboard(cardId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🤷 Не знаю", encodeCb({ k: "practiceDunno", cardId }))
+    .text("⏹ Хватит", encodeCb({ k: "practiceStop" }));
+}

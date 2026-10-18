@@ -4,6 +4,7 @@ import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
 import { isExactAnswer, pickStage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
+import { practiceQueue } from "../../services/practice";
 import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
@@ -12,7 +13,14 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingCloze } from "../exercises";
 import { clearPendingInputs } from "../pending";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
-import { audioKeyboard, clozeKeyboard, rateKeyboard } from "../keyboards";
+import {
+  audioKeyboard,
+  clozeKeyboard,
+  practiceClozeKeyboard,
+  practiceKeyboard,
+  practiceStartKeyboard,
+  rateKeyboard,
+} from "../keyboards";
 import {
   cardText,
   clozeCorrectText,
@@ -22,6 +30,8 @@ import {
   clozeUnknownText,
   doneText,
   draftText,
+  PRACTICE_HEADER,
+  practiceDoneText,
   drillResultText,
   reverseCardText,
 } from "../texts";
@@ -108,12 +118,37 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
     text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
+    replyMarkup = practiceStartKeyboard();
     sessionCounts.delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
   // Картинка, нарисованная в фоне, ушла в Telegram впервые — дальше отправляем по file_id.
   const best = "photo" in sent ? sent.photo?.at(-1) : undefined;
   if (photoWordId !== undefined && best) await setImageFileId(deps.db, photoWordId, best.file_id);
+}
+
+/** Следующая карточка тренировки вне зачёта (ответы не оцениваются) или её итог. */
+async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
+  clearPendingInputs(deps, ctx.user.id);
+  for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
+  const cardId = deps.practice.next(ctx.user.id);
+  const item = cardId !== undefined ? await getDueItemByCard(deps.db, ctx.user.id, cardId) : undefined;
+  if (!item) {
+    deps.practice.stop(ctx.user.id);
+    return void (await present(ctx, practiceDoneText(), HTML, mode));
+  }
+  const { card, word } = item;
+  const modes = userModes(ctx);
+  const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
+  const stage = pickStage(card, modes, sentences.length > 0, deps.random);
+  const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;
+  if (sentence && ctx.chat) {
+    deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
+    return void (await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id) }, mode));
+  }
+  const view = cardView(ctx.user);
+  const text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
+  await present(ctx, PRACTICE_HEADER + text, { ...HTML, reply_markup: practiceKeyboard(card.id, word.id, stage !== "ru_en" && view.audio) }, mode);
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
@@ -166,10 +201,12 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: 
 /** Ответ на «вставь по смыслу»: точное совпадение — сразу, иначе судит Claude. */
 async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: string): Promise<void> {
   const s = pending.sentence;
+  // Вне зачёта: ответ проверяем, но карточку не оцениваем и продолжаем тренировку.
+  const continueAfter = () => (pending.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply"));
   if (isExactAnswer(answer, { answer: s.answer, term: pending.term })) {
-    if (!(await rate(ctx, deps, pending, "good"))) return;
+    if (!pending.practice && !(await rate(ctx, deps, pending, "good"))) return;
     await ctx.reply(clozeCorrectText(s), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
-    return showNext(ctx, deps, "reply");
+    return continueAfter();
   }
   await ctx.replyWithChatAction("typing");
   const word = await getWord(deps.db, pending.wordId);
@@ -184,15 +221,19 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
     });
   } catch (err) {
     console.error("Cloze judge failed", err);
+    if (pending.practice) {
+      await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}`, HTML);
+      return continueAfter();
+    }
     await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
       ...HTML,
       reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true, false, "cloze"),
     });
     return;
   }
-  if (!(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
+  if (!pending.practice && !(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
   await ctx.reply(clozeJudgedText(s, judgement), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
-  await showNext(ctx, deps, "reply");
+  await continueAfter();
 }
 
 export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
@@ -216,6 +257,34 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (next) return sendDrillQuestion(ctx, state, next, "reply");
     deps.drills.delete(ctx.user.id);
     await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn.");
+  });
+
+  bot.callbackQuery(/^px$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const queue = await practiceQueue(deps.db, ctx.user.id);
+    if (queue.length === 0) return void (await ctx.reply("Пока не на чем тренироваться — сначала поучи новые слова в /learn"));
+    deps.practice.start(ctx.user.id, queue);
+    await showPractice(ctx, deps, "reply");
+  });
+
+  bot.callbackQuery(/^pr:/, async (ctx) => {
+    void ctx.answerCallbackQuery().catch(() => {});
+    await showPractice(ctx, deps, "replace");
+  });
+
+  bot.callbackQuery(/^pu:/, async (ctx) => {
+    const pending = deps.exercises.get(ctx.user.id);
+    await ctx.answerCallbackQuery();
+    if (pending?.practice) await ctx.editMessageText(clozeUnknownText(pending.sentence), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
+    await showPractice(ctx, deps, "reply");
+  });
+
+  bot.callbackQuery(/^pz$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    deps.practice.stop(ctx.user.id);
+    clearPendingInputs(deps, ctx.user.id);
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    await ctx.reply(practiceDoneText());
   });
 
   bot.callbackQuery(/^u:/, async (ctx) => {
