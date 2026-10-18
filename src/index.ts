@@ -25,7 +25,7 @@ import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
-import { YtDlpSubtitles } from "./youtube/subtitles";
+import { TranscriptSubtitles } from "./youtube/subtitles";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
 import { startReminderLoop } from "./reminder-loop";
@@ -78,7 +78,7 @@ const deps: Deps = {
   practice: new PracticeStore(),
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
-  youtube: existsSync(config.ytdlpBin) ? new YtDlpSubtitles(config.ytdlpBin, config.ytdlpCookiesBrowser) : undefined,
+  youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
   images,
   pictures,
   botUsername: bot.botInfo.username,

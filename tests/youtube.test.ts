@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
-import { findYoutubeUrl, vttToText, YoutubeBlockedError, type SubtitleSource } from "../src/youtube/subtitles";
+import { findYoutubeUrl, youtubeVideoId, YoutubeBlockedError, type SubtitleSource } from "../src/youtube/subtitles";
 import { botHarness, lastButtons } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
@@ -14,20 +14,10 @@ describe("YouTube subtitles", () => {
     expect(findYoutubeUrl("https://example.com/watch?v=abc")).toBeUndefined();
   });
 
-  it("turns rolling auto-captions into plain text", () => {
-    const vtt = [
-      "WEBVTT",
-      "Kind: captions",
-      "Language: en",
-      "",
-      "00:00:00.000 --> 00:00:02.000 align:start position:0%",
-      "we've<00:00:00.500><c> reached</c><00:00:01.000><c> an</c> impasse",
-      "",
-      "00:00:02.000 --> 00:00:04.000",
-      "we've reached an impasse",
-      "so let&#39;s not beat around the bush &amp; talk",
-    ].join("\n");
-    expect(vttToText(vtt)).toBe("we've reached an impasse so let's not beat around the bush & talk");
+  it("takes the video id out of any link", () => {
+    expect(youtubeVideoId("https://youtu.be/arj7oStGLkU?t=3")).toBe("arj7oStGLkU");
+    expect(youtubeVideoId("https://www.youtube.com/watch?list=x&v=arj7oStGLkU")).toBe("arj7oStGLkU");
+    expect(youtubeVideoId("https://youtube.com/shorts/abcdefghijk")).toBe("abcdefghijk");
   });
 });
 
@@ -60,7 +50,7 @@ describe("🎬 a link in the bot", () => {
   it("explains when YouTube blocks the bot or there are no subtitles", async () => {
     const blocked = await setup({ fetch: async () => Promise.reject(new YoutubeBlockedError("Sign in")) });
     await blocked.h.bot.handleUpdate(blocked.h.message(100, "/text https://youtu.be/arj7oStGLkU"));
-    await vi.waitFor(() => expect(sent(blocked.h).some((t) => t.includes("YouTube не пустил"))).toBe(true));
+    await vi.waitFor(() => expect(sent(blocked.h).some((t) => t.includes("не отдаёт субтитры"))).toBe(true));
 
     const none = await setup({ fetch: async () => undefined });
     await none.h.bot.handleUpdate(none.h.message(100, "https://youtu.be/arj7oStGLkU"));

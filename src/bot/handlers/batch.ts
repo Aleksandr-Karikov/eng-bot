@@ -18,14 +18,14 @@ const USAGE =
 const MAX_SUBTITLE_CHARS = 15_000;
 
 async function startYoutube(ctx: BotContext, deps: Deps, url: string): Promise<void> {
-  if (!deps.youtube) return void (await ctx.reply("Ссылки на YouTube пока не разбираю — не установлен yt-dlp"));
+  if (!deps.youtube) return void (await ctx.reply("Ссылки на YouTube пока не разбираю — не установлен youtube-transcript-api"));
   await ctx.reply("🎬 Достаю субтитры…");
   let subs: Subtitles | undefined;
   try {
     subs = await deps.youtube.fetch(url);
   } catch (err) {
     if (err instanceof YoutubeBlockedError) {
-      return void (await ctx.reply("YouTube не пустил бота — просит войти в аккаунт 😔 Пока можно скопировать субтитры и прислать текстом: /text …"));
+      return void (await ctx.reply("YouTube сейчас не отдаёт субтитры боту 😔 Попробуй позже или скопируй расшифровку и пришли текстом: /text …"));
     }
     console.error("Subtitles failed", url, err);
     return void (await ctx.reply("Не получилось достать субтитры 😔 Проверь ссылку или попробуй позже"));

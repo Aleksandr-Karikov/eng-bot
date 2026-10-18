@@ -11,10 +11,8 @@ export interface Config {
   imageStyle?: string;
   /** Рисовать картинки заранее в фоне (если картинки включены). IMAGES_BACKGROUND=0 — только по кнопке. */
   imagesBackground: boolean;
-  /** Путь к yt-dlp для субтитров YouTube; нет файла — ссылки на YouTube не разбираются. */
-  ytdlpBin: string;
-  /** Браузер, из которого yt-dlp возьмёт вход в YouTube (YTDLP_COOKIES_BROWSER=safari), если без него не пускают. */
-  ytdlpCookiesBrowser?: string;
+  /** Python с youtube-transcript-api для субтитров YouTube; нет файла — ссылки на YouTube не разбираются. */
+  youtubePython: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -29,7 +27,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
     imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
-    ytdlpBin: env.YTDLP_BIN || "tools/ytdlp/.venv/bin/yt-dlp",
-    ...(env.YTDLP_COOKIES_BROWSER ? { ytdlpCookiesBrowser: env.YTDLP_COOKIES_BROWSER } : {}),
+    youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
   };
 }
