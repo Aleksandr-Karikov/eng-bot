@@ -69,6 +69,10 @@ export function reminderText(n: number, friend?: { name: string; reviews: number
   return friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
 }
 
+export function dueNoticeText(n: number): string {
+  return `🔔 Снова появились слова для повторения: ${n} ${plural(n, "слово", "слова", "слов")}. Самое время!`;
+}
+
 const MEDALS = ["🥇", "🥈", "🥉"];
 
 export function digestText(

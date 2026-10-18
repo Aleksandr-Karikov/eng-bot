@@ -20,6 +20,9 @@ export const users = sqliteTable("users", {
   modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
+  /** Уведомлять, когда снова накопились слова к повторению. */
+  notifyDue: integer("notify_due", { mode: "boolean" }).notNull().default(true),
+  lastDueNoticeAt: integer("last_due_notice_at", { mode: "timestamp_ms" }),
   createdAt: createdAt(),
 });
 

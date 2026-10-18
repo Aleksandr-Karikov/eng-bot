@@ -12,6 +12,7 @@ export type Cb =
   | { k: "mode"; stage: Stage }
   | { k: "drillPick"; qid: number; index: number }
   | { k: "drillMode" }
+  | { k: "notifyDue" }
   | { k: "cardPart"; part: CardPart }
   | { k: "mistakesClear" }
   | { k: "mistakesSave"; id: number; save: boolean }
@@ -57,6 +58,7 @@ export function encodeCb(cb: Cb): string {
     case "mode": return `m:${cb.stage}`;
     case "drillPick": return `q:${cb.qid}:${cb.index}`;
     case "drillMode": return "md";
+    case "notifyDue": return "nd";
     case "cardPart": return `cv:${cb.part}`;
     case "mistakesClear": return "mz";
     case "mistakesSave": return `mk:${cb.id}:${cb.save ? "y" : "n"}`;
@@ -116,6 +118,7 @@ export function decodeCb(data: string): Cb | null {
       return qid !== null && index !== null ? { k: "drillPick", qid, index } : null;
     }
     case "md": return { k: "drillMode" };
+    case "nd": return { k: "notifyDue" };
     case "cv": return (CARD_PARTS as readonly string[]).includes(a ?? "") ? { k: "cardPart", part: a as CardPart } : null;
     case "mz": return { k: "mistakesClear" };
     case "mk": {

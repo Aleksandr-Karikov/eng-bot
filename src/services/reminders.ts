@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs, users, type User } from "../db/schema";
 import { localParts } from "../time";
@@ -59,4 +59,43 @@ export async function friendToday(db: Db, user: User, today: string, now: Date):
     if (reviews > 0 && reviews > (best?.reviews ?? 0)) best = { name: friend.firstName, reviews };
   }
   return best;
+}
+
+/** «Слова снова появились»: не меньше MIN_DUE слов, не чаще раза в NOTICE_EVERY_MS, днём и не сразу после занятия. */
+const MIN_DUE = 5;
+const NOTICE_EVERY_MS = 3 * 60 * 60_000;
+const QUIET_AFTER_STUDY_MS = 60 * 60_000;
+const DAY_FROM = "09:00";
+const DAY_TO = "22:00";
+
+export interface DueNotice {
+  user: User;
+  dueCount: number;
+}
+
+export async function collectDueNotices(db: Db, now: Date): Promise<DueNotice[]> {
+  const candidates = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.canDm, true), eq(users.notifyDue, true)));
+  const notices: DueNotice[] = [];
+  for (const user of candidates) {
+    const { time } = localParts(user.timezone, now);
+    if (time < DAY_FROM || time >= DAY_TO) continue;
+    if (user.lastDueNoticeAt && now.getTime() - user.lastDueNoticeAt.getTime() < NOTICE_EVERY_MS) continue;
+    const [last] = await db
+      .select({ at: reviewLogs.reviewedAt })
+      .from(reviewLogs)
+      .where(eq(reviewLogs.userId, user.id))
+      .orderBy(desc(reviewLogs.reviewedAt))
+      .limit(1);
+    if (last && now.getTime() - last.at.getTime() < QUIET_AFTER_STUDY_MS) continue;
+    const dueCount = await countDue(db, user.id, now);
+    if (dueCount >= MIN_DUE) notices.push({ user, dueCount });
+  }
+  return notices;
+}
+
+export async function markDueNotice(db: Db, userId: number, now: Date): Promise<void> {
+  await updateUser(db, userId, { lastDueNoticeAt: now });
 }

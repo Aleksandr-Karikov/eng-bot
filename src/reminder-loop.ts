@@ -1,12 +1,12 @@
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
-import { digestText, reminderText, wordOfDayText } from "./bot/texts";
+import { digestText, dueNoticeText, reminderText, wordOfDayText } from "./bot/texts";
 import { collectWordsOfDay } from "./services/word-of-day";
 import { collectDigests } from "./services/digest";
 import { listMembers } from "./services/rooms";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
-import { collectReminders, markReminded } from "./services/reminders";
+import { collectDueNotices, collectReminders, markDueNotice, markReminded } from "./services/reminders";
 
 export interface ReminderDeps {
   db: Db;
@@ -21,6 +21,8 @@ export async function sendReminders(deps: ReminderDeps): Promise<number> {
     try {
       if (await deps.notifier.dm(user, reminderText(dueCount, friend), { ...HTML, reply_markup: learnKeyboard() })) {
         await markReminded(deps.db, user.id, date);
+        // Ежедневное напоминание тоже считается уведомлением — чтобы «слова появились» не пришло следом.
+        await markDueNotice(deps.db, user.id, deps.now());
         sent++;
       }
     } catch (err) {
@@ -34,6 +36,22 @@ export interface DigestDeps {
   db: Db;
   notifier: Pick<Notifier, "dm" | "group">;
   now: () => Date;
+}
+
+/** «Снова появились слова» — между ежедневными напоминаниями. Возвращает число доставленных. */
+export async function sendDueNotices(deps: ReminderDeps): Promise<number> {
+  let sent = 0;
+  for (const { user, dueCount } of await collectDueNotices(deps.db, deps.now())) {
+    try {
+      if (await deps.notifier.dm(user, dueNoticeText(dueCount), { ...HTML, reply_markup: learnKeyboard() })) {
+        await markDueNotice(deps.db, user.id, deps.now());
+        sent++;
+      }
+    } catch (err) {
+      console.error("Due notice failed, will retry", user.telegramId, err);
+    }
+  }
+  return sent;
 }
 
 /** Еженедельный дайджест: в привязанную группу, а если её нет — каждому участнику в личку. */
@@ -65,6 +83,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
     running = true;
     try {
       await sendReminders(deps);
+      await sendDueNotices(deps);
       await sendDigests(deps);
       await sendWordsOfDay(deps);
     } catch (err) {
