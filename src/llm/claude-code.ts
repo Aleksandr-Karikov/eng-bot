@@ -87,8 +87,8 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000)));
   }
 
-  async drill(profile: string, count: number): Promise<DrillQuestion[]> {
-    return parseDrill(await this.ask(buildDrillPrompt(profile, count), Math.max(this.opts.timeoutMs, 60_000)));
+  async drill(profile: string, count: number, avoid: string[] = []): Promise<DrillQuestion[]> {
+    return parseDrill(await this.ask(buildDrillPrompt(profile, count, avoid), Math.max(this.opts.timeoutMs, 60_000)));
   }
 
   /** Запоминалки — более сильной моделью (по умолчанию sonnet): придумывать ассоциации Haiku умеет плохо. */

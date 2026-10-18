@@ -117,6 +117,17 @@ export const mistakes = sqliteTable("mistakes", {
   wrong: text("wrong").notNull(),
   right: text("right").notNull(),
   createdAt: createdAt(),
+  /** Тема отработана в «работе над ошибками» (верные ответы подряд) — больше не предлагается. */
+  resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+});
+
+/** Ответы на вопросы «работы над ошибками» — по ним тема считается отработанной. */
+export const drillAnswers = sqliteTable("drill_answers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  category: text("category").notNull(),
+  correct: integer("correct", { mode: "boolean" }).notNull(),
+  createdAt: createdAt(),
 });
 
 /** Очко дуэли: кто первым правильно ответил в раунде. Одна строка на выигранный раунд. */

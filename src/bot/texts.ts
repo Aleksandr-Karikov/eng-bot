@@ -1,7 +1,7 @@
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { DrillQuestion, Judgement, LeechHelp, SentenceReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
-import type { MistakeProfile } from "../services/mistakes";
+import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
@@ -202,10 +202,17 @@ export function drillQuestionText(q: DrillQuestion): string {
   return `🧠 Работа над ошибками${topic}\n\n${esc(q.question)}\n\nВыбери вариант:`;
 }
 
-export function drillResultText(q: DrillQuestion, chosen: number): string {
+export function drillResultText(q: DrillQuestion, chosen: number, progress?: DrillProgress): string {
   const verdict = chosen === q.correct ? "✅ Верно!" : `❌ Ты выбрал «${esc(q.options[chosen] ?? "")}»`;
   const filled = esc(q.question).replace("___", `<b>${esc(q.options[q.correct])}</b>`);
-  return [verdict, filled, q.explanation ? esc(q.explanation) : ""].filter(Boolean).join("\n\n");
+  return [verdict, filled, q.explanation ? esc(q.explanation) : "", progress ? drillProgressText(progress) : ""].filter(Boolean).join("\n\n");
+}
+
+function drillProgressText(p: DrillProgress): string {
+  const topic = `«${esc(p.category)}»`;
+  if (p.resolved) return `🎉 Тема ${topic} отработана — больше её не предлагаю. Новая ошибка в ней из /check вернёт тему.`;
+  if (p.streak === 0) return `🧠 Тема ${topic}: счёт заново — нужно ${RESOLVE_STREAK} верных ответа подряд.`;
+  return `🧠 Тема ${topic}: ${p.streak}/${RESOLVE_STREAK} верных подряд.`;
 }
 
 const topicsOf = (categories: string[]) => [...new Set(categories.map((c) => c.trim()).filter(Boolean))].map(esc).join(", ");
@@ -226,13 +233,22 @@ export function mistakesNotSavedText(name: string, botUsername: string): string 
   return `🧠 ${esc(name)} ещё не пользуется ботом — ошибки не сохранены. Открой https://t.me/${botUsername} и нажми Start, чтобы бот собирал частые ошибки и подбирал по ним упражнения.`;
 }
 
-export function mistakesText(p: MistakeProfile): string {
-  if (p.total === 0) return "🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение на английском.";
+export function mistakesText(p: MistakeProfile, resolved: Map<string, number> = new Map()): string {
+  const done = resolved.size ? `✅ Отработано: ${[...resolved.keys()].map(esc).join(", ")}` : "";
+  if (p.total === 0) {
+    return done ? `🎉 Все темы отработаны!\n\n${done}` : "🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение на английском.";
+  }
   const lines = p.categories.map((c) => {
     const example = c.examples[0] ? ` — <s>${esc(c.examples[0].wrong)}</s> → ${esc(c.examples[0].right)}` : "";
     return `• ${esc(c.category)} ×${c.count}${example}`;
   });
-  return [`🧠 Твои частые ошибки (последние ${p.total}):`, ...lines, "", "По ним бот подбирает вопросы в /learn и /drill."].join("\n");
+  return [
+    `🧠 Над чем работаем (ошибок: ${p.total}):`,
+    ...lines,
+    ...(done ? ["", done] : []),
+    "",
+    `По ним бот подбирает вопросы в /learn и /drill. Тема закрывается после ${RESOLVE_STREAK} верных ответов подряд.`,
+  ].join("\n");
 }
 
 export function settingsText(user: User): string {

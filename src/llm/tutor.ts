@@ -93,7 +93,8 @@ export interface ExerciseTutor {
   story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft>;
   /** Проверяет предложение, которое ученик составил сам: употреблено ли слово и какие ошибки вокруг. */
   reviewSentence(input: SentenceInput): Promise<SentenceReview>;
-  drill(profile: string, count: number): Promise<DrillQuestion[]>;
+  /** avoid — недавно заданные вопросы: новые не должны их повторять. */
+  drill(profile: string, count: number, avoid?: string[]): Promise<DrillQuestion[]>;
   /** Запоминалки для слов (по порядку; "" — не вышло): образ, разбор по частям, связь или сценка — что подходит. */
   mnemonics(items: MnemonicItem[]): Promise<string[]>;
   /** Короткое английское описание сцены, показывающей смысл слова, — для рисовалки картинок. */
@@ -286,7 +287,7 @@ export function parseJudgement(text: string): Judgement {
   return judgement.parse(JSON.parse(text.slice(start, end + 1)));
 }
 
-export function buildDrillPrompt(profile: string, count: number): string {
+export function buildDrillPrompt(profile: string, count: number, avoid: string[] = []): string {
   return [
     "Русскоязычный человек учит английский. Вот его типичные ошибки (тема ×сколько раз: как было → как правильно):",
     profile,
@@ -296,7 +297,10 @@ export function buildDrillPrompt(profile: string, count: number): string {
     "Не повторяй его примеры дословно — нужны новые предложения на то же правило.",
     'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "..."}], где',
     "correct — индекс верного варианта (с нуля), explanation — 1–2 предложения по-русски: правило и почему остальные не подходят,",
-    "category — тема из списка выше.",
+    "category — тема из списка выше, слово в слово.",
+    ...(avoid.length
+      ? ["", "Эти вопросы уже задавались — не повторяй их и не делай почти такие же (другие слова, другая ситуация):", ...avoid.map((q) => `- ${q}`)]
+      : []),
   ].join("\n");
 }
 

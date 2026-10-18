@@ -3,7 +3,7 @@ import type { Message } from "grammy/types";
 import type { User } from "../../db/schema";
 import type { DrillQuestion } from "../../llm/tutor";
 import type { DrillState } from "../drills";
-import { clearMistakes, mistakeProfile, recentMistakes } from "../../services/mistakes";
+import { clearMistakes, mistakeProfile, recentMistakes, resolvedTopics } from "../../services/mistakes";
 import { HTML, type BotContext, type Deps } from "../context";
 import { drillKeyboard, mistakesKeyboard } from "../keyboards";
 import { drillQuestionText, mistakesText } from "../texts";
@@ -12,10 +12,18 @@ import { drillQuestionText, mistakesText } from "../texts";
 export const MIN_MISTAKES = 1;
 const QUESTIONS_PER_BATCH = 3;
 
+/** Сколько последних заданных вопросов помнить, чтобы Claude не повторял их. */
+const ASKED_MEMORY = 30;
+const askedByUser = new Map<number, string[]>();
+
+export function rememberAsked(userId: number, question: string): void {
+  askedByUser.set(userId, [...(askedByUser.get(userId) ?? []), question].slice(-ASKED_MEMORY));
+}
+
 export async function prepareDrill(deps: Deps, user: User): Promise<DrillQuestion[]> {
   const profile = mistakeProfile(await recentMistakes(deps.db, user.id, deps.now()));
   if (profile.total < MIN_MISTAKES) return [];
-  return deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH);
+  return deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH, askedByUser.get(user.id) ?? []);
 }
 
 const RETRY_AFTER_MS = 10 * 60_000;
@@ -81,13 +89,15 @@ let questionSeq = 0;
 export async function sendDrillQuestion(ctx: BotContext, state: DrillState, q: DrillQuestion, mode: PresentMode): Promise<void> {
   state.current = q;
   state.currentId = ++questionSeq;
+  rememberAsked(ctx.user.id, q.question);
   await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q, state.currentId) }, mode);
 }
 
 export function registerMistakes(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("mistakes", async (ctx) => {
     const profile = mistakeProfile(await recentMistakes(deps.db, ctx.user.id, deps.now()));
-    await ctx.reply(mistakesText(profile), { ...HTML, reply_markup: profile.total ? mistakesKeyboard() : undefined });
+    const resolved = await resolvedTopics(deps.db, ctx.user.id, deps.now());
+    await ctx.reply(mistakesText(profile, resolved), { ...HTML, reply_markup: profile.total ? mistakesKeyboard() : undefined });
   });
 
   bot.callbackQuery(/^mz$/, async (ctx) => {

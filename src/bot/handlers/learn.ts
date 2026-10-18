@@ -5,6 +5,7 @@ import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
+import { recordDrillAnswer } from "../../services/mistakes";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
@@ -102,6 +103,8 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
   await sendDrillQuestion(ctx, state, q, mode);
   return true;
 }
+
+const sameTopic = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
 
@@ -375,12 +378,15 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     state.current = undefined;
     state.currentId = undefined;
     void ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" }).catch(() => {});
-    await ctx.editMessageText(drillResultText(q, cb.index), HTML);
+    const progress = await recordDrillAnswer(deps.db, ctx.user.id, q.category, cb.index === q.correct, deps.now());
+    // Отработанная тема: уже готовые вопросы по ней больше не показываем.
+    if (progress?.resolved) state.questions = state.questions.filter((other) => !sameTopic(other.category, progress.category));
+    await ctx.editMessageText(drillResultText(q, cb.index, progress), HTML);
     if (!state.standalone) return showNext(ctx, deps, "reply");
     const next = state.questions.shift();
     if (next) return sendDrillQuestion(ctx, state, next, "reply");
     deps.drills.delete(ctx.user.id);
-    await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn.");
+    await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn. Что уже отработано — /mistakes.");
   });
 
   bot.callbackQuery(/^px$/, async (ctx) => {
