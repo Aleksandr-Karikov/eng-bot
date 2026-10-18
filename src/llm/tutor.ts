@@ -32,6 +32,18 @@ export interface JudgeInput {
   answer: string;
 }
 
+/** Разбор слова, которое никак не запоминается. */
+export interface LeechHelp {
+  /** Почему именно это слово путается или забывается (1–2 предложения). */
+  why: string;
+  /** Чем отличается от похожих слов или значений — по строке на каждое, «word — смысл». */
+  contrast: string[];
+  /** 2 коротких запоминающихся примера «англ. — рус.». */
+  examples: string[];
+  /** Другой способ запомнить — не повторяющий запоминалку. */
+  tip: string;
+}
+
 export interface StoryQuestion {
   question: string;
   options: string[];
@@ -75,6 +87,8 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Разбор слова, которое ученик забыл много раз. */
+  untangle(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): Promise<LeechHelp>;
   /** Короткая история с этими словами и вопросы на понимание. */
   story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft>;
   /** Проверяет предложение, которое ученик составил сам: употреблено ли слово и какие ошибки вокруг. */
@@ -179,6 +193,41 @@ export function parseSentenceReview(text: string): SentenceReview {
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
   const { uses_word, ...rest } = sentenceReview.parse(JSON.parse(text.slice(start, end + 1)));
   return { ...rest, usesWord: uses_word };
+}
+
+export function buildUntanglePrompt(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): string {
+  return [
+    `Русскоязычный человек учит английское "${word.term}" — ${word.translation} и уже много раз его забыл.`,
+    word.explanation ? `Объяснение, которое он видел: ${word.explanation}` : "",
+    word.example ? `Пример, который он видел: ${word.example}` : "",
+    word.mnemonic ? `Запоминалка, которая не помогла: ${word.mnemonic}` : "",
+    "",
+    "Помоги разобраться по-новому, не повторяя то, что он уже видел:",
+    "why — 1–2 предложения: почему это слово легко путается или забывается (похоже на другое слово, несколько значений, нет прямого русского аналога, фраза длинная…);",
+    "contrast — 1–3 строки «слово — чем отличается», если есть похожие слова или значения, с которыми его путают (иначе пустой массив);",
+    "examples — 2 коротких ярких примера из жизни в формате «English sentence — перевод», слово в них выдели **так**;",
+    "tip — другой способ запомнить: связь с известным словом, корнем, жестом или ситуацией (1–2 предложения).",
+    "Пиши просто и коротко, по-русски (кроме английских примеров).",
+    'Верни JSON: {"why": "...", "contrast": ["..."], "examples": ["...", "..."], "tip": "..."}',
+  ]
+    .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+    .join("\n");
+}
+
+const leechHelpSchema = z.object({
+  why: z.string().trim().default(""),
+  contrast: z.array(z.string().trim().min(1)).default([]),
+  examples: z.array(z.string().trim().min(1)).default([]),
+  tip: z.string().trim().default(""),
+});
+
+export function parseLeechHelp(text: string): LeechHelp {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  const help = leechHelpSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  if (!help.why && help.examples.length === 0) throw new Error("Empty leech help");
+  return help;
 }
 
 export const STORY_QUESTIONS = 3;

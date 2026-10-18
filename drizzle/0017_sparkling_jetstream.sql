@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `leech_help` text DEFAULT '' NOT NULL;

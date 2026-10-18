@@ -5,12 +5,12 @@ import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
-import { isHard } from "../../services/hard-words";
+import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
-import { mistakesAskKeyboard } from "../keyboards";
+import { leechKeyboard, mistakesAskKeyboard } from "../keyboards";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
@@ -38,6 +38,7 @@ import {
   drillResultText,
   reverseCardText,
   dictationText,
+  leechText,
   LISTEN_TASK_TEXT,
   mistakesAskText,
   sentenceReviewText,
@@ -104,9 +105,12 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
 
 const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
 
+/** Разбор трудного слова, который покажем перед следующей карточкой. */
+const leechNotices = new Map<number, { wordId: number; forgot: number }>();
+
 /**
  * После ответа на карточку: если она дорастает до «вставь по смыслу» — готовим предложения,
- * если слово стало трудным — запоминалку. Всё в фоне.
+ * если слово стало трудным — запоминалку, а на каждом 4-м «Забыл» — разбор слова (его готовим заранее, на 3-м).
  */
 async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise<void> {
   const item = await getDueItemByCard(deps.db, ctx.user.id, cardId);
@@ -114,12 +118,33 @@ async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise
   // Предложения для «вставь по смыслу» готовим заранее — оно может выпасть на любом следующем показе.
   if (ctx.user.modeCloze) void deps.clozeGen.ensure(item.word);
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
+  const leech = await leechMoment(deps.db, cardId);
+  if (leech.prefetch) void deps.mnemonicGen.help(item.word.id);
+  if (leech.show) leechNotices.set(ctx.user.id, { wordId: item.word.id, forgot: leech.forgot });
+}
+
+/** Показывает отложенный разбор трудного слова. true — сообщение отправлено. */
+async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
+  const notice = leechNotices.get(ctx.user.id);
+  if (!notice) return false;
+  leechNotices.delete(ctx.user.id);
+  await ctx.replyWithChatAction("typing").catch(() => {});
+  const help = await deps.mnemonicGen.help(notice.wordId);
+  const word = help ? await getWord(deps.db, notice.wordId) : undefined;
+  if (!help || !word) return false;
+  await ctx.reply(leechText(word, help, notice.forgot), { ...HTML, reply_markup: leechKeyboard(word.id, Boolean(deps.images)) });
+  return true;
 }
 
 async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   clearPendingInputs(deps, ctx.user.id);
+  // Разбор встал после прошлой карточки — следующую присылаем новым сообщением под ним, а у прошлой убираем кнопки.
+  if ((await flushLeech(ctx, deps)) && mode === "replace") {
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    mode = "reply";
+  }
   if (await maybeDrill(ctx, deps, mode)) return;
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
   let text: string;

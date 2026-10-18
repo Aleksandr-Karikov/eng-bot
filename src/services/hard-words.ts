@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs } from "../db/schema";
-import type { ExerciseTutor } from "../llm/tutor";
-import { getWord, setMnemonic } from "./words";
+import type { ExerciseTutor, LeechHelp } from "../llm/tutor";
+import { getWord, setLeechHelp, setMnemonic } from "./words";
 
 /** После стольких «Забыл» слово считается трудным для этого пользователя — ему показываем запоминалку. */
 export const HARD_AFTER_LAPSES = 4;
@@ -16,6 +16,17 @@ export async function forgotCount(db: Db, cardId: number): Promise<number> {
   return rows.length;
 }
 
+/** Каждые столько «Забыл» подряд по счёту — разбор слова; на предыдущем — готовим его заранее. */
+export const LEECH_EVERY = 4;
+
+/** Пора ли показать разбор: этот ответ — «Забыл», и он 4-й, 8-й… по счёту. prefetch — следующий «Забыл» будет таким. */
+export async function leechMoment(db: Db, cardId: number): Promise<{ show: boolean; prefetch: boolean; forgot: number }> {
+  const [last] = await db.select({ rating: reviewLogs.rating }).from(reviewLogs).where(eq(reviewLogs.cardId, cardId)).orderBy(desc(reviewLogs.id)).limit(1);
+  const forgot = await forgotCount(db, cardId);
+  if (last?.rating !== "again" || forgot === 0) return { show: false, prefetch: false, forgot };
+  return { show: forgot % LEECH_EVERY === 0, prefetch: forgot % LEECH_EVERY === LEECH_EVERY - 1, forgot };
+}
+
 export async function isHard(db: Db, cardId: number): Promise<boolean> {
   return (await forgotCount(db, cardId)) >= HARD_AFTER_LAPSES;
 }
@@ -24,10 +35,36 @@ export async function isHard(db: Db, cardId: number): Promise<boolean> {
 export class MnemonicGenerator {
   private readonly inFlight = new Map<number, Promise<void>>();
 
+  private readonly helpInFlight = new Map<number, Promise<LeechHelp | undefined>>();
+
   constructor(
     private readonly db: Db,
     private readonly tutor: ExerciseTutor,
   ) {}
+
+  /** Разбор трудного слова: из базы или свежий от Claude (и сохраняется для всей комнаты). undefined — не вышло. */
+  help(wordId: number): Promise<LeechHelp | undefined> {
+    const running = this.helpInFlight.get(wordId);
+    if (running) return running;
+    const task = this.loadHelp(wordId)
+      .catch((err) => {
+        console.error("Leech help failed", wordId, err);
+        return undefined;
+      })
+      .finally(() => this.helpInFlight.delete(wordId));
+    this.helpInFlight.set(wordId, task);
+    return task;
+  }
+
+  private async loadHelp(wordId: number): Promise<LeechHelp | undefined> {
+    const word = await getWord(this.db, wordId);
+    if (!word) return undefined;
+    if (word.leechHelp) return JSON.parse(word.leechHelp) as LeechHelp;
+    const help = await this.tutor.untangle(word);
+    const fresh = await getWord(this.db, wordId);
+    if (fresh && fresh.term === word.term && fresh.translation === word.translation) await setLeechHelp(this.db, wordId, JSON.stringify(help));
+    return help;
+  }
 
   ensure(wordId: number): Promise<void> {
     const running = this.inFlight.get(wordId);

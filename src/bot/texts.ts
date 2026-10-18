@@ -1,5 +1,5 @@
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { DrillQuestion, Judgement, SentenceReview } from "../llm/tutor";
+import type { DrillQuestion, Judgement, LeechHelp, SentenceReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import type { MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
@@ -269,6 +269,15 @@ export function checkText(r: CheckResult): string {
   if (build().length > CHECK_TEXT_LIMIT) natural = "";
   while (build().length > CHECK_TEXT_LIMIT && shown > 1) shown--;
   return build();
+}
+
+export function leechText(word: Pick<Word, "term" | "translation">, help: LeechHelp, forgot: number): string {
+  const parts = [`🧩 <b>${esc(word.term)}</b> — ${esc(word.translation)} никак не даётся: забыто уже ${forgot} ${plural(forgot, "раз", "раза", "раз")}. Давай разберёмся.`];
+  if (help.why) parts.push(`🤔 ${esc(help.why)}`);
+  if (help.contrast.length) parts.push(`⚖️ <b>Не путать:</b>\n${help.contrast.map((c) => `• ${esc(c)}`).join("\n")}`);
+  if (help.examples.length) parts.push(`📝 ${help.examples.map((e) => `• ${boldMarked(e)}`).join("\n")}`);
+  if (help.tip) parts.push(`💡 ${esc(help.tip)}`);
+  return parts.join("\n\n");
 }
 
 export function storyText(story: Pick<Story, "title" | "body">, glossary: Array<{ term: string; translation: string }>): string {

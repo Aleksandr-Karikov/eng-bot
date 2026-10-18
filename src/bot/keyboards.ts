@@ -300,3 +300,10 @@ export function storyQuestionKeyboard(id: number, q: number, options: string[]):
   options.forEach((option, index) => kb.text(option, encodeCb({ k: "storyAnswer", id, q, index })).row());
   return kb;
 }
+
+/** Под разбором трудного слова: картинка (если включены) и исправить перевод. */
+export function leechKeyboard(wordId: number, withPicture: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId }));
+  return kb.text("✏️ Изменить", encodeCb({ k: "edit", wordId }));
+}

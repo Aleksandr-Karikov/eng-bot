@@ -11,7 +11,7 @@ import { DAY, T0, makeUser } from "./helpers";
 const review = (over: Partial<SentenceReview> = {}): SentenceReview => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "", ...over });
 
 function tutor(reviewSentence: ExerciseTutor["reviewSentence"]): ExerciseTutor {
-  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "", story: async () => ({ title: "", body: "", questions: [] }), reviewSentence };
+  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "", story: async () => ({ title: "", body: "", questions: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence };
 }
 
 /** Одна знакомая карточка (bank) к повторению, включён только один режим. */

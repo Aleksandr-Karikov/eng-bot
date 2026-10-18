@@ -19,6 +19,9 @@ import {
   buildJudgePrompt,
   buildSentencePrompt,
   buildStoryPrompt,
+  buildUntanglePrompt,
+  parseLeechHelp,
+  type LeechHelp,
   parseStory,
   type StoryDraft,
   parseSentenceReview,
@@ -78,6 +81,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  /** Разбор трудного слова — сильной моделью, как и запоминалки. */
+  async untangle(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): Promise<LeechHelp> {
+    return parseLeechHelp(await this.ask(buildUntanglePrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   /** История — сильной моделью: Haiku пишет скучно и натягивает слова. */
