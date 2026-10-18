@@ -93,7 +93,7 @@ export function botHarness(opts: {
   const tutor: ExerciseTutor = opts.tutor ?? {
     cloze: async () => [1, 2, 3].map((i) => ({ sentence: `Sentence ${i} with ___.`, answer: "x", translation: `Перевод ${i}` })),
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
-    drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "",
+    drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "",
   };
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);

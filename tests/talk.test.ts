@@ -25,7 +25,7 @@ async function setup() {
   const tutor: ExerciseTutor = {
     cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "",
     reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story: async () => ({ title: "", body: "", questions: [] }),
-    untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), talkReply, talkReview,
+    untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), talkReply, talkReview, say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }),
   };
   const enrich = vi.fn(async () => ({ translation: "t", explanation: "", example: "" }));
   const h = botHarness({ tutor, enricher: { enrich, extract: async () => [], extractImage: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });

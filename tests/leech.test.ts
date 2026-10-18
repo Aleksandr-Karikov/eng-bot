@@ -19,7 +19,7 @@ async function setup(forgotBefore: number) {
   const untangle = vi.fn(async () => help);
   const tutor: ExerciseTutor = {
     cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "",
-    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story: async () => ({ title: "", body: "", questions: [] }), untangle, talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }),
+    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story: async () => ({ title: "", body: "", questions: [] }), untangle, say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }),
   };
   const h = botHarness({ tutor });
   const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeRuEn: false, modeCloze: false, modeSentence: false, modeListen: false });

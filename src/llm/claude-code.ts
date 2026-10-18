@@ -23,6 +23,9 @@ import {
   buildStoryPrompt,
   buildUntanglePrompt,
   buildTalkReplyPrompt,
+  buildSayPrompt,
+  parseSayAnswer,
+  type SayAnswer,
   buildTalkReviewPrompt,
   parseTalkReply,
   parseTalkReview,
@@ -108,6 +111,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */
+  async say(phrase: string): Promise<SayAnswer> {
+    return parseSayAnswer(await this.ask(buildSayPrompt(phrase), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   async talkReply(input: TalkInput): Promise<string> {

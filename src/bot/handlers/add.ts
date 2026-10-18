@@ -11,7 +11,7 @@ import { onBatchDraft } from "./batch";
 const USAGE =
   "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег\nИли ответь командой /add на сообщение с фразой.";
 
-async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<void> {
+export async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const parsed = parseAddInput(input);
   if (!parsed) return void (await ctx.reply(USAGE));
   const room = await resolveRoom(ctx, deps);

@@ -38,6 +38,12 @@ export interface TalkInput {
   lines: Array<{ who: "user" | "bot"; text: string }>;
 }
 
+/** «Как сказать по-английски»: варианты фразы и что из них стоит выучить. */
+export interface SayAnswer {
+  variants: Array<{ text: string; register: string; note: string }>;
+  learn: Array<{ term: string; translation: string }>;
+}
+
 /** Разбор разговора /talk. */
 export interface TalkReview {
   /** 1–2 предложения по-русски: что получилось хорошо. */
@@ -105,6 +111,8 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Как естественно сказать это по-английски. */
+  say(phrase: string): Promise<SayAnswer>;
   /** Следующая реплика собеседника в разговоре /talk. */
   talkReply(input: TalkInput): Promise<string>;
   /** Разбор реплик ученика по итогам разговора. */
@@ -251,6 +259,35 @@ export function parseLeechHelp(text: string): LeechHelp {
   const help = leechHelpSchema.parse(JSON.parse(text.slice(start, end + 1)));
   if (!help.why && help.examples.length === 0) throw new Error("Empty leech help");
   return help;
+}
+
+export function buildSayPrompt(phrase: string): string {
+  return [
+    "Русскоязычный человек хочет сказать это по-английски — в переписке с друзьями или в жизни:",
+    phrase,
+    "",
+    "Дай 2–3 варианта, как это естественно сказал бы носитель (не дословный перевод), от самого обычного к остальным.",
+    "register — одно-два слова по-русски: нейтрально, разговорно, вежливо, официально, сленг…;",
+    "note — до 10 слов по-русски, когда подходит этот вариант или чем отличается (можно пустую строку).",
+    "learn — 1–3 устойчивых выражения из вариантов, которые стоит выучить (не целые предложения, если в них нет ничего особенного), с переводом.",
+    "Если фраза уже на английском — дай варианты, как сказать её естественнее.",
+    'Верни JSON: {"variants": [{"text": "...", "register": "...", "note": "..."}], "learn": [{"term": "...", "translation": "..."}]}',
+  ].join("\n");
+}
+
+const sayAnswerSchema = z.object({
+  variants: z
+    .array(z.object({ text: z.string().trim().min(1), register: z.string().trim().default(""), note: z.string().trim().default("") }))
+    .min(1)
+    .max(4),
+  learn: z.array(z.object({ term: z.string().trim().min(1), translation: z.string().trim().min(1) })).max(3).default([]),
+});
+
+export function parseSayAnswer(text: string): SayAnswer {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  return sayAnswerSchema.parse(JSON.parse(text.slice(start, end + 1)));
 }
 
 const transcript = (lines: TalkInput["lines"]) => lines.map((l) => `${l.who === "user" ? "Student" : "You"}: ${l.text}`).join("\n");

@@ -1,5 +1,5 @@
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { DrillQuestion, Judgement, LeechHelp, SentenceReview, TalkReview } from "../llm/tutor";
+import type { DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
@@ -296,6 +296,17 @@ export function leechText(word: Pick<Word, "term" | "translation">, help: LeechH
   return parts.join("\n\n");
 }
 
+export function sayText(phrase: string, answer: SayAnswer): string {
+  const variants = answer.variants.map((v) => {
+    const meta = [v.register, v.note].filter(Boolean).map(esc).join(" — ");
+    return `• <b>${esc(v.text)}</b>${meta ? `\n  <i>${meta}</i>` : ""}`;
+  });
+  const learn = answer.learn.length
+    ? `\n\n📚 Стоит запомнить:\n${answer.learn.map((l) => `• ${esc(l.term)} — ${esc(l.translation)}`).join("\n")}`
+    : "";
+  return `🇬🇧 Как сказать «${esc(phrase)}»:\n\n${variants.join("\n")}${learn}`;
+}
+
 export function talkReviewText(r: TalkReview, words: Array<{ term: string }>): string {
   const parts = ["🏁 <b>Разбор разговора</b>"];
   if (r.praise) parts.push(`👍 ${esc(r.praise)}`);
@@ -343,6 +354,7 @@ export function welcomeText(): string {
     "/drill — вопросы по твоим частым ошибкам, /mistakes — что бот о них знает",
     "/story — короткая история из слов комнаты с вопросами и озвучкой",
     "/talk — поговорить по-английски на любую тему, с разбором в конце",
+    "/say фраза — как естественно сказать это по-английски (можно ответом на сообщение)",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",

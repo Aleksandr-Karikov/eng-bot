@@ -16,6 +16,7 @@ import { registerStats } from "./handlers/stats";
 import { registerStory } from "./handlers/story";
 import { registerSpotted } from "./handlers/spotted";
 import { registerTalk } from "./handlers/talk";
+import { registerSay } from "./handlers/say";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
 
@@ -33,6 +34,7 @@ export const COMMANDS = [
   { command: "delete", description: "Удалить слово (можно по кусочку)" },
   { command: "story", description: "История из слов комнаты" },
   { command: "talk", description: "Поговорить по-английски с разбором" },
+  { command: "say", description: "Как сказать это по-английски" },
   { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "room", description: "Комнаты и приглашения" },
@@ -70,6 +72,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerStory(bot, deps);
   registerEdit(bot, deps);
   registerTalk(bot, deps);
+  registerSay(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».
   bot.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());

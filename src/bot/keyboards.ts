@@ -320,3 +320,9 @@ export function talkTopicsKeyboard(topics: ReadonlyArray<{ label: string }>): In
 export function talkEndKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🏁 Закончить и разобрать", encodeCb({ k: "talkEnd" }));
 }
+
+export function sayKeyboard(id: number, learn: Array<{ term: string }>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  learn.forEach((item, index) => kb.text(`➕ ${shorten(item.term)}`, encodeCb({ k: "sayAdd", id, index })).row());
+  return kb;
+}

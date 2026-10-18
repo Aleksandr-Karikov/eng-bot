@@ -14,7 +14,7 @@ function tutor() {
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
     drill: async () => [],
     mnemonics: vi.fn(async (items: Array<{ term: string }>) => items.map(() => "Бесы осадили тебя, как крепость")),
-    story: async () => ({ title: "", body: "", questions: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn(async () => "a fortress besieged by an army, close-up"),
+    story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn(async () => "a fortress besieged by an army, close-up"),
   } satisfies ExerciseTutor;
 }
 
