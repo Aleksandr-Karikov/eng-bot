@@ -30,7 +30,7 @@ describe("buildCheckPrompt", () => {
 describe("/check with context", () => {
   it("sends up to six messages before the replied one, with authors and the checked message's author", async () => {
     const check = vi.fn(async () => ok);
-    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check } });
     const chat = -700;
     await h.bot.handleUpdate(h.groupMessage(200, chat, "Morning!"));
     await h.bot.handleUpdate(h.groupMessage(300, chat, "What did you do yesterday?"));

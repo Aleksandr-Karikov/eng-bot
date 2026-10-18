@@ -59,7 +59,7 @@ describe("/check", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "", explanation: "", example: "" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check,
       },
     });
@@ -72,7 +72,7 @@ describe("/check", () => {
 
   it("checks inline text and explains usage when there is nothing to check", async () => {
     const check = vi.fn(async () => result);
-    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check } });
     await h.bot.handleUpdate(h.message(100, "/check"));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("Ответь"))).toBe(true));
     expect(check).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("/check", () => {
 
   it("refuses an overly long text with a friendly message", async () => {
     const check = vi.fn(async () => result);
-    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check } });
     await h.bot.handleUpdate(h.message(100, `/check ${"word ".repeat(400)}`));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("Слишком длинный"))).toBe(true));
     expect(check).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe("/check", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "", explanation: "", example: "" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check: async () => {
           throw new Error("timeout");
         },
@@ -104,7 +104,7 @@ describe("/check", () => {
 
   it("in a group, explains that messages the bot never saw cannot be checked", async () => {
     const check = vi.fn(async () => result);
-    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+    const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check } });
     await h.bot.handleUpdate(h.groupMessage(100, -500, "/check"));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("не вижу"))).toBe(true));
     expect(check).not.toHaveBeenCalled();

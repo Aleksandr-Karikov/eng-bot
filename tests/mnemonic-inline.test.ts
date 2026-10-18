@@ -20,7 +20,7 @@ describe("mnemonic as part of the word", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "осаждаемый", explanation: "", example: "" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check: async () => ({ corrected: "", fixes: [], natural: "" }),
       },
       tutor: {

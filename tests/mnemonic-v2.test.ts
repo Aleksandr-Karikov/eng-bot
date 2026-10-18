@@ -67,7 +67,7 @@ describe("where mnemonics come from", () => {
       tutor: t,
       enricher: {
         enrich: async () => ({ translation: "x", explanation: "", example: "" }),
-        extract: async () => ["heritage", "fuse"].map((term) => ({ term, translation: `t-${term}`, explanation: "", example: "" })),
+        extractImage: async () => [], extract: async () => ["heritage", "fuse"].map((term) => ({ term, translation: `t-${term}`, explanation: "", example: "" })),
         check: async () => ({ corrected: "", fixes: [], natural: "" }),
       },
     });

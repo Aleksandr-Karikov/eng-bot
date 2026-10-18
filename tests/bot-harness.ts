@@ -73,7 +73,9 @@ export function botHarness(opts: {
         ? { ...message, text: call.payload.text }
         : method === "sendVoice"
           ? { ...message, voice: { file_id: `voice-file-${calls.length}`, file_unique_id: "u", duration: 1 } }
-          : method === "sendPhoto"
+          : method === "getFile"
+            ? { file_id: call.payload.file_id, file_unique_id: "u", file_path: "photos/file_1.jpg" }
+            : method === "sendPhoto"
             ? { ...message, photo: [{ file_id: `photo-small-${calls.length}` }, { file_id: `photo-file-${calls.length}` }] }
             : true;
     return { ok: true, result } as never;
@@ -84,7 +86,7 @@ export function botHarness(opts: {
   );
   const enricher: WordEnricher = opts.enricher ?? {
     enrich: async (): Promise<Enrichment> => ({ translation: "перевод", explanation: "", example: "" }),
-    extract: async (): Promise<ExtractedItem[]> => [],
+    extractImage: async () => [], extract: async (): Promise<ExtractedItem[]> => [],
     check: async (): Promise<CheckResult> => ({ corrected: "", fixes: [], natural: "" }),
   };
   const tutor: ExerciseTutor = opts.tutor ?? {

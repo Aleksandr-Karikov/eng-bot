@@ -8,24 +8,41 @@ import type { Draft } from "../drafts";
 import { batchKeyboard, batchPageCount, batchUndoKeyboard } from "../keyboards";
 import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
+import { downloadImage, ImageTooBigError, imageOf, type ImageRef } from "../files";
 
 const USAGE =
-  "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение — разберу его.";
+  "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение или фото — разберу его.";
 
 async function startText(ctx: BotContext, deps: Deps, input: string): Promise<void> {
   const text = input.trim();
   if (!text) return void (await ctx.reply(USAGE));
+  await offerExtracted(ctx, deps, () => deps.enricher.extract(text), "Не получилось разобрать текст 😔 Попробуй ещё раз чуть позже");
+}
+
+/** Скриншот или фото страницы: Claude читает текст с картинки и выбирает слова, как из текста. note — подпись. */
+async function startImage(ctx: BotContext, deps: Deps, image: ImageRef, note: string): Promise<void> {
+  await offerExtracted(
+    ctx,
+    deps,
+    async () => deps.enricher.extractImage(await downloadImage(ctx.api, image), note || undefined),
+    "Не получилось разобрать картинку 😔 Попробуй ещё раз чуть позже",
+  );
+}
+
+async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promise<ExtractedItem[]>, failText: string): Promise<void> {
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
 
   await ctx.replyWithChatAction("typing");
   let items: ExtractedItem[];
   try {
-    items = await deps.enricher.extract(text);
+    items = await extract();
   } catch (err) {
+    if (err instanceof ImageTooBigError) return void (await ctx.reply("Картинка слишком большая — пришли её как фото, а не файлом"));
     console.error("Extraction failed", err);
-    return void (await ctx.reply("Не получилось разобрать текст 😔 Попробуй ещё раз чуть позже"));
+    return void (await ctx.reply(failText));
   }
+  if (items.length === 0) return void (await ctx.reply("Не нашёл тут английского текста 🤔"));
   const fresh = await filterNewItems(deps.db, room.id, items);
   if (fresh.length === 0) return void (await ctx.reply("Ничего нового не нашёл — всё уже есть в комнате 👌"));
 
@@ -80,7 +97,20 @@ export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, ac
 }
 
 export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("text", (ctx) => background(ctx, () => startText(ctx, deps, commandInput(ctx))));
+  bot.command("text", (ctx) => {
+    // Картинка в самой команде (/text в подписи к фото) или в сообщении, на которое ответили.
+    const image = imageOf(ctx.message) ?? imageOf(ctx.message?.reply_to_message);
+    const own = typeof ctx.match === "string" ? ctx.match.trim() : "";
+    if (image) return background(ctx, () => startImage(ctx, deps, image, own));
+    return background(ctx, () => startText(ctx, deps, commandInput(ctx)));
+  });
+
+  // В личке картинку можно прислать просто так — как и текст.
+  bot.on(["message:photo", "message:document"], async (ctx, next) => {
+    const image = imageOf(ctx.message);
+    if (ctx.chat.type !== "private" || !image) return next();
+    background(ctx, () => startImage(ctx, deps, image, ctx.message.caption ?? ""));
+  });
 
   bot.callbackQuery(/^bt:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);

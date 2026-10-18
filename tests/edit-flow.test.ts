@@ -11,7 +11,7 @@ import { MIN, T0, at, makeUser } from "./helpers";
 const draft = (term: string) => ({ term, translation: `t-${term}`, explanation: "old", example: "old example" });
 
 function enricher(enrich: WordEnricher["enrich"]): WordEnricher {
-  return { enrich, extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) };
+  return { enrich, extractImage: async () => [], extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) };
 }
 
 async function room(h: ReturnType<typeof botHarness>, telegramChatId?: number) {

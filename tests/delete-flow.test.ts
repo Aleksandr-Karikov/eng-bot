@@ -92,7 +92,7 @@ describe("deleting words", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "x", explanation: "", example: "" }),
-        extract: async () => items,
+        extractImage: async () => [], extract: async () => items,
         check: async () => ({ corrected: "", fixes: [], natural: "" }),
       },
     });

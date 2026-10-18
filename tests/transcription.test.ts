@@ -55,7 +55,7 @@ describe("transcription storage", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "берег", explanation: "", example: "", transcriptionUk: "/bæŋk/", transcriptionUs: "/bæŋk/" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check: async () => ({ corrected: "", fixes: [], natural: "" }),
       },
     });

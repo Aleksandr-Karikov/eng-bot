@@ -38,7 +38,7 @@ describe("bot flows", () => {
 
   it("/add does not block the update while the LLM is thinking", async () => {
     let release!: (e: Enrichment) => void;
-    const h = botHarness({ enricher: { enrich: () => new Promise<Enrichment>((resolve) => (release = resolve)), extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });
+    const h = botHarness({ enricher: { enrich: () => new Promise<Enrichment>((resolve) => (release = resolve)), extractImage: async () => [], extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });
     await userWithWord(h);
     const outcome = await Promise.race([
       h.bot.handleUpdate(h.message(100, "/add serendipity")).then(() => "handled"),

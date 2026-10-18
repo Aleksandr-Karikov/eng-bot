@@ -62,7 +62,7 @@ describe("/room management", () => {
 
   it("asks for a name when creating a room, and the reply does not become a word", async () => {
     const enrich = vi.fn(async () => ({ translation: "x", explanation: "", example: "" }));
-    const h = botHarness({ enricher: { enrich, extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });
+    const h = botHarness({ enricher: { enrich, extractImage: async () => [], extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });
     await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     await h.bot.handleUpdate(h.message(100, "/room"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Новая комната")));

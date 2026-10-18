@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   buildCheckPrompt,
   buildExtractPrompt,
@@ -11,6 +11,8 @@ import {
   type ContextMessage,
   type Enrichment,
   type ExtractedItem,
+  type ImageInput,
+  buildExtractImagePrompt,
   type WordEnricher,
 } from "./enricher";
 import {
@@ -47,6 +49,21 @@ import type { ClozeDraft } from "../services/cloze";
 const EXTRACT_TIMEOUT_MS = 180_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
+/** Сообщение с картинками: SDK принимает их только в потоковом вводе, одним сообщением пользователя. */
+async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SDKUserMessage> {
+  yield {
+    type: "user",
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [
+        ...images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data.toString("base64") } })),
+        { type: "text" as const, text },
+      ],
+    },
+  };
+}
+
 export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string }) {}
 
@@ -56,6 +73,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async extract(text: string): Promise<ExtractedItem[]> {
     return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+  }
+
+  async extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]> {
+    return parseExtraction(await this.ask(buildExtractImagePrompt(note), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]));
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {
@@ -102,13 +123,13 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
-  async ask(prompt: string, timeoutMs: number, model = this.opts.model): Promise<string> {
+  async ask(prompt: string, timeoutMs: number, model = this.opts.model, images: ImageInput[] = []): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {
       let result: string | undefined;
       for await (const message of query({
-        prompt,
+        prompt: images.length ? withImages(prompt, images) : prompt,
         options: {
           abortController,
           model,

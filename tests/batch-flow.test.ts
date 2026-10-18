@@ -10,7 +10,7 @@ import { T0, makeUser } from "./helpers";
 const item = (term: string): ExtractedItem => ({ term, translation: `t-${term}`, explanation: "", example: "" });
 const enricher = (items: ExtractedItem[]): WordEnricher => ({
   enrich: async () => ({ translation: "x", explanation: "", example: "" }),
-  extract: async () => items,
+  extractImage: async () => [], extract: async () => items,
   check: async () => ({ corrected: "", fixes: [], natural: "" }),
 });
 

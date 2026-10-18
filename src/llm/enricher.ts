@@ -31,10 +31,18 @@ export interface ContextMessage {
   text: string;
 }
 
+/** Картинка для Claude (скриншот, фото страницы). */
+export interface ImageInput {
+  data: Buffer;
+  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+}
+
 export interface WordEnricher {
   enrich(term: string, translationHint?: string): Promise<Enrichment>;
   /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
   extract(text: string): Promise<ExtractedItem[]>;
+  /** То же для скриншота или фото страницы; note — подпись пользователя к картинке. */
+  extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]>;
   /** Проверяет английский текст: ошибки обязательно, «как естественнее» — отдельно. */
   /** leadIn — предыдущие сообщения того же автора, которые проверяемое продолжает (одна реплика). */
   check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult>;
@@ -92,21 +100,37 @@ const extractedItemSchema = z.object({ ...enrichmentFields, term: z.string().tri
 export function buildExtractPrompt(text: string): string {
   return [
     "Ниже английский текст ИЛИ список слов и фраз, которые пользователь выписал сам. Определи, что это.",
-    "Строки могут начинаться с префикса экспорта чата вроде «[14/10/2026 21:31] Имя:» — это не часть фразы, игнорируй его.",
-    "Если это список (по пункту на строку) — возьми каждый пункт, ничего не пропускай и не сокращай фразу до одного слова;",
-    "глагольную форму можно привести к начальной (snagging yourself a peerage → snag yourself a peerage), но смысл фразы сохрани.",
-    "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
-    "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
-    `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}], где',
-    "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
-    "example — короткое предложение на английском,",
-    TRANSCRIPTION_HINT,
+    ...EXTRACT_RULES,
     "",
     "Текст:",
     text,
   ].join("\n");
 }
+
+/** Для картинки: сначала прочитать, потом те же правила. */
+export function buildExtractImagePrompt(note?: string): string {
+  return [
+    "На картинке — английский текст (скриншот, фото страницы, субтитры, переписка) ИЛИ список слов и фраз. Прочитай его и определи, что это.",
+    "Интерфейс приложений, имена, время и прочий мусор вокруг текста игнорируй.",
+    ...EXTRACT_RULES,
+    note ? `\nПодпись пользователя к картинке (учти, если это пожелание): ${note}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const EXTRACT_RULES = [
+  "Строки могут начинаться с префикса экспорта чата вроде «[14/10/2026 21:31] Имя:» — это не часть фразы, игнорируй его.",
+  "Если это список (по пункту на строку) — возьми каждый пункт, ничего не пропускай и не сокращай фразу до одного слова;",
+  "глагольную форму можно привести к начальной (snagging yourself a peerage → snag yourself a peerage), но смысл фразы сохрани.",
+  "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
+  "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
+  `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
+  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}], где',
+  "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
+  "example — короткое предложение на английском,",
+  TRANSCRIPTION_HINT,
+];
 
 /** Невалидные пункты отбрасываются; если в ответе вообще нет массива — бросает. */
 export function parseExtraction(text: string): ExtractedItem[] {

@@ -8,7 +8,7 @@ import { T0, makeUser } from "./helpers";
 function setup() {
   const enrich = vi.fn(async (): Promise<Enrichment> => ({ translation: "перевод", explanation: "", example: "" }));
   const extract = vi.fn(async (): Promise<ExtractedItem[]> => []);
-  const enricher: WordEnricher = { enrich, extract, check: async () => ({ corrected: "", fixes: [], natural: "" }) };
+  const enricher: WordEnricher = { enrich, extract, extractImage: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) };
   return { h: botHarness({ enricher }), enrich, extract };
 }
 

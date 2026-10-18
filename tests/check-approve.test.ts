@@ -17,7 +17,7 @@ const result: CheckResult = {
 
 function harness() {
   const check = vi.fn(async () => result);
-  const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
+  const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check } });
   return { h, check };
 }
 

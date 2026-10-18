@@ -13,7 +13,7 @@ const MIN = 60_000;
 
 function harnessWithSpy() {
   const enrich = vi.fn(async (): Promise<Enrichment> => ({ translation: "перевод", explanation: "", example: "" }));
-  const enricher: WordEnricher = { enrich, extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) };
+  const enricher: WordEnricher = { enrich, extractImage: async () => [], extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) };
   return { h: botHarness({ enricher }), enrich };
 }
 

@@ -20,7 +20,7 @@ describe("/check author", () => {
     const h = botHarness({
       enricher: {
         enrich: async () => ({ translation: "", explanation: "", example: "" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check: async () => ({ corrected: "he **goes**", fixes: [{ wrong: "go", right: "goes", why: "", category: "времена" }], natural: "" }),
       },
     });

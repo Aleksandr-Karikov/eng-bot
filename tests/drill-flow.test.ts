@@ -26,7 +26,7 @@ function harness(drill = vi.fn(async () => [question(1), question(2)])) {
   const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill, mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" };
   const h = botHarness({
     tutor,
-    enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check: async () => checked },
+    enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extractImage: async () => [], extract: async () => [], check: async () => checked },
   });
   return { h, drill };
 }
@@ -70,7 +70,7 @@ describe("/check slips", () => {
       tutor,
       enricher: {
         enrich: async () => ({ translation: "", explanation: "", example: "" }),
-        extract: async () => [],
+        extractImage: async () => [], extract: async () => [],
         check: async () => ({ corrected: "**thx**", fixes: [{ wrong: "ths", right: "thx", why: "опечатка", category: "орфография", slip: true }], natural: "" }),
       },
     });
