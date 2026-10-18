@@ -6,6 +6,7 @@ import { getWord, setMnemonic } from "./words";
 
 /** После стольких «Забыл» слово считается трудным для этого пользователя — ему показываем запоминалку. */
 export const HARD_AFTER_LAPSES = 4;
+const MANY_CHUNK = 20;
 
 export async function forgotCount(db: Db, cardId: number): Promise<number> {
   const rows = await db
@@ -38,10 +39,30 @@ export class MnemonicGenerator {
     return task;
   }
 
+  /** Пачкой (по 20 на запрос) для слов, у которых запоминалки ещё нет, — например, после /text. */
+  async ensureMany(wordIds: number[]): Promise<void> {
+    const words = [];
+    for (const id of wordIds) {
+      const w = await getWord(this.db, id);
+      if (w && !w.mnemonic) words.push(w);
+    }
+    for (let i = 0; i < words.length; i += MANY_CHUNK) {
+      const chunk = words.slice(i, i + MANY_CHUNK);
+      const finals = await this.tutor.mnemonics(chunk.map((w) => ({ term: w.term, translation: w.translation })));
+      for (const [k, w] of chunk.entries()) {
+        const fresh = await getWord(this.db, w.id);
+        if (finals[k] && fresh && !fresh.mnemonic && fresh.term === w.term && fresh.translation === w.translation) {
+          await setMnemonic(this.db, w.id, finals[k]);
+        }
+      }
+    }
+  }
+
   private async generate(wordId: number): Promise<void> {
     const word = await getWord(this.db, wordId);
     if (!word || word.mnemonic) return;
-    const mnemonic = await this.tutor.mnemonic(word.term, word.translation);
+    const [mnemonic] = await this.tutor.mnemonics([{ term: word.term, translation: word.translation }]);
+    if (!mnemonic) return;
     const fresh = await getWord(this.db, wordId);
     // Пока Claude думал, слово могли удалить или изменить — тогда запоминалка уже не к месту.
     if (fresh && !fresh.mnemonic && fresh.term === word.term && fresh.translation === word.translation) {

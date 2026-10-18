@@ -272,7 +272,7 @@ export function mnemonicText(term: string, mnemonic: string): string {
   return `💡 <b>${esc(term)}</b>\n\n<tg-spoiler>${esc(mnemonic)}</tg-spoiler>`;
 }
 
-/** Подпись к картинке (лимит подписи в Telegram — 1024 символа). */
-export function pictureCaption(term: string, mnemonic: string): string {
-  return `💡 <b>${esc(term)}</b>\n<tg-spoiler>${esc(mnemonic.slice(0, 900))}</tg-spoiler>`;
+/** Подпись к картинке: слово и перевод под спойлером (лимит подписи в Telegram — 1024 символа). */
+export function pictureCaption(term: string, translation: string): string {
+  return `🖼 <b>${esc(term)}</b> — <tg-spoiler>${esc(translation.slice(0, 900))}</tg-spoiler>`;
 }

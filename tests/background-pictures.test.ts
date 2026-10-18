@@ -8,11 +8,10 @@ import { ImageService } from "../src/images/images";
 import { BackgroundPainter } from "../src/images/painter";
 import { PictureStore } from "../src/images/store";
 import type { ExerciseTutor } from "../src/llm/tutor";
-import { MnemonicGenerator } from "../src/services/hard-words";
 import { answerCard } from "../src/services/review";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
-import { getWord, saveWord, setMnemonic } from "../src/services/words";
+import { getWord, saveWord } from "../src/services/words";
 import { botHarness } from "./bot-harness";
 import { MIN, T0, at, makeUser, testDb } from "./helpers";
 
@@ -20,8 +19,8 @@ const tutor = (): ExerciseTutor => ({
   cloze: async () => [],
   judge: async () => ({ correct: false, explanation: "", tip: "" }),
   drill: async () => [],
-  mnemonic: vi.fn(async () => "fresh mnemonic"),
-  imagePrompt: async (term: string) => `scene for ${term}`,
+  mnemonics: async () => [],
+  imagePrompt: async (word) => `scene for ${word.term}`,
 });
 const store = () => new PictureStore(mkdtempSync(join(tmpdir(), "pictures-")));
 
@@ -37,13 +36,13 @@ async function room(db: ReturnType<typeof testDb>) {
 }
 
 describe("PictureStore", () => {
-  it("keys pictures by word and mnemonic, so an edited word needs a new one", async () => {
+  it("keys pictures by word and translation, so an edited word needs a new one", async () => {
     const pictures = store();
-    const word = { id: 7, term: "snag", mnemonic: "nail" };
+    const word = { id: 7, term: "snag", translation: "урвать" };
     expect(pictures.find(word)).toBeUndefined();
     await pictures.save(word, Buffer.from("png"));
     expect(pictures.find(word)).toMatch(/7-[0-9a-f]+\.png$/);
-    expect(pictures.find({ ...word, mnemonic: "other" })).toBeUndefined();
+    expect(pictures.find({ ...word, translation: "зацепка" })).toBeUndefined();
   });
 });
 
@@ -61,23 +60,12 @@ describe("BackgroundPainter", () => {
     const draw = vi.fn(async () => Buffer.from("png"));
     const t = tutor();
     const pictures = store();
-    const painter = new BackgroundPainter({ db, images: new ImageService({ draw }, t), pictures, mnemonicGen: new MnemonicGenerator(db, t), onPower: async () => true });
+    const painter = new BackgroundPainter({ db, images: new ImageService({ draw }, t), pictures, onPower: async () => true });
     expect(await painter.tick()).toBe("hard");
-    expect(pictures.find({ id: hard.id, term: "hard", mnemonic: "m2" })).toBeDefined();
+    expect(pictures.find({ id: hard.id, term: "hard", translation: "t" })).toBeDefined();
     expect(await painter.tick()).toBe("easy");
     expect(await painter.tick()).toBeUndefined();
     expect(draw).toHaveBeenCalledTimes(2);
-  });
-
-  it("writes a mnemonic first when the word has none", async () => {
-    const db = testDb();
-    const { add } = await room(db);
-    const w = await add("bare", "");
-    const t = tutor();
-    const pictures = store();
-    const painter = new BackgroundPainter({ db, images: new ImageService({ draw: async () => Buffer.from("png") }, t), pictures, mnemonicGen: new MnemonicGenerator(db, t), onPower: async () => true });
-    expect(await painter.tick()).toBe("bare");
-    expect((await getWord(db, w.id))?.mnemonic).toBe("fresh mnemonic");
   });
 
   it("waits on battery and while someone's picture is being drawn", async () => {
@@ -88,11 +76,11 @@ describe("BackgroundPainter", () => {
     let release!: () => void;
     const draw = vi.fn(() => new Promise<Buffer>((r) => (release = () => r(Buffer.from("png")))));
     const images = new ImageService({ draw }, t);
-    const onBattery = new BackgroundPainter({ db, images, pictures: store(), mnemonicGen: new MnemonicGenerator(db, t), onPower: async () => false });
+    const onBattery = new BackgroundPainter({ db, images, pictures: store(), onPower: async () => false });
     expect(await onBattery.tick()).toBeUndefined();
 
-    const userPicture = images.drawWord({ id: 999, term: "x", translation: "t", mnemonic: "m" });
-    const painter = new BackgroundPainter({ db, images, pictures: store(), mnemonicGen: new MnemonicGenerator(db, t), onPower: async () => true });
+    const userPicture = images.drawWord({ id: 999, term: "x", translation: "t", explanation: "", example: "" });
+    const painter = new BackgroundPainter({ db, images, pictures: store(), onPower: async () => true });
     await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(1));
     expect(await painter.tick()).toBeUndefined();
     release();
@@ -127,6 +115,5 @@ describe("pictures from disk in the bot", () => {
     await h.bot.handleUpdate(h.callback(100, `im:${res.word.id}`));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendPhoto")).toBe(true));
     expect(draw).not.toHaveBeenCalled();
-    void setMnemonic;
   });
 });

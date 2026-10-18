@@ -3,8 +3,7 @@ import { promisify } from "node:util";
 import { eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, words } from "../db/schema";
-import { HARD_AFTER_LAPSES, type MnemonicGenerator } from "../services/hard-words";
-import { getWord } from "../services/words";
+import { HARD_AFTER_LAPSES } from "../services/hard-words";
 import type { ImageService } from "./images";
 import type { PictureStore } from "./store";
 
@@ -24,7 +23,6 @@ export interface PainterDeps {
   db: Db;
   images: ImageService;
   pictures: PictureStore;
-  mnemonicGen: MnemonicGenerator;
   onPower: () => Promise<boolean>;
 }
 
@@ -44,14 +42,8 @@ export class BackgroundPainter {
     try {
       const word = await this.nextWord();
       if (!word) return undefined;
-      let mnemonic = word.mnemonic;
-      if (!mnemonic) {
-        await this.deps.mnemonicGen.ensure(word.id);
-        mnemonic = (await getWord(this.deps.db, word.id))?.mnemonic ?? "";
-        if (!mnemonic) return undefined;
-      }
-      const png = await this.deps.images.drawWord({ ...word, mnemonic });
-      await this.deps.pictures.save({ ...word, mnemonic }, png);
+      const png = await this.deps.images.drawWord(word);
+      await this.deps.pictures.save(word, png);
       return word.term;
     } finally {
       this.busy = false;

@@ -38,7 +38,7 @@ const notifier = new Notifier(
 );
 const now = () => new Date();
 
-const claude = new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs });
+const claude = new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs, mnemonicModel: config.mnemonicModel });
 const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, claude);
@@ -72,7 +72,7 @@ await bot.api.setMyCommands(COMMANDS);
 const stopReminders = startReminderLoop({ db, notifier, now });
 const stopPainter =
   images && pictures && config.imagesBackground
-    ? new BackgroundPainter({ db, images, pictures, mnemonicGen, onPower: onAcPower }).start()
+    ? new BackgroundPainter({ db, images, pictures, onPower: onAcPower }).start()
     : () => {};
 
 const shutdown = () => {

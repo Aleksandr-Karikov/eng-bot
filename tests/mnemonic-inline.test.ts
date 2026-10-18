@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cardText, draftText, reverseCardText } from "../src/bot/texts";
 import { rateKeyboard, wordActionsKeyboard } from "../src/bot/keyboards";
-import { buildExtractPrompt, buildPrompt, parseEnrichment, parseExtraction } from "../src/llm/enricher";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { getWord } from "../src/services/words";
@@ -11,13 +10,6 @@ import { T0, makeUser } from "./helpers";
 const word = { term: "beset by", translation: "осаждаемый", explanation: "", example: "", mnemonic: "бесы осадили" };
 
 describe("mnemonic as part of the word", () => {
-  it("comes from Claude together with the translation", () => {
-    for (const p of [buildPrompt("beset by"), buildExtractPrompt("beset by")]) expect(p).toContain('"mnemonic"');
-    expect(parseEnrichment(JSON.stringify({ translation: "x", mnemonic: "бесы" }))).toMatchObject({ mnemonic: "бесы" });
-    expect(parseEnrichment(JSON.stringify({ translation: "x" }))).toMatchObject({ mnemonic: "" });
-    expect(parseExtraction(JSON.stringify([{ term: "a", translation: "b", mnemonic: "m" }]))[0]).toMatchObject({ mnemonic: "m" });
-  });
-
   it("is shown in the description and under the spoiler on every card", () => {
     expect(draftText(word)).toContain("💡 бесы осадили");
     expect(cardText(word)).toMatch(/<tg-spoiler>[^]*💡 бесы осадили[^]*<\/tg-spoiler>/);
@@ -27,9 +19,16 @@ describe("mnemonic as part of the word", () => {
   it("is saved with the word on /add", async () => {
     const h = botHarness({
       enricher: {
-        enrich: async () => ({ translation: "осаждаемый", explanation: "", example: "", mnemonic: "бесы осадили" }),
+        enrich: async () => ({ translation: "осаждаемый", explanation: "", example: "" }),
         extract: async () => [],
         check: async () => ({ corrected: "", fixes: [], natural: "" }),
+      },
+      tutor: {
+        cloze: async () => [],
+        judge: async () => ({ correct: false, explanation: "", tip: "" }),
+        drill: async () => [],
+        mnemonics: async () => ["бесы осадили"],
+        imagePrompt: async () => "",
       },
     });
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });

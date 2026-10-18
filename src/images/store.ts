@@ -3,11 +3,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-type PictureKey = { id: number; term: string; mnemonic: string };
+type PictureKey = { id: number; term: string; translation: string };
 
 /**
  * Картинки, нарисованные заранее (в фоне), — до первой отправки в Telegram.
- * Имя файла содержит отпечаток слова и запоминалки: после /edit старая картинка просто перестаёт подходить.
+ * Имя файла содержит отпечаток слова и перевода: после /edit старая картинка просто перестаёт подходить.
  */
 export class PictureStore {
   readonly dir: string;
@@ -17,7 +17,7 @@ export class PictureStore {
   }
 
   private fileName(word: PictureKey): string {
-    const hash = createHash("sha1").update(`${word.term}\n${word.mnemonic}`).digest("hex").slice(0, 12);
+    const hash = createHash("sha1").update(`${word.term}\n${word.translation}`).digest("hex").slice(0, 12);
     return `${word.id}-${hash}.png`;
   }
 

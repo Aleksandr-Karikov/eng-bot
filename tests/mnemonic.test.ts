@@ -2,15 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { cards } from "../src/db/schema";
 import type { ExerciseTutor } from "../src/llm/tutor";
-import { buildMnemonicPrompt, parseMnemonic } from "../src/llm/tutor";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { getWord, saveWord, updateWord } from "../src/services/words";
 import { botHarness } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
-function tutor(mnemonic = vi.fn(async () => "Ангар — огромный «гараж» для самолёта")): ExerciseTutor & { mnemonic: typeof mnemonic } {
-  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonic, imagePrompt: async () => "a scene" };
+function tutor(
+  mnemonics = vi.fn(async (items: Array<{ term: string }>) => items.map(() => "Ангар — огромный «гараж» для самолёта")),
+): ExerciseTutor & { mnemonics: typeof mnemonics } {
+  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics, imagePrompt: async () => "a scene" };
 }
 
 async function setup(h: ReturnType<typeof botHarness>) {
@@ -36,11 +37,11 @@ describe("hard words", () => {
     const h = botHarness({ tutor: t });
     const { alice, word } = await setup(h);
     await forget(h, alice.id, 100, 3);
-    expect(t.mnemonic).not.toHaveBeenCalled();
+    expect(t.mnemonics).not.toHaveBeenCalled();
     await forget(h, alice.id, 100, 2);
     await vi.waitFor(async () => expect((await getWord(h.db, word.id))?.mnemonic).toContain("гараж"));
-    expect(t.mnemonic).toHaveBeenCalledTimes(1);
-    expect(t.mnemonic).toHaveBeenCalledWith("hangar", "ангар");
+    expect(t.mnemonics).toHaveBeenCalledTimes(1);
+    expect(t.mnemonics).toHaveBeenCalledWith([{ term: "hangar", translation: "ангар" }]);
   });
 
   it("shows the mnemonic under the spoiler on everyone's cards once it exists", async () => {
@@ -65,9 +66,5 @@ describe("hard words", () => {
     expect((await getWord(h.db, word.id))?.mnemonic).toBe("");
   });
 
-  it("parses Claude's answer and builds the prompt", () => {
-    expect(parseMnemonic(JSON.stringify({ mnemonic: "  образ  " }))).toBe("образ");
-    expect(() => parseMnemonic(JSON.stringify({ mnemonic: "" }))).toThrow();
-    expect(buildMnemonicPrompt("hangar", "ангар")).toContain("hangar");
-  });
+
 });

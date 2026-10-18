@@ -12,6 +12,7 @@ describe("loadConfig", () => {
       dbPath: "data/eng-bot.sqlite",
       enrichModel: "haiku",
       enrichTimeoutMs: 30_000,
+      mnemonicModel: "sonnet",
       imagesBackground: false,
     });
   });

@@ -23,9 +23,11 @@ import {
   parseDrill,
   parseJudgement,
   parseImagePrompt,
-  parseMnemonic,
+  parseMnemonics,
   type DrillQuestion,
   type ExerciseTutor,
+  type ImageSubject,
+  type MnemonicItem,
   type JudgeInput,
   type Judgement,
 } from "./tutor";
@@ -36,7 +38,7 @@ const EXTRACT_TIMEOUT_MS = 180_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
 export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
-  constructor(private readonly opts: { model: string; timeoutMs: number }) {}
+  constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string }) {}
 
   async enrich(term: string, translationHint?: string): Promise<Enrichment> {
     return parseEnrichment(await this.ask(buildPrompt(term, translationHint), this.opts.timeoutMs));
@@ -58,12 +60,15 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseDrill(await this.ask(buildDrillPrompt(profile, count), Math.max(this.opts.timeoutMs, 60_000)));
   }
 
-  async mnemonic(term: string, translation: string): Promise<string> {
-    return parseMnemonic(await this.ask(buildMnemonicPrompt(term, translation), this.opts.timeoutMs));
+  /** Запоминалки — более сильной моделью (по умолчанию sonnet): придумывать ассоциации Haiku умеет плохо. */
+  async mnemonics(items: MnemonicItem[]): Promise<string[]> {
+    if (items.length === 0) return [];
+    const raw = await this.ask(buildMnemonicPrompt(items), Math.max(this.opts.timeoutMs, 30_000 + items.length * 6_000), this.opts.mnemonicModel ?? "sonnet");
+    return parseMnemonics(raw, items.length);
   }
 
-  async imagePrompt(term: string, translation: string, mnemonic: string): Promise<string> {
-    return parseImagePrompt(await this.ask(buildImagePromptPrompt(term, translation, mnemonic), this.opts.timeoutMs));
+  async imagePrompt(word: ImageSubject): Promise<string> {
+    return parseImagePrompt(await this.ask(buildImagePromptPrompt(word), this.opts.timeoutMs));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
@@ -71,7 +76,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
-  async ask(prompt: string, timeoutMs: number): Promise<string> {
+  async ask(prompt: string, timeoutMs: number, model = this.opts.model): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {
@@ -80,7 +85,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
         prompt,
         options: {
           abortController,
-          model: this.opts.model,
+          model,
           systemPrompt: SYSTEM_PROMPT,
           maxTurns: 1,
           // Без инструментов и без пользовательских настроек/плагинов/хуков — только ответ модели.

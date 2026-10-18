@@ -67,11 +67,11 @@ export class ImageService {
     return this.waiting;
   }
 
-  drawWord(word: { id: number; term: string; translation: string; mnemonic: string }): Promise<Buffer> {
+  drawWord(word: { id: number; term: string; translation: string; explanation: string; example: string }): Promise<Buffer> {
     const running = this.inFlight.get(word.id);
     if (running) return running;
     const task = (async () => {
-      const prompt = await this.tutor.imagePrompt(word.term, word.translation, word.mnemonic);
+      const prompt = await this.tutor.imagePrompt(word);
       return this.enqueue(() => this.synth.draw(`${prompt}, ${this.style}`));
     })().finally(() => this.inFlight.delete(word.id));
     this.inFlight.set(word.id, task);

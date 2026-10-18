@@ -38,12 +38,12 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     if (!word) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
     if (word.imageFileId) {
       void ctx.answerCallbackQuery().catch(() => {});
-      return void (await ctx.replyWithPhoto(word.imageFileId, { ...HTML, caption: pictureCaption(word.term, word.mnemonic), has_spoiler: true }));
+      return void (await ctx.replyWithPhoto(word.imageFileId, { ...HTML, caption: pictureCaption(word.term, word.translation), has_spoiler: true }));
     }
     const painted = deps.pictures?.find(word);
     if (painted) {
       void ctx.answerCallbackQuery().catch(() => {});
-      const sent = await ctx.replyWithPhoto(new InputFile(painted), { ...HTML, caption: pictureCaption(word.term, word.mnemonic), has_spoiler: true });
+      const sent = await ctx.replyWithPhoto(new InputFile(painted), { ...HTML, caption: pictureCaption(word.term, word.translation), has_spoiler: true });
       const best = sent.photo.at(-1);
       if (best) await setImageFileId(deps.db, word.id, best.file_id);
       return;
@@ -51,12 +51,10 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     const queue = images.queued;
     await ctx.answerCallbackQuery({ text: queue ? `🖼 В очереди (${queue} до тебя), потом ~20 секунд` : "🖼 Рисую, это около 20 секунд…" });
     background(ctx, async () => {
-      const mnemonic = await ensureMnemonic(deps, word.id);
-      if (!mnemonic) return void (await ctx.reply("Не получилось придумать запоминалку для картинки 😔"));
       await ctx.replyWithChatAction("upload_photo").catch(() => {});
       let picture: Buffer;
       try {
-        picture = await images.drawWord({ ...word, mnemonic });
+        picture = await images.drawWord(word);
       } catch (err) {
         console.error("Picture failed", word.term, err);
         return void (await ctx.reply("Не получилось нарисовать картинку 😔 Попробуй позже"));
@@ -64,7 +62,7 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
       // Пока рисовали, картинку могли уже отправить по другому нажатию — тогда не дублируем в кэш.
       const message = await ctx.replyWithPhoto(new InputFile(picture, "picture.png"), {
         ...HTML,
-        caption: pictureCaption(word.term, mnemonic),
+        caption: pictureCaption(word.term, word.translation),
         has_spoiler: true,
       });
       const best = message.photo.at(-1);

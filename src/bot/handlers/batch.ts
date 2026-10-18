@@ -49,6 +49,8 @@ async function finish(ctx: BotContext, deps: Deps, batch: Batch): Promise<void> 
   });
   const saved = [...batch.saved];
   background(ctx, () => broadcastBatch(deps, batch.roomId, saved, ctx.user, ctx.chat?.id));
+  // Запоминалки для пачки — в фоне одним запросом на 20 слов, чтобы не держать список.
+  void deps.mnemonicGen.ensureMany(saved.map((w) => w.id)).catch((err) => console.error("Batch mnemonics failed", err));
 }
 
 async function showCurrent(ctx: BotContext, deps: Deps, batch: Batch): Promise<void> {

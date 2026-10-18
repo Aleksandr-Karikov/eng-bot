@@ -1,6 +1,19 @@
 import { z } from "zod";
 import type { ClozeDraft } from "../services/cloze";
 
+export interface MnemonicItem {
+  term: string;
+  /** "" — перевод ещё неизвестен (запоминалка пишется параллельно с переводом). */
+  translation: string;
+}
+
+export interface ImageSubject {
+  term: string;
+  translation: string;
+  explanation: string;
+  example: string;
+}
+
 export interface Judgement {
   /** Ответ подходит по смыслу и грамматике (синоним, допустимая форма, мелкая опечатка). */
   correct: boolean;
@@ -30,10 +43,10 @@ export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
   drill(profile: string, count: number): Promise<DrillQuestion[]>;
-  /** Короткая запоминалка (созвучие, образ, ассоциация) для слова, которое никак не запоминается. */
-  mnemonic(term: string, translation: string): Promise<string>;
-  /** Короткое английское описание сцены из запоминалки — для рисовалки картинок. */
-  imagePrompt(term: string, translation: string, mnemonic: string): Promise<string>;
+  /** Запоминалки для слов (по порядку; "" — не вышло): образ, разбор по частям, связь или сценка — что подходит. */
+  mnemonics(items: MnemonicItem[]): Promise<string[]>;
+  /** Короткое английское описание сцены, показывающей смысл слова, — для рисовалки картинок. */
+  imagePrompt(word: ImageSubject): Promise<string>;
 }
 
 export const CLOZE_COUNT = 3;
@@ -130,33 +143,49 @@ export function parseDrill(text: string): DrillQuestion[] {
   });
 }
 
-export function buildMnemonicPrompt(term: string, translation: string): string {
+/**
+ * Запоминалка в два шага: кандидаты каждого приёма с честной оценкой, затем итог из сильных
+ * (один или два, если оба хороши и дополняют друг друга — например, образ + происхождение).
+ */
+export function buildMnemonicPrompt(items: MnemonicItem[]): string {
   return [
-    `Русскоязычный человек никак не может запомнить английское "${term}" (значение: "${translation}").`,
-    "Придумай одну короткую запоминалку по-русски: созвучие с русским словом, яркий образ или ассоциацию,",
-    "которая связывает звучание или вид английского слова с его значением. 1–2 предложения, без пояснений «это мнемоника».",
-    'Верни JSON: {"mnemonic": "..."}',
+    "Ты помогаешь русскоязычным запомнить английские слова. Для каждого слова действуй в два шага.",
+    "Шаг 1 — кандидаты. Набросай по одному варианту каждого приёма и честно оцени, насколько он поможет вспомнить значение (score 1–10):",
+    "- image: яркий образ или созвучие с русским словом — только если созвучие естественное и само всплывает (beset → «бес сэт»: бесы окружили);",
+    "- parts: разбор по частям или происхождение, если оно проясняет смысл (heritage ← heir, наследник);",
+    "- link: связь со знакомым английским словом или корнем (fuse → fusion, confuse);",
+    "- scene: короткая живая сценка употребления.",
+    "Шаг 2 — итог (final). Собери запоминалку из лучших кандидатов: один, если сильный только один; два, если оба со score ≥ 7",
+    "и дополняют друг друга (например, образ + происхождение). По-русски, 1–3 предложения, понятно с первого прочтения, без натяжек.",
+    'Верни JSON-массив: [{"i": 1, "candidates": [{"technique": "image", "text": "...", "score": 8}, ...], "final": "...", "used": ["image", "parts"]}]',
+    "",
+    ...items.map((w, i) => `${i + 1}. ${w.term}${w.translation ? ` — ${w.translation}` : ""}`),
   ].join("\n");
 }
 
-const mnemonicSchema = z.object({ mnemonic: z.string().trim().min(1) });
+const mnemonicAnswer = z.array(z.object({ i: z.number(), final: z.string().trim() }).passthrough());
 
-export function parseMnemonic(text: string): string {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return mnemonicSchema.parse(JSON.parse(text.slice(start, end + 1))).mnemonic;
+/** Итоговые запоминалки по порядку пунктов; "" там, где модель ничего не вернула. */
+export function parseMnemonics(text: string, count: number): string[] {
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
+  const answer = mnemonicAnswer.parse(JSON.parse(text.slice(start, end + 1)));
+  return Array.from({ length: count }, (_, k) => answer.find((a) => a.i === k + 1)?.final ?? "");
 }
 
-export function buildImagePromptPrompt(term: string, translation: string, mnemonic: string): string {
+export function buildImagePromptPrompt(word: ImageSubject): string {
   return [
-    `Запоминалка к английскому "${term}" (значение "${translation}"): ${mnemonic}`,
-    "Опиши её одной сценой для генератора картинок: по-английски, 15–25 слов.",
-    "Начни с главного действия крупным планом — того самого момента, который связывает слово со значением;",
-    "1–2 персонажа или предмета, без второстепенного фона и деталей, которые не важны для смысла.",
+    `Английское слово или фраза: "${word.term}" — ${word.translation}.`,
+    word.explanation ? `Смысл: ${word.explanation}` : "",
+    word.example ? `Пример: ${word.example}` : "",
+    "Опиши одну сцену, которая наглядно показывает этот смысл, для генератора картинок: по-английски, 15–25 слов.",
+    "Главное действие или предмет крупным планом, 1–2 персонажа или предмета, без второстепенного фона.",
     "Только сюжет, без указаний стиля (стиль добавится отдельно). Никакого текста, букв и надписей на картинке.",
     'Верни JSON: {"prompt": "..."}',
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const imagePromptSchema = z.object({ prompt: z.string().trim().min(1) });

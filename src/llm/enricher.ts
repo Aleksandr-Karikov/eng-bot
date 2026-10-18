@@ -60,9 +60,7 @@ const toEnrichment = <T extends { transcription_uk: string; transcription_us: st
 const enrichmentSchema = z.object(enrichmentFields).transform(toEnrichment);
 
 const TRANSCRIPTION_HINT =
-  "transcription_uk и transcription_us — транскрипция IPA в британском (RP) и американском произношении в слешах, для фразы — целиком,";
-const MNEMONIC_HINT =
-  "mnemonic — запоминалка по-русски в 1–2 предложения: созвучие с русским словом или яркий образ, который связывает звучание английского со значением (например: «beset» звучит как «бес сэт» — толпа бесов осадила тебя со всех сторон).";
+  "transcription_uk и transcription_us — транскрипция IPA в британском (RP) и американском произношении в слешах, для фразы — целиком.";
 
 export const SYSTEM_PROMPT =
   "Ты помогаешь русскоязычным людям учить английский. Отвечай строго одним JSON-объектом, без пояснений и без markdown.";
@@ -71,12 +69,11 @@ export function buildPrompt(term: string, translationHint?: string): string {
   return [
     `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
-    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "mnemonic": "..."}, где',
+    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",
     "example — короткое естественное предложение на английском с этим словом,",
     TRANSCRIPTION_HINT,
-    MNEMONIC_HINT,
   ]
     .filter(Boolean)
     .join("\n");
@@ -100,11 +97,10 @@ export function buildExtractPrompt(text: string): string {
     "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
     "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
     `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "mnemonic": "..."}], где',
+    'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}], где',
     "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
     "example — короткое предложение на английском,",
     TRANSCRIPTION_HINT,
-    MNEMONIC_HINT,
     "",
     "Текст:",
     text,

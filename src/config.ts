@@ -3,6 +3,8 @@ export interface Config {
   dbPath: string;
   enrichModel: string;
   enrichTimeoutMs: number;
+  /** Модель для запоминалок (сильнее основной). */
+  mnemonicModel: string;
   /** Путь к mflux-generate, если картинки включены (IMAGES_ENABLED=1). */
   mfluxBin?: string;
   /** Стиль картинок; не задан — по умолчанию (чернильный комикс). */
@@ -19,6 +21,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: env.DB_PATH || "data/eng-bot.sqlite",
     enrichModel: env.ENRICH_MODEL || "haiku",
     enrichTimeoutMs: Number(env.ENRICH_TIMEOUT_MS || 30_000),
+    mnemonicModel: env.MNEMONIC_MODEL || "sonnet",
     ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
     imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",

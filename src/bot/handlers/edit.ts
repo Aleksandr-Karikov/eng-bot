@@ -34,12 +34,16 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
   if (clash) return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
 
   await ctx.replyWithChatAction("typing");
-  let enrichment: Enrichment | undefined;
-  try {
-    enrichment = await deps.enricher.enrich(term, translation);
-  } catch (err) {
-    console.error("Re-enrichment failed, keeping old explanation", term, err);
-  }
+  const [enrichment, mnemonic] = await Promise.all([
+    deps.enricher.enrich(term, translation).catch((err): Enrichment | undefined => {
+      console.error("Re-enrichment failed, keeping old explanation", term, err);
+      return undefined;
+    }),
+    deps.tutor
+      .mnemonics([{ term, translation }])
+      .then(([m]) => m ?? "")
+      .catch(() => ""),
+  ]);
   const result = await updateWord(deps.db, word.id, {
     term,
     translation,
@@ -48,7 +52,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     // Если слово переименовали, а Claude не ответил, старая транскрипция уже неверна.
     transcriptionUk: enrichment?.transcriptionUk ?? (term === word.term ? undefined : ""),
     transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
-    mnemonic: enrichment?.mnemonic || undefined,
+    mnemonic: mnemonic || undefined,
   });
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));
   if (result.status === "duplicate") return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));

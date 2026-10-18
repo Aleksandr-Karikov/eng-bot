@@ -21,12 +21,20 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
   }
 
   await ctx.replyWithChatAction("typing");
-  let enrichment: Enrichment | undefined;
-  try {
-    enrichment = await deps.enricher.enrich(parsed.term, parsed.translation);
-  } catch (err) {
-    console.error("Enrichment failed", parsed.term, err);
-  }
+  // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
+  const [enrichment, mnemonic] = await Promise.all([
+    deps.enricher.enrich(parsed.term, parsed.translation).catch((err): Enrichment | undefined => {
+      console.error("Enrichment failed", parsed.term, err);
+      return undefined;
+    }),
+    deps.tutor
+      .mnemonics([{ term: parsed.term, translation: parsed.translation ?? "" }])
+      .then(([m]) => m ?? "")
+      .catch((err) => {
+        console.error("Mnemonic failed", parsed.term, err);
+        return "";
+      }),
+  ]);
 
   const draft = deps.drafts.create({
     userId: ctx.user.id,
@@ -38,7 +46,7 @@ async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<voi
     example: enrichment?.example ?? "",
     transcriptionUk: enrichment?.transcriptionUk ?? "",
     transcriptionUs: enrichment?.transcriptionUs ?? "",
-    mnemonic: enrichment?.mnemonic ?? "",
+    mnemonic,
   });
   if (!draft.translation) return askForTranslation(ctx, deps, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);
