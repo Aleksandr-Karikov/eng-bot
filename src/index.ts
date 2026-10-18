@@ -25,6 +25,8 @@ import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { startReminderLoop } from "./reminder-loop";
+import type { Deps } from "./bot/context";
+import { publishStory } from "./bot/handlers/story";
 
 try {
   process.loadEnvFile(".env");
@@ -47,7 +49,7 @@ const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, claude);
 
 await bot.init();
-setupBot(bot, {
+const deps: Deps = {
   db,
   notifier,
   now,
@@ -73,10 +75,16 @@ setupBot(bot, {
   images,
   pictures,
   botUsername: bot.botInfo.username,
-});
+};
+setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS);
 
-const stopReminders = startReminderLoop({ db, notifier, now });
+const stopReminders = startReminderLoop({
+  db,
+  notifier,
+  now,
+  story: async (room) => room.telegramChatId != null && publishStory(bot.api, deps, room.telegramChatId, room),
+});
 const stopPainter =
   images && pictures && config.imagesBackground
     ? new BackgroundPainter({ db, images, pictures, onPower: onAcPower }).start()

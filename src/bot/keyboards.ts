@@ -290,3 +290,13 @@ export function redrawMenuKeyboard(wordId: number, styles: ReadonlyArray<{ label
   });
   return kb;
 }
+
+export function storyKeyboard(id: number): InlineKeyboard {
+  return new InlineKeyboard().text("🔊 Послушать", encodeCb({ k: "storyAudio", id }));
+}
+
+export function storyQuestionKeyboard(id: number, q: number, options: string[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  options.forEach((option, index) => kb.text(option, encodeCb({ k: "storyAnswer", id, q, index })).row());
+  return kb;
+}

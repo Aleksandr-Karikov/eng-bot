@@ -11,7 +11,7 @@ import { T0, makeUser } from "./helpers";
 function tutor(
   mnemonics = vi.fn(async (items: Array<{ term: string }>) => items.map(() => "Ангар — огромный «гараж» для самолёта")),
 ): ExerciseTutor & { mnemonics: typeof mnemonics } {
-  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics, reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "a scene" };
+  return { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics, story: async () => ({ title: "", body: "", questions: [] }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "a scene" };
 }
 
 async function setup(h: ReturnType<typeof botHarness>) {

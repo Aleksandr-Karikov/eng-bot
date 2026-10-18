@@ -10,7 +10,7 @@ import { T0, makeUser } from "./helpers";
 
 function setup(withImages = true) {
   const imagePrompt = vi.fn(async () => "an old family house");
-  const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt };
+  const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt };
   const draw = vi.fn(async () => Buffer.from("png"));
   const h = botHarness({ tutor, images: withImages ? { draw } : undefined });
   return { h, draw, imagePrompt };

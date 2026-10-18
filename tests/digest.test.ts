@@ -85,9 +85,12 @@ describe("weekly digest", () => {
     await linkGroup(b.db, b.room.id, -900);
     await review(b.db, b.bob.id, 1, nsk("2026-10-17T12:00"));
     const toGroup = fakeNotifier();
-    await sendDigests({ db: b.db, notifier: toGroup, now: () => nsk("2026-10-18T20:00") });
+    const stories: number[] = [];
+    await sendDigests({ db: b.db, notifier: toGroup, now: () => nsk("2026-10-18T20:00"), story: async (room) => stories.push(room.id) });
     expect(toGroup.groups.map((g) => g.chatId)).toEqual([-900]);
     expect(toGroup.dms).toEqual([]);
+    // Вслед за итогами в группу — история из слов недели.
+    expect(stories).toEqual([b.room.id]);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ClozeSentence, User, Word } from "../db/schema";
+import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { DrillQuestion, Judgement, SentenceReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import type { MistakeProfile } from "../services/mistakes";
@@ -270,6 +270,22 @@ export function checkText(r: CheckResult): string {
   return build();
 }
 
+export function storyText(story: Pick<Story, "title" | "body">, glossary: Array<{ term: string; translation: string }>): string {
+  const words = glossary.map((g) => `${esc(g.term)} — ${esc(g.translation)}`).join("\n");
+  return `📖 <b>${esc(story.title)}</b>\n\n${boldMarked(story.body)}\n\n<b>Слова:</b>\n<tg-spoiler>${words}</tg-spoiler>`;
+}
+
+export function storyQuestionText(index: number, total: number, question: string): string {
+  return `❓ ${index + 1}/${total}. ${esc(question)}`;
+}
+
+/** Всплывающее окно Telegram — не длиннее 200 символов. */
+export function storyAnswerAlert(q: { options: string[]; correct: number; explanation: string }, chosen: number): string {
+  const head = chosen === q.correct ? "✅ Верно!" : `❌ Правильно: ${q.options[q.correct]}`;
+  const text = q.explanation ? `${head}\n\n${q.explanation}` : head;
+  return text.length <= 200 ? text : `${text.slice(0, 199)}…`;
+}
+
 export function welcomeText(): string {
   return [
     "👋 Привет! Я помогаю учить английские слова вместе с друзьями.",
@@ -283,6 +299,7 @@ export function welcomeText(): string {
     "/delete кусок — удалить слово или фразу (без текста — список последних)",
     "/learn — повторить слова",
     "/drill — вопросы по твоим частым ошибкам, /mistakes — что бот о них знает",
+    "/story — короткая история из слов комнаты с вопросами и озвучкой",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",

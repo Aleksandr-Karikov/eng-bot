@@ -13,6 +13,7 @@ import { registerEdit } from "./handlers/edit";
 import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { registerStats } from "./handlers/stats";
+import { registerStory } from "./handlers/story";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
 
@@ -28,6 +29,7 @@ export const COMMANDS = [
   { command: "mistakes", description: "Твои частые ошибки" },
   { command: "edit", description: "Исправить слово (можно по кусочку)" },
   { command: "delete", description: "Удалить слово (можно по кусочку)" },
+  { command: "story", description: "История из слов комнаты" },
   { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "room", description: "Комнаты и приглашения" },
@@ -61,6 +63,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerMistakes(bot, deps);
   registerDelete(bot, deps);
   registerDuel(bot, deps);
+  registerStory(bot, deps);
   registerEdit(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».

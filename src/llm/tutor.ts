@@ -32,6 +32,21 @@ export interface JudgeInput {
   answer: string;
 }
 
+export interface StoryQuestion {
+  question: string;
+  options: string[];
+  correct: number;
+  /** Коротко по-русски — показывается во всплывающем окне (до ~150 символов). */
+  explanation: string;
+}
+
+export interface StoryDraft {
+  title: string;
+  /** Текст истории, слова из списка выделены **так**. */
+  body: string;
+  questions: StoryQuestion[];
+}
+
 /** Разбор своего предложения ученика со словом. */
 export interface SentenceReview extends CheckResult {
   /** Слово употреблено в нужном значении и уместно (форма может быть любой). */
@@ -60,6 +75,8 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Короткая история с этими словами и вопросы на понимание. */
+  story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft>;
   /** Проверяет предложение, которое ученик составил сам: употреблено ли слово и какие ошибки вокруг. */
   reviewSentence(input: SentenceInput): Promise<SentenceReview>;
   drill(profile: string, count: number): Promise<DrillQuestion[]>;
@@ -162,6 +179,49 @@ export function parseSentenceReview(text: string): SentenceReview {
   if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
   const { uses_word, ...rest } = sentenceReview.parse(JSON.parse(text.slice(start, end + 1)));
   return { ...rest, usesWord: uses_word };
+}
+
+export const STORY_QUESTIONS = 3;
+
+export function buildStoryPrompt(words: Array<{ term: string; translation: string }>): string {
+  return [
+    "Русскоязычные друзья учат английский. Вот слова и фразы, которые они недавно добавили:",
+    ...words.map((w) => `- ${w.term} — ${w.translation}`),
+    "",
+    "Напиши короткую живую историю или диалог на английском (120–180 слов, уровень B1–B2), где естественно встречаются эти слова,",
+    "каждое хотя бы раз, в своём значении. Сюжет связный и с изюминкой — смешной поворот или неожиданная концовка, без морали.",
+    "Каждое употребление слова из списка выдели **двойными звёздочками** (в той форме, в какой оно стоит в тексте).",
+    "Если слово грубое — употреби его, но без пошлости. Остальная лексика проще, чем слова из списка.",
+    `Потом ${STORY_QUESTIONS} вопроса на понимание по-английски, с 3 короткими вариантами ответа, один верный.`,
+    "Вопросы — о сюжете, но такие, где ответ зависит от смысла слов из списка.",
+    'Верни JSON: {"title": "...", "body": "...", "questions": [{"question": "...", "options": ["...", "...", "..."], "correct": 0, "explanation": "..."}]}, где',
+    "correct — индекс верного варианта (с нуля), explanation — до 150 символов по-русски: почему верно, с переводом нужного слова.",
+    "В body абзацы разделяй пустой строкой.",
+  ].join("\n");
+}
+
+const storySchema = z.object({
+  title: z.string().trim().min(1),
+  body: z.string().trim().min(1),
+  questions: z
+    .array(
+      z
+        .object({
+          question: z.string().trim().min(1),
+          options: z.array(z.string().trim().min(1)).min(2).max(4),
+          correct: z.number().int().min(0),
+          explanation: z.string().trim().default(""),
+        })
+        .refine((q) => q.correct < q.options.length),
+    )
+    .min(1),
+});
+
+export function parseStory(text: string): StoryDraft {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  return storySchema.parse(JSON.parse(text.slice(start, end + 1)));
 }
 
 const judgement = z.object({

@@ -1,3 +1,4 @@
+import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
 import { digestText, dueNoticeText, reminderText, wordOfDayText } from "./bot/texts";
@@ -36,6 +37,8 @@ export interface DigestDeps {
   db: Db;
   notifier: Pick<Notifier, "dm" | "group">;
   now: () => Date;
+  /** История из слов недели — в группу вслед за дайджестом. Пишется около минуты, поэтому не ждём. */
+  story?: (room: Room) => Promise<unknown>;
 }
 
 /** «Снова появились слова» — между ежедневными напоминаниями. Возвращает число доставленных. */
@@ -62,6 +65,7 @@ export async function sendDigests(deps: DigestDeps): Promise<void> {
       // Если в группу отправить не вышло (бота убрали из чата), шлём каждому в личку, чтобы итоги не потерялись.
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
       if (!posted) for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+      if (posted && deps.story) void deps.story(room).catch((err) => console.error("Weekly story failed", room.id, err));
     } catch (err) {
       console.error("Digest failed", room.id, err);
     }

@@ -18,6 +18,9 @@ import {
   buildDrillPrompt,
   buildJudgePrompt,
   buildSentencePrompt,
+  buildStoryPrompt,
+  parseStory,
+  type StoryDraft,
   parseSentenceReview,
   type SentenceInput,
   type SentenceReview,
@@ -75,6 +78,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  /** История — сильной моделью: Haiku пишет скучно и натягивает слова. */
+  async story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft> {
+    return parseStory(await this.ask(buildStoryPrompt(words), Math.max(this.opts.timeoutMs, 120_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   async reviewSentence(input: SentenceInput): Promise<SentenceReview> {

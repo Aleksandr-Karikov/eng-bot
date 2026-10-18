@@ -135,6 +135,21 @@ export const reviewLogs = sqliteTable("review_logs", {
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Истории из слов комнаты (/story и еженедельно в группу): текст, вопросы на понимание и озвучка. */
+export const stories = sqliteTable("stories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: integer("room_id").notNull().references(() => rooms.id),
+  title: text("title").notNull(),
+  /** Текст с **словами комнаты**. */
+  body: text("body").notNull(),
+  /** JSON: Array<{ term, translation }> — слова, вошедшие в историю. */
+  glossary: text("glossary").notNull(),
+  /** JSON: StoryQuestion[]. */
+  questions: text("questions").notNull(),
+  audioFileId: text("audio_file_id"),
+  createdAt: createdAt(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Word = typeof words.$inferSelect;
@@ -142,3 +157,4 @@ export type CardRow = typeof cards.$inferSelect;
 export type ReviewLog = typeof reviewLogs.$inferSelect;
 export type ClozeSentence = typeof clozeSentences.$inferSelect;
 export type Mistake = typeof mistakes.$inferSelect;
+export type Story = typeof stories.$inferSelect;
