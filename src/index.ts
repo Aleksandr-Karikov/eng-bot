@@ -65,6 +65,7 @@ setupBot(bot, {
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
   pendingMistakes: new PendingMistakesStore(),
+  random: Math.random,
   images,
   pictures,
   botUsername: bot.botInfo.username,

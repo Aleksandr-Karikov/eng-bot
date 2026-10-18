@@ -2,7 +2,7 @@ import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
 import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
-import { chooseStage, isExactAnswer, targetStage } from "../../services/exercises";
+import { isExactAnswer, pickStage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
@@ -60,7 +60,8 @@ const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts
 async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise<void> {
   const item = await getDueItemByCard(deps.db, ctx.user.id, cardId);
   if (!item) return;
-  if (ctx.user.modeCloze && targetStage(item.card) === "cloze") void deps.clozeGen.ensure(item.word);
+  // Предложения для «вставь по смыслу» готовим заранее — оно может выпасть на любом следующем показе.
+  if (ctx.user.modeCloze) void deps.clozeGen.ensure(item.word);
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
 }
 
@@ -77,10 +78,9 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
   if (item) {
     const { card, word } = item;
     const modes = userModes(ctx);
-    const target = targetStage(card);
-    const sentences = target === "cloze" && modes.cloze ? await listCloze(deps.db, word.id) : [];
-    if (target === "cloze" && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
-    const stage = chooseStage(target, modes, sentences.length > 0);
+    const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
+    if (modes.cloze && sentences.length === 0 && card.state !== State.New) void deps.clozeGen.ensure(word);
+    const stage = pickStage(card, modes, sentences.length > 0, deps.random);
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     if (sentence && ctx.chat) {
       deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
@@ -102,6 +102,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
         word.id,
         stage === "en_ru" && view.audio,
         Boolean(deps.images) && view.picture && !photo,
+        stage,
       );
     }
   } else {
@@ -185,7 +186,7 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
     console.error("Cloze judge failed", err);
     await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
       ...HTML,
-      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true),
+      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true, false, "cloze"),
     });
     return;
   }
@@ -275,9 +276,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^r:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "rate") return void (await ctx.answerCallbackQuery());
-    // Кнопками отвечают на EN → RU и RU → EN («вставь по смыслу» — текстом), так что ступень восстанавливается без cloze.
-    const shown = await getDueItemByCard(deps.db, ctx.user.id, cb.cardId);
-    const stage = shown ? chooseStage(targetStage(shown.card), userModes(ctx), false) : undefined;
+    const stage = cb.stage;
     const result = await answerCard(deps.db, {
       userId: ctx.user.id,
       cardId: cb.cardId,

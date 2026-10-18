@@ -48,6 +48,8 @@ export function botHarness(opts: {
   speech?: SpeechSynth;
   /** Время на раунд дуэли (мс). */
   duelRoundMs?: number;
+  /** Случайность выбора упражнения (по умолчанию 0 — первый из доступных, т.е. EN → RU). */
+  random?: () => number;
   /** Рисовалка картинок; не задана — картинки выключены. */
   images?: ImageSynth;
   /** Папка с картинками на диске (по умолчанию — временная, если картинки включены). */
@@ -91,7 +93,7 @@ export function botHarness(opts: {
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username });
+  setupBot(bot, { db, notifier, enricher, tutor, clozeGen, mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username });
 
   let seq = 0;
   const from = (id: number) => ({ id, is_bot: false, first_name: `User${id}` });

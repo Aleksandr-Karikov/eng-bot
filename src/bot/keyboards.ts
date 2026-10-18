@@ -37,11 +37,12 @@ export function rateKeyboard(
   wordId: number,
   withAudio = false,
   withPicture = false,
+  stage?: Stage,
 ): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again" }))
-    .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good" }));
-  if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy" }));
+    .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage }))
+    .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good", stage }));
+  if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy", stage }));
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
   if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();

@@ -5,7 +5,7 @@ import type { Answer } from "../srs/srs";
 export type Cb =
   | { k: "know"; wordId: number; knows: boolean }
   | { k: "show"; cardId: number; reps: number }
-  | { k: "rate"; cardId: number; reps: number; answer: Answer }
+  | { k: "rate"; cardId: number; reps: number; answer: Answer; stage?: Stage }
   | { k: "learn" }
   | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
@@ -37,6 +37,8 @@ export type Cb =
   | { k: "hour"; hour: number };
 
 const ANSWERS: Record<string, Answer> = { a: "again", h: "hard", g: "good", e: "easy" };
+/** Какое упражнение было показано — для статистики ответов. */
+const STAGE_CODES: Record<Stage, string> = { en_ru: "e", ru_en: "r", cloze: "c" };
 const DRAFT_ACTIONS = { o: "ok", e: "edit", c: "cancel", s: "skip", x: "stop" } as const;
 const BATCH_ACTIONS = { a: "add", r: "review", c: "cancel" } as const;
 const ROOM_ACTIONS = { n: "new", i: "invite" } as const;
@@ -48,7 +50,7 @@ export function encodeCb(cb: Cb): string {
   switch (cb.k) {
     case "know": return `k:${cb.wordId}:${cb.knows ? "y" : "n"}`;
     case "show": return `s:${cb.cardId}:${cb.reps}`;
-    case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}`;
+    case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "learn": return "l";
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
@@ -84,7 +86,7 @@ export function encodeCb(cb: Cb): string {
 const int = (s: string | undefined): number | null => (s !== undefined && /^\d+$/.test(s) ? Number(s) : null);
 
 export function decodeCb(data: string): Cb | null {
-  const [tag, a, b, c] = data.split(":");
+  const [tag, a, b, c, d] = data.split(":");
   switch (tag) {
     case "k": {
       const wordId = int(a);
@@ -96,7 +98,9 @@ export function decodeCb(data: string): Cb | null {
     }
     case "r": {
       const cardId = int(a), reps = int(b), answer = c ? ANSWERS[c] : undefined;
-      return cardId !== null && reps !== null && answer ? { k: "rate", cardId, reps, answer } : null;
+      const stage = STAGES.find((s) => STAGE_CODES[s] === d);
+      if (cardId === null || reps === null || !answer) return null;
+      return stage ? { k: "rate", cardId, reps, answer, stage } : { k: "rate", cardId, reps, answer };
     }
     case "l": return { k: "learn" };
     case "dv": {

@@ -42,6 +42,8 @@ export interface Deps {
   roomNames: RoomNameStore;
   duels: DuelStore;
   pendingMistakes: PendingMistakesStore;
+  /** Случайность выбора упражнения (Math.random; в тестах — подменяется). */
+  random: () => number;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */

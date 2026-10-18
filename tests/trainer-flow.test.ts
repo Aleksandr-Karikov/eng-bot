@@ -36,8 +36,8 @@ const sent = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.metho
 const lastRating = async (h: ReturnType<typeof botHarness>) => (await h.db.select().from(reviewLogs)).at(-1)?.rating;
 
 describe("trainer ladder", () => {
-  it("shows RU → EN for a card of medium stability", async () => {
-    const h = botHarness();
+  it("can show RU → EN for a word that was already seen", async () => {
+    const h = botHarness({ random: () => 0.99 });
     await setup(h, 5, false);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     const text = sent(h).at(-1)!;
@@ -48,7 +48,7 @@ describe("trainer ladder", () => {
 
   it("cloze: an exact answer counts as «Помню» and does not add a word", async () => {
     const judge = vi.fn(async () => ({ correct: false, explanation: "", tip: "" }));
-    const h = botHarness({ tutor: tutor(judge) });
+    const h = botHarness({ tutor: tutor(judge), random: () => 0.99 });
     await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(sent(h).at(-1)).toContain("We sat on the ___ of the river.");
@@ -62,7 +62,7 @@ describe("trainer ladder", () => {
   });
 
   it("cloze: Claude accepts a synonym with an explanation", async () => {
-    const h = botHarness({ tutor: tutor(async () => ({ correct: true, explanation: "shore тоже подходит", tip: "" })) });
+    const h = botHarness({ tutor: tutor(async () => ({ correct: true, explanation: "shore тоже подходит", tip: "" })), random: () => 0.99 });
     await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     await h.bot.handleUpdate(h.message(100, "shore"));
@@ -71,7 +71,7 @@ describe("trainer ladder", () => {
   });
 
   it("cloze: a wrong answer shows the right one, why and a tip, and counts as «Забыл»", async () => {
-    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "bench — скамейка", tip: "bank ≈ берег" })) });
+    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "bench — скамейка", tip: "bank ≈ берег" })), random: () => 0.99 });
     await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     await h.bot.handleUpdate(h.message(100, "bench"));
@@ -84,7 +84,7 @@ describe("trainer ladder", () => {
   });
 
   it("cloze: if Claude fails, shows the answer and lets you rate yourself", async () => {
-    const h = botHarness({ tutor: tutor(async () => Promise.reject(new Error("timeout"))) });
+    const h = botHarness({ tutor: tutor(async () => Promise.reject(new Error("timeout"))), random: () => 0.99 });
     await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     await h.bot.handleUpdate(h.message(100, "bench"));
@@ -94,7 +94,7 @@ describe("trainer ladder", () => {
   });
 
   it("cloze: «Не знаю» shows the answer and counts as «Забыл»", async () => {
-    const h = botHarness();
+    const h = botHarness({ random: () => 0.99 });
     await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🤷 Не знаю")));
@@ -102,9 +102,9 @@ describe("trainer ladder", () => {
     expect(h.calls.some((c) => c.method === "editMessageText" && String(c.payload.text).includes("<b>bank</b>"))).toBe(true);
   });
 
-  it("falls back to RU → EN and prepares sentences in the background when none exist yet", async () => {
+  it("falls back to another mode and prepares sentences in the background when none exist yet", async () => {
     const cloze = vi.fn(async () => [sentence]);
-    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "", tip: "" }), cloze) });
+    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "", tip: "" }), cloze), random: () => 0.99 });
     const { word } = await setup(h, 20, false);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(sent(h).at(-1)).toMatch(/^🇷🇺/);
@@ -114,7 +114,7 @@ describe("trainer ladder", () => {
 
   it("after ✏️ on a cloze card the next message is the fix, not the answer", async () => {
     const judge = vi.fn(async () => ({ correct: false, explanation: "", tip: "" }));
-    const h = botHarness({ tutor: tutor(judge) });
+    const h = botHarness({ tutor: tutor(judge), random: () => 0.99 });
     const { word } = await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✏️ Изменить")));
@@ -126,7 +126,7 @@ describe("trainer ladder", () => {
 
   it("respects disabled modes", async () => {
     const cloze = vi.fn(async () => [sentence]);
-    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "", tip: "" }), cloze) });
+    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "", tip: "" }), cloze), random: () => 0.99 });
     const { user } = await setup(h, 20, true);
     await updateUser(h.db, user.id, { modeCloze: false, modeRuEn: false });
     await h.bot.handleUpdate(h.message(100, "/learn"));

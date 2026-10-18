@@ -76,6 +76,7 @@ describe("batch callbacks", () => {
       { k: "duel", roundId: 9, index: 3 },
       { k: "cardPart", part: "mnemonic" },
       { k: "mistakesSave", id: 4, save: true },
+      { k: "rate", cardId: 9, reps: 2, answer: "good", stage: "ru_en" },
       { k: "mistakesSave", id: 4, save: false },
       { k: "roomDel", roomId: 2 },
       { k: "roomDelOk", roomId: 2 },

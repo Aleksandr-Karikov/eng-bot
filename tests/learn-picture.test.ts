@@ -59,7 +59,7 @@ describe("/learn cards with a picture", () => {
   });
 
   it("does not show the picture on the fill-in-the-gap stage", async () => {
-    const h = botHarness({ images: draw });
+    const h = botHarness({ images: draw, random: () => 0.99 });
     const { word } = await setup(h, true);
     await h.db.update(cards).set({ state: 2, stability: 20, reps: 3, due: new Date(T0.getTime() - DAY) }).where(eq(cards.wordId, word.id));
     const { saveCloze } = await import("../src/services/cloze");

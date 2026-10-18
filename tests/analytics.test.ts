@@ -6,21 +6,22 @@ import { recordMistakes } from "../src/services/mistakes";
 import { answerCard } from "../src/services/review";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
-import { botHarness } from "./bot-harness";
+import { botHarness, buttonData } from "./bot-harness";
 import { updateUser } from "../src/services/users";
 import { DAY, MIN, T0, at, makeUser, testDb } from "./helpers";
 
 describe("review log stage", () => {
   it("stores the stage of each answer", async () => {
-    const h = botHarness();
+    const h = botHarness({ random: () => 0.5 });
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "bank", translation: "t", explanation: "", example: "" }, now: T0 });
     const [card] = await h.db.select().from(cards);
-    await h.bot.handleUpdate(h.callback(100, `r:${card.id}:0:a`));
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
     await h.db.update(cards).set({ state: 2, stability: 5, due: new Date(T0.getTime() - DAY) }).where(eq(cards.id, card.id));
-    const [again] = await h.db.select().from(cards);
-    await h.bot.handleUpdate(h.callback(100, `r:${again.id}:${again.reps}:g`));
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😎 Помню")));
     expect((await h.db.select().from(reviewLogs)).map((l) => l.stage)).toEqual(["en_ru", "ru_en"]);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { State } from "ts-fsrs";
 import { ClozeGenerator } from "../src/services/cloze-generator";
 import { listCloze, pickCloze, saveCloze } from "../src/services/cloze";
-import { chooseStage, isExactAnswer, normalizeAnswer, targetStage } from "../src/services/exercises";
+import { isExactAnswer, normalizeAnswer, pickStage } from "../src/services/exercises";
 import { createRoom } from "../src/services/rooms";
 import { deleteWord, saveWord, updateWord } from "../src/services/words";
 import { buildClozePrompt, buildJudgePrompt, parseCloze, parseJudgement } from "../src/llm/tutor";
@@ -10,25 +10,24 @@ import { T0, makeUser, testDb } from "./helpers";
 
 const all = { en_ru: true, ru_en: true, cloze: true };
 
-describe("ladder", () => {
-  it("picks the target stage by stability", () => {
-    expect(targetStage({ state: State.New, stability: 0 })).toBe("en_ru");
-    expect(targetStage({ state: State.Review, stability: 2.9 })).toBe("en_ru");
-    expect(targetStage({ state: State.Review, stability: 3 })).toBe("ru_en");
-    expect(targetStage({ state: State.Review, stability: 14 })).toBe("cloze");
+describe("picking the exercise", () => {
+  const card = (state: number) => ({ state, stability: 1 });
+
+  it("shows a brand-new word as EN → RU first (it can't be recalled yet)", () => {
+    expect(pickStage(card(State.New), all, true, () => 0.99)).toBe("en_ru");
+    expect(pickStage(card(State.New), { ...all, en_ru: false }, true, () => 0)).toBe("ru_en");
   });
 
-  it("skips disabled stages: nearest enabled below, otherwise above", () => {
-    expect(chooseStage("cloze", all, true)).toBe("cloze");
-    expect(chooseStage("cloze", { ...all, cloze: false }, true)).toBe("ru_en");
-    expect(chooseStage("ru_en", { en_ru: true, ru_en: false, cloze: true }, true)).toBe("en_ru");
-    expect(chooseStage("en_ru", { en_ru: false, ru_en: true, cloze: true }, true)).toBe("ru_en");
-    expect(chooseStage("en_ru", { en_ru: false, ru_en: false, cloze: true }, true)).toBe("cloze");
+  it("otherwise picks randomly among the enabled modes, no difficulty ladder", () => {
+    expect(pickStage(card(State.Review), all, true, () => 0)).toBe("en_ru");
+    expect(pickStage(card(State.Review), all, true, () => 0.5)).toBe("ru_en");
+    expect(pickStage(card(State.Review), all, true, () => 0.99)).toBe("cloze");
+    expect(pickStage(card(State.Learning), { ...all, ru_en: false }, true, () => 0.99)).toBe("cloze");
   });
 
-  it("falls back while cloze sentences are not ready", () => {
-    expect(chooseStage("cloze", all, false)).toBe("ru_en");
-    expect(chooseStage("en_ru", { en_ru: false, ru_en: false, cloze: true }, false)).toBe("en_ru");
+  it("skips fill-in-the-gap while its sentences are not ready, and falls back to EN → RU if nothing else is on", () => {
+    expect(pickStage(card(State.Review), all, false, () => 0.99)).toBe("ru_en");
+    expect(pickStage(card(State.Review), { en_ru: false, ru_en: false, cloze: true }, false, () => 0.5)).toBe("en_ru");
   });
 });
 
@@ -97,6 +96,7 @@ describe("tutor parsing", () => {
       { sentence: "We sat on the ___ of the river.", answer: "bank", translation: "Мы сидели на берегу реки." },
     ]);
     expect(buildClozePrompt("bank", "берег")).toContain("bank");
+    expect(buildClozePrompt("take it for granted", "принимать как должное")).toMatch(/фраз[^]*только ключев/);
   });
 
   it("parses a judgement", () => {

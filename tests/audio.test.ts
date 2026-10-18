@@ -39,7 +39,7 @@ describe("pronunciation", () => {
   });
 
   it("shows 🔊 on EN → RU cards but not on RU → EN (it would give the answer away)", async () => {
-    const h = botHarness();
+    const h = botHarness({ random: () => 0.5 });
     const { user } = await setup(h);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(lastButtons(h.calls).map((b) => b.text)).toEqual(expect.arrayContaining(["🔊 UK", "🔊 US"]));
