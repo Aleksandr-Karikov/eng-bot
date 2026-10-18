@@ -117,6 +117,7 @@ describe("trainer ladder", () => {
     const h = botHarness({ tutor: tutor(judge), random: () => 0.99 });
     const { word } = await setup(h, 20, true);
     await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.manage(100));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✏️ Изменить")));
     await h.bot.handleUpdate(h.message(100, "берег реки"));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Обновлено"))).toBe(true));

@@ -4,7 +4,8 @@ import { STYLE_PRESETS } from "../../images/images";
 import { getWord, setImageFileId } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
-import { mnemonicKeyboard, pictureKeyboard, redrawMenuKeyboard } from "../keyboards";
+import { cardView } from "../../services/card-view";
+import { collapseManage, expandManage, mnemonicKeyboard, pictureKeyboard, redrawMenuKeyboard } from "../keyboards";
 import { clearPendingInputs } from "../pending";
 import { esc, mnemonicText, pictureCaption } from "../texts";
 
@@ -43,6 +44,20 @@ function drawingNotice(deps: Deps): string {
 }
 
 export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
+  // «⚙️ Управление словом» раскрывает действия со словом в той же клавиатуре, «▴ Скрыть» прячет обратно.
+  bot.callbackQuery(/^wm:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const rows = ctx.callbackQuery.message?.reply_markup?.inline_keyboard;
+    if (cb?.k !== "manage" || !rows) return void (await ctx.answerCallbackQuery());
+    await ctx.answerCallbackQuery();
+    const onPhoto = Boolean(ctx.callbackQuery.message?.photo);
+    const pictures = Boolean(deps.images) && cardView(ctx.user).picture;
+    const kb = cb.open
+      ? expandManage(rows, cb.wordId, { picture: pictures && !onPhoto, redraw: Boolean(deps.images) && onPhoto })
+      : collapseManage(rows, cb.wordId);
+    await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch(() => {});
+  });
+
   bot.callbackQuery(/^mn:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const word = cb?.k === "mnemonic" ? await getWord(deps.db, cb.wordId) : undefined;

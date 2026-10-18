@@ -28,6 +28,7 @@ export type Cb =
   | { k: "mnemonic"; wordId: number }
   | { k: "picture"; wordId: number }
   | { k: "redraw"; wordId: number }
+  | { k: "manage"; wordId: number; open: boolean }
   | { k: "redrawAs"; wordId: number; how: "again" | "custom" | number }
   | { k: "audio"; wordId: number; accent: "uk" | "us" }
   | { k: "del"; wordId: number }
@@ -80,6 +81,7 @@ export function encodeCb(cb: Cb): string {
     case "mnemonic": return `mn:${cb.wordId}`;
     case "picture": return `im:${cb.wordId}`;
     case "redraw": return `rd:${cb.wordId}`;
+    case "manage": return `wm:${cb.wordId}${cb.open ? "" : ":c"}`;
     case "redrawAs": return `rv:${cb.wordId}:${cb.how === "again" ? "x" : cb.how === "custom" ? "c" : cb.how}`;
     case "audio": return `a:${cb.wordId}:${cb.accent === "uk" ? "u" : "s"}`;
     case "del": return `x:${cb.wordId}`;
@@ -163,6 +165,10 @@ export function decodeCb(data: string): Cb | null {
     case "rd": {
       const wordId = int(a);
       return wordId !== null ? { k: "redraw", wordId } : null;
+    }
+    case "wm": {
+      const wordId = int(a);
+      return wordId !== null && (b === undefined || b === "c") ? { k: "manage", wordId, open: b === undefined } : null;
     }
     case "rv": {
       const wordId = int(a), style = int(b);

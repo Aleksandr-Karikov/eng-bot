@@ -43,7 +43,6 @@ describe("mnemonic as part of the word", () => {
   it("replaces the 💡 button with 🖼 when pictures are on, and shows neither when they are off", () => {
     const labels = (kb: { inline_keyboard: Array<Array<{ text: string }>> }) => kb.inline_keyboard.flat().map((b) => b.text);
     expect(labels(rateKeyboard(1, 0, true, 5))).not.toContain("💡 Запоминалка");
-    expect(labels(rateKeyboard(1, 0, true, 5, false, true))).toContain("🖼 Картинка");
     expect(labels(wordActionsKeyboard(5))).not.toContain("🖼 Картинка");
     expect(labels(wordActionsKeyboard(5, true))).toContain("🖼 Картинка");
   });

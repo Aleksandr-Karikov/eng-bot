@@ -50,6 +50,7 @@ describe("/learn cards with a picture", () => {
     await setup(none, false);
     await none.bot.handleUpdate(none.message(100, "/learn"));
     expect(lastCard(none).method).toBe("sendMessage");
+    await none.bot.handleUpdate(none.manage(100));
     expect(lastButtons(none.calls).map((b) => b.text)).toContain("🖼 Картинка");
 
     const long = botHarness({ images: draw });

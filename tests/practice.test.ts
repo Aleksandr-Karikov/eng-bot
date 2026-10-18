@@ -34,6 +34,24 @@ describe("practice outside the schedule", () => {
     expect(first).toContain("hangar");
   });
 
+  it("hides word actions behind ⚙️ and folds them back without losing the answer buttons", async () => {
+    const h = botHarness({ images: { draw: async () => Buffer.from("png") } });
+    await nothingDue(h);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🔁 Потренироваться")));
+    const labels = () => lastButtons(h.calls).map((b) => b.text);
+    expect(labels()).toEqual(expect.arrayContaining(["😎 Помню", "⏹ Хватит", "⚙️ Управление словом"]));
+    expect(labels()).not.toContain("🗑 Удалить");
+
+    await h.bot.handleUpdate(h.manage(100));
+    expect(h.calls.at(-1)?.method).toBe("editMessageReplyMarkup");
+    expect(labels()).toEqual(expect.arrayContaining(["😎 Помню", "⏹ Хватит", "🖼 Картинка", "✏️ Изменить", "🗑 Удалить", "▴ Скрыть"]));
+    expect(labels()).not.toContain("⚙️ Управление словом");
+
+    await h.bot.handleUpdate(h.manage(100, "▴"));
+    expect(labels()).toEqual(["😵 Забыл", "😎 Помню", "🔊 UK", "🔊 US", "⏹ Хватит", "⚙️ Управление словом"]);
+  });
+
   it("goes through the words without touching the schedule or the history", async () => {
     const h = botHarness();
     await nothingDue(h);

@@ -99,6 +99,7 @@ describe("editing words", () => {
     await add("bank");
     const [card] = await h.db.select().from(cards).where(eq(cards.userId, author.id));
     await h.bot.handleUpdate(h.callback(100, `s:${card.id}:0`));
+    await h.bot.handleUpdate(h.manage(100));
     expect(lastButtons(h.calls).some((b) => b.text === "✏️ Изменить")).toBe(true);
 
     await h.bot.handleUpdate(h.message(100, "/add hangar"));

@@ -193,6 +193,25 @@ export function botHarness(opts: {
         },
       } as Update;
     },
+    /** Нажатие «⚙️ Управление словом» (или «▴ Скрыть») на последнем сообщении с этой кнопкой — с его клавиатурой, как в Telegram. */
+    manage(userId: number, label = "⚙️"): Update {
+      const keyboard = (c: ApiCall) => (c.payload.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
+      const call = [...calls].reverse().find((c) => keyboard(c)?.flat().some((b) => b.text.startsWith(label)));
+      if (!call) throw new Error(`No "${label}" button`);
+      const rows = keyboard(call)!;
+      const content = call.method === "sendPhoto" ? { photo: [{ file_id: "p", file_unique_id: "u", width: 1, height: 1 }] } : { text: "card" };
+      seq++;
+      return {
+        update_id: seq,
+        callback_query: {
+          id: `cq${seq}`,
+          from: from(userId),
+          chat_instance: "ci",
+          data: rows.flat().find((b) => b.text.startsWith(label))!.callback_data,
+          message: { message_id: 1, date: 0, chat: chat(userId), ...content, reply_markup: { inline_keyboard: rows } },
+        },
+      } as Update;
+    },
   };
 }
 

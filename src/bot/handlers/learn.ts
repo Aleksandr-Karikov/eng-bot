@@ -111,9 +111,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
         card.state === State.New,
         word.id,
         stage === "en_ru" && view.audio,
-        Boolean(deps.images) && view.picture && !photo,
         stage,
-        Boolean(deps.images && photo),
       );
     }
   } else {
@@ -145,7 +143,7 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;
   if (sentence && ctx.chat) {
     deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
-    return void (await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id) }, mode));
+    return void (await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id, word.id) }, mode));
   }
   const view = cardView(ctx.user);
   const text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
@@ -228,7 +226,7 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
     }
     await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
       ...HTML,
-      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true, false, "cloze"),
+      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true, "cloze"),
     });
     return;
   }

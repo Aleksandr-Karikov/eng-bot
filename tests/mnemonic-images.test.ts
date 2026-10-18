@@ -41,8 +41,10 @@ describe("💡 old buttons", () => {
     await vi.waitFor(() => expect(h.calls.some((c) => String(c.payload.text).includes("<tg-spoiler>бесы"))).toBe(true));
   });
 
-  it("🖼 is offered on learn cards when pictures are on", () => {
-    expect(rateKeyboard(1, 0, true, 5, false, true).inline_keyboard.flat().map((b) => b.text)).toContain("🖼 Картинка");
+  it("learn cards hide word actions behind one ⚙️ button", () => {
+    const labels = rateKeyboard(1, 0, true, 5).inline_keyboard.flat().map((b) => b.text);
+    expect(labels).toContain("⚙️ Управление словом");
+    expect(labels).not.toContain("🖼 Картинка");
   });
 });
 

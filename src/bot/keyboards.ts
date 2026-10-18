@@ -26,32 +26,48 @@ export function audioKeyboard(wordId: number): InlineKeyboard {
   return addAudioRow(new InlineKeyboard(), wordId);
 }
 
-/**
- * withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа);
- * withPicture — картинки включены (картинка приходит под спойлером, так что можно на любой ступени).
- */
-export function rateKeyboard(
-  cardId: number,
-  reps: number,
-  isNew: boolean,
-  wordId: number,
-  withAudio = false,
-  withPicture = false,
-  stage?: Stage,
-  /** На карточке уже картинка — можно перерисовать. */
-  withRedraw = false,
-): InlineKeyboard {
+/** withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа). */
+export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false, stage?: Stage): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage }))
     .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good", stage }));
   if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy", stage }));
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
-  if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
-  if (withRedraw) kb.text("🔄 Перерисовать", encodeCb({ k: "redraw", wordId })).row();
+  return addManageButton(kb, wordId);
+}
+
+/** Действия со словом (картинка, изменить, удалить) спрятаны за одну кнопку, чтобы не мешать тренировке. */
+const MANAGE_TAGS = new Set(["im", "rd", "e", "x", "wm"]);
+
+export function addManageButton(kb: InlineKeyboard, wordId: number): InlineKeyboard {
+  return kb.text("⚙️ Управление словом", encodeCb({ k: "manage", wordId, open: true }));
+}
+
+type Rows = InlineKeyboard["inline_keyboard"];
+
+/** Клавиатура сообщения без кнопок управления словом — основа для раскрытия и сворачивания. */
+function withoutManage(rows: Rows): InlineKeyboard {
+  const kept = rows
+    .map((row) => row.filter((b) => !("callback_data" in b && MANAGE_TAGS.has(b.callback_data.split(":")[0] ?? ""))))
+    .filter((row) => row.length > 0);
+  return new InlineKeyboard(kept).row();
+}
+
+/** picture — можно нарисовать/показать картинку; redraw — картинка уже на карточке, её можно перерисовать. */
+export function expandManage(rows: Rows, wordId: number, opts: { picture: boolean; redraw: boolean }): InlineKeyboard {
+  const kb = withoutManage(rows);
+  if (opts.redraw) kb.text("🔄 Перерисовать", encodeCb({ k: "redraw", wordId })).row();
+  else if (opts.picture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
   return kb
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
-    .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+    .text("🗑 Удалить", encodeCb({ k: "del", wordId }))
+    .row()
+    .text("▴ Скрыть", encodeCb({ k: "manage", wordId, open: false }));
+}
+
+export function collapseManage(rows: Rows, wordId: number): InlineKeyboard {
+  return addManageButton(withoutManage(rows), wordId);
 }
 
 export function learnKeyboard(): InlineKeyboard {
@@ -174,11 +190,7 @@ export function pickerKeyboard(picker: Picker): InlineKeyboard {
 }
 
 export function clozeKeyboard(cardId: number, reps: number, wordId: number): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps }))
-    .row()
-    .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
-    .text("🗑 Удалить", encodeCb({ k: "del", wordId }));
+  return addManageButton(new InlineKeyboard().text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps })).row(), wordId);
 }
 
 const CARD_PART_LABELS: Array<[CardPart, string]> = [
@@ -250,13 +262,15 @@ export function practiceKeyboard(cardId: number, wordId: number, withAudio: bool
     .text("😎 Помню", encodeCb({ k: "practiceRate", cardId, remembered: true }))
     .row();
   if (withAudio) addAudioRow(kb, wordId);
-  return kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" }));
+  return addManageButton(kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" })).row(), wordId);
 }
 
-export function practiceClozeKeyboard(cardId: number): InlineKeyboard {
-  return new InlineKeyboard()
+export function practiceClozeKeyboard(cardId: number, wordId: number): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("🤷 Не знаю", encodeCb({ k: "practiceDunno", cardId }))
-    .text("⏹ Хватит", encodeCb({ k: "practiceStop" }));
+    .text("⏹ Хватит", encodeCb({ k: "practiceStop" }))
+    .row();
+  return addManageButton(kb, wordId);
 }
 
 export function pictureKeyboard(wordId: number): InlineKeyboard {

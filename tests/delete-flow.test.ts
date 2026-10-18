@@ -72,6 +72,8 @@ describe("deleting words", () => {
     await add("bank");
     const [card] = await h.db.select().from(cards).where(eq(cards.userId, author.id));
     await h.bot.handleUpdate(h.callback(100, `s:${card.id}:0`));
+    expect(lastButtons(h.calls).some((b) => b.text === "🗑 Удалить")).toBe(false);
+    await h.bot.handleUpdate(h.manage(100));
     expect(lastButtons(h.calls).some((b) => b.text === "🗑 Удалить")).toBe(true);
   });
 

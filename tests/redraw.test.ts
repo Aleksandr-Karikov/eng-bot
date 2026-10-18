@@ -34,7 +34,9 @@ describe("🔄 redraw a picture", () => {
     await h.bot.handleUpdate(h.callback(100, `im:${w.id}`));
     expect(lastButtons(h.calls).map((b) => b.text)).toContain("🔄 Перерисовать");
     await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.manage(100));
     expect(lastButtons(h.calls).map((b) => b.text)).toContain("🔄 Перерисовать");
+    expect(lastButtons(h.calls).map((b) => b.text)).not.toContain("🖼 Картинка");
   });
 
   it("offers another take, the six styles and a custom description", async () => {
