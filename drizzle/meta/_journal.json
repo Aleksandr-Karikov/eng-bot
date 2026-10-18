@@ -148,6 +148,13 @@
       "when": 1792314062342,
       "tag": "0020_omniscient_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792314639740,
+      "tag": "0021_colorful_boomer",
+      "breakpoints": true
     }
   ]
 }

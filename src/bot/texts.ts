@@ -3,6 +3,7 @@ import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
+import type { GoalProgress } from "../services/goals";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
@@ -98,6 +99,7 @@ export function digestText(
   roomName: string,
   rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number; used?: number }>,
   duels: Array<{ name: string; points: number }> = [],
+  goal?: GoalProgress,
 ): string {
   const lines = rows.map((r, i) => {
     const parts = [`${r.reviews7d} повт.`];
@@ -109,7 +111,33 @@ export function digestText(
   });
   const hero = rows[0] && rows[0].reviews7d > 0 ? `\n\nГерой недели: <b>${esc(rows[0].name)}</b> 🎉` : "";
   const duelLine = duels.length ? `\n⚔️ Дуэли: ${duels.map((d) => `${esc(d.name)} ${d.points}`).join(" · ")}` : "";
-  return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${duelLine}${hero}\n\nНовая неделя — новые слова: /learn`;
+  const goalLine = goal ? `\n🎯 Цель недели: ${goal.done}/${goal.target} ${goal.done >= goal.target ? "✅" : "— в этот раз не дотянули"}` : "";
+  return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${duelLine}${goalLine}${hero}\n\nНовая неделя — новые слова: /learn`;
+}
+
+const progressBar = (done: number, target: number) => {
+  const filled = Math.min(10, Math.floor((done / Math.max(1, target)) * 10));
+  return "▓".repeat(filled) + "░".repeat(10 - filled);
+};
+
+export function goalText(roomName: string, g: GoalProgress): string {
+  const percent = Math.round((g.done / Math.max(1, g.target)) * 100);
+  const lines = [
+    `🎯 <b>Цель «${esc(roomName)}» на неделю</b>: ${g.done}/${g.target} повторений${g.done >= g.target ? " ✅" : ""}`,
+    `${progressBar(g.done, g.target)} ${percent}%`,
+  ];
+  if (g.byUser.length) lines.push(`Вклад: ${g.byUser.map((u) => `${esc(u.name)} ${u.count}`).join(" · ")}`);
+  lines.push(
+    "",
+    g.auto ? "Цель подобрана по прошлой неделе (+10%). Своя — /goal 300" : "Вернуть автоцель — /goal auto",
+    "Неделя заканчивается в воскресенье в 20:00.",
+  );
+  return lines.join("\n");
+}
+
+export function goalReachedText(roomName: string, g: GoalProgress): string {
+  const top = g.byUser[0] ? ` Больше всех — ${esc(g.byUser[0].name)} (${g.byUser[0].count})` : "";
+  return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} повторений!${top}`;
 }
 
 export function doneText(reviewed: number, next: Date | undefined, timeZone: string): string {
@@ -117,7 +145,7 @@ export function doneText(reviewed: number, next: Date | undefined, timeZone: str
   return next ? `${head}\nСледующее повторение: ${formatDateTime(next, timeZone)}` : head;
 }
 
-export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow[]): string {
+export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow[], goal?: GoalProgress): string {
   const lines = [
     "📊 <b>Твой прогресс</b>",
     `Всего слов: ${s.total}`,
@@ -131,6 +159,7 @@ export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow
     lines.push("", `🏠 <b>${esc(roomName)}</b> — за неделю`);
     board.forEach((r, i) => lines.push(`${i + 1}. ${esc(r.name)} — ${r.reviews7d} повт., ${r.learned} выуч.`));
   }
+  if (goal) lines.push("", `🎯 Цель недели: ${goal.done}/${goal.target} ${progressBar(goal.done, goal.target)} — /goal`);
   return lines.join("\n");
 }
 
@@ -393,7 +422,7 @@ export function welcomeText(): string {
     "/story — короткая история из слов комнаты с вопросами и озвучкой",
     "/talk — поговорить по-английски на любую тему, с разбором в конце",
     "/say фраза — как естественно сказать это по-английски (можно ответом на сообщение)",
-    "/stats — прогресс твой и друзей",
+    "/stats — прогресс твой и друзей, /goal — цель комнаты на неделю",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",
     "/duel — в группе: дуэль, кто быстрее переведёт слова",

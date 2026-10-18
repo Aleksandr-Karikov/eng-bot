@@ -10,15 +10,15 @@ import { personalStats, roomLeaderboard } from "./stats";
 /** Дайджест — по воскресеньям в 20:00 по Новосибирску. */
 const DIGEST_TZ = "Asia/Novosibirsk";
 const DIGEST_TIME = "20:00";
-const WEEK_MS = 7 * 24 * 60 * 60_000;
+export const WEEK_MS = 7 * 24 * 60 * 60_000;
 
 /** В Новосибирске нет перехода на летнее время — смещение постоянное. */
 const DIGEST_UTC_OFFSET = "+07:00";
 /** Если бот не работал в воскресенье вечером, дайджест догоняет в течение двух суток. */
 const CATCH_UP_MS = 48 * 60 * 60_000;
 
-/** Последний момент «воскресенье 20:00» по поясу дайджеста, не позже now. */
-function latestDigestMoment(now: Date): { date: string; at: Date } {
+/** Последний момент «воскресенье 20:00» по поясу дайджеста, не позже now — начало текущей недели комнаты. */
+export function latestDigestMoment(now: Date): { date: string; at: Date } {
   let day = localParts(DIGEST_TZ, now).date;
   for (let i = 0; i < 14; i++, day = previousDate(day)) {
     if (new Date(`${day}T12:00:00Z`).getUTCDay() !== 0) continue;

@@ -38,6 +38,10 @@ export const rooms = sqliteTable("rooms", {
   lastDigestDate: text("last_digest_date"),
   /** Локальная дата последнего «слова дня» в группе. */
   lastWordOfDayDate: text("last_word_of_day_date"),
+  /** Цель комнаты на неделю (повторений); 0 — подбирается сама по прошлой неделе. */
+  weeklyGoal: integer("weekly_goal").notNull().default(0),
+  /** Начало недели (дата дайджеста), за которую уже поздравили с выполненной целью. */
+  goalReachedWeek: text("goal_reached_week"),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
 });

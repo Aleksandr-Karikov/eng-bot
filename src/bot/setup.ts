@@ -37,6 +37,7 @@ export const COMMANDS = [
   { command: "say", description: "Как сказать это по-английски" },
   { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
   { command: "stats", description: "Прогресс твой и друзей" },
+  { command: "goal", description: "Цель комнаты на неделю" },
   { command: "room", description: "Комнаты и приглашения" },
   { command: "newroom", description: "Создать комнату" },
   { command: "settings", description: "Время напоминания" },

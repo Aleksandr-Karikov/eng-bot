@@ -1,5 +1,6 @@
 import type { Bot } from "grammy";
-import { getRoom } from "../../services/rooms";
+import { findRoomByChat, getRoom } from "../../services/rooms";
+import { goalProgress, setWeeklyGoal } from "../../services/goals";
 import { personalStats, roomLeaderboard } from "../../services/stats";
 import { toggleCardPart } from "../../services/card-view";
 import { updateUser } from "../../services/users";
@@ -7,7 +8,7 @@ import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
 import { settingsKeyboard } from "../keyboards";
-import { settingsText, statsText } from "../texts";
+import { goalText, settingsText, statsText } from "../texts";
 import type { Stage } from "../../services/exercises";
 import type { User } from "../../db/schema";
 
@@ -26,7 +27,27 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const stats = await personalStats(deps.db, ctx.user, now);
     const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
     const board = room ? await roomLeaderboard(deps.db, room.id, now) : undefined;
-    await ctx.reply(statsText(stats, room?.name, board), HTML);
+    const goal = room ? await goalProgress(deps.db, room, now) : undefined;
+    await ctx.reply(statsText(stats, room?.name, board, goal), HTML);
+  });
+
+  // Цель комнаты: в группе — привязанной, в личке — текущей.
+  bot.command("goal", async (ctx) => {
+    const room =
+      ctx.chat.type !== "private"
+        ? await findRoomByChat(deps.db, ctx.chat.id)
+        : ctx.user.currentRoomId != null
+          ? await getRoom(deps.db, ctx.user.currentRoomId)
+          : undefined;
+    if (!room) return void (await ctx.reply(ctx.chat.type !== "private" ? "Эта группа ещё не привязана к комнате — /link" : "Сначала создай комнату — /room"));
+    const arg = ctx.match.trim().toLowerCase();
+    if (arg) {
+      const goal = arg === "auto" ? 0 : Number(arg);
+      if (!Number.isInteger(goal) || goal < 0 || goal > 10_000) return void (await ctx.reply("Формат: /goal 300 — повторений за неделю, или /goal auto"));
+      await setWeeklyGoal(deps.db, room.id, goal);
+    }
+    const fresh = (await getRoom(deps.db, room.id)) ?? room;
+    await ctx.reply(goalText(fresh.name, await goalProgress(deps.db, fresh, deps.now())), HTML);
   });
 
   bot.command("settings", async (ctx) => {

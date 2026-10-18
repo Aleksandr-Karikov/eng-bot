@@ -1,7 +1,8 @@
 import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
-import { digestText, dueNoticeText, reminderText, wordOfDayText } from "./bot/texts";
+import { digestText, dueNoticeText, goalReachedText, reminderText, wordOfDayText } from "./bot/texts";
+import { collectGoalsReached, lastWeekProgress } from "./services/goals";
 import { collectWordsOfDay } from "./services/word-of-day";
 import { collectDigests } from "./services/digest";
 import { listMembers } from "./services/rooms";
@@ -60,7 +61,7 @@ export async function sendDueNotices(deps: ReminderDeps): Promise<number> {
 /** Еженедельный дайджест: в привязанную группу, а если её нет — каждому участнику в личку. */
 export async function sendDigests(deps: DigestDeps): Promise<void> {
   for (const { room, rows, duels } of await collectDigests(deps.db, deps.now())) {
-    const text = digestText(room.name, rows, duels);
+    const text = digestText(room.name, rows, duels, await lastWeekProgress(deps.db, room, deps.now()));
     try {
       // Если в группу отправить не вышло (бота убрали из чата), шлём каждому в личку, чтобы итоги не потерялись.
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
@@ -68,6 +69,19 @@ export async function sendDigests(deps: DigestDeps): Promise<void> {
       if (posted && deps.story) void deps.story(room).catch((err) => console.error("Weekly story failed", room.id, err));
     } catch (err) {
       console.error("Digest failed", room.id, err);
+    }
+  }
+}
+
+/** Комната выполнила цель недели — поздравляем один раз: в группу, а если её нет — каждому в личку. */
+export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
+  for (const { room, progress } of await collectGoalsReached(deps.db, deps.now())) {
+    const text = goalReachedText(room.name, progress);
+    try {
+      const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
+      if (!posted) for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+    } catch (err) {
+      console.error("Goal message failed", room.id, err);
     }
   }
 }
@@ -89,6 +103,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
       await sendReminders(deps);
       await sendDueNotices(deps);
       await sendDigests(deps);
+      await sendGoalsReached(deps);
       await sendWordsOfDay(deps);
     } catch (err) {
       console.error("Reminder tick failed", err);
