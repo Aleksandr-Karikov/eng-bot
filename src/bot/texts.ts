@@ -77,13 +77,14 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 
 export function digestText(
   roomName: string,
-  rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number }>,
+  rows: Array<{ name: string; added: number; reviews7d: number; learned: number; streak: number; used?: number }>,
   duels: Array<{ name: string; points: number }> = [],
 ): string {
   const lines = rows.map((r, i) => {
     const parts = [`${r.reviews7d} повт.`];
     if (r.added) parts.push(`+${r.added} ${plural(r.added, "слово", "слова", "слов")}`);
     parts.push(`выучено ${r.learned}`);
+    if (r.used) parts.push(`👏 ${r.used} в разговоре`);
     if (r.streak) parts.push(`🔥 ${r.streak} ${plural(r.streak, "день", "дня", "дней")}`);
     return `${MEDALS[i] ?? "•"} <b>${esc(r.name)}</b> — ${parts.join(" · ")}`;
   });

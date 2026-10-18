@@ -14,6 +14,7 @@ import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
 import { registerStats } from "./handlers/stats";
 import { registerStory } from "./handlers/story";
+import { registerSpotted } from "./handlers/spotted";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
 
@@ -53,6 +54,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
     if (ctx.message?.text?.startsWith("/")) clearPendingInputs(deps, ctx.user.id);
     await next();
   });
+  registerSpotted(bot, deps);
   registerRooms(bot, deps);
   registerAudio(bot, deps);
   registerMnemonic(bot, deps);

@@ -135,6 +135,15 @@ export const reviewLogs = sqliteTable("review_logs", {
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Слово комнаты, употреблённое в разговоре в группе (👏) — для недельного итога. */
+export const wordUses = sqliteTable("word_uses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: integer("room_id").notNull().references(() => rooms.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  wordId: integer("word_id").notNull().references(() => words.id),
+  createdAt: createdAt(),
+});
+
 /** Истории из слов комнаты (/story и еженедельно в группу): текст, вопросы на понимание и озвучка. */
 export const stories = sqliteTable("stories", {
   id: integer("id").primaryKey({ autoIncrement: true }),

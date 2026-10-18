@@ -1,3 +1,4 @@
+import { wordUsesSince } from "./word-uses";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, words, type Room } from "../db/schema";
@@ -43,6 +44,8 @@ export interface DigestRow {
   reviews7d: number;
   learned: number;
   streak: number;
+  /** Слов комнаты, употреблённых в разговоре в группе. */
+  used: number;
 }
 
 export async function weeklyDigest(db: Db, roomId: number, now: Date): Promise<DigestRow[]> {
@@ -53,6 +56,7 @@ export async function weeklyDigest(db: Db, roomId: number, now: Date): Promise<D
     .from(words)
     .where(and(eq(words.roomId, roomId), gte(words.createdAt, weekAgo)));
   const members = await listMembers(db, roomId);
+  const uses = await wordUsesSince(db, roomId, weekAgo);
   const rows: DigestRow[] = [];
   for (const member of members) {
     const row = board.find((r) => r.userId === member.id);
@@ -63,6 +67,7 @@ export async function weeklyDigest(db: Db, roomId: number, now: Date): Promise<D
       reviews7d: row?.reviews7d ?? 0,
       learned: row?.learned ?? 0,
       streak: (await personalStats(db, member, now)).streak,
+      used: uses.get(member.id) ?? 0,
     });
   }
   return rows.sort((a, b) => b.reviews7d - a.reviews7d || b.added - a.added);
@@ -80,7 +85,7 @@ export async function collectDigests(
     await db.update(rooms).set({ lastDigestDate: date }).where(eq(rooms.id, room.id));
     const rows = await weeklyDigest(db, room.id, now);
     const duels = await weeklyDuelPoints(db, room.id, now);
-    if (rows.some((r) => r.added > 0 || r.reviews7d > 0) || duels.length) result.push({ room, rows, duels });
+    if (rows.some((r) => r.added > 0 || r.reviews7d > 0 || r.used > 0) || duels.length) result.push({ room, rows, duels });
   }
   return result;
 }
