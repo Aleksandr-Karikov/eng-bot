@@ -1,5 +1,5 @@
 /** Что показывать на карточке в /learn — у каждого своё. Перевод показывается всегда. */
-export const CARD_PARTS = ["transcription", "explanation", "example", "context", "mnemonic", "audio", "picture"] as const;
+export const CARD_PARTS = ["transcription", "explanation", "example", "context", "collocations", "mnemonic", "audio", "picture"] as const;
 export type CardPart = (typeof CARD_PARTS)[number];
 export type CardView = Record<CardPart, boolean>;
 
@@ -8,6 +8,7 @@ export const ALL_PARTS: CardView = {
   explanation: true,
   example: true,
   context: true,
+  collocations: true,
   mnemonic: true,
   audio: true,
   picture: true,

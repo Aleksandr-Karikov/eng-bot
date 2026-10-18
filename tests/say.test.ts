@@ -17,7 +17,7 @@ async function setup() {
   const say = vi.fn(async (_phrase: string) => answer);
   const tutor: ExerciseTutor = {
     cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => ["memo"], imagePrompt: async () => "",
-    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story: async () => ({ title: "", body: "", questions: [] }),
+    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }),
     untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), talkReply: async () => "", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), say,
   };
   const h = botHarness({ tutor });

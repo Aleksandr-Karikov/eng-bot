@@ -10,7 +10,7 @@ import { DAY, T0, makeUser } from "./helpers";
 
 /** Все карточки выучены и не к повторению: hangar — слабая, bank — крепкая. */
 async function nothingDue(h: ReturnType<typeof botHarness>) {
-  const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeSentence: false, modeListen: false });
+  const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeSentence: false, modeListen: false, modeCollocation: false });
   const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
   for (const [term, stability] of [["bank", 30], ["hangar", 0.5]] as const) {
     const r = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term, translation: `t-${term}`, explanation: "", example: "" }, now: T0 });
@@ -79,7 +79,7 @@ describe("practice outside the schedule", () => {
     const judge = vi.fn(async () => ({ correct: false, explanation: "", tip: "" }));
     const h = botHarness({
       random: () => 0.99,
-      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
+      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
     });
     const user = await nothingDue(h);
     const [hangar] = await h.db.select().from(cards).where(eq(cards.userId, user.id)).orderBy(cards.stability);

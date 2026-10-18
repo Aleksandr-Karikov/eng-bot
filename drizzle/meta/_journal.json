@@ -141,6 +141,13 @@
       "when": 1792313967253,
       "tag": "0019_volatile_rattler",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792314062342,
+      "tag": "0020_omniscient_ego",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { State } from "ts-fsrs";
 
-/** Виды упражнений: EN → RU, RU → EN, вставь по смыслу, своё предложение, диктант. */
-export const STAGES = ["en_ru", "ru_en", "cloze", "sentence", "listen"] as const;
+/** Виды упражнений: EN → RU, RU → EN, вставь по смыслу, своё предложение, диктант, сочетания. */
+export const STAGES = ["en_ru", "ru_en", "cloze", "sentence", "listen", "collocation"] as const;
 export type Stage = (typeof STAGES)[number];
 export type StageModes = Record<Stage, boolean>;
 
@@ -15,10 +15,21 @@ const SENTENCE_MIN_REPS = 2;
  * новое слово сначала EN → RU (вспомнить незнакомое нельзя), дальше — случайно из включённых.
  * «Вставь по смыслу» доступно, только когда для слова готовы предложения; если не осталось ничего — EN → RU.
  */
-export function pickStage(card: { state: number; reps?: number }, modes: StageModes, clozeReady: boolean, random: () => number): Stage {
+export function pickStage(
+  card: { state: number; reps?: number },
+  modes: StageModes,
+  clozeReady: boolean,
+  random: () => number,
+  /** Для слова готов вопрос на сочетания. */
+  collocationReady = false,
+): Stage {
   if (card.state === State.New) return FIRST_MEETING.find((s) => modes[s]) ?? "en_ru";
   const available = STAGES.filter(
-    (s) => modes[s] && (s !== "cloze" || clozeReady) && (s !== "sentence" || (card.reps ?? 0) >= SENTENCE_MIN_REPS),
+    (s) =>
+      modes[s] &&
+      (s !== "cloze" || clozeReady) &&
+      (s !== "collocation" || collocationReady) &&
+      (s !== "sentence" || (card.reps ?? 0) >= SENTENCE_MIN_REPS),
   );
   if (available.length === 0) return "en_ru";
   return available[Math.min(available.length - 1, Math.floor(random() * available.length))];

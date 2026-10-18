@@ -32,6 +32,7 @@ export type Cb =
   | { k: "storyAudio"; id: number }
   | { k: "talkTopic"; index: number }
   | { k: "talkEnd" }
+  | { k: "collocationPick"; cardId: number; reps: number; index: number; practice: boolean }
   | { k: "sayAdd"; id: number; index: number }
   | { k: "storyAnswer"; id: number; q: number; index: number }
   | { k: "redrawAs"; wordId: number; how: "again" | "custom" | number }
@@ -51,7 +52,7 @@ export type Cb =
 
 const ANSWERS: Record<string, Answer> = { a: "again", h: "hard", g: "good", e: "easy" };
 /** Какое упражнение было показано — для статистики ответов. */
-const STAGE_CODES: Record<Stage, string> = { en_ru: "e", ru_en: "r", cloze: "c", sentence: "s", listen: "l" };
+const STAGE_CODES: Record<Stage, string> = { en_ru: "e", ru_en: "r", cloze: "c", sentence: "s", listen: "l", collocation: "o" };
 const DRAFT_ACTIONS = { o: "ok", e: "edit", c: "cancel", s: "skip", x: "stop" } as const;
 const BATCH_ACTIONS = { a: "add", r: "review", c: "cancel" } as const;
 const ROOM_ACTIONS = { n: "new", i: "invite" } as const;
@@ -89,6 +90,7 @@ export function encodeCb(cb: Cb): string {
     case "storyAudio": return `sa:${cb.id}`;
     case "talkTopic": return `tt:${cb.index}`;
     case "talkEnd": return "te";
+    case "collocationPick": return `co:${cb.cardId}:${cb.reps}:${cb.index}${cb.practice ? ":p" : ""}`;
     case "sayAdd": return `sy:${cb.id}:${cb.index}`;
     case "storyAnswer": return `sq:${cb.id}:${cb.q}:${cb.index}`;
     case "manage": return `wm:${cb.wordId}${cb.open ? "" : ":c"}`;
@@ -181,6 +183,11 @@ export function decodeCb(data: string): Cb | null {
       return index !== null ? { k: "talkTopic", index } : null;
     }
     case "te": return { k: "talkEnd" };
+    case "co": {
+      const cardId = int(a), reps = int(b), index = int(c);
+      if (cardId === null || reps === null || index === null || (d !== undefined && d !== "p")) return null;
+      return { k: "collocationPick", cardId, reps, index, practice: d === "p" };
+    }
     case "sy": {
       const id = int(a), index = int(b);
       return id !== null && index !== null ? { k: "sayAdd", id, index } : null;

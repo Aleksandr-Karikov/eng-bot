@@ -25,6 +25,7 @@ import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { TalkStore } from "./bot/talks";
+import { CollocationGenerator } from "./services/collocations";
 import { startReminderLoop } from "./reminder-loop";
 import type { Deps } from "./bot/context";
 import { publishStory } from "./bot/handlers/story";
@@ -57,6 +58,7 @@ const deps: Deps = {
   enricher: claude,
   tutor: claude,
   clozeGen: new ClozeGenerator(db, claude, now),
+  collocationGen: new CollocationGenerator(db, claude),
   mnemonicGen,
   drafts: new DraftStore(),
   batches: new BatchStore(),

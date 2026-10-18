@@ -19,6 +19,7 @@ export const users = sqliteTable("users", {
   modeCloze: integer("mode_cloze", { mode: "boolean" }).notNull().default(true),
   modeSentence: integer("mode_sentence", { mode: "boolean" }).notNull().default(true),
   modeListen: integer("mode_listen", { mode: "boolean" }).notNull().default(true),
+  modeCollocation: integer("mode_collocation", { mode: "boolean" }).notNull().default(true),
   modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
@@ -69,6 +70,8 @@ export const words = sqliteTable(
     audioUsFileId: text("audio_us_file_id"),
     /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
     mnemonic: text("mnemonic").notNull().default(""),
+    /** JSON Collocations: частые сочетания и вопрос «какое слово подходит». "" — ещё не готовили. */
+    collocations: text("collocations").notNull().default(""),
     /** Предложение, где слово встретилось (из текста, скриншота или сообщения, на которое ответили /add). "" — нет. */
     context: text("context").notNull().default(""),
     /** JSON-разбор «трудного» слова (LeechHelp): почему путается, отличия от похожих, примеры. "" — ещё нет. */

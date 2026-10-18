@@ -1,6 +1,6 @@
 import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
+import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
@@ -39,6 +39,12 @@ const withTranscription = (d: WordDraft, show = true) => {
   return line ? `\n${line}` : "";
 };
 
+/** Сочетания на карточке; collocations — JSON из базы. */
+function collocationsLine(collocations: string): string {
+  const c = JSON.parse(collocations) as Collocations;
+  return c.items.length ? `\n\n🔗 ${c.items.map((i) => esc(i.phrase)).join(" · ")}` : "";
+}
+
 /** «📍 …» — исходное предложение, само слово в нём жирным. */
 export function contextLine(context: string, term: string): string {
   const match = termPattern(term).exec(context.toLowerCase().replace(/[’‘`]/g, "'"));
@@ -59,11 +65,12 @@ export function draftText(d: WordDraft): string {
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
 /** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
-export function cardText(word: WordDraft, view: CardView = ALL_PARTS): string {
+export function cardText(word: WordDraft & { collocations?: string }, view: CardView = ALL_PARTS): string {
   let answer = esc(word.translation);
   if (view.explanation && word.explanation) answer += `\n\n${esc(word.explanation)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
   if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
+  if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
@@ -149,10 +156,11 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
-export function reverseCardText(word: WordDraft, view: CardView = ALL_PARTS): string {
+export function reverseCardText(word: WordDraft & { collocations?: string }, view: CardView = ALL_PARTS): string {
   let answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
   if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
+  if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
 }
@@ -306,6 +314,22 @@ export function leechText(word: Pick<Word, "term" | "translation">, help: LeechH
   if (help.contrast.length) parts.push(`⚖️ <b>Не путать:</b>\n${help.contrast.map((c) => `• ${esc(c)}`).join("\n")}`);
   if (help.examples.length) parts.push(`📝 ${help.examples.map((e) => `• ${boldMarked(e)}`).join("\n")}`);
   if (help.tip) parts.push(`💡 ${esc(help.tip)}`);
+  return parts.join("\n\n");
+}
+
+export function collocationQuizText(quiz: NonNullable<Collocations["quiz"]>, term: string): string {
+  return `🔗 Какое слово подходит к <b>${esc(term)}</b>?\n\n<i>${esc(quiz.question)}</i>`;
+}
+
+const collocationList = (c: Collocations) => c.items.map((i) => `• ${esc(i.phrase)} — ${esc(i.translation)}`).join("\n");
+
+export function collocationResultText(c: Collocations, chosen: number): string {
+  const quiz = c.quiz!;
+  const verdict = chosen === quiz.correct ? "✅ Верно!" : `❌ Не «${esc(quiz.options[chosen] ?? "")}»`;
+  const filled = esc(quiz.question).replace("___", `<b>${esc(quiz.options[quiz.correct])}</b>`);
+  const parts = [verdict, filled];
+  if (quiz.explanation) parts.push(esc(quiz.explanation));
+  if (c.items.length) parts.push(`🔗 <b>Сочетания:</b>\n${collocationList(c)}`);
   return parts.join("\n\n");
 }
 

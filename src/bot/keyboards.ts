@@ -198,6 +198,7 @@ const CARD_PART_LABELS: Array<[CardPart, string]> = [
   ["explanation", "📖 Объяснение"],
   ["example", "✏️ Пример"],
   ["context", "📍 Где встретилось"],
+  ["collocations", "🔗 С чем сочетается"],
   ["mnemonic", "💡 Запоминалка"],
   ["audio", "🔊 Озвучка"],
   ["picture", "🖼 Картинки"],
@@ -209,6 +210,7 @@ const MODE_LABELS: Array<[Stage, string, keyof User]> = [
   ["cloze", "Вставь по смыслу", "modeCloze"],
   ["sentence", "✍️ Своё предложение", "modeSentence"],
   ["listen", "🎧 Диктант", "modeListen"],
+  ["collocation", "🔗 Сочетания", "modeCollocation"],
 ];
 
 /** Часы напоминания + переключатели режимов тренажёра. */
@@ -326,4 +328,12 @@ export function sayKeyboard(id: number, learn: Array<{ term: string }>): InlineK
   const kb = new InlineKeyboard();
   learn.forEach((item, index) => kb.text(`➕ ${shorten(item.term)}`, encodeCb({ k: "sayAdd", id, index })).row());
   return kb;
+}
+
+/** Варианты «сочетаний»; в зачёте — ещё ⚙️, вне зачёта — ⏹. */
+export function collocationKeyboard(cardId: number, reps: number, wordId: number, options: string[], practice: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  options.forEach((option, index) => kb.text(option, encodeCb({ k: "collocationPick", cardId, reps, index, practice })));
+  kb.row();
+  return practice ? kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" })) : addManageButton(kb, wordId);
 }

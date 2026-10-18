@@ -6,6 +6,7 @@ import type { PictureStore } from "../images/store";
 import type { WordEnricher } from "../llm/enricher";
 import type { ExerciseTutor } from "../llm/tutor";
 import type { ClozeGenerator } from "../services/cloze-generator";
+import type { CollocationGenerator } from "../services/collocations";
 import type { MnemonicGenerator } from "../services/hard-words";
 import type { SpeechSynth } from "../speech/tts";
 import type { VoiceStore } from "./voices";
@@ -31,6 +32,7 @@ export interface Deps {
   enricher: WordEnricher;
   tutor: ExerciseTutor;
   clozeGen: ClozeGenerator;
+  collocationGen: CollocationGenerator;
   mnemonicGen: MnemonicGenerator;
   notifier: Notifier;
   drafts: DraftStore;

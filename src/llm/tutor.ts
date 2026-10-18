@@ -2,6 +2,22 @@ import { z } from "zod";
 import type { ClozeDraft } from "../services/cloze";
 import { MISTAKE_CATEGORIES, type CheckResult } from "./enricher";
 
+/**
+ * JSON-объект из ответа модели: обычно один, но иногда Claude «передумывает» и пишет второй —
+ * тогда берём последний целый объект.
+ */
+export function jsonObject(text: string): unknown {
+  const end = text.lastIndexOf("}");
+  for (let start = text.indexOf("{"); start !== -1 && start < end; start = text.indexOf("{", start + 1)) {
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      // Не с этой скобки — пробуем следующую.
+    }
+  }
+  throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+}
+
 export interface MnemonicItem {
   term: string;
   /** "" — перевод ещё неизвестен (запоминалка пишется параллельно с переводом). */
@@ -36,6 +52,12 @@ export interface TalkInput {
   topic: string;
   words: Array<{ term: string; translation: string }>;
   lines: Array<{ who: "user" | "bot"; text: string }>;
+}
+
+/** Частые сочетания слова и вопрос на выбор сочетания (если у слова есть типичные «партнёры»). */
+export interface Collocations {
+  items: Array<{ phrase: string; translation: string }>;
+  quiz?: { question: string; options: string[]; correct: number; explanation: string };
 }
 
 /** «Как сказать по-английски»: варианты фразы и что из них стоит выучить. */
@@ -111,6 +133,8 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Сочетания слова: с какими словами его обычно употребляют. */
+  collocations(term: string, translation: string): Promise<Collocations>;
   /** Как естественно сказать это по-английски. */
   say(phrase: string): Promise<SayAnswer>;
   /** Следующая реплика собеседника в разговоре /talk. */
@@ -219,10 +243,7 @@ const sentenceReview = z.object({
 });
 
 export function parseSentenceReview(text: string): SentenceReview {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  const { uses_word, ...rest } = sentenceReview.parse(JSON.parse(text.slice(start, end + 1)));
+  const { uses_word, ...rest } = sentenceReview.parse(jsonObject(text));
   return { ...rest, usesWord: uses_word };
 }
 
@@ -253,12 +274,42 @@ const leechHelpSchema = z.object({
 });
 
 export function parseLeechHelp(text: string): LeechHelp {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  const help = leechHelpSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  const help = leechHelpSchema.parse(jsonObject(text));
   if (!help.why && help.examples.length === 0) throw new Error("Empty leech help");
   return help;
+}
+
+export function buildCollocationsPrompt(term: string, translation: string): string {
+  return [
+    `Английское слово или фраза: "${term}" — ${translation}.`,
+    "Русскоязычные ученики часто ошибаются не в словах, а в сочетаниях: do a decision вместо make, strong rain вместо heavy.",
+    "items — 3–5 самых частых и полезных сочетаний с ним (глагол + оно, прилагательное + оно, оно + предлог…), каждое с переводом;",
+    "для устойчивой фразы или идиомы — 2–3 типичных способа её употребить. Только то, что реально часто говорят носители.",
+    "quiz — один вопрос на выбор сочетания: естественное предложение с пропуском ___ на месте «партнёра» слова (само слово видно),",
+    "3 варианта, ровно один верный, неверные — типичные ошибки русскоязычных (калька с русского). explanation — коротко по-русски.",
+    "В пропуске — НЕ само слово и не его форма (prudent/prudently — это не про сочетания), а соседнее слово: глагол, прилагательное или предлог.",
+    "Пример для prudent: «It would be a ___ decision to wait» нельзя — ответ виден; можно «a prudent ___ to spending» → approach / way / method.",
+    "Если у слова нет типичных партнёров, на которых ошибаются (междометие, целая фраза-идиома), quiz не возвращай.",
+    'Верни JSON: {"items": [{"phrase": "...", "translation": "..."}], "quiz": {"question": "...", "options": ["...", "...", "..."], "correct": 0, "explanation": "..."}}',
+  ].join("\n");
+}
+
+const collocationsSchema = z.object({
+  items: z.array(z.object({ phrase: z.string().trim().min(1), translation: z.string().trim().min(1) })).max(6).default([]),
+  quiz: z
+    .object({
+      question: z.string().trim().includes("___"),
+      options: z.array(z.string().trim().min(1)).min(2).max(4),
+      correct: z.number().int().min(0),
+      explanation: z.string().trim().default(""),
+    })
+    .refine((q) => q.correct < q.options.length)
+    .optional()
+    .catch(undefined),
+});
+
+export function parseCollocations(text: string): Collocations {
+  return collocationsSchema.parse(jsonObject(text));
 }
 
 export function buildSayPrompt(phrase: string): string {
@@ -284,10 +335,7 @@ const sayAnswerSchema = z.object({
 });
 
 export function parseSayAnswer(text: string): SayAnswer {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return sayAnswerSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  return sayAnswerSchema.parse(jsonObject(text));
 }
 
 const transcript = (lines: TalkInput["lines"]) => lines.map((l) => `${l.who === "user" ? "Student" : "You"}: ${l.text}`).join("\n");
@@ -358,10 +406,7 @@ const talkReviewSchema = z.object({
 });
 
 export function parseTalkReview(text: string): TalkReview {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  const { used_words, ...rest } = talkReviewSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  const { used_words, ...rest } = talkReviewSchema.parse(jsonObject(text));
   return { ...rest, usedWords: used_words };
 }
 
@@ -402,10 +447,7 @@ const storySchema = z.object({
 });
 
 export function parseStory(text: string): StoryDraft {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return storySchema.parse(JSON.parse(text.slice(start, end + 1)));
+  return storySchema.parse(jsonObject(text));
 }
 
 const judgement = z.object({
@@ -415,10 +457,7 @@ const judgement = z.object({
 });
 
 export function parseJudgement(text: string): Judgement {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return judgement.parse(JSON.parse(text.slice(start, end + 1)));
+  return judgement.parse(jsonObject(text));
 }
 
 export function buildDrillPrompt(profile: string, count: number, avoid: string[] = []): string {
@@ -529,8 +568,5 @@ export function buildImagePromptPrompt(word: ImageSubject): string {
 const imagePromptSchema = z.object({ idea: z.string().optional(), prompt: z.string().trim().min(1) });
 
 export function parseImagePrompt(text: string): string {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return imagePromptSchema.parse(JSON.parse(text.slice(start, end + 1))).prompt;
+  return imagePromptSchema.parse(jsonObject(text)).prompt;
 }

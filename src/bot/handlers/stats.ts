@@ -17,6 +17,7 @@ const MODE_FIELDS = {
   cloze: "modeCloze",
   sentence: "modeSentence",
   listen: "modeListen",
+  collocation: "modeCollocation",
 } as const satisfies Record<Stage, keyof User>;
 
 export function registerStats(bot: Bot<BotContext>, deps: Deps): void {

@@ -6,12 +6,13 @@ import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../serv
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
 import { recordDrillAnswer } from "../../services/mistakes";
+import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
-import { leechKeyboard, mistakesAskKeyboard } from "../keyboards";
+import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard } from "../keyboards";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
@@ -39,6 +40,8 @@ import {
   drillResultText,
   reverseCardText,
   dictationText,
+  collocationQuizText,
+  collocationResultText,
   leechText,
   LISTEN_TASK_TEXT,
   mistakesAskText,
@@ -53,13 +56,17 @@ const userModes = (ctx: BotContext) => ({
   cloze: ctx.user.modeCloze,
   sentence: ctx.user.modeSentence,
   listen: ctx.user.modeListen,
+  collocation: ctx.user.modeCollocation,
 });
 
+/** Упражнения, которые показывает presentSpecial; если показать не вышло — обычная карточка EN → RU. */
+const SPECIAL: Stage[] = ["sentence", "listen", "collocation"];
+
 /**
- * «Своё предложение» и диктант: показывает задание и ждёт ответ сообщением.
- * false — показать нельзя (не вышла озвучка), тогда вместо них обычная карточка.
+ * «Своё предложение» и диктант (ждут ответ сообщением), сочетания (ответ кнопкой).
+ * false — показать нельзя (не вышла озвучка, нет вопроса), тогда вместо них обычная карточка.
  */
-async function presentWritten(
+async function presentSpecial(
   ctx: BotContext,
   deps: Deps,
   item: { card: CardRow; word: Word },
@@ -68,6 +75,13 @@ async function presentWritten(
   practice: boolean,
 ): Promise<boolean> {
   const { card, word } = item;
+  if (stage === "collocation") {
+    const quiz = storedCollocations(word)?.quiz;
+    if (!quiz) return false;
+    const text = (practice ? PRACTICE_HEADER : "") + collocationQuizText(quiz, word.term);
+    await present(ctx, text, { ...HTML, reply_markup: collocationKeyboard(card.id, card.reps, word.id, quiz.options, practice) }, mode);
+    return true;
+  }
   if (!ctx.chat || (stage !== "sentence" && stage !== "listen")) return false;
   const accent = deps.random() < 0.5 ? "uk" : "us";
   const voice = stage === "listen" ? await wordVoice(deps, word, accent) : undefined;
@@ -120,6 +134,7 @@ async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise
   if (!item) return;
   // Предложения для «вставь по смыслу» готовим заранее — оно может выпасть на любом следующем показе.
   if (ctx.user.modeCloze) void deps.clozeGen.ensure(item.word);
+  if (ctx.user.modeCollocation) void deps.collocationGen.ensure(item.word);
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
   const leech = await leechMoment(deps.db, cardId);
   if (leech.prefetch) void deps.mnemonicGen.help(item.word.id);
@@ -159,9 +174,10 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     const modes = userModes(ctx);
     const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
     if (modes.cloze && sentences.length === 0 && card.state !== State.New) void deps.clozeGen.ensure(word);
-    const picked = pickStage(card, modes, sentences.length > 0, deps.random);
-    if (await presentWritten(ctx, deps, item, picked, mode, false)) return;
-    const stage = picked === "sentence" || picked === "listen" ? "en_ru" : picked;
+    if (modes.collocation && card.state !== State.New) void deps.collocationGen.ensure(word);
+    const picked = pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
+    if (await presentSpecial(ctx, deps, item, picked, mode, false)) return;
+    const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     if (sentence && ctx.chat) {
       deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
@@ -210,9 +226,10 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const { card, word } = item;
   const modes = userModes(ctx);
   const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
-  const picked = pickStage(card, modes, sentences.length > 0, deps.random);
-  if (await presentWritten(ctx, deps, item, picked, mode, true)) return;
-  const stage = picked === "sentence" || picked === "listen" ? "en_ru" : picked;
+  if (modes.collocation) void deps.collocationGen.ensure(word);
+  const picked = pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
+  if (await presentSpecial(ctx, deps, item, picked, mode, true)) return;
+  const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
   const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;
   if (sentence && ctx.chat) {
     deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
@@ -458,6 +475,32 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (pending.kind === "cloze") background(ctx, () => checkCloze(ctx, deps, pending, text));
     else if (pending.kind === "sentence") background(ctx, () => checkSentence(ctx, deps, pending, text));
     else await checkDictation(ctx, deps, pending, text);
+  });
+
+  // Ответ на «сочетания»: в зачёт — оценка карточки, вне зачёта — только разбор.
+  bot.callbackQuery(/^co:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "collocationPick") return void (await ctx.answerCallbackQuery());
+    const item = await getDueItemByCard(deps.db, ctx.user.id, cb.cardId);
+    const collocations = item ? storedCollocations(item.word) : undefined;
+    if (!item || !collocations?.quiz) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили или изменили" }));
+    const correct = cb.index === collocations.quiz.correct;
+    if (!cb.practice) {
+      const result = await answerCard(deps.db, {
+        userId: ctx.user.id,
+        cardId: cb.cardId,
+        expectedReps: cb.reps,
+        answer: correct ? "good" : "again",
+        now: deps.now(),
+        stage: "collocation",
+      });
+      if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+      countAnswer(ctx.user.id);
+      await afterAnswer(ctx, deps, cb.cardId);
+    }
+    void ctx.answerCallbackQuery({ text: correct ? "✅" : "❌" }).catch(() => {});
+    await ctx.editMessageText(collocationResultText(collocations, cb.index), { ...HTML, reply_markup: audioKeyboard(item.word.id) });
+    await (cb.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply"));
   });
 
   bot.callbackQuery(/^l$/, async (ctx) => {

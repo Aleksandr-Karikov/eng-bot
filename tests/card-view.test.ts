@@ -25,7 +25,7 @@ describe("card view", () => {
   });
 
   it("shows only the translation when everything else is off", () => {
-    const bare = { transcription: false, explanation: false, example: false, context: false, mnemonic: false, audio: false, picture: false };
+    const bare = { transcription: false, explanation: false, example: false, context: false, collocations: false, mnemonic: false, audio: false, picture: false };
     const text = cardText(word, bare);
     expect(text).toContain("<tg-spoiler>осаждаемый</tg-spoiler>");
     for (const part of ["постоянно", "delays", "бесы", "bɪˈset"]) expect(text).not.toContain(part);

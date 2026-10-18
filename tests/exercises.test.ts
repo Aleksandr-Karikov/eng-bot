@@ -8,9 +8,9 @@ import { deleteWord, saveWord, updateWord } from "../src/services/words";
 import { buildClozePrompt, buildJudgePrompt, parseCloze, parseJudgement } from "../src/llm/tutor";
 import { T0, makeUser, testDb } from "./helpers";
 
-const old = { en_ru: true, ru_en: true, cloze: true, sentence: false, listen: false };
+const old = { en_ru: true, ru_en: true, cloze: true, sentence: false, listen: false, collocation: false };
 const all = old;
-const every = { en_ru: true, ru_en: true, cloze: true, sentence: true, listen: true };
+const every = { en_ru: true, ru_en: true, cloze: true, sentence: true, listen: true, collocation: false };
 
 describe("picking the exercise", () => {
   const card = (state: number) => ({ state, stability: 1 });
@@ -103,7 +103,7 @@ describe("cloze storage", () => {
   it("generates once in the background, even when asked twice at the same time", async () => {
     const { db, word } = await setupWord();
     const cloze = vi.fn(async () => items);
-    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn() }, () => T0);
+    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn() }, () => T0);
     await Promise.all([gen.ensure(word), gen.ensure(word)]);
     await gen.ensure(word);
     expect(cloze).toHaveBeenCalledTimes(1);

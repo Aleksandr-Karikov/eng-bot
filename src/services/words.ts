@@ -164,7 +164,7 @@ export async function updateWord(
       // Озвучка относится к самому слову — при его изменении записывается заново.
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
-      ...(meaningChanged ? { mnemonic: "", imageFileId: null, leechHelp: "" } : {}),
+      ...(meaningChanged ? { mnemonic: "", imageFileId: null, leechHelp: "", collocations: "" } : {}),
       ...(patch.mnemonic !== undefined ? { mnemonic: patch.mnemonic } : {}),
     })
     .where(eq(words.id, wordId))
