@@ -75,6 +75,8 @@ describe("batch callbacks", () => {
       { k: "drillPick", qid: 17, index: 2 },
       { k: "duel", roundId: 9, index: 3 },
       { k: "cardPart", part: "mnemonic" },
+      { k: "mistakesSave", id: 4, save: true },
+      { k: "mistakesSave", id: 4, save: false },
       { k: "roomDel", roomId: 2 },
       { k: "roomDelOk", roomId: 2 },
       { k: "audio", wordId: 41, accent: "uk" },

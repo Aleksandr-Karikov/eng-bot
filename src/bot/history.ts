@@ -1,6 +1,8 @@
 /** Сообщение группы, которое бот видел. date — секунды Unix, как в Telegram. */
 export interface SeenMessage {
   messageId: number;
+  /** Telegram id автора — чтобы склеивать реплику, разбитую на несколько сообщений. */
+  authorId?: number;
   author: string;
   text: string;
   date: number;
@@ -20,6 +22,23 @@ export class ChatHistory {
     list.push(message);
     if (list.length > this.perChat) list.splice(0, list.length - this.perChat);
     this.chats.set(chatId, list);
+  }
+
+  /**
+   * Начало той же реплики: сообщения автора target, идущие подряд прямо перед ним
+   * (без чужих между ними, с паузами не больше maxGapSec), от старых к новым.
+   */
+  leadIn(chatId: number, target: { messageId: number; date: number; authorId: number }, maxGapSec: number): SeenMessage[] {
+    const before = (this.chats.get(chatId) ?? []).filter((m) => m.messageId < target.messageId);
+    const parts: SeenMessage[] = [];
+    let next = target.date;
+    for (let i = before.length - 1; i >= 0; i--) {
+      const m = before[i];
+      if (m.authorId !== target.authorId || next - m.date > maxGapSec) break;
+      parts.unshift(m);
+      next = m.date;
+    }
+    return parts;
   }
 
   /** До limit сообщений перед target (не старше maxAgeSec относительно него), от старых к новым. */

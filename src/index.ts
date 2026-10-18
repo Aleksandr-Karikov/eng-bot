@@ -8,6 +8,7 @@ import { DrillStore } from "./bot/drills";
 import { EditStore } from "./bot/edits";
 import { ExerciseStore } from "./bot/exercises";
 import { ChatHistory } from "./bot/history";
+import { PendingMistakesStore } from "./bot/pending-mistakes";
 import { PickerStore } from "./bot/pickers";
 import { RoomNameStore } from "./bot/room-names";
 import { loadConfig } from "./config";
@@ -63,6 +64,7 @@ setupBot(bot, {
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
+  pendingMistakes: new PendingMistakesStore(),
   images,
   pictures,
   botUsername: bot.botInfo.username,

@@ -14,6 +14,7 @@ export type Cb =
   | { k: "drillMode" }
   | { k: "cardPart"; part: CardPart }
   | { k: "mistakesClear" }
+  | { k: "mistakesSave"; id: number; save: boolean }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
   | { k: "batchToggle"; id: number; index: number }
   | { k: "batch"; id: number; action: "add" | "review" | "cancel" }
@@ -56,6 +57,7 @@ export function encodeCb(cb: Cb): string {
     case "drillMode": return "md";
     case "cardPart": return `cv:${cb.part}`;
     case "mistakesClear": return "mz";
+    case "mistakesSave": return `mk:${cb.id}:${cb.save ? "y" : "n"}`;
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
     case "batchToggle": return `bt:${cb.id}:${cb.index}`;
     case "batch": return `b:${cb.id}:${short(BATCH_ACTIONS, cb.action)}`;
@@ -112,6 +114,10 @@ export function decodeCb(data: string): Cb | null {
     case "md": return { k: "drillMode" };
     case "cv": return (CARD_PARTS as readonly string[]).includes(a ?? "") ? { k: "cardPart", part: a as CardPart } : null;
     case "mz": return { k: "mistakesClear" };
+    case "mk": {
+      const id = int(a);
+      return id !== null && (b === "y" || b === "n") ? { k: "mistakesSave", id, save: b === "y" } : null;
+    }
     case "m": return (STAGES as readonly string[]).includes(a ?? "") ? { k: "mode", stage: a as Stage } : null;
     case "d": {
       const id = int(a), action = b ? DRAFT_ACTIONS[b as keyof typeof DRAFT_ACTIONS] : undefined;

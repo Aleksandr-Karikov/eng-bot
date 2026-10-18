@@ -174,12 +174,18 @@ export function drillResultText(q: DrillQuestion, chosen: number): string {
   return [verdict, filled, q.explanation ? esc(q.explanation) : ""].filter(Boolean).join("\n\n");
 }
 
-/** name — чьи ошибки (undefined — свои), categories — темы исправленных ошибок. */
+const topicsOf = (categories: string[]) => [...new Set(categories.map((c) => c.trim()).filter(Boolean))].map(esc).join(", ");
+
+/** Вопрос перед сохранением; name — чьи ошибки (undefined — свои). */
+export function mistakesAskText(name: string | undefined, categories: string[]): string {
+  const whose = name ? `ошибки ${esc(name)}` : "твои ошибки";
+  const topics = topicsOf(categories);
+  return `🧠 Сохранить ${whose} в работу над ошибками?${topics ? ` Темы: ${topics}` : ""}`;
+}
+
 export function mistakesSavedText(name: string | undefined, categories: string[]): string {
-  const topics = [...new Set(categories.map((c) => c.trim()).filter(Boolean))];
-  const whom = name ? `для ${esc(name)}` : "для тебя";
-  const about = topics.length ? `: ${topics.map(esc).join(", ")}` : "";
-  return `🧠 Сохранил ${whom} в работу над ошибками${about}. Посмотреть — /mistakes`;
+  const topics = topicsOf(categories);
+  return `🧠 Сохранено ${name ? `для ${esc(name)}` : "для тебя"} в работу над ошибками${topics ? `: ${topics}` : ""}. Посмотреть — /mistakes`;
 }
 
 export function mistakesNotSavedText(name: string, botUsername: string): string {

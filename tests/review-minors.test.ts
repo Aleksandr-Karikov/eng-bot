@@ -27,7 +27,9 @@ describe("/check author", () => {
     const caller = await makeUser(h.db, 100);
     const photoAuthor = await makeUser(h.db, 200);
     await h.bot.handleUpdate(h.groupReplyTo(100, -500, "/check he go", { messageId: 9, fromId: 200, text: "" }));
-    await vi.waitFor(async () => expect(await recentMistakes(h.db, caller.id, T0)).toHaveLength(1));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Сохранить")).not.toThrow());
+    await h.bot.handleUpdate(h.groupCallback(100, -500, buttonData(h.calls, "✅ Сохранить")));
+    expect(await recentMistakes(h.db, caller.id, T0)).toHaveLength(1);
     expect(await recentMistakes(h.db, photoAuthor.id, T0)).toHaveLength(0);
   });
 });

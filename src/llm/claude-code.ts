@@ -48,8 +48,8 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
   }
 
-  async check(text: string, context?: ContextMessage[]): Promise<CheckResult> {
-    return parseCheck(await this.ask(buildCheckPrompt(text, context), this.opts.timeoutMs));
+  async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {
+    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn), this.opts.timeoutMs));
   }
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {

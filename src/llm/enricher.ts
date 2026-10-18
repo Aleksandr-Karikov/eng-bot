@@ -36,7 +36,8 @@ export interface WordEnricher {
   /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
   extract(text: string): Promise<ExtractedItem[]>;
   /** Проверяет английский текст: ошибки обязательно, «как естественнее» — отдельно. */
-  check(text: string, context?: ContextMessage[]): Promise<CheckResult>;
+  /** leadIn — предыдущие сообщения того же автора, которые проверяемое продолжает (одна реплика). */
+  check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult>;
 }
 
 /** В клавиатуре пачки слова листаются страницами, так что 100 пунктов укладываются в лимит кнопок Telegram. */
@@ -151,7 +152,7 @@ export const MISTAKE_CATEGORIES = [
   "другое",
 ];
 
-export function buildCheckPrompt(text: string, context: ContextMessage[] = []): string {
+export function buildCheckPrompt(text: string, context: ContextMessage[] = [], author?: string, leadIn: string[] = []): string {
   const contextLines = context.length
     ? [
         "Предыдущие сообщения чата — только контекст, их не исправляй. Используй их, чтобы понять смысл и объяснить, почему нужно именно так:",
@@ -177,9 +178,18 @@ export function buildCheckPrompt(text: string, context: ContextMessage[] = []): 
     "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила на русском,",
     "natural — более естественный вариант всей фразы или пустая строка.",
     "",
+    context.length
+      ? "В чатах одну мысль часто пишут несколькими сообщениями подряд. Если проверяемое сообщение продолжает предыдущее сообщение того же автора, читай их как одно предложение и не исправляй то, что верно как его продолжение."
+      : "",
+    author ? `Проверяемое сообщение написал(а): ${author}` : "",
+    leadIn.length
+      ? `Это продолжение реплики того же автора, разбитой на сообщения. Целиком она звучит так: «${[...leadIn, text].join(" ")}». Проверяемая часть — только последняя («${text}»): оценивай её как продолжение этого предложения, а не как отдельную фразу, и исправляй только ошибки внутри неё.`
+      : "",
     context.length ? "Проверь только это сообщение:" : "Текст:",
     text,
-  ].join("\n");
+  ]
+    .filter((line, i, all) => line !== "" || (i > 0 && all[i - 1] !== ""))
+    .join("\n");
 }
 
 export function parseCheck(text: string): CheckResult {

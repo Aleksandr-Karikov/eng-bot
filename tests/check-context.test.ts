@@ -28,7 +28,7 @@ describe("buildCheckPrompt", () => {
 });
 
 describe("/check with context", () => {
-  it("sends the three messages before the replied one, with authors", async () => {
+  it("sends up to six messages before the replied one, with authors and the checked message's author", async () => {
     const check = vi.fn(async () => ok);
     const h = botHarness({ enricher: { enrich: async () => ({ translation: "", explanation: "", example: "" }), extract: async () => [], check } });
     const chat = -700;
@@ -44,10 +44,16 @@ describe("/check with context", () => {
       h.groupReplyTo(100, chat, "/check", { messageId: target.message!.message_id, fromId: 200, text: "I go to cinema yesterday" }),
     );
     await vi.waitFor(() => expect(check).toHaveBeenCalled());
-    expect(check).toHaveBeenCalledWith("I go to cinema yesterday", [
-      { author: "User300", text: "What did you do yesterday?" },
-      { author: "User300", text: "Tell us" },
-      { author: "User200", text: "Hi all" },
-    ]);
+    expect(check).toHaveBeenCalledWith(
+      "I go to cinema yesterday",
+      [
+        { author: "User200", text: "Morning!" },
+        { author: "User300", text: "What did you do yesterday?" },
+        { author: "User300", text: "Tell us" },
+        { author: "User200", text: "Hi all" },
+      ],
+      "User200",
+      ["Hi all"],
+    );
   });
 });

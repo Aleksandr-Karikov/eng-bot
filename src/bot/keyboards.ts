@@ -220,6 +220,12 @@ export function duelKeyboard(roundId: number, options: string[]): InlineKeyboard
   return kb;
 }
 
+export function mistakesAskKeyboard(id: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Сохранить", encodeCb({ k: "mistakesSave", id, save: true }))
+    .text("✖️ Не сохранять", encodeCb({ k: "mistakesSave", id, save: false }));
+}
+
 export function mistakesKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
 }

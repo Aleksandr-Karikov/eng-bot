@@ -17,6 +17,7 @@ import type { DrillStore } from "./drills";
 import type { EditStore } from "./edits";
 import type { ExerciseStore } from "./exercises";
 import type { ChatHistory } from "./history";
+import type { PendingMistakesStore } from "./pending-mistakes";
 import type { PickerStore } from "./pickers";
 import type { RoomNameStore } from "./room-names";
 
@@ -40,6 +41,7 @@ export interface Deps {
   voices: VoiceStore;
   roomNames: RoomNameStore;
   duels: DuelStore;
+  pendingMistakes: PendingMistakesStore;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */
