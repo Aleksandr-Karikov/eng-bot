@@ -67,8 +67,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseMnemonics(raw, items.length);
   }
 
+  /** Сцена для картинки — тоже сильной моделью: Haiku часто рисует случайную обстановку вместо смысла. */
   async imagePrompt(word: ImageSubject): Promise<string> {
-    return parseImagePrompt(await this.ask(buildImagePromptPrompt(word), this.opts.timeoutMs));
+    const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
+    return parseImagePrompt(raw);
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
