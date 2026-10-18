@@ -272,7 +272,7 @@ export function checkText(r: CheckResult): string {
 }
 
 export function leechText(word: Pick<Word, "term" | "translation">, help: LeechHelp, forgot: number): string {
-  const parts = [`🧩 <b>${esc(word.term)}</b> — ${esc(word.translation)} никак не даётся: забыто уже ${forgot} ${plural(forgot, "раз", "раза", "раз")}. Давай разберёмся.`];
+  const parts = [`🧩 <b>${esc(word.term)}</b> (${esc(word.translation)}) никак не даётся: забыто уже ${forgot} ${plural(forgot, "раз", "раза", "раз")}. Давай разберёмся.`];
   if (help.why) parts.push(`🤔 ${esc(help.why)}`);
   if (help.contrast.length) parts.push(`⚖️ <b>Не путать:</b>\n${help.contrast.map((c) => `• ${esc(c)}`).join("\n")}`);
   if (help.examples.length) parts.push(`📝 ${help.examples.map((e) => `• ${boldMarked(e)}`).join("\n")}`);
