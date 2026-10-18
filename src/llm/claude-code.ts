@@ -17,6 +17,10 @@ import {
   buildClozePrompt,
   buildDrillPrompt,
   buildJudgePrompt,
+  buildSentencePrompt,
+  parseSentenceReview,
+  type SentenceInput,
+  type SentenceReview,
   buildImagePromptPrompt,
   buildMnemonicPrompt,
   parseCloze,
@@ -71,6 +75,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  async reviewSentence(input: SentenceInput): Promise<SentenceReview> {
+    return parseSentenceReview(await this.ask(buildSentencePrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {

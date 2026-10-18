@@ -13,7 +13,7 @@ import { DAY, MIN, T0, at, makeUser, testDb } from "./helpers";
 describe("review log stage", () => {
   it("stores the stage of each answer", async () => {
     const h = botHarness({ random: () => 0.5 });
-    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeSentence: false, modeListen: false });
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "bank", translation: "t", explanation: "", example: "" }, now: T0 });
     const [card] = await h.db.select().from(cards);

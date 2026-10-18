@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ClozeDraft } from "../services/cloze";
+import { MISTAKE_CATEGORIES, type CheckResult } from "./enricher";
 
 export interface MnemonicItem {
   term: string;
@@ -31,6 +32,21 @@ export interface JudgeInput {
   answer: string;
 }
 
+/** Разбор своего предложения ученика со словом. */
+export interface SentenceReview extends CheckResult {
+  /** Слово употреблено в нужном значении и уместно (форма может быть любой). */
+  usesWord: boolean;
+  /** Одно-два предложения по-русски: как употреблено слово и что не так, если не так. */
+  verdict: string;
+}
+
+export interface SentenceInput {
+  term: string;
+  translation: string;
+  explanation: string;
+  answer: string;
+}
+
 /** Вопрос «работы над ошибками»: предложение с пропуском и варианты, правильный — options[correct]. */
 export interface DrillQuestion {
   question: string;
@@ -44,6 +60,8 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Проверяет предложение, которое ученик составил сам: употреблено ли слово и какие ошибки вокруг. */
+  reviewSentence(input: SentenceInput): Promise<SentenceReview>;
   drill(profile: string, count: number): Promise<DrillQuestion[]>;
   /** Запоминалки для слов (по порядку; "" — не вышло): образ, разбор по частям, связь или сценка — что подходит. */
   mnemonics(items: MnemonicItem[]): Promise<string[]>;
@@ -96,6 +114,54 @@ export function buildJudgePrompt(input: JudgeInput): string {
     'Верни JSON: {"correct": true/false, "explanation": "...", "tip": "..."}, где explanation — 1–2 коротких предложения по-русски:',
     "почему ответ подходит или нет и как правильнее; tip — одно короткое предложение, как запомнить нужное слово (можно пустую строку).",
   ].join("\n");
+}
+
+export function buildSentencePrompt(input: SentenceInput): string {
+  return [
+    `Русскоязычный человек учит английское слово или фразу "${input.term}" — ${input.translation}.`,
+    input.explanation ? `Смысл: ${input.explanation}` : "",
+    "Его попросили составить своё предложение с этим словом. Вот что он написал:",
+    input.answer,
+    "",
+    "1) uses_word: true, если слово или фраза есть в предложении (в любой грамматической форме) и употреблены в нужном значении и уместно.",
+    "false — если слова нет, оно в другом значении или так по-английски не говорят. Мелкие ошибки вокруг слова на это не влияют.",
+    "verdict — 1–2 коротких предложения по-русски: как употреблено слово; если неверно — почему и как правильно.",
+    "2) Остальное проверь как обычно: исправь грамматические, орфографические и лексические ошибки, не трогая то, что и так верно.",
+    "Пунктуацию и регистр не считай ошибкой. Если фраза звучит не по-английски — предложи вариант естественнее, иначе пустая строка.",
+    'Верни JSON: {"uses_word": true, "verdict": "...", "corrected": "...", "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "...", "slip": false}], "natural": "..."}, где',
+    "corrected — исправленный текст, изменённые слова обёрнуты в **двойные звёздочки** (если ошибок нет — исходный текст),",
+    "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила по-русски,",
+    `category — одна тема из списка: ${MISTAKE_CATEGORIES.join(", ")},`,
+    "slip — true для описки (опечатка, пропущенная буква), false для незнания.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const sentenceReview = z.object({
+  uses_word: z.boolean(),
+  verdict: z.string().trim().default(""),
+  corrected: z.string().default(""),
+  fixes: z
+    .array(
+      z.object({
+        wrong: z.string(),
+        right: z.string(),
+        why: z.string().default(""),
+        category: z.string().trim().default(""),
+        slip: z.boolean().default(false),
+      }),
+    )
+    .default([]),
+  natural: z.string().trim().default(""),
+});
+
+export function parseSentenceReview(text: string): SentenceReview {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  const { uses_word, ...rest } = sentenceReview.parse(JSON.parse(text.slice(start, end + 1)));
+  return { ...rest, usesWord: uses_word };
 }
 
 const judgement = z.object({

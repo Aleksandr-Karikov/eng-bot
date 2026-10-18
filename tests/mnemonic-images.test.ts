@@ -14,7 +14,7 @@ function tutor() {
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
     drill: async () => [],
     mnemonics: vi.fn(async (items: Array<{ term: string }>) => items.map(() => "Бесы осадили тебя, как крепость")),
-    imagePrompt: vi.fn(async () => "a fortress besieged by an army, close-up"),
+    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn(async () => "a fortress besieged by an army, close-up"),
   } satisfies ExerciseTutor;
 }
 

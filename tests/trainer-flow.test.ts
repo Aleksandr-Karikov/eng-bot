@@ -12,12 +12,13 @@ import { DAY, T0, makeUser } from "./helpers";
 const sentence = { sentence: "We sat on the ___ of the river.", answer: "bank", translation: "Мы сидели на берегу реки." };
 
 function tutor(judge: () => Promise<Judgement>, cloze = vi.fn(async () => [sentence])): ExerciseTutor {
-  return { cloze, judge, drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "" };
+  return { cloze, judge, drill: async () => [], mnemonics: async () => [], reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" };
 }
 
 /** Пользователь 100 с одним словом bank, карточка которого «выучена» на stability дней и уже к повторению. */
 async function setup(h: ReturnType<typeof botHarness>, stability: number, withCloze: boolean) {
-  const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+  // Только три старых режима — «случайный» выбор в тестах закреплён под них.
+  const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeSentence: false, modeListen: false });
   const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
   const r = await saveWord(h.db, {
     roomId: room.id,
@@ -145,7 +146,9 @@ describe("/settings modes", () => {
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ RU → EN")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Вставь по смыслу")));
-    expect(await getUser(h.db, user.id)).toMatchObject({ modeEnRu: true, modeRuEn: false, modeCloze: false });
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ ✍️ Своё предложение")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🎧 Диктант")));
+    expect(await getUser(h.db, user.id)).toMatchObject({ modeEnRu: true, modeRuEn: false, modeCloze: false, modeSentence: false, modeListen: false });
     expect(lastButtons(h.calls).map((b) => b.text)).toContain("⬜️ RU → EN");
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ EN → RU")));

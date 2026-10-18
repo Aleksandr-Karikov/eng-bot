@@ -28,7 +28,7 @@ describe("mnemonic as part of the word", () => {
         judge: async () => ({ correct: false, explanation: "", tip: "" }),
         drill: async () => [],
         mnemonics: async () => ["бесы осадили"],
-        imagePrompt: async () => "",
+        reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "",
       },
     });
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });

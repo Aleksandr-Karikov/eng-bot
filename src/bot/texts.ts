@@ -1,5 +1,5 @@
 import type { ClozeSentence, User, Word } from "../db/schema";
-import type { DrillQuestion, Judgement } from "../llm/tutor";
+import type { DrillQuestion, Judgement, SentenceReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import type { MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
@@ -165,6 +165,35 @@ export function clozeJudgedText(s: ClozeSentence, j: Judgement): string {
 
 export function clozeUnknownText(s: ClozeSentence): string {
   return `🤷 Правильно так:\n\n${clozeFull(s)}\n\n🇷🇺 ${esc(s.translation)}`;
+}
+
+export function sentenceTaskText(word: Pick<Word, "term" | "translation">): string {
+  return `✍️ Составь своё предложение со словом:\n\n<b>${esc(word.term)}</b> — ${esc(word.translation)}\n\nНапиши его сообщением — проверю, верно ли употреблено слово, и поправлю ошибки.`;
+}
+
+export function sentenceReviewText(r: SentenceReview, word: Pick<Word, "example">): string {
+  const parts = [r.usesWord ? "✅ Слово употреблено верно" : "❌ Слово употреблено неверно"];
+  if (r.verdict) parts.push(esc(r.verdict));
+  if (r.fixes.length || r.natural) parts.push(checkText(r));
+  if (!r.usesWord && word.example) parts.push(`Пример: <i>${esc(word.example)}</i>`);
+  return parts.join("\n\n");
+}
+
+export const LISTEN_TASK_TEXT = "🎧 Диктант: послушай и напиши сообщением, что услышал.";
+
+/** Ответ на диктант или «не знаю» в нём: слово, транскрипция и перевод. */
+export function dictationText(grade: "exact" | "close" | "wrong" | "unknown", word: Word, answer = ""): string {
+  const reveal = `<b>${esc(word.term)}</b> — ${esc(word.translation)}${withTranscription(word)}`;
+  if (grade === "exact") return `✅ Верно!\n\n${reveal}`;
+  if (grade === "close") return `✅ Почти! Правильно пишется так:\n\n${reveal}`;
+  if (grade === "unknown") return `🤷 Это было:\n\n${reveal}`;
+  return `❌ Это было:\n\n${reveal}\n\nТы написал: <s>${esc(answer)}</s>`;
+}
+
+/** «Не знаю» в «своём предложении»: слово и пример, как его употребляют. */
+export function sentenceUnknownText(word: Word): string {
+  const example = word.example ? `\n\nПример: <i>${esc(word.example)}</i>` : "";
+  return `🤷 <b>${esc(word.term)}</b> — ${esc(word.translation)}${example}`;
 }
 
 export function drillQuestionText(q: DrillQuestion): string {

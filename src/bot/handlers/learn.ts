@@ -2,15 +2,18 @@ import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
 import type { Judgement } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
-import { isExactAnswer, pickStage } from "../../services/exercises";
+import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
 import { isHard } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
+import type { CardRow, Word } from "../../db/schema";
+import { sendWordVoice, wordVoice } from "./audio";
+import { mistakesAskKeyboard } from "../keyboards";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
-import type { PendingCloze } from "../exercises";
+import type { PendingExercise } from "../exercises";
 import { clearPendingInputs } from "../pending";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import {
@@ -34,9 +37,47 @@ import {
   practiceDoneText,
   drillResultText,
   reverseCardText,
+  dictationText,
+  LISTEN_TASK_TEXT,
+  mistakesAskText,
+  sentenceReviewText,
+  sentenceTaskText,
+  sentenceUnknownText,
 } from "../texts";
 
-const userModes = (ctx: BotContext) => ({ en_ru: ctx.user.modeEnRu, ru_en: ctx.user.modeRuEn, cloze: ctx.user.modeCloze });
+const userModes = (ctx: BotContext) => ({
+  en_ru: ctx.user.modeEnRu,
+  ru_en: ctx.user.modeRuEn,
+  cloze: ctx.user.modeCloze,
+  sentence: ctx.user.modeSentence,
+  listen: ctx.user.modeListen,
+});
+
+/**
+ * «Своё предложение» и диктант: показывает задание и ждёт ответ сообщением.
+ * false — показать нельзя (не вышла озвучка), тогда вместо них обычная карточка.
+ */
+async function presentWritten(
+  ctx: BotContext,
+  deps: Deps,
+  item: { card: CardRow; word: Word },
+  stage: Stage,
+  mode: PresentMode,
+  practice: boolean,
+): Promise<boolean> {
+  const { card, word } = item;
+  if (!ctx.chat || (stage !== "sentence" && stage !== "listen")) return false;
+  const accent = deps.random() < 0.5 ? "uk" : "us";
+  const voice = stage === "listen" ? await wordVoice(deps, word, accent) : undefined;
+  if (stage === "listen" && !voice) return false;
+  const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };
+  deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence" });
+  const text = (practice ? PRACTICE_HEADER : "") + (stage === "listen" ? LISTEN_TASK_TEXT : sentenceTaskText(word));
+  const keyboard = practice ? practiceClozeKeyboard(card.id, word.id) : clozeKeyboard(card.id, card.reps, word.id);
+  await present(ctx, text, { ...HTML, reply_markup: keyboard }, mode);
+  if (voice) await sendWordVoice(ctx, deps, word, accent, voice);
+  return true;
+}
 
 /** Сколько карточек пользователь ответил в текущей сессии /learn. */
 const sessionCounts = new Map<number, number>();
@@ -90,10 +131,12 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     const modes = userModes(ctx);
     const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
     if (modes.cloze && sentences.length === 0 && card.state !== State.New) void deps.clozeGen.ensure(word);
-    const stage = pickStage(card, modes, sentences.length > 0, deps.random);
+    const picked = pickStage(card, modes, sentences.length > 0, deps.random);
+    if (await presentWritten(ctx, deps, item, picked, mode, false)) return;
+    const stage = picked === "sentence" || picked === "listen" ? "en_ru" : picked;
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     if (sentence && ctx.chat) {
-      deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
+      deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
       text = clozeText(sentence);
       replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
     } else {
@@ -139,10 +182,12 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const { card, word } = item;
   const modes = userModes(ctx);
   const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
-  const stage = pickStage(card, modes, sentences.length > 0, deps.random);
+  const picked = pickStage(card, modes, sentences.length > 0, deps.random);
+  if (await presentWritten(ctx, deps, item, picked, mode, true)) return;
+  const stage = picked === "sentence" || picked === "listen" ? "en_ru" : picked;
   const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;
   if (sentence && ctx.chat) {
-    deps.exercises.set(ctx.user.id, { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
+    deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
     return void (await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id, word.id) }, mode));
   }
   const view = cardView(ctx.user);
@@ -179,14 +224,14 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   await sendDrillQuestion(ctx, state, first, "reply");
 }
 
-async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: "good" | "again"): Promise<boolean> {
+async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: "good" | "again"): Promise<boolean> {
   const result = await answerCard(deps.db, {
     userId: ctx.user.id,
     cardId: pending.cardId,
     expectedReps: pending.reps,
     answer,
     now: deps.now(),
-    stage: "cloze",
+    stage: pending.kind,
   });
   if (result === "stale") {
     await ctx.reply("Уже учтено");
@@ -198,7 +243,54 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: 
 }
 
 /** Ответ на «вставь по смыслу»: точное совпадение — сразу, иначе судит Claude. */
-async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, answer: string): Promise<void> {
+const continueAfter = (ctx: BotContext, deps: Deps, pending: PendingExercise) =>
+  pending.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply");
+
+/** Диктант: точно или с опечаткой — засчитано, иначе — «забыл». */
+async function checkDictation(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: string): Promise<void> {
+  const word = await getWord(deps.db, pending.wordId);
+  if (!word) return void (await ctx.reply("Это слово уже удалили — /learn, чтобы продолжить"));
+  const grade = gradeDictation(answer, word.term);
+  if (!pending.practice && !(await rate(ctx, deps, pending, grade === "wrong" ? "again" : "good"))) return;
+  await ctx.reply(dictationText(grade, word, answer), { ...HTML, reply_markup: audioKeyboard(word.id) });
+  await continueAfter(ctx, deps, pending);
+}
+
+/** Своё предложение: Claude смотрит, верно ли употреблено слово (это и оценка), и правит остальные ошибки. */
+async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: string): Promise<void> {
+  const word = await getWord(deps.db, pending.wordId);
+  if (!word) return void (await ctx.reply("Это слово уже удалили — /learn, чтобы продолжить"));
+  await ctx.replyWithChatAction("typing");
+  let review;
+  try {
+    review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });
+  } catch (err) {
+    console.error("Sentence review failed", err);
+    if (pending.practice) {
+      await ctx.reply(`Не получилось проверить 😔\n\n${sentenceUnknownText(word)}`, HTML);
+      return continueAfter(ctx, deps, pending);
+    }
+    await ctx.reply(`Не получилось проверить 😔\n\n${sentenceUnknownText(word)}\n\nОцени себя сам:`, {
+      ...HTML,
+      reply_markup: rateKeyboard(pending.cardId, pending.reps, false, word.id, false, "sentence"),
+    });
+    return;
+  }
+  if (!pending.practice && !(await rate(ctx, deps, pending, review.usesWord ? "good" : "again"))) return;
+  const text = sentenceReviewText(review, word);
+  const real = review.fixes.filter((f) => !f.slip);
+  if (real.length) {
+    // Как в /check: в работу над ошибками — только после «✅ Сохранить».
+    const id = deps.pendingMistakes.create({ authorUserId: ctx.user.id, callerUserId: ctx.user.id, fixes: real, baseText: text });
+    const ask = mistakesAskText(undefined, real.map((f) => f.category ?? ""));
+    await ctx.reply(`${text}\n\n${ask}`, { ...HTML, reply_markup: mistakesAskKeyboard(id) });
+  } else {
+    await ctx.reply(text, { ...HTML, reply_markup: audioKeyboard(word.id) });
+  }
+  await continueAfter(ctx, deps, pending);
+}
+
+async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingExercise & { kind: "cloze" }, answer: string): Promise<void> {
   const s = pending.sentence;
   // Вне зачёта: ответ проверяем, но карточку не оцениваем и продолжаем тренировку.
   const continueAfter = () => (pending.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply"));
@@ -233,6 +325,14 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingCloze, an
   if (!pending.practice && !(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
   await ctx.reply(clozeJudgedText(s, judgement), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
   await continueAfter();
+}
+
+/** «🤷 Не знаю»: правильный ответ для показанного упражнения. */
+async function unknownText(deps: Deps, pending: PendingExercise): Promise<string | undefined> {
+  if (pending.kind === "cloze") return clozeUnknownText(pending.sentence);
+  const word = await getWord(deps.db, pending.wordId);
+  if (!word) return undefined;
+  return pending.kind === "listen" ? dictationText("unknown", word) : sentenceUnknownText(word);
 }
 
 export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
@@ -274,7 +374,11 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^pu:/, async (ctx) => {
     const pending = deps.exercises.get(ctx.user.id);
     await ctx.answerCallbackQuery();
-    if (pending?.practice) await ctx.editMessageText(clozeUnknownText(pending.sentence), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
+    if (pending?.practice) {
+      deps.exercises.delete(ctx.user.id);
+      const text = await unknownText(deps, pending);
+      if (text) await ctx.editMessageText(text, { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
+    }
     await showPractice(ctx, deps, "reply");
   });
 
@@ -291,21 +395,23 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "dunno") return void (await ctx.answerCallbackQuery());
     const item = await getDueItemByCard(deps.db, ctx.user.id, cb.cardId);
     if (!item) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
-    const pending = deps.exercises.get(ctx.user.id);
-    const sentence = pending?.cardId === cb.cardId ? pending.sentence : pickCloze(await listCloze(deps.db, item.word.id), cb.reps);
+    const current = deps.exercises.get(ctx.user.id);
+    const pending = current?.cardId === cb.cardId ? current : undefined;
+    const sentence = pending ? undefined : pickCloze(await listCloze(deps.db, item.word.id), cb.reps);
     const result = await answerCard(deps.db, {
       userId: ctx.user.id,
       cardId: cb.cardId,
       expectedReps: cb.reps,
       answer: "again",
       now: deps.now(),
-      stage: "cloze",
+      stage: pending?.kind ?? "cloze",
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
     countAnswer(ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
-    await ctx.editMessageText(sentence ? clozeUnknownText(sentence) : draftText(item.word), {
+    const revealed = pending ? await unknownText(deps, pending) : sentence ? clozeUnknownText(sentence) : undefined;
+    await ctx.editMessageText(revealed ?? draftText(item.word), {
       ...HTML,
       reply_markup: audioKeyboard(item.word.id),
     });
@@ -318,7 +424,9 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const pending = deps.exercises.get(ctx.user.id);
     if (text.startsWith("/") || !pending || pending.chatId !== ctx.chat.id) return next();
     deps.exercises.delete(ctx.user.id);
-    background(ctx, () => checkCloze(ctx, deps, pending, text));
+    if (pending.kind === "cloze") background(ctx, () => checkCloze(ctx, deps, pending, text));
+    else if (pending.kind === "sentence") background(ctx, () => checkSentence(ctx, deps, pending, text));
+    else await checkDictation(ctx, deps, pending, text);
   });
 
   bot.callbackQuery(/^l$/, async (ctx) => {

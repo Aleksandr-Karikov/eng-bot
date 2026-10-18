@@ -9,12 +9,15 @@ import { HTML, type BotContext, type Deps } from "../context";
 import { settingsKeyboard } from "../keyboards";
 import { settingsText, statsText } from "../texts";
 import type { Stage } from "../../services/exercises";
+import type { User } from "../../db/schema";
 
-const MODE_FIELDS: Record<Stage, "modeEnRu" | "modeRuEn" | "modeCloze"> = {
+const MODE_FIELDS = {
   en_ru: "modeEnRu",
   ru_en: "modeRuEn",
   cloze: "modeCloze",
-};
+  sentence: "modeSentence",
+  listen: "modeListen",
+} as const satisfies Record<Stage, keyof User>;
 
 export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("stats", async (ctx) => {
@@ -60,8 +63,8 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "mode") return void (await ctx.answerCallbackQuery());
     const field = MODE_FIELDS[cb.stage];
-    const next = { modeEnRu: ctx.user.modeEnRu, modeRuEn: ctx.user.modeRuEn, modeCloze: ctx.user.modeCloze, [field]: !ctx.user[field] };
-    if (!next.modeEnRu && !next.modeRuEn && !next.modeCloze) {
+    const next = { [field]: !ctx.user[field] };
+    if (!next[field] && Object.values(MODE_FIELDS).every((f) => f === field || !ctx.user[f])) {
       return void (await ctx.answerCallbackQuery({ text: "Хотя бы один режим должен остаться включённым" }));
     }
     const user = await updateUser(deps.db, ctx.user.id, next);

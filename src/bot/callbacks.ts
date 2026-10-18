@@ -46,7 +46,7 @@ export type Cb =
 
 const ANSWERS: Record<string, Answer> = { a: "again", h: "hard", g: "good", e: "easy" };
 /** Какое упражнение было показано — для статистики ответов. */
-const STAGE_CODES: Record<Stage, string> = { en_ru: "e", ru_en: "r", cloze: "c" };
+const STAGE_CODES: Record<Stage, string> = { en_ru: "e", ru_en: "r", cloze: "c", sentence: "s", listen: "l" };
 const DRAFT_ACTIONS = { o: "ok", e: "edit", c: "cancel", s: "skip", x: "stop" } as const;
 const BATCH_ACTIONS = { a: "add", r: "review", c: "cancel" } as const;
 const ROOM_ACTIONS = { n: "new", i: "invite" } as const;

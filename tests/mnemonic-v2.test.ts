@@ -15,7 +15,7 @@ function tutor(final = (term: string) => `m-${term}`) {
     judge: async () => ({ correct: false, explanation: "", tip: "" }),
     drill: async () => [],
     mnemonics,
-    imagePrompt: async () => "scene",
+    reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "scene",
   };
   return { t, mnemonics };
 }

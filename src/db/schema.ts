@@ -17,6 +17,8 @@ export const users = sqliteTable("users", {
   modeEnRu: integer("mode_en_ru", { mode: "boolean" }).notNull().default(true),
   modeRuEn: integer("mode_ru_en", { mode: "boolean" }).notNull().default(true),
   modeCloze: integer("mode_cloze", { mode: "boolean" }).notNull().default(true),
+  modeSentence: integer("mode_sentence", { mode: "boolean" }).notNull().default(true),
+  modeListen: integer("mode_listen", { mode: "boolean" }).notNull().default(true),
   modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),

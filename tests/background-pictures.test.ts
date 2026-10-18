@@ -20,7 +20,7 @@ const tutor = (): ExerciseTutor => ({
   judge: async () => ({ correct: false, explanation: "", tip: "" }),
   drill: async () => [],
   mnemonics: async () => [],
-  imagePrompt: async (word) => `scene for ${word.term}`,
+  reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async (word) => `scene for ${word.term}`,
 });
 const store = () => new PictureStore(mkdtempSync(join(tmpdir(), "pictures-")));
 

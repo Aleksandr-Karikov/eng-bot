@@ -2,13 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { State } from "ts-fsrs";
 import { ClozeGenerator } from "../src/services/cloze-generator";
 import { listCloze, pickCloze, saveCloze } from "../src/services/cloze";
-import { isExactAnswer, normalizeAnswer, pickStage } from "../src/services/exercises";
+import { gradeDictation, isExactAnswer, normalizeAnswer, pickStage } from "../src/services/exercises";
 import { createRoom } from "../src/services/rooms";
 import { deleteWord, saveWord, updateWord } from "../src/services/words";
 import { buildClozePrompt, buildJudgePrompt, parseCloze, parseJudgement } from "../src/llm/tutor";
 import { T0, makeUser, testDb } from "./helpers";
 
-const all = { en_ru: true, ru_en: true, cloze: true };
+const old = { en_ru: true, ru_en: true, cloze: true, sentence: false, listen: false };
+const all = old;
+const every = { en_ru: true, ru_en: true, cloze: true, sentence: true, listen: true };
 
 describe("picking the exercise", () => {
   const card = (state: number) => ({ state, stability: 1 });
@@ -27,7 +29,30 @@ describe("picking the exercise", () => {
 
   it("skips fill-in-the-gap while its sentences are not ready, and falls back to EN → RU if nothing else is on", () => {
     expect(pickStage(card(State.Review), all, false, () => 0.99)).toBe("ru_en");
-    expect(pickStage(card(State.Review), { en_ru: false, ru_en: false, cloze: true }, false, () => 0.5)).toBe("en_ru");
+    expect(pickStage(card(State.Review), { ...old, en_ru: false, ru_en: false }, false, () => 0.5)).toBe("en_ru");
+  });
+});
+
+describe("own sentence and dictation in the mix", () => {
+  const card = (state: number, reps: number) => ({ state, reps });
+
+  it("never starts a new word with an own sentence or a gap, dictation is fine", () => {
+    expect(pickStage(card(State.New, 0), { ...every, en_ru: false, ru_en: false }, true, () => 0)).toBe("listen");
+  });
+
+  it("asks for an own sentence only after a couple of reviews", () => {
+    const only = { ...every, en_ru: false, ru_en: false, cloze: false, listen: false };
+    expect(pickStage(card(State.Learning, 1), only, true, () => 0)).toBe("en_ru");
+    expect(pickStage(card(State.Review, 2), only, true, () => 0)).toBe("sentence");
+    expect(pickStage(card(State.Review, 5), every, true, () => 0.99)).toBe("listen");
+  });
+
+  it("grades dictation: exact, a typo in a long word, or wrong", () => {
+    expect(gradeDictation("Prudent.", "prudent")).toBe("exact");
+    expect(gradeDictation("prudant", "prudent")).toBe("close");
+    expect(gradeDictation("we are runing a little bit later", "we are running a little bit later")).toBe("close");
+    expect(gradeDictation("rot", "rat")).toBe("wrong");
+    expect(gradeDictation("student", "prudent")).toBe("wrong");
   });
 });
 
@@ -78,7 +103,7 @@ describe("cloze storage", () => {
   it("generates once in the background, even when asked twice at the same time", async () => {
     const { db, word } = await setupWord();
     const cloze = vi.fn(async () => items);
-    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), imagePrompt: vi.fn() }, () => T0);
+    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn() }, () => T0);
     await Promise.all([gen.ensure(word), gen.ensure(word)]);
     await gen.ensure(word);
     expect(cloze).toHaveBeenCalledTimes(1);

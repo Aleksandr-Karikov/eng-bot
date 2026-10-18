@@ -92,7 +92,7 @@ describe("/drill failure", () => {
       cloze: async () => [],
       judge: async () => ({ correct: false, explanation: "", tip: "" }),
       drill: async () => Promise.reject(new Error("timeout")),
-      mnemonics: async () => [], imagePrompt: async () => "",
+      mnemonics: async () => [], reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "",
     };
     const h = botHarness({ tutor });
     const user = await makeUser(h.db, 100);
