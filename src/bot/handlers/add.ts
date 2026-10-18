@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import type { Enrichment } from "../../llm/enricher";
-import { findWord, parseAddInput, saveWord, toWordDraft } from "../../services/words";
+import { findWord, MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
+import { termPattern } from "../../services/word-uses";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { wordActionsKeyboard } from "../keyboards";
@@ -11,7 +12,8 @@ import { onBatchDraft } from "./batch";
 const USAGE =
   "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег\nИли ответь командой /add на сообщение с фразой.";
 
-export async function startAdd(ctx: BotContext, deps: Deps, input: string): Promise<void> {
+/** context — где встретилось: сообщение, на которое ответили /add, если слово в нём есть. */
+export async function startAdd(ctx: BotContext, deps: Deps, input: string, context = ""): Promise<void> {
   const parsed = parseAddInput(input);
   if (!parsed) return void (await ctx.reply(USAGE));
   const room = await resolveRoom(ctx, deps);
@@ -47,13 +49,20 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string): Prom
     transcriptionUk: enrichment?.transcriptionUk ?? "",
     transcriptionUs: enrichment?.transcriptionUs ?? "",
     mnemonic,
+    context: context && termPattern(parsed.term).test(context.toLowerCase().replace(/[’‘`]/g, "'")) ? context.slice(0, MAX_CONTEXT) : "",
   });
   if (!draft.translation) return askForTranslation(ctx, deps, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);
 }
 
 export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("add", (ctx) => background(ctx, () => startAdd(ctx, deps, commandInput(ctx))));
+  bot.command("add", (ctx) => {
+    // /add слово ответом на сообщение: само сообщение — контекст, где слово встретилось.
+    const own = ctx.match.trim();
+    const replied = ctx.message?.reply_to_message;
+    const context = own ? (replied?.text ?? replied?.caption ?? "").trim() : "";
+    return background(ctx, () => startAdd(ctx, deps, commandInput(ctx), context));
+  });
 
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;

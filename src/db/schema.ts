@@ -69,6 +69,8 @@ export const words = sqliteTable(
     audioUsFileId: text("audio_us_file_id"),
     /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
     mnemonic: text("mnemonic").notNull().default(""),
+    /** Предложение, где слово встретилось (из текста, скриншота или сообщения, на которое ответили /add). "" — нет. */
+    context: text("context").notNull().default(""),
     /** JSON-разбор «трудного» слова (LeechHelp): почему путается, отличия от похожих, примеры. "" — ещё нет. */
     leechHelp: text("leech_help").notNull().default(""),
     /** Telegram file_id картинки-ассоциации (по запоминалке). */

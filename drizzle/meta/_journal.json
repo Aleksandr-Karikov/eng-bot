@@ -134,6 +134,13 @@
       "when": 1792313295250,
       "tag": "0018_sharp_magus",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792313967253,
+      "tag": "0019_volatile_rattler",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,12 @@ export interface WordDraft {
   transcriptionUk?: string;
   transcriptionUs?: string;
   mnemonic?: string;
+  /** Где встретилось — исходное предложение. */
+  context?: string;
 }
+
+/** Длиннее — это уже не предложение, а абзац: на карточке только мешает. */
+export const MAX_CONTEXT = 300;
 
 /** Только поля слова — без служебных полей черновика/пачки. */
 export function toWordDraft(d: WordDraft): WordDraft {
@@ -24,6 +29,7 @@ export function toWordDraft(d: WordDraft): WordDraft {
     transcriptionUk: d.transcriptionUk ?? "",
     transcriptionUs: d.transcriptionUs ?? "",
     mnemonic: d.mnemonic ?? "",
+    context: d.context ?? "",
   };
 }
 
@@ -73,6 +79,7 @@ export async function saveWord(
       transcriptionUk: input.draft.transcriptionUk ?? "",
       transcriptionUs: input.draft.transcriptionUs ?? "",
       mnemonic: input.draft.mnemonic ?? "",
+      context: (input.draft.context ?? "").trim().slice(0, MAX_CONTEXT),
       createdAt: input.now,
     })
     .returning();

@@ -13,6 +13,8 @@ export interface Enrichment {
 
 export interface ExtractedItem extends Enrichment {
   term: string;
+  /** Предложение из текста, где встретилось; "" для списка слов. */
+  context?: string;
 }
 
 export interface CheckResult {
@@ -95,7 +97,9 @@ export function parseEnrichment(text: string): Enrichment {
   return enrichmentSchema.parse(JSON.parse(text.slice(start, end + 1)));
 }
 
-const extractedItemSchema = z.object({ ...enrichmentFields, term: z.string().trim().min(1) }).transform(toEnrichment);
+const extractedItemSchema = z
+  .object({ ...enrichmentFields, term: z.string().trim().min(1), context: z.string().trim().default("") })
+  .transform(toEnrichment);
 
 export function buildExtractPrompt(text: string): string {
   return [
@@ -126,10 +130,11 @@ const EXTRACT_RULES = [
   "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
   "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
   `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}], где',
+  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "context": "..."}], где',
   "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
   "example — короткое предложение на английском,",
   TRANSCRIPTION_HINT,
+  "context — предложение из текста, где оно встретилось, дословно (если длинное — только нужная часть, до 200 символов); для списка слов — пустая строка.",
 ];
 
 /** Невалидные пункты отбрасываются; если в ответе вообще нет массива — бросает. */

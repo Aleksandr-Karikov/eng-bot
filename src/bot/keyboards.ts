@@ -197,6 +197,7 @@ const CARD_PART_LABELS: Array<[CardPart, string]> = [
   ["transcription", "🔤 Транскрипция"],
   ["explanation", "📖 Объяснение"],
   ["example", "✏️ Пример"],
+  ["context", "📍 Где встретилось"],
   ["mnemonic", "💡 Запоминалка"],
   ["audio", "🔊 Озвучка"],
   ["picture", "🖼 Картинки"],

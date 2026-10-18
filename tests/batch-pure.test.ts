@@ -8,7 +8,7 @@ import { createRoom } from "../src/services/rooms";
 import { filterNewItems, saveWord } from "../src/services/words";
 import { T0, makeUser, testDb } from "./helpers";
 
-const item = (term: string) => ({ term, translation: `t-${term}`, explanation: "", example: "", transcriptionUk: "", transcriptionUs: "", mnemonic: "" });
+const item = (term: string) => ({ term, translation: `t-${term}`, explanation: "", example: "", transcriptionUk: "", transcriptionUs: "", mnemonic: "", context: "" });
 
 describe("parseExtraction", () => {
   it("parses a JSON array wrapped in chatter and a fence", () => {

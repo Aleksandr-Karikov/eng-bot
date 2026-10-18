@@ -1,3 +1,4 @@
+import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
@@ -38,10 +39,20 @@ const withTranscription = (d: WordDraft, show = true) => {
   return line ? `\n${line}` : "";
 };
 
+/** «📍 …» — исходное предложение, само слово в нём жирным. */
+export function contextLine(context: string, term: string): string {
+  const match = termPattern(term).exec(context.toLowerCase().replace(/[’‘`]/g, "'"));
+  const html = match
+    ? `${esc(context.slice(0, match.index))}<b>${esc(context.slice(match.index, match.index + match[0].length))}</b>${esc(context.slice(match.index + match[0].length))}`
+    : esc(context);
+  return `📍 <i>${html}</i>`;
+}
+
 export function draftText(d: WordDraft): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
+  if (d.context) text += `\n\n${contextLine(d.context, d.term)}`;
   if (d.mnemonic) text += `\n\n💡 ${esc(d.mnemonic)}`;
   return text;
 }
@@ -52,6 +63,7 @@ export function cardText(word: WordDraft, view: CardView = ALL_PARTS): string {
   let answer = esc(word.translation);
   if (view.explanation && word.explanation) answer += `\n\n${esc(word.explanation)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
@@ -140,6 +152,7 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 export function reverseCardText(word: WordDraft, view: CardView = ALL_PARTS): string {
   let answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
+  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
 }
