@@ -75,6 +75,12 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
   });
 
+  bot.callbackQuery(/^wr$/, async (ctx) => {
+    const user = await updateUser(deps.db, ctx.user.id, { weeklyReport: !ctx.user.weeklyReport });
+    await ctx.answerCallbackQuery({ text: user.weeklyReport ? "Буду присылать" : "Не буду" });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+  });
+
   bot.callbackQuery(/^md$/, async (ctx) => {
     const user = await updateUser(deps.db, ctx.user.id, { modeDrill: !ctx.user.modeDrill });
     await ctx.answerCallbackQuery({ text: user.modeDrill ? "Включено" : "Выключено" });

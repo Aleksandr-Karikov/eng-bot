@@ -4,6 +4,7 @@ import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, Sent
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { GoalProgress } from "../services/goals";
+import type { WeeklyReport } from "../services/weekly-report";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
@@ -119,6 +120,25 @@ const progressBar = (done: number, target: number) => {
   const filled = Math.min(10, Math.floor((done / Math.max(1, target)) * 10));
   return "▓".repeat(filled) + "░".repeat(10 - filled);
 };
+
+export function weeklyReportText(r: WeeklyReport): string {
+  const trend =
+    r.reviewsBefore === 0 ? "" : r.reviews >= r.reviewsBefore ? ` (📈 +${r.reviews - r.reviewsBefore} к прошлой)` : ` (📉 ${r.reviews - r.reviewsBefore} к прошлой)`;
+  const lines = [
+    "📬 <b>Твоя неделя</b>",
+    "",
+    `🔁 Повторений: ${r.reviews}${trend}`,
+    `🎯 Вспомнил с первого раза: ${r.accuracy}%`,
+  ];
+  if (r.started) lines.push(`🆕 Начал учить: ${r.started} ${plural(r.started, "слово", "слова", "слов")}`);
+  lines.push(`✅ Выучено всего: ${r.learned}`);
+  if (r.streak) lines.push(`🔥 Серия: ${r.streak} ${plural(r.streak, "день", "дня", "дней")}`);
+  if (r.usedInChat) lines.push(`👏 Употребил в разговоре: ${r.usedInChat}`);
+  if (r.hardest.length) lines.push("", `😵 Чаще всего забывал: ${r.hardest.map((h) => `<b>${esc(h.term)}</b> ×${h.forgot}`).join(", ")}`);
+  if (r.resolvedTopics.length) lines.push(`🧠 Отработал темы: ${r.resolvedTopics.map(esc).join(", ")}`);
+  lines.push("", "Новая неделя — /learn. Отключить итог — /settings");
+  return lines.join("\n");
+}
 
 export function goalText(roomName: string, g: GoalProgress): string {
   const percent = Math.round((g.done / Math.max(1, g.target)) * 100);

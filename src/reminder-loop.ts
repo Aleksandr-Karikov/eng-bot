@@ -1,7 +1,8 @@
 import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
-import { digestText, dueNoticeText, goalReachedText, reminderText, wordOfDayText } from "./bot/texts";
+import { digestText, dueNoticeText, goalReachedText, reminderText, weeklyReportText, wordOfDayText } from "./bot/texts";
+import { collectWeeklyReports } from "./services/weekly-report";
 import { collectGoalsReached, lastWeekProgress } from "./services/goals";
 import { collectWordsOfDay } from "./services/word-of-day";
 import { collectDigests } from "./services/digest";
@@ -86,6 +87,17 @@ export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
   }
 }
 
+/** Личный итог недели — каждому в личку. */
+export async function sendWeeklyReports(deps: DigestDeps): Promise<void> {
+  for (const { user, report } of await collectWeeklyReports(deps.db, deps.now())) {
+    try {
+      await deps.notifier.dm(user, weeklyReportText(report), HTML);
+    } catch (err) {
+      console.error("Weekly report failed", user.telegramId, err);
+    }
+  }
+}
+
 /** Слово дня — в привязанные группы. */
 export async function sendWordsOfDay(deps: DigestDeps): Promise<void> {
   for (const { room, word } of await collectWordsOfDay(deps.db, deps.now())) {
@@ -104,6 +116,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
       await sendDueNotices(deps);
       await sendDigests(deps);
       await sendGoalsReached(deps);
+      await sendWeeklyReports(deps);
       await sendWordsOfDay(deps);
     } catch (err) {
       console.error("Reminder tick failed", err);

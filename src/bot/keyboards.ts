@@ -221,6 +221,7 @@ export function settingsKeyboard(user: User): InlineKeyboard {
   }
   kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" })).row();
   kb.text(`${user.notifyDue ? "✅" : "⬜️"} 🔔 Уведомлять, когда появились слова`, encodeCb({ k: "notifyDue" })).row();
+  kb.text(`${user.weeklyReport ? "✅" : "⬜️"} 📬 Итог недели в воскресенье`, encodeCb({ k: "weeklyReport" })).row();
   const view = cardView(user);
   CARD_PART_LABELS.forEach(([part, label], i) => {
     if (i % 2 === 0 && i > 0) kb.row();

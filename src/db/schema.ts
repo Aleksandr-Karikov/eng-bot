@@ -25,6 +25,10 @@ export const users = sqliteTable("users", {
   cardHidden: text("card_hidden").notNull().default(""),
   /** Уведомлять, когда снова накопились слова к повторению. */
   notifyDue: integer("notify_due", { mode: "boolean" }).notNull().default(true),
+  /** Личный итог недели в личку по воскресеньям. */
+  weeklyReport: integer("weekly_report", { mode: "boolean" }).notNull().default(true),
+  /** Дата (воскресенье) последнего личного итога. */
+  lastReportDate: text("last_report_date"),
   lastDueNoticeAt: integer("last_due_notice_at", { mode: "timestamp_ms" }),
   createdAt: createdAt(),
 });
