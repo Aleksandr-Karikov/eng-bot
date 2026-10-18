@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { ignoreHarmlessErrors, slowApiCallLogger } from "./api-errors";
+import { ignoreHarmlessErrors, retryNetworkErrors, slowApiCallLogger } from "./api-errors";
 import type { BotContext, Deps } from "./context";
 import { registerAdd } from "./handlers/add";
 import { registerAudio } from "./handlers/audio";
@@ -45,6 +45,7 @@ export const COMMANDS = [
 ];
 
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
+  bot.api.config.use(retryNetworkErrors());
   bot.api.config.use(ignoreHarmlessErrors);
   bot.api.config.use(slowApiCallLogger(SLOW_MS));
   bot.use(async (ctx, next) => {

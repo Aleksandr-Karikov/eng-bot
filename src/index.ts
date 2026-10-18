@@ -1,4 +1,5 @@
 import { API_CONSTANTS, Bot } from "grammy";
+import { redactLogs } from "./log-redact";
 import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
@@ -39,6 +40,7 @@ try {
 }
 
 const config = loadConfig();
+redactLogs(config.botToken);
 const db = createDb(config.dbPath);
 const bot = new Bot<BotContext>(config.botToken);
 const notifier = new Notifier(
