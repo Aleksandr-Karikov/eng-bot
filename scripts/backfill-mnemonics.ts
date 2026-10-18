@@ -27,7 +27,13 @@ console.log(`${all ? "All words" : "Without mnemonic"}: ${targets.length}${dryRu
 let updated = 0;
 for (let start = 0; start < targets.length; start += CHUNK) {
   const chunk = targets.slice(start, start + CHUNK);
-  const finals = await claude.mnemonics(chunk.map((w) => ({ term: w.term, translation: w.translation })));
+  let finals: string[];
+  try {
+    finals = await claude.mnemonics(chunk.map((w) => ({ term: w.term, translation: w.translation })));
+  } catch (err) {
+    console.error(`✗ chunk ${start + 1}–${start + chunk.length} failed (${(err as Error).message}); rerun later for: ${chunk.map((w) => w.term).join(", ")}`);
+    continue;
+  }
   for (const [k, word] of chunk.entries()) {
     if (!finals[k]) continue;
     console.log(`■ ${word.term}: ${finals[k]}`);
