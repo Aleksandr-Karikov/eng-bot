@@ -62,9 +62,9 @@ describe("transcription storage", () => {
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await h.bot.handleUpdate(h.message(100, "/add bank"));
-    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Ок")).not.toThrow());
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
     expect(h.calls.some((c) => String(c.payload.text).includes("🇬🇧🇺🇸 /bæŋk/"))).toBe(true);
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Ок")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     await vi.waitFor(async () => expect(await getWord(h.db, 1)).toMatchObject({ transcriptionUk: "/bæŋk/" }));
   });
 });

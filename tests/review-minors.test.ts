@@ -78,9 +78,9 @@ describe("saving into a deleted room", () => {
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await h.bot.handleUpdate(h.message(100, "/add bank"));
-    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Ок")).not.toThrow());
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
     await deleteRoom(h.db, room.id);
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Ок")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     expect(h.calls.some((c) => String(c.payload.text).includes("Комнату уже удалили"))).toBe(true);
     expect(await h.db.select().from(rooms)).toHaveLength(0);
   });

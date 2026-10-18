@@ -29,7 +29,9 @@ export async function askForTranslation(ctx: BotContext, deps: Deps, draft: Draf
 }
 
 export async function sendPreview(ctx: BotContext, draft: Draft): Promise<void> {
-  const text = draft.progress ? `<b>${draft.progress}</b>\n\n${draftText(draft)}` : draftText(draft);
+  // Явно «добавить слово» — чтобы черновик не путали с проверкой ответа в /learn.
+  const head = draft.progress ? `<b>${draft.progress}</b>` : "➕ <b>Добавить новое слово?</b>";
+  const text = `${head}\n\n${draftText(draft)}`;
   await ctx.reply(text, { ...HTML, reply_markup: draftKeyboard(draft.id, draft.batchId !== undefined) });
 }
 

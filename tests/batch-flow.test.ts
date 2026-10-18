@@ -63,7 +63,7 @@ describe("/text batches", () => {
     expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("1/2");
     await h.bot.handleUpdate(h.callback(100, button(h.calls, "⏭ Пропустить")));
     expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("2/2");
-    await h.bot.handleUpdate(h.callback(100, button(h.calls, "✅ Ок")));
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "➕ Добавить")));
 
     await vi.waitFor(async () => expect((await h.db.select().from(words)).map((w) => w.term)).toEqual(["hangar"]));
     await vi.waitFor(() => expect(String(sentTo(h.calls, 200).at(-1)?.payload.text)).toContain("hangar"));

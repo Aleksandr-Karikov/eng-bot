@@ -289,6 +289,7 @@ export function buildCollocationsPrompt(term: string, translation: string): stri
     "3 варианта, ровно один верный, неверные — типичные ошибки русскоязычных (калька с русского). explanation — коротко по-русски.",
     "В пропуске — НЕ само слово и не его форма (prudent/prudently — это не про сочетания), а соседнее слово: глагол, прилагательное или предлог.",
     "Пример для prudent: «It would be a ___ decision to wait» нельзя — ответ виден; можно «a prudent ___ to spending» → approach / way / method.",
+    "У фразового глагола (draw up, tone down) в пропуске не может быть ни сам глагол, ни частица — только дополнение или другое слово рядом.",
     "Если у слова нет типичных партнёров, на которых ошибаются (междометие, целая фраза-идиома), quiz не возвращай.",
     'Верни JSON: {"items": [{"phrase": "...", "translation": "..."}], "quiz": {"question": "...", "options": ["...", "...", "..."], "correct": 0, "explanation": "..."}}',
   ].join("\n");

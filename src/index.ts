@@ -27,6 +27,7 @@ import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import { TranscriptSubtitles } from "./youtube/subtitles";
+import { dbExercisePersistence } from "./services/pending-exercises";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
 import { startReminderLoop } from "./reminder-loop";
@@ -54,6 +55,8 @@ const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin)
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, claude);
 
+const exercises = new ExerciseStore(dbExercisePersistence(db));
+await exercises.load();
 await bot.init();
 const deps: Deps = {
   db,
@@ -69,7 +72,7 @@ const deps: Deps = {
   pickers: new PickerStore(),
   edits: new EditStore(),
   history: new ChatHistory(),
-  exercises: new ExerciseStore(),
+  exercises,
   drills: new DrillStore(),
   speech: new MacSaySynth(),
   voices: new VoiceStore(),

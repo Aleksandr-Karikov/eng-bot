@@ -170,6 +170,14 @@ export const wordUses = sqliteTable("word_uses", {
   createdAt: createdAt(),
 });
 
+/** Упражнение, на которое бот ждёт ответ сообщением (ExerciseStore), — чтобы ожидание пережило перезапуск бота. */
+export const pendingExercises = sqliteTable("pending_exercises", {
+  userId: integer("user_id").primaryKey().references(() => users.id),
+  /** JSON PendingExercise. */
+  data: text("data").notNull(),
+  since: integer("since", { mode: "timestamp_ms" }).notNull(),
+});
+
 /** Истории из слов комнаты (/story и еженедельно в группу): текст, вопросы на понимание и озвучка. */
 export const stories = sqliteTable("stories", {
   id: integer("id").primaryKey({ autoIncrement: true }),

@@ -76,7 +76,7 @@ export function learnKeyboard(): InlineKeyboard {
 
 export function draftKeyboard(id: number, inBatch = false): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("✅ Ок", encodeCb({ k: "draft", id, action: "ok" }))
+    .text("➕ Добавить", encodeCb({ k: "draft", id, action: "ok" }))
     .text("✏️ Исправить", encodeCb({ k: "draft", id, action: "edit" }));
   if (!inBatch) return kb.text("❌ Отмена", encodeCb({ k: "draft", id, action: "cancel" }));
   return kb

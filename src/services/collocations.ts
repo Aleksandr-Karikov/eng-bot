@@ -4,9 +4,23 @@ import { words } from "../db/schema";
 import type { Collocations, ExerciseTutor } from "../llm/tutor";
 import { getWord } from "./words";
 
-/** Сохранённые сочетания слова; undefined — ещё не готовили. */
-export function storedCollocations(word: { collocations: string }): Collocations | undefined {
-  return word.collocations ? (JSON.parse(word.collocations) as Collocations) : undefined;
+const tokens = (s: string) => s.toLowerCase().replace(/[’‘`]/g, "'").split(/[^\p{L}']+/u).filter(Boolean);
+
+/**
+ * Вопрос на сочетания годится, только если ответ — «партнёр» слова, а не оно само или его часть:
+ * для draw up вариант draw подсказан заголовком «Какое слово подходит к draw up?».
+ */
+export function validQuiz(quiz: NonNullable<Collocations["quiz"]>, term: string): boolean {
+  const termWords = new Set(tokens(term));
+  const answer = tokens(quiz.options[quiz.correct] ?? "");
+  return answer.length > 0 && !answer.some((w) => termWords.has(w));
+}
+
+/** Сохранённые сочетания слова; undefined — ещё не готовили. Негодный вопрос отбрасывается (в том числе у старых слов). */
+export function storedCollocations(word: { collocations: string; term: string }): Collocations | undefined {
+  if (!word.collocations) return undefined;
+  const c = JSON.parse(word.collocations) as Collocations;
+  return c.quiz && !validQuiz(c.quiz, word.term) ? { items: c.items } : c;
 }
 
 /** Готовит сочетания для слова в фоне — один запрос на слово, даже если попросили несколько раз. */
@@ -30,7 +44,8 @@ export class CollocationGenerator {
   }
 
   private async generate(word: { id: number; term: string; translation: string }): Promise<void> {
-    const result = await this.tutor.collocations(word.term, word.translation);
+    const generated = await this.tutor.collocations(word.term, word.translation);
+    const result = generated.quiz && !validQuiz(generated.quiz, word.term) ? { items: generated.items } : generated;
     const fresh = await getWord(this.db, word.id);
     // Пока Claude думал, слово могли изменить — тогда сочетания уже не к нему.
     if (!fresh || fresh.collocations || fresh.term !== word.term || fresh.translation !== word.translation) return;

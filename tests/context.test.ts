@@ -47,11 +47,11 @@ describe("📍 where the word was met", () => {
     await linkGroup(h.db, room.id, -400);
     const original = { messageId: 7, fromId: 200, text: "Honestly we've hit an impasse with the landlord" };
     await h.bot.handleUpdate(h.groupReplyTo(100, -400, "/add impasse", original));
-    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Ок")).not.toThrow());
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Ок")));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     await h.bot.handleUpdate(h.groupReplyTo(100, -400, "/add stalemate", original));
-    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Ок")).not.toThrow());
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Ок")));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     await vi.waitFor(async () => expect(await h.db.select().from(words)).toHaveLength(2));
     expect((await h.db.select().from(words)).map((w) => [w.term, w.context])).toEqual([
       ["impasse", "Honestly we've hit an impasse with the landlord"],

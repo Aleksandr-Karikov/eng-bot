@@ -30,8 +30,8 @@ describe("deleting words", () => {
     const h = botHarness();
     await room(h);
     await h.bot.handleUpdate(h.message(100, "/add bank"));
-    await vi.waitFor(() => expect(() => buttonData(h.calls, "✅ Ок")).not.toThrow());
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Ок")));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     await vi.waitFor(async () => expect(await terms(h)).toEqual(["bank"]));
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🗑 Удалить")));
