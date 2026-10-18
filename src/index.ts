@@ -24,6 +24,7 @@ import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
 import { MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
+import { TalkStore } from "./bot/talks";
 import { startReminderLoop } from "./reminder-loop";
 import type { Deps } from "./bot/context";
 import { publishStory } from "./bot/handlers/story";
@@ -72,6 +73,7 @@ const deps: Deps = {
   random: Math.random,
   practice: new PracticeStore(),
   pictureWishes: new PictureWishStore(),
+  talks: new TalkStore(),
   images,
   pictures,
   botUsername: bot.botInfo.username,

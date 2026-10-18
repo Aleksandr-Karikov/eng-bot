@@ -22,6 +22,7 @@ import type { PickerStore } from "./pickers";
 import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
+import type { TalkStore } from "./talks";
 
 export type BotContext = Context & { user: User };
 
@@ -48,6 +49,7 @@ export interface Deps {
   random: () => number;
   practice: PracticeStore;
   pictureWishes: PictureWishStore;
+  talks: TalkStore;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
   /** Картинки, нарисованные заранее в фоне, — до первой отправки. */

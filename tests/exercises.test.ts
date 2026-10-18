@@ -103,7 +103,7 @@ describe("cloze storage", () => {
   it("generates once in the background, even when asked twice at the same time", async () => {
     const { db, word } = await setupWord();
     const cloze = vi.fn(async () => items);
-    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), story: async () => ({ title: "", body: "", questions: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn() }, () => T0);
+    const gen = new ClozeGenerator(db, { cloze, judge: vi.fn(), drill: vi.fn(), mnemonics: vi.fn(), story: async () => ({ title: "", body: "", questions: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: vi.fn() }, () => T0);
     await Promise.all([gen.ensure(word), gen.ensure(word)]);
     await gen.ensure(word);
     expect(cloze).toHaveBeenCalledTimes(1);

@@ -22,6 +22,12 @@ import {
   buildSentencePrompt,
   buildStoryPrompt,
   buildUntanglePrompt,
+  buildTalkReplyPrompt,
+  buildTalkReviewPrompt,
+  parseTalkReply,
+  parseTalkReview,
+  type TalkInput,
+  type TalkReview,
   parseLeechHelp,
   type LeechHelp,
   parseStory,
@@ -102,6 +108,15 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  async talkReply(input: TalkInput): Promise<string> {
+    return parseTalkReply(await this.ask(buildTalkReplyPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+  }
+
+  /** Разбор разговора — сильной моделью: нужно заметить и ошибки, и неестественные фразы. */
+  async talkReview(input: TalkInput): Promise<TalkReview> {
+    return parseTalkReview(await this.ask(buildTalkReviewPrompt(input), Math.max(this.opts.timeoutMs, 90_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   /** Разбор трудного слова — сильной моделью, как и запоминалки. */

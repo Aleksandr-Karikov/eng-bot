@@ -307,3 +307,16 @@ export function leechKeyboard(wordId: number, withPicture: boolean): InlineKeybo
   if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId }));
   return kb.text("✏️ Изменить", encodeCb({ k: "edit", wordId }));
 }
+
+export function talkTopicsKeyboard(topics: ReadonlyArray<{ label: string }>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  topics.forEach((t, index) => {
+    if (index > 0 && index % 2 === 0) kb.row();
+    kb.text(t.label, encodeCb({ k: "talkTopic", index }));
+  });
+  return kb;
+}
+
+export function talkEndKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("🏁 Закончить и разобрать", encodeCb({ k: "talkEnd" }));
+}

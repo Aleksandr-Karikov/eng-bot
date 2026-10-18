@@ -30,6 +30,8 @@ export type Cb =
   | { k: "redraw"; wordId: number }
   | { k: "manage"; wordId: number; open: boolean }
   | { k: "storyAudio"; id: number }
+  | { k: "talkTopic"; index: number }
+  | { k: "talkEnd" }
   | { k: "storyAnswer"; id: number; q: number; index: number }
   | { k: "redrawAs"; wordId: number; how: "again" | "custom" | number }
   | { k: "audio"; wordId: number; accent: "uk" | "us" }
@@ -84,6 +86,8 @@ export function encodeCb(cb: Cb): string {
     case "picture": return `im:${cb.wordId}`;
     case "redraw": return `rd:${cb.wordId}`;
     case "storyAudio": return `sa:${cb.id}`;
+    case "talkTopic": return `tt:${cb.index}`;
+    case "talkEnd": return "te";
     case "storyAnswer": return `sq:${cb.id}:${cb.q}:${cb.index}`;
     case "manage": return `wm:${cb.wordId}${cb.open ? "" : ":c"}`;
     case "redrawAs": return `rv:${cb.wordId}:${cb.how === "again" ? "x" : cb.how === "custom" ? "c" : cb.how}`;
@@ -170,6 +174,11 @@ export function decodeCb(data: string): Cb | null {
       const wordId = int(a);
       return wordId !== null ? { k: "redraw", wordId } : null;
     }
+    case "tt": {
+      const index = int(a);
+      return index !== null ? { k: "talkTopic", index } : null;
+    }
+    case "te": return { k: "talkEnd" };
     case "sa": {
       const id = int(a);
       return id !== null ? { k: "storyAudio", id } : null;

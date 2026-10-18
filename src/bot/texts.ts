@@ -1,5 +1,5 @@
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { DrillQuestion, Judgement, LeechHelp, SentenceReview } from "../llm/tutor";
+import type { DrillQuestion, Judgement, LeechHelp, SentenceReview, TalkReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { CheckResult } from "../llm/enricher";
@@ -296,6 +296,21 @@ export function leechText(word: Pick<Word, "term" | "translation">, help: LeechH
   return parts.join("\n\n");
 }
 
+export function talkReviewText(r: TalkReview, words: Array<{ term: string }>): string {
+  const parts = ["🏁 <b>Разбор разговора</b>"];
+  if (r.praise) parts.push(`👍 ${esc(r.praise)}`);
+  const fixes = r.fixes.map((f) => `• <s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>${f.slip ? " (описка)" : f.why ? ` — ${esc(f.why)}` : ""}`);
+  parts.push(fixes.length ? `✍️ <b>Ошибки:</b>\n${fixes.join("\n")}` : "✍️ Ошибок не нашёл 🎉");
+  if (r.natural.length) parts.push(`💬 <b>Естественнее:</b>\n${r.natural.map((n) => `• ${esc(n.original)} → <i>${esc(n.better)}</i>`).join("\n")}`);
+  const used = new Set(r.usedWords.map((w) => w.toLowerCase()));
+  const usedTerms = words.filter((w) => used.has(w.term.toLowerCase()));
+  const missed = words.filter((w) => !used.has(w.term.toLowerCase()));
+  if (usedTerms.length) parts.push(`📚 Употребил слова комнаты: ${usedTerms.map((w) => `<b>${esc(w.term)}</b>`).join(", ")}`);
+  if (missed.length) parts.push(`В следующий раз попробуй: ${missed.map((w) => esc(w.term)).join(", ")}`);
+  parts.push("Ещё разговор — /talk");
+  return parts.join("\n\n");
+}
+
 export function storyText(story: Pick<Story, "title" | "body">, glossary: Array<{ term: string; translation: string }>): string {
   const words = glossary.map((g) => `${esc(g.term)} — ${esc(g.translation)}`).join("\n");
   return `📖 <b>${esc(story.title)}</b>\n\n${boldMarked(story.body)}\n\n<b>Слова:</b>\n<tg-spoiler>${words}</tg-spoiler>`;
@@ -327,6 +342,7 @@ export function welcomeText(): string {
     "/learn — повторить слова",
     "/drill — вопросы по твоим частым ошибкам, /mistakes — что бот о них знает",
     "/story — короткая история из слов комнаты с вопросами и озвучкой",
+    "/talk — поговорить по-английски на любую тему, с разбором в конце",
     "/stats — прогресс твой и друзей",
     "/settings — время напоминания",
     "/link — в группе: привязать её к комнате",

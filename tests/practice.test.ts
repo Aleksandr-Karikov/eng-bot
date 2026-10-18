@@ -79,7 +79,7 @@ describe("practice outside the schedule", () => {
     const judge = vi.fn(async () => ({ correct: false, explanation: "", tip: "" }));
     const h = botHarness({
       random: () => 0.99,
-      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
+      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], story: async () => ({ title: "", body: "", questions: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
     });
     const user = await nothingDue(h);
     const [hangar] = await h.db.select().from(cards).where(eq(cards.userId, user.id)).orderBy(cards.stability);

@@ -32,6 +32,24 @@ export interface JudgeInput {
   answer: string;
 }
 
+export interface TalkInput {
+  topic: string;
+  words: Array<{ term: string; translation: string }>;
+  lines: Array<{ who: "user" | "bot"; text: string }>;
+}
+
+/** Разбор разговора /talk. */
+export interface TalkReview {
+  /** 1–2 предложения по-русски: что получилось хорошо. */
+  praise: string;
+  /** Ошибки в репликах ученика — как в /check. */
+  fixes: CheckResult["fixes"];
+  /** Фразы, которые грамматически верны, но звучат не по-английски. */
+  natural: Array<{ original: string; better: string }>;
+  /** Слова из списка, которые ученик сам употребил верно. */
+  usedWords: string[];
+}
+
 /** Разбор слова, которое никак не запоминается. */
 export interface LeechHelp {
   /** Почему именно это слово путается или забывается (1–2 предложения). */
@@ -87,6 +105,10 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Следующая реплика собеседника в разговоре /talk. */
+  talkReply(input: TalkInput): Promise<string>;
+  /** Разбор реплик ученика по итогам разговора. */
+  talkReview(input: TalkInput): Promise<TalkReview>;
   /** Разбор слова, которое ученик забыл много раз. */
   untangle(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): Promise<LeechHelp>;
   /** Короткая история с этими словами и вопросы на понимание. */
@@ -229,6 +251,81 @@ export function parseLeechHelp(text: string): LeechHelp {
   const help = leechHelpSchema.parse(JSON.parse(text.slice(start, end + 1)));
   if (!help.why && help.examples.length === 0) throw new Error("Empty leech help");
   return help;
+}
+
+const transcript = (lines: TalkInput["lines"]) => lines.map((l) => `${l.who === "user" ? "Student" : "You"}: ${l.text}`).join("\n");
+
+export function buildTalkReplyPrompt(input: TalkInput): string {
+  return [
+    "Ты — живой собеседник в разговорной практике английского для русскоязычного человека (уровень B1–B2).",
+    `Ситуация или тема: ${input.topic}. Играй свою роль в ней естественно, как реальный человек, а не учитель.`,
+    input.words.length ? `Слова, которые он учит: ${input.words.map((w) => w.term).join(", ")}.` : "",
+    "Иногда сам естественно употребляй их и задавай вопросы, на которые удобно ответить с ними — но не больше одного слова из списка за реплику.",
+    "Отвечай только по-английски, 1–3 коротких предложения, в конце — вопрос или реплика, на которую хочется ответить.",
+    "Не исправляй его ошибки и не объясняй грамматику — разбор будет в конце. Если он пишет по-русски, мягко попроси сказать по-английски.",
+    "",
+    input.lines.length ? `Разговор до сих пор:\n${transcript(input.lines)}` : "Начни разговор первой репликой.",
+    "",
+    'Верни JSON: {"reply": "твоя следующая реплика"}',
+  ]
+    .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+    .join("\n");
+}
+
+export function parseTalkReply(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  // Без JSON — берём ответ как есть: реплика важнее формата.
+  const raw = start !== -1 && end > start ? z.object({ reply: z.string() }).parse(JSON.parse(text.slice(start, end + 1))).reply : text;
+  const reply = raw.trim().replace(/^You:\s*/i, "").trim();
+  if (!reply) throw new Error("Empty talk reply");
+  return reply;
+}
+
+export function buildTalkReviewPrompt(input: TalkInput): string {
+  return [
+    "Русскоязычный человек тренировал разговорный английский. Тема: " + input.topic + ".",
+    input.words.length ? `Слова, которые он учит: ${input.words.map((w) => `${w.term} (${w.translation})`).join(", ")}.` : "",
+    "",
+    "Разговор (Student — он, You — собеседник):",
+    transcript(input.lines),
+    "",
+    "Разбери только реплики Student:",
+    "praise — 1–2 предложения по-русски: что получилось хорошо (конкретно, без общих слов);",
+    "fixes — грамматические, орфографические и лексические ошибки: wrong — как было, right — как правильно, why — коротко по-русски,",
+    `category — одна тема из списка: ${MISTAKE_CATEGORIES.join(", ")}, slip — true для описки или чатового сокращения;`,
+    "пунктуацию, регистр и сокращения вроде gonna, u, thx ошибкой не считай;",
+    "natural — до 3 фраз, которые грамматически верны, но звучат не по-английски: original и better;",
+    "used_words — слова из списка, которые Student сам употребил верно (в любой форме), в словарной форме из списка.",
+    'Верни JSON: {"praise": "...", "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "...", "slip": false}], "natural": [{"original": "...", "better": "..."}], "used_words": ["..."]}',
+  ]
+    .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+    .join("\n");
+}
+
+const talkReviewSchema = z.object({
+  praise: z.string().trim().default(""),
+  fixes: z
+    .array(
+      z.object({
+        wrong: z.string(),
+        right: z.string(),
+        why: z.string().default(""),
+        category: z.string().trim().default(""),
+        slip: z.boolean().default(false),
+      }),
+    )
+    .default([]),
+  natural: z.array(z.object({ original: z.string().trim().min(1), better: z.string().trim().min(1) })).default([]),
+  used_words: z.array(z.string().trim().min(1)).default([]),
+});
+
+export function parseTalkReview(text: string): TalkReview {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
+  const { used_words, ...rest } = talkReviewSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  return { ...rest, usedWords: used_words };
 }
 
 export const STORY_QUESTIONS = 3;
