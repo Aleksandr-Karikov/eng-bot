@@ -6,6 +6,8 @@ export interface SeenMessage {
   author: string;
   text: string;
   date: number;
+  /** Переслано из другого чата — автор неизвестен. */
+  forwarded?: boolean;
 }
 
 /**
@@ -15,7 +17,12 @@ export interface SeenMessage {
 export class ChatHistory {
   private readonly chats = new Map<number, SeenMessage[]>();
 
-  constructor(private readonly perChat = 20) {}
+  /** С запасом: 👀 ставят и на сообщения часовой давности, а текст бот может взять только отсюда. */
+  constructor(private readonly perChat = 300) {}
+
+  find(chatId: number, messageId: number): SeenMessage | undefined {
+    return this.chats.get(chatId)?.find((m) => m.messageId === messageId);
+  }
 
   record(chatId: number, message: SeenMessage): void {
     const list = this.chats.get(chatId) ?? [];

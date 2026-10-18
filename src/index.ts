@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import { API_CONSTANTS, Bot } from "grammy";
 import { setupBot, COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
@@ -106,4 +106,5 @@ process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
 console.log(`@${bot.botInfo.username} started`);
-await bot.start();
+// message_reaction не входит в обновления по умолчанию — без него 👀 для /check не придёт.
+await bot.start({ allowed_updates: [...API_CONSTANTS.DEFAULT_UPDATE_TYPES, "message_reaction"] });
