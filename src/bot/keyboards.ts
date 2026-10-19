@@ -227,20 +227,38 @@ const MODE_LABELS: Array<[Stage, string, keyof User]> = [
 ];
 
 /** Часы напоминания + переключатели режимов тренажёра. */
-export function settingsKeyboard(user: User): InlineKeyboard {
-  const kb = hoursKeyboard().row();
-  for (const [stage, label, field] of MODE_LABELS) {
-    kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
+export type SettingsScreen = "main" | "remind" | "modes" | "card";
+
+/** /settings по экранам: на одном сообщении было ~27 кнопок. */
+export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): InlineKeyboard {
+  const back = (kb: InlineKeyboard) => kb.row().text("◀ Назад", encodeCb({ k: "settingsScreen", screen: "main" }));
+  if (screen === "main") {
+    return new InlineKeyboard()
+      .text("⏰ Напоминания", encodeCb({ k: "settingsScreen", screen: "remind" }))
+      .row()
+      .text("🎯 Упражнения", encodeCb({ k: "settingsScreen", screen: "modes" }))
+      .row()
+      .text("🃏 Карточка", encodeCb({ k: "settingsScreen", screen: "card" }));
   }
-  kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Работа над ошибками`, encodeCb({ k: "drillMode" })).row();
-  kb.text(`${user.notifyDue ? "✅" : "⬜️"} 🔔 Уведомлять, когда появились слова`, encodeCb({ k: "notifyDue" })).row();
-  kb.text(`${user.weeklyReport ? "✅" : "⬜️"} 📬 Итог недели в воскресенье`, encodeCb({ k: "weeklyReport" })).row();
+  if (screen === "remind") {
+    const kb = hoursKeyboard().row();
+    kb.text(`${user.notifyDue ? "✅" : "⬜️"} 🔔 Когда снова есть что повторить`, encodeCb({ k: "notifyDue" })).row();
+    kb.text(`${user.weeklyReport ? "✅" : "⬜️"} 📬 Итог недели в воскресенье`, encodeCb({ k: "weeklyReport" }));
+    return back(kb);
+  }
+  if (screen === "modes") {
+    const kb = new InlineKeyboard();
+    for (const [stage, label, field] of MODE_LABELS) kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
+    kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Вопросы по ошибкам в /learn`, encodeCb({ k: "drillMode" }));
+    return back(kb);
+  }
+  const kb = new InlineKeyboard();
   const view = cardView(user);
   CARD_PART_LABELS.forEach(([part, label], i) => {
     if (i % 2 === 0 && i > 0) kb.row();
     kb.text(`${view[part] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "cardPart", part }));
   });
-  return kb;
+  return back(kb);
 }
 
 /** qid — номер показа вопроса: старые кнопки не должны оценивать другой, текущий вопрос. */
@@ -262,8 +280,13 @@ export function mistakesAskKeyboard(id: number): InlineKeyboard {
     .text("✖️ Не сохранять", encodeCb({ k: "mistakesSave", id, save: false }));
 }
 
+/** /mistakes — центр работы над ошибками: отсюда и вопросы, и перевод. */
 export function mistakesKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
+  return new InlineKeyboard()
+    .text("🧠 Вопросы по ошибкам", encodeCb({ k: "mistakesGo", to: "drill" }))
+    .text("🇷🇺→🇬🇧 Перевод", encodeCb({ k: "mistakesGo", to: "translate" }))
+    .row()
+    .text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
 }
 
 /** Под запоминалкой: нарисовать (или показать уже нарисованную) картинку — если картинки включены. */

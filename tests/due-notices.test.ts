@@ -41,14 +41,15 @@ describe("«words are back» notices", () => {
     expect(await collectDueNotices(db, nsk("2026-10-17T15:00"))).toEqual([]);
   });
 
-  it("notifies once at least 5 words are due, then not again for 3 hours", async () => {
+  it("notifies once at least 5 words are due, at most once a day", async () => {
     const { db } = await setup(5);
     const n = notifier();
     const run = (at: Date) => sendDueNotices({ db, notifier: n, now: () => at });
     expect(await run(nsk("2026-10-18T12:00"))).toBe(1);
     expect(n.sent[0]).toContain("5 слов");
     expect(await run(nsk("2026-10-18T14:59"))).toBe(0);
-    expect(await run(nsk("2026-10-18T15:01"))).toBe(1);
+    expect(await run(nsk("2026-10-18T18:00"))).toBe(0);
+    expect(await run(nsk("2026-10-19T12:00"))).toBe(1);
   });
 
   it("stays quiet with fewer than 5 words, at night, or right after studying", async () => {

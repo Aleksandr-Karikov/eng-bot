@@ -142,6 +142,7 @@ describe("/settings modes", () => {
     const h = botHarness();
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     await h.bot.handleUpdate(h.message(100, "/settings"));
+    await h.bot.handleUpdate(h.callback(100, "ss:modes"));
     expect(lastButtons(h.calls).map((b) => b.text)).toEqual(expect.arrayContaining(["✅ EN → RU", "✅ RU → EN", "✅ Вставь по смыслу"]));
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ RU → EN")));

@@ -25,25 +25,27 @@ import { clearPendingInputs } from "./pending";
 /** Порог, после которого обработка нажатия или вызов Telegram пишется в лог как медленный. */
 const SLOW_MS = 2000;
 
+/** Меню в личке — только главное; остальные команды работают и перечислены в /help. */
 export const COMMANDS = [
   { command: "learn", description: "Повторить слова" },
   { command: "add", description: "Добавить слово" },
-  { command: "text", description: "Разобрать текст и добавить пачкой" },
   { command: "check", description: "Проверить английский (ответом на сообщение)" },
-  { command: "drill", description: "Вопросы по твоим частым ошибкам" },
-  { command: "mistakes", description: "Твои частые ошибки" },
-  { command: "edit", description: "Исправить слово (можно по кусочку)" },
-  { command: "delete", description: "Удалить слово (можно по кусочку)" },
-  { command: "story", description: "История из слов комнаты" },
+  { command: "mistakes", description: "Работа над ошибками" },
   { command: "translate", description: "Тренажёр перевода с русского" },
   { command: "talk", description: "Поговорить по-английски с разбором" },
-  { command: "say", description: "Как сказать это по-английски" },
-  { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
   { command: "stats", description: "Прогресс твой и друзей" },
-  { command: "goal", description: "Цель комнаты на неделю" },
   { command: "room", description: "Комнаты и приглашения" },
-  { command: "newroom", description: "Создать комнату" },
-  { command: "settings", description: "Время напоминания" },
+  { command: "settings", description: "Настройки" },
+  { command: "help", description: "Что умеет бот" },
+];
+
+/** Меню в группах — то, что там имеет смысл. */
+export const GROUP_COMMANDS = [
+  { command: "check", description: "Проверить английский (ответом на сообщение)" },
+  { command: "add", description: "Добавить слово" },
+  { command: "duel", description: "Дуэль: кто быстрее переведёт" },
+  { command: "story", description: "История из слов комнаты" },
+  { command: "goal", description: "Цель комнаты на неделю" },
   { command: "link", description: "Привязать группу к комнате" },
   { command: "help", description: "Что умеет бот" },
 ];

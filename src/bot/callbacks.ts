@@ -35,6 +35,8 @@ export type Cb =
   | { k: "talkEnd" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
+  | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" }
+  | { k: "mistakesGo"; to: "drill" | "translate" }
   | { k: "notForMe"; wordId: number; from: "know" | "learn" }
   | { k: "restoreCard"; wordId: number }
   | { k: "translateStop" }
@@ -101,6 +103,8 @@ export function encodeCb(cb: Cb): string {
     case "talkEnd": return "te";
     case "captureUndo": return `cu:${cb.wordId}`;
     case "promote": return `uf:${cb.wordId}`;
+    case "settingsScreen": return `ss:${cb.screen}`;
+    case "mistakesGo": return `mg:${cb.to === "drill" ? "d" : "t"}`;
     case "notForMe": return `nf:${cb.wordId}:${cb.from === "know" ? "k" : "l"}`;
     case "restoreCard": return `nr:${cb.wordId}`;
     case "translateStop": return "tz";
@@ -211,6 +215,8 @@ export function decodeCb(data: string): Cb | null {
       const wordId = int(a);
       return wordId !== null ? { k: "restoreCard", wordId } : null;
     }
+    case "ss": return a === "main" || a === "remind" || a === "modes" || a === "card" ? { k: "settingsScreen", screen: a } : null;
+    case "mg": return a === "d" || a === "t" ? { k: "mistakesGo", to: a === "d" ? "drill" : "translate" } : null;
     case "uf": {
       const wordId = int(a);
       return wordId !== null ? { k: "promote", wordId } : null;

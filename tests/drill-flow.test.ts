@@ -187,7 +187,8 @@ describe("drill questions in /learn", () => {
     const { h } = harness();
     const user = await makeUser(h.db, 100);
     await h.bot.handleUpdate(h.message(100, "/settings"));
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🧠 Работа над ошибками")));
+    await h.bot.handleUpdate(h.callback(100, "ss:modes"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🧠 Вопросы по ошибкам")));
     expect((await getUser(h.db, user.id))?.modeDrill).toBe(false);
   });
 });

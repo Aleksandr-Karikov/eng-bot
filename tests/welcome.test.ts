@@ -24,3 +24,26 @@ describe("/start and /help", () => {
     expect(h.calls.at(-1)?.payload.text).toBe(welcomeText());
   });
 });
+
+describe("simpler menus", () => {
+  it("keeps the DM menu short and gives groups their own", async () => {
+    const { GROUP_COMMANDS } = await import("../src/bot/setup");
+    expect(COMMANDS.length).toBeLessThanOrEqual(10);
+    expect(GROUP_COMMANDS.map((c) => c.command)).toEqual(expect.arrayContaining(["check", "duel", "link"]));
+  });
+
+  it("/settings opens on a short menu of three screens", async () => {
+    const h = botHarness();
+    await h.bot.handleUpdate(h.message(100, "/settings"));
+    expect((h.calls.at(-1)?.payload.reply_markup as { inline_keyboard: Array<Array<{ text: string }>> }).inline_keyboard.flat().map((b) => b.text)).toEqual([
+      "⏰ Напоминания",
+      "🎯 Упражнения",
+      "🃏 Карточка",
+    ]);
+  });
+
+  it("/mistakes leads to drill questions and the translation trainer", async () => {
+    const { mistakesKeyboard } = await import("../src/bot/keyboards");
+    expect(mistakesKeyboard().inline_keyboard.flat().map((b) => b.text)).toEqual(["🧠 Вопросы по ошибкам", "🇷🇺→🇬🇧 Перевод", "🗑 Сбросить"]);
+  });
+});

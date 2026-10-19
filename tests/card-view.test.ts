@@ -40,6 +40,7 @@ describe("card view", () => {
     await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: word, now: T0 });
 
     await h.bot.handleUpdate(h.message(100, "/settings"));
+    await h.bot.handleUpdate(h.callback(100, "ss:card"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 📖 Объяснение")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🔊 Озвучка")));
     expect(cardView((await getUser(h.db, user.id))!)).toMatchObject({ explanation: false, audio: false, example: true });

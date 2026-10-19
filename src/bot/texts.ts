@@ -392,15 +392,11 @@ export function mistakesText(p: MistakeProfile, resolved: Map<string, number> = 
   ].join("\n");
 }
 
-export function settingsText(user: User): string {
-  return [
-    `⏰ Напоминаю в ${user.reminderTime} (${user.timezone}). Выбери час или отправь /settings ЧЧ:ММ`,
-    "",
-    "🎯 Режимы тренажёра — каждая карточка приходит в случайном из включённых",
-    "(новое слово — сначала EN → RU):",
-    "",
-    "🃏 Что показывать на карточке в /learn (перевод — всегда):",
-  ].join("\n");
+export function settingsText(user: User, screen: "main" | "remind" | "modes" | "card" = "main"): string {
+  if (screen === "remind") return `⏰ Напоминаю в ${user.reminderTime} (${user.timezone}). Выбери час или отправь /settings ЧЧ:ММ`;
+  if (screen === "modes") return "🎯 Упражнения в /learn — каждая карточка приходит в случайном из включённых (новое слово — сначала EN → RU):";
+  if (screen === "card") return "🃏 Что показывать на карточке в /learn (перевод — всегда):";
+  return `⚙️ Настройки\n\n⏰ Напоминание в ${user.reminderTime}`;
 }
 
 /** Экранирует текст и превращает **…** от модели в жирный. */

@@ -81,9 +81,11 @@ export async function collectDueNotices(db: Db, now: Date): Promise<DueNotice[]>
     .where(and(eq(users.canDm, true), eq(users.notifyDue, true)));
   const notices: DueNotice[] = [];
   for (const user of candidates) {
-    const { time } = localParts(user.timezone, now);
+    const { time, date } = localParts(user.timezone, now);
     if (time < DAY_FROM || time >= DAY_TO) continue;
     if (user.lastDueNoticeAt && now.getTime() - user.lastDueNoticeAt.getTime() < NOTICE_EVERY_MS) continue;
+    // Не больше одного такого за день: вместе с ежедневным напоминанием — максимум два сообщения.
+    if (user.lastDueNoticeAt && localParts(user.timezone, user.lastDueNoticeAt).date === date) continue;
     const [last] = await db
       .select({ at: reviewLogs.reviewedAt })
       .from(reviewLogs)

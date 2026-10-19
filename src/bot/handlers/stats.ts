@@ -66,25 +66,25 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "cardPart") return void (await ctx.answerCallbackQuery());
     const user = await updateUser(deps.db, ctx.user.id, { cardHidden: toggleCardPart(ctx.user.cardHidden, cb.part) });
     await ctx.answerCallbackQuery({ text: "Сохранено" });
-    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "card") });
   });
 
   bot.callbackQuery(/^nd$/, async (ctx) => {
     const user = await updateUser(deps.db, ctx.user.id, { notifyDue: !ctx.user.notifyDue });
     await ctx.answerCallbackQuery({ text: user.notifyDue ? "Буду сообщать" : "Не буду" });
-    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "remind") });
   });
 
   bot.callbackQuery(/^wr$/, async (ctx) => {
     const user = await updateUser(deps.db, ctx.user.id, { weeklyReport: !ctx.user.weeklyReport });
     await ctx.answerCallbackQuery({ text: user.weeklyReport ? "Буду присылать" : "Не буду" });
-    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "remind") });
   });
 
   bot.callbackQuery(/^md$/, async (ctx) => {
     const user = await updateUser(deps.db, ctx.user.id, { modeDrill: !ctx.user.modeDrill });
     await ctx.answerCallbackQuery({ text: user.modeDrill ? "Включено" : "Выключено" });
-    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "modes") });
   });
 
   bot.callbackQuery(/^m:/, async (ctx) => {
@@ -97,7 +97,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     }
     const user = await updateUser(deps.db, ctx.user.id, next);
     await ctx.answerCallbackQuery({ text: "Сохранено" });
-    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "modes") });
   });
 
   bot.callbackQuery(/^t:/, async (ctx) => {
@@ -106,6 +106,13 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const time = `${String(cb.hour).padStart(2, "0")}:00`;
     const user = await updateUser(deps.db, ctx.user.id, { reminderTime: time });
     await ctx.answerCallbackQuery({ text: `Буду напоминать в ${time}` });
-    await ctx.editMessageText(settingsText(user), { reply_markup: settingsKeyboard(user) });
+    await ctx.editMessageText(settingsText(user, "remind"), { reply_markup: settingsKeyboard(user, "remind") });
+  });
+
+  bot.callbackQuery(/^ss:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "settingsScreen") return void (await ctx.answerCallbackQuery());
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(settingsText(ctx.user, cb.screen), { reply_markup: settingsKeyboard(ctx.user, cb.screen) });
   });
 }

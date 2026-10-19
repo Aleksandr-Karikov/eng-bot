@@ -1,3 +1,4 @@
+import { startTranslate } from "./translate";
 import { dropCard, restoreCard } from "../../services/cards";
 import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
@@ -408,6 +409,15 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("learn", (ctx) => startSession(ctx, deps));
 
   bot.command("drill", (ctx) => background(ctx, () => startDrill(ctx, deps)));
+
+  // Кнопки под /mistakes: туда же, что /drill и /translate.
+  bot.callbackQuery(/^mg:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "mistakesGo") return void (await ctx.answerCallbackQuery());
+    await ctx.answerCallbackQuery();
+    if (cb.to === "translate") return startTranslate(ctx, deps);
+    background(ctx, () => startDrill(ctx, deps));
+  });
 
   bot.callbackQuery(/^q:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);

@@ -70,18 +70,21 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
   await sendNext(ctx, deps, session);
 }
 
+export async function startTranslate(ctx: BotContext, deps: Deps): Promise<void> {
+  if (!ctx.chat) return;
+  if (ctx.chat.type !== "private") return void (await ctx.reply(`Тренажёр перевода — в личке: https://t.me/${deps.botUsername}`));
+  endLongModes(deps, ctx.user.id, "translate");
+  clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
+  const session = deps.translations.start(ctx.user.id, ctx.chat.id);
+  await ctx.reply(
+    "🇷🇺 → 🇬🇧 <b>Тренажёр перевода</b>\n\nПереводи предложения на английский и пиши ответ сообщением. Предложения — под твои частые ошибки и слова, которые ты сейчас учишь. ⏹ — закончить.",
+    HTML,
+  );
+  background(ctx, () => sendNext(ctx, deps, session));
+}
+
 export function registerTranslate(bot: Bot<BotContext>, deps: Deps): void {
-  bot.command("translate", async (ctx) => {
-    if (ctx.chat.type !== "private") return void (await ctx.reply(`Тренажёр перевода — в личке: https://t.me/${deps.botUsername}`));
-    endLongModes(deps, ctx.user.id, "translate");
-    clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
-    const session = deps.translations.start(ctx.user.id, ctx.chat.id);
-    await ctx.reply(
-      "🇷🇺 → 🇬🇧 <b>Тренажёр перевода</b>\n\nПереводи предложения на английский и пиши ответ сообщением. Предложения — под твои частые ошибки и слова, которые ты сейчас учишь. ⏹ — закончить.",
-      HTML,
-    );
-    background(ctx, () => sendNext(ctx, deps, session));
-  });
+  bot.command("translate", (ctx) => startTranslate(ctx, deps));
 
   bot.callbackQuery(/^tz$/, async (ctx) => {
     await ctx.answerCallbackQuery();

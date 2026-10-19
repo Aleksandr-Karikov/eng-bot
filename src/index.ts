@@ -1,6 +1,6 @@
 import { API_CONSTANTS, Bot } from "grammy";
 import { redactLogs } from "./log-redact";
-import { setupBot, COMMANDS } from "./bot/setup";
+import { setupBot, COMMANDS, GROUP_COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
@@ -105,6 +105,9 @@ if (config.capturePort) {
   startCaptureServer(deps, deps.capture, config.capturePort);
 }
 setupBot(bot, deps);
+await bot.api.setMyCommands(COMMANDS, { scope: { type: "all_private_chats" } });
+await bot.api.setMyCommands(GROUP_COMMANDS, { scope: { type: "all_group_chats" } });
+// Прежнее общее меню (scope по умолчанию) — тоже на короткое, чтобы не всплывало старое длинное.
 await bot.api.setMyCommands(COMMANDS);
 
 const stopReminders = startReminderLoop({
