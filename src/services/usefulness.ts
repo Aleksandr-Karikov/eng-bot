@@ -30,6 +30,23 @@ export function headWord(term: string): string | undefined {
   return parts.length === 2 && PARTICLES.has(parts[1]) ? singleWord(parts[0]) : undefined;
 }
 
+/**
+ * Возможные исходные формы слова: фразы часто записаны в изменённой форме (wiped out, drawing up, running late),
+ * а частотность конкретной формы ниже, чем у слова вообще. wordfreq форм не объединяет — перебираем сами.
+ */
+export function baseForms(word: string): string[] {
+  const forms = new Set([word]);
+  const add = (w: string) => w.length >= 2 && forms.add(w);
+  for (const [suffix, repl] of [["ies", "y"], ["ied", "y"], ["es", ""], ["s", ""], ["ed", ""], ["ed", "e"], ["d", ""], ["ing", ""], ["ing", "e"]] as const) {
+    if (!word.endsWith(suffix) || word.length - suffix.length < 2) continue;
+    const stem = word.slice(0, -suffix.length);
+    add(stem + repl);
+    // Удвоенная согласная: running → run, spinning → spin.
+    if (!repl && /([b-df-hj-np-tv-z])\1$/.test(stem)) add(stem.slice(0, -1));
+  }
+  return [...forms];
+}
+
 export function levelByZipf(zipf: number): 1 | 2 | 3 {
   return zipf >= ZIPF_HIGH ? 3 : zipf >= ZIPF_MEDIUM ? 2 : 1;
 }
@@ -68,7 +85,8 @@ export function scoreUsefulness(
     level = PHRASE_LEVEL[item.phraseFrequency];
     if (headZipf && levelByZipf(headZipf) < level) {
       level = levelByZipf(headZipf);
-      reasons.push(`${WORD_REASON[level as 1 | 2 | 3]} в основе`);
+      // Фраза — часть счёта своего слова: «beset by» не может встречаться чаще, чем «beset».
+      reasons.push(`само «${headWord(item.term)}» — ${WORD_REASON[level as 1 | 2 | 3]}`);
     } else {
       reasons.push(PHRASE_REASON[level as 1 | 2 | 3]);
     }
@@ -91,7 +109,8 @@ export function scoreUsefulness(
 
 /** Считает полезность для пачки слов: частотность — одним запросом к wordfreq. Без оценки — остаётся как было. */
 export async function rateUsefulness<T extends Rated>(items: T[], frequency: FrequencySource | undefined): Promise<T[]> {
-  const words = [...new Set(items.flatMap((i) => [singleWord(i.term), headWord(i.term)]).filter((w): w is string => Boolean(w)))];
+  const heads = items.map((i) => headWord(i.term)).filter((w): w is string => Boolean(w));
+  const words = [...new Set([...items.map((i) => singleWord(i.term)).filter((w): w is string => Boolean(w)), ...heads.flatMap(baseForms)])];
   let zipf = new Map<string, number>();
   if (frequency && words.length) {
     try {
@@ -103,7 +122,8 @@ export async function rateUsefulness<T extends Rated>(items: T[], frequency: Fre
   return items.map((item) => {
     const word = singleWord(item.term);
     const head = headWord(item.term);
-    const score = scoreUsefulness(item, word ? zipf.get(word) : undefined, head ? zipf.get(head) : undefined);
+    const headZipf = head ? Math.max(0, ...baseForms(head).map((f) => zipf.get(f) ?? 0)) : undefined;
+    const score = scoreUsefulness(item, word ? zipf.get(word) : undefined, headZipf || undefined);
     return score ? { ...item, ...score } : item;
   });
 }

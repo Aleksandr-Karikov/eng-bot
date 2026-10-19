@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FrequencySource } from "../src/frequency/frequency";
 import { parseEnrichment } from "../src/llm/enricher";
-import { levelByZipf, rateUsefulness, scoreUsefulness, singleWord } from "../src/services/usefulness";
+import { baseForms, levelByZipf, rateUsefulness, scoreUsefulness, singleWord } from "../src/services/usefulness";
 
 const zipfs: Record<string, number> = { flood: 4.34, melt: 3.96, feign: 2.58, arse: 3.57, ensure: 4.6, divine: 4.3 };
 const source: FrequencySource = { zipf: async (terms) => new Map(terms.map((t) => [t, zipfs[t] ?? 0])) };
@@ -40,8 +40,17 @@ describe("usefulness by rules", () => {
   });
 
   it("a phrase «word + particle» is never more useful than its word", () => {
-    expect(scoreUsefulness({ term: "beset by", phraseFrequency: "occasional" }, undefined, 3.08)).toEqual({ usefulness: 1, usefulnessNote: "редкое слово в основе" });
+    expect(scoreUsefulness({ term: "beset by", phraseFrequency: "occasional" }, undefined, 3.08)).toEqual({ usefulness: 1, usefulnessNote: "само «beset» — редкое слово" });
     expect(scoreUsefulness({ term: "draw up", phraseFrequency: "common" }, undefined, 5.1)?.usefulness).toBe(3);
+  });
+
+  it("takes the most frequent form of the phrase's word (wiped out → wipe)", async () => {
+    expect(baseForms("wiped")).toEqual(expect.arrayContaining(["wiped", "wipe"]));
+    expect(baseForms("running")).toEqual(expect.arrayContaining(["run"]));
+    expect(baseForms("drawing")).toEqual(expect.arrayContaining(["draw"]));
+    const forms: FrequencySource = { zipf: async (terms) => new Map(terms.map((t) => [t, t === "wipe" ? 4.4 : t === "wiped" ? 3.5 : 0])) };
+    const [r] = await rateUsefulness([{ term: "wiped out", phraseFrequency: "common" as const, usefulness: undefined as number | undefined }], forms);
+    expect(r.usefulness).toBe(3);
   });
 
   it("falls back gracefully when frequencies are unavailable", async () => {
