@@ -63,7 +63,15 @@ export async function answerCard(
     .from(cards)
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return "stale";
-  await applyAnswer(db, card, input.answer, input.now, input.stage);
+  // Условное обновление «если reps всё ещё прежний»: два почти одновременных ответа (кнопка и текст)
+  // не засчитаются дважды — второй увидит, что карточку уже обновили.
+  const [updated] = await db
+    .update(cards)
+    .set(review(card.fsrs, input.answer, input.now))
+    .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
+    .returning({ id: cards.id });
+  if (!updated) return "stale";
+  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: input.answer, stage: input.stage ?? null, reviewedAt: input.now });
   return "ok";
 }
 

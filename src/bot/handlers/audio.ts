@@ -2,7 +2,7 @@ import { InputFile, type Bot } from "grammy";
 import type { Word } from "../../db/schema";
 import { getWord, setAudioFileId } from "../../services/words";
 import { decodeCb } from "../callbacks";
-import type { BotContext, Deps } from "../context";
+import { background, type BotContext, type Deps } from "../context";
 
 type Accent = "uk" | "us";
 
@@ -31,9 +31,17 @@ export function registerAudio(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "audio") return void (await ctx.answerCallbackQuery());
     const word = await getWord(deps.db, cb.wordId);
     if (!word) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
-    const voice = await wordVoice(deps, word, cb.accent);
-    if (!voice) return void (await ctx.answerCallbackQuery({ text: "Озвучка недоступна 😔" }));
+    const cached = cb.accent === "uk" ? word.audioUkFileId : word.audioUsFileId;
+    if (cached) {
+      void ctx.answerCallbackQuery().catch(() => {});
+      return sendWordVoice(ctx, deps, word, cb.accent, cached);
+    }
+    // Синтез — в фоне: say + ffmpeg занимают секунду-другую, а апдейты обрабатываются по очереди.
     void ctx.answerCallbackQuery().catch(() => {});
-    await sendWordVoice(ctx, deps, word, cb.accent, voice);
+    background(ctx, async () => {
+      const voice = await wordVoice(deps, word, cb.accent);
+      if (!voice) return void (await ctx.reply("Озвучка недоступна 😔"));
+      await sendWordVoice(ctx, deps, word, cb.accent, voice);
+    });
   });
 }

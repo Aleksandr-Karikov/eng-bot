@@ -25,10 +25,18 @@ async function nextRound(api: Api, deps: Deps, chatId: number, duel: Duel): Prom
   duel.roundId = ++roundSeq;
   duel.current = round;
   duel.lockedOut = new Set();
-  const message = await api.sendMessage(chatId, duelRoundText(duel.round, DUEL_ROUNDS, round.term), {
-    ...HTML,
-    reply_markup: duelKeyboard(duel.roundId, round.options),
-  });
+  let message;
+  try {
+    message = await api.sendMessage(chatId, duelRoundText(duel.round, DUEL_ROUNDS, round.term), {
+      ...HTML,
+      reply_markup: duelKeyboard(duel.roundId, round.options),
+    });
+  } catch (err) {
+    // Раунд не ушёл (бота убрали из группы, сеть) — заканчиваем, иначе /duel навсегда «уже идёт».
+    console.error("Duel round failed", chatId, err);
+    deps.duels.finish(chatId);
+    return;
+  }
   duel.messageId = message.message_id;
   const roundId = duel.roundId;
   duel.timer = setTimeout(() => {

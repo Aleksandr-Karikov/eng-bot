@@ -38,6 +38,8 @@ const sent = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.metho
 describe("🧩 hard words", () => {
   it("on the 4th «Забыл» explains the word, then sends the next card below it", async () => {
     const { h, untangle } = await setup(3);
+    // Разбор готовится заранее (на 3-м «Забыл») — здесь он уже есть.
+    await h.db.update(words).set({ leechHelp: JSON.stringify(help) }).where(eq(words.id, 1));
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(sent(h).at(-1)).toContain("prudent");
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
@@ -47,7 +49,18 @@ describe("🧩 hard words", () => {
     expect(texts[leech]).toContain("prudish — ханжеский");
     expect(texts[leech]).toContain("<b>prudent</b> to save money");
     expect(texts[leech + 1]).toContain("bank");
-    expect(untangle).toHaveBeenCalledTimes(1);
+    expect(untangle).not.toHaveBeenCalled();
+  });
+
+  it("never waits for Claude on a button: if the explanation isn't ready, it comes before a later card", async () => {
+    const { h, untangle } = await setup(3);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
+    expect(sent(h).some((t) => t.startsWith("🧩"))).toBe(false);
+    await vi.waitFor(() => expect(untangle).toHaveBeenCalledTimes(1));
+    await vi.waitFor(async () => expect((await h.db.select().from(words).where(eq(words.id, 1)))[0].leechHelp).not.toBe(""));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😎 Помню")));
+    expect(sent(h).some((t) => t.startsWith("🧩"))).toBe(true);
   });
 
   it("prepares the explanation in advance on the 3rd and keeps it for the room until the word changes", async () => {

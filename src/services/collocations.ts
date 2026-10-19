@@ -1,3 +1,4 @@
+import { RetryLater } from "./retry-later";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { words } from "../db/schema";
@@ -26,6 +27,7 @@ export function storedCollocations(word: { collocations: string; term: string })
 /** Готовит сочетания для слова в фоне — один запрос на слово, даже если попросили несколько раз. */
 export class CollocationGenerator {
   private readonly inFlight = new Map<number, Promise<void>>();
+  private readonly retry = new RetryLater();
 
   constructor(
     private readonly db: Db,
@@ -36,8 +38,12 @@ export class CollocationGenerator {
     if (word.collocations) return Promise.resolve();
     const running = this.inFlight.get(word.id);
     if (running) return running;
+    if (this.retry.blocked(word.id)) return Promise.resolve();
     const task = this.generate(word)
-      .catch((err) => console.error("Collocations failed", word.term, err))
+      .catch((err) => {
+        this.retry.failed(word.id);
+        console.error("Collocations failed", word.term, err);
+      })
       .finally(() => this.inFlight.delete(word.id));
     this.inFlight.set(word.id, task);
     return task;

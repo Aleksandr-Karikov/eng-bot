@@ -69,21 +69,24 @@ export function registerStory(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     const story = cb?.k === "storyAudio" ? await getStory(deps.db, cb.id) : undefined;
     if (!story) return void (await ctx.answerCallbackQuery({ text: "Эта история уже неактуальна" }));
-    let voice: string | InputFile;
-    if (story.audioFileId) {
-      voice = story.audioFileId;
-    } else {
-      void ctx.answerCallbackQuery({ text: "Озвучиваю…" }).catch(() => {});
-      try {
-        const plain = `${story.title}.\n\n${story.body.replace(/\*\*/g, "")}`;
-        voice = new InputFile(await deps.speech.synthesize(plain, "uk"), "story.ogg");
-      } catch (err) {
-        console.error("Story speech failed", story.id, err);
-        return void (await ctx.reply("Озвучка недоступна 😔"));
+    void ctx.answerCallbackQuery(story.audioFileId ? {} : { text: "Озвучиваю…" }).catch(() => {});
+    const replyTo = { reply_parameters: { message_id: ctx.callbackQuery.message?.message_id ?? 0, allow_sending_without_reply: true } };
+    // Синтез целой истории — секунды: в фоне, чтобы не держать очередь апдейтов.
+    background(ctx, async () => {
+      let voice: string | InputFile;
+      if (story.audioFileId) {
+        voice = story.audioFileId;
+      } else {
+        try {
+          const plain = `${story.title}.\n\n${story.body.replace(/\*\*/g, "")}`;
+          voice = new InputFile(await deps.speech.synthesize(plain, "uk"), "story.ogg");
+        } catch (err) {
+          console.error("Story speech failed", story.id, err);
+          return void (await ctx.reply("Озвучка недоступна 😔"));
+        }
       }
-    }
-    if (story.audioFileId) void ctx.answerCallbackQuery().catch(() => {});
-    const message = await ctx.replyWithVoice(voice, { reply_parameters: { message_id: ctx.callbackQuery.message?.message_id ?? 0, allow_sending_without_reply: true } });
-    if (!story.audioFileId) await setStoryAudio(deps.db, story.id, message.voice.file_id);
+      const message = await ctx.replyWithVoice(voice, replyTo);
+      if (!story.audioFileId) await setStoryAudio(deps.db, story.id, message.voice.file_id);
+    });
   });
 }

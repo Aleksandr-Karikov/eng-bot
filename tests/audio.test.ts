@@ -64,8 +64,8 @@ describe("pronunciation", () => {
     const h = botHarness({ speech: { synthesize: async () => Promise.reject(new Error("no say")) } });
     const { words } = await setup(h);
     await h.bot.handleUpdate(h.callback(100, `a:${words[0].id}:u`));
-    const answer = h.calls.filter((c) => c.method === "answerCallbackQuery").at(-1)!;
-    expect(String(answer.payload.text)).toContain("Озвучка недоступна");
+    // Синтез — в фоне, поэтому об ошибке — сообщением.
+    await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("Озвучка недоступна"))).toBe(true));
   });
 
   it("forgets cached audio when the word itself changes", async () => {

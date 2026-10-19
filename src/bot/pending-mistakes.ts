@@ -19,6 +19,8 @@ export class PendingMistakesStore {
   private readonly pending = new Map<number, PendingMistakes>();
 
   create(entry: Omit<PendingMistakes, "since">): number {
+    // Неотвеченные вопросы «сохранить?» не должны копиться вечно.
+    for (const [key, old] of this.pending) if (Date.now() - old.since >= TTL_MS) this.pending.delete(key);
     const id = ++this.seq;
     this.pending.set(id, { ...entry, since: Date.now() });
     return id;

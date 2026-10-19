@@ -1,3 +1,4 @@
+import { RetryLater } from "./retry-later";
 import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs } from "../db/schema";
@@ -36,6 +37,7 @@ export class MnemonicGenerator {
   private readonly inFlight = new Map<number, Promise<void>>();
 
   private readonly helpInFlight = new Map<number, Promise<LeechHelp | undefined>>();
+  private readonly retry = new RetryLater();
 
   constructor(
     private readonly db: Db,
@@ -46,8 +48,10 @@ export class MnemonicGenerator {
   help(wordId: number): Promise<LeechHelp | undefined> {
     const running = this.helpInFlight.get(wordId);
     if (running) return running;
+    if (this.retry.blocked(wordId)) return Promise.resolve(undefined);
     const task = this.loadHelp(wordId)
       .catch((err) => {
+        this.retry.failed(wordId);
         console.error("Leech help failed", wordId, err);
         return undefined;
       })

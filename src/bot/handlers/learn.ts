@@ -1,6 +1,6 @@
 import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
-import type { Judgement } from "../../llm/tutor";
+import type { Judgement, LeechHelp } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
@@ -96,7 +96,16 @@ async function presentSpecial(
 }
 
 /** Сколько карточек пользователь ответил в текущей сессии /learn. */
-const sessionCounts = new Map<number, number>();
+/** Состояние сессий — своё у каждого экземпляра бота (Deps), а не общее на модуль: иначе оно протекает между ботами в тестах. */
+function perBot<T>(): (deps: Deps) => Map<number, T> {
+  const maps = new WeakMap<Deps, Map<number, T>>();
+  return (deps) => {
+    let map = maps.get(deps);
+    if (!map) maps.set(deps, (map = new Map()));
+    return map;
+  };
+}
+const sessionCountsOf = perBot<number>();
 
 /** Лимит подписи к фото в Telegram. */
 const CAPTION_LIMIT = 1024;
@@ -107,7 +116,7 @@ const DRILL_EVERY = 5;
 /** Если подошла очередь и вопрос готов — показывает его вместо карточки. */
 async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<boolean> {
   ensureDrill(ctx, deps);
-  const count = sessionCounts.get(ctx.user.id) ?? 0;
+  const count = sessionCountsOf(deps).get(ctx.user.id) ?? 0;
   const state = deps.drills.get(ctx.user.id);
   if (!ctx.user.modeDrill || !state || state.standalone || count === 0 || count % DRILL_EVERY !== 0) return false;
   if (state.lastAtCount === count || state.questions.length === 0) return false;
@@ -120,10 +129,10 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
 
 const sameTopic = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-const countAnswer = (userId: number) => sessionCounts.set(userId, (sessionCounts.get(userId) ?? 0) + 1);
+const countAnswer = (deps: Deps, userId: number) => sessionCountsOf(deps).set(userId, (sessionCountsOf(deps).get(userId) ?? 0) + 1);
 
 /** Разбор трудного слова, который покажем перед следующей карточкой. */
-const leechNotices = new Map<number, { wordId: number; forgot: number }>();
+const leechNoticesOf = perBot<{ wordId: number; forgot: number }>();
 
 /**
  * После ответа на карточку: если она дорастает до «вставь по смыслу» — готовим предложения,
@@ -139,18 +148,26 @@ async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
   const leech = await leechMoment(deps.db, cardId);
   if (leech.prefetch) void deps.mnemonicGen.help(item.word.id);
-  if (leech.show) leechNotices.set(ctx.user.id, { wordId: item.word.id, forgot: leech.forgot });
+  if (leech.show) leechNoticesOf(deps).set(ctx.user.id, { wordId: item.word.id, forgot: leech.forgot });
 }
 
 /** Показывает отложенный разбор трудного слова. true — сообщение отправлено. */
 async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
-  const notice = leechNotices.get(ctx.user.id);
+  const notice = leechNoticesOf(deps).get(ctx.user.id);
   if (!notice) return false;
-  leechNotices.delete(ctx.user.id);
-  await ctx.replyWithChatAction("typing").catch(() => {});
-  const help = await deps.mnemonicGen.help(notice.wordId);
-  const word = help ? await getWord(deps.db, notice.wordId) : undefined;
-  if (!help || !word) return false;
+  // Только готовый разбор: ждать Claude здесь нельзя — бот обрабатывает апдейты по очереди и встал бы для всех.
+  // Не готов — заказываем и покажем перед одной из следующих карточек.
+  const word = await getWord(deps.db, notice.wordId);
+  if (!word) {
+    leechNoticesOf(deps).delete(ctx.user.id);
+    return false;
+  }
+  if (!word.leechHelp) {
+    void deps.mnemonicGen.help(notice.wordId);
+    return false;
+  }
+  leechNoticesOf(deps).delete(ctx.user.id);
+  const help = JSON.parse(word.leechHelp) as LeechHelp;
   await ctx.reply(leechText(word, help, notice.forgot), { ...HTML, reply_markup: leechKeyboard(word.id, Boolean(deps.images)) });
   return true;
 }
@@ -206,9 +223,9 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
-    text = doneText(sessionCounts.get(ctx.user.id) ?? 0, next, ctx.user.timezone);
+    text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone);
     replyMarkup = practiceStartKeyboard();
-    sessionCounts.delete(ctx.user.id);
+    sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
   // Картинка, нарисованная в фоне, ушла в Telegram впервые — дальше отправляем по file_id.
@@ -249,7 +266,7 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
   endLongModes(deps, ctx.user.id);
-  sessionCounts.set(ctx.user.id, 0);
+  sessionCountsOf(deps).set(ctx.user.id, 0);
   prefetchDrill(ctx, deps);
   await showNext(ctx, deps, "reply");
 }
@@ -287,7 +304,7 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answe
     await ctx.reply("Уже учтено");
     return false;
   }
-  countAnswer(ctx.user.id);
+  countAnswer(deps, ctx.user.id);
   await afterAnswer(ctx, deps, pending.cardId);
   return true;
 }
@@ -462,7 +479,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
-    countAnswer(ctx.user.id);
+    countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
     const revealed = pending ? await unknownText(deps, pending) : sentence ? clozeUnknownText(sentence) : undefined;
     await ctx.editMessageText(revealed ?? draftText(item.word), {
@@ -501,7 +518,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
         stage: "collocation",
       });
       if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
-      countAnswer(ctx.user.id);
+      countAnswer(deps, ctx.user.id);
       await afterAnswer(ctx, deps, cb.cardId);
     }
     void ctx.answerCallbackQuery({ text: correct ? "✅" : "❌" }).catch(() => {});
@@ -544,7 +561,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     // Не ждём: «часики» снимаются параллельно с обновлением карточки — на одну задержку сети меньше.
     void ctx.answerCallbackQuery().catch(() => {});
-    countAnswer(ctx.user.id);
+    countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
     await showNext(ctx, deps, "replace");
   });

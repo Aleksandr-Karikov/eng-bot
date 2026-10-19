@@ -30,7 +30,12 @@ export interface PainterDeps {
  * Рисует картинки заранее, пока никто не ждёт свою: по одной за проход, сначала трудные слова,
  * потом те, что раньше придут на повторение. Готовые лежат на диске до первой отправки.
  */
+/** Упало рисование слова — повторить не раньше чем через сутки. */
+const FAILED_RETRY_MS = 24 * 60 * 60_000;
+
 export class BackgroundPainter {
+  /** Слова, на которых рисование упало, — когда пробовать снова. */
+  private readonly failedUntil = new Map<number, number>();
   private busy = false;
 
   constructor(private readonly deps: PainterDeps) {}
@@ -42,8 +47,14 @@ export class BackgroundPainter {
     try {
       const word = await this.nextWord();
       if (!word) return undefined;
-      const png = await this.deps.images.drawWord(word);
-      await this.deps.pictures.save(word, png);
+      try {
+        const png = await this.deps.images.drawWord(word);
+        await this.deps.pictures.save(word, png);
+      } catch (err) {
+        // Не браться за это же слово каждую минуту: каждая попытка — загрузка модели на ~12 ГБ.
+        this.failedUntil.set(word.id, Date.now() + FAILED_RETRY_MS);
+        throw err;
+      }
       return word.term;
     } finally {
       this.busy = false;
@@ -52,7 +63,10 @@ export class BackgroundPainter {
 
   private async nextWord() {
     const { db, pictures } = this.deps;
-    const candidates = (await db.select().from(words).where(isNull(words.imageFileId))).filter((w) => !pictures.find(w));
+    const now = Date.now();
+    const candidates = (await db.select().from(words).where(isNull(words.imageFileId))).filter(
+      (w) => !pictures.find(w) && (this.failedUntil.get(w.id) ?? 0) <= now,
+    );
     if (candidates.length === 0) return undefined;
     const due = await db.select({ wordId: cards.wordId, due: cards.due }).from(cards);
     const forgot = await db
