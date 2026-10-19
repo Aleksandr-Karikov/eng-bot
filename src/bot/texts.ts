@@ -230,9 +230,58 @@ export function reverseCardText(word: WordDraft & { collocations?: string }, vie
   return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
 }
 
+/**
+ * Подставляет ответ в пропуск, ответ — жирным. Модель иногда кладёт в вариант и соседнее слово
+ * («We need ___ gold» + «the gold»): повторяющиеся на стыке слова убираем, иначе выходит «the gold gold».
+ */
+export function fillGap(sentence: string, answer: string): string {
+  const [before = "", ...rest] = sentence.split("___");
+  const words = answer.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const WORD = /^[\p{L}\p{N}'’]+/u;
+  const WORD_END = /[\p{L}\p{N}'’]+$/u;
+  /** Срезает k слов ответа с начала текста после пропуска, если они там повторены; иначе — как было. */
+  const cutAfter = (text: string, k: number) => {
+    let left = text;
+    for (const w of words.slice(-k)) {
+      left = left.replace(/^\s+/, "");
+      const m = WORD.exec(left);
+      if (!m || m[0].toLowerCase() !== w) return undefined;
+      left = left.slice(m[0].length);
+    }
+    return left;
+  };
+  const cutBefore = (text: string, k: number) => {
+    let left = text;
+    for (const w of words.slice(0, k).reverse()) {
+      left = left.replace(/\s+$/, "");
+      const m = WORD_END.exec(left);
+      if (!m || m[0].toLowerCase() !== w) return undefined;
+      left = left.slice(0, -m[0].length);
+    }
+    return left;
+  };
+  let after = rest.join("___");
+  let head = before;
+  for (let k = Math.min(words.length, 4); k > 0; k--) {
+    const cut = cutAfter(after, k);
+    if (cut !== undefined) {
+      after = cut;
+      break;
+    }
+  }
+  for (let k = Math.min(words.length, 4); k > 0; k--) {
+    const cut = cutBefore(head, k);
+    if (cut !== undefined) {
+      head = cut.replace(/\s*$/, cut.trim() ? " " : "");
+      break;
+    }
+  }
+  return `${esc(head)}<b>${esc(answer)}</b>${esc(after)}`;
+}
+
 /** Предложение с ответом на месте пропуска, ответ — жирным. */
 export function clozeFull(s: Pick<ClozeSentence, "sentence" | "answer">): string {
-  return esc(s.sentence).replace("___", `<b>${esc(s.answer)}</b>`);
+  return fillGap(s.sentence, s.answer);
 }
 
 export function clozeText(s: ClozeSentence): string {
@@ -290,7 +339,7 @@ export function drillQuestionText(q: DrillQuestion): string {
 
 export function drillResultText(q: DrillQuestion, chosen: number, progress?: DrillProgress): string {
   const verdict = chosen === q.correct ? "✅ Верно!" : `❌ Ты выбрал «${esc(q.options[chosen] ?? "")}»`;
-  const filled = esc(q.question).replace("___", `<b>${esc(q.options[q.correct])}</b>`);
+  const filled = fillGap(q.question, q.options[q.correct] ?? "");
   return [verdict, filled, q.explanation ? esc(q.explanation) : "", progress ? drillProgressText(progress) : ""].filter(Boolean).join("\n\n");
 }
 
@@ -391,7 +440,7 @@ const collocationList = (c: Collocations) => c.items.map((i) => `• ${esc(i.phr
 export function collocationResultText(c: Collocations, chosen: number): string {
   const quiz = c.quiz!;
   const verdict = chosen === quiz.correct ? "✅ Верно!" : `❌ Не «${esc(quiz.options[chosen] ?? "")}»`;
-  const filled = esc(quiz.question).replace("___", `<b>${esc(quiz.options[quiz.correct])}</b>`);
+  const filled = fillGap(quiz.question, quiz.options[quiz.correct] ?? "");
   const parts = [verdict, filled];
   if (quiz.explanation) parts.push(esc(quiz.explanation));
   if (c.items.length) parts.push(`🔗 <b>Сочетания:</b>\n${collocationList(c)}`);
