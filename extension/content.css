@@ -35,3 +35,28 @@
 #wordboss-panel button:disabled { opacity: 0.35; cursor: default; }
 #wordboss-panel .wb-add { background: #2563eb; }
 #wordboss-panel .wb-add:hover { background: #1d4ed8 !important; }
+#wordboss-panel .wb-word.wb-added { background: rgba(34, 197, 94, 0.35); box-shadow: inset 0 -2px 0 #22c55e; }
+#wordboss-panel .wb-count { color: #86efac; font-weight: 600; }
+#wordboss-panel .wb-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%) translateY(-6px);
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+#wordboss-panel .wb-toast.wb-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#wordboss-panel .wb-toast.wb-ok { background: #16a34a; color: #fff; }
+#wordboss-panel .wb-toast.wb-err { background: #dc2626; color: #fff; }
+/* Пока видна плашка — панель не полупрозрачная, чтобы её заметили. */
+#wordboss-panel:has(.wb-toast.wb-show) { opacity: 1; }

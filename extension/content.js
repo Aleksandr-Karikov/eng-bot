@@ -18,6 +18,8 @@
     sending: false,
     /** Мышь над панелью: реплика «замерзает», можно выделять и листать. Иначе всегда показываем текущую. */
     hover: false,
+    /** Что уже добавлено за этот сеанс (в нижнем регистре) — подсвечиваем в репликах. */
+    added: new Set(),
   };
 
   /** Включить подробный лог: в консоли страницы localStorage.wordbossDebug = 1 и обновить страницу. */
@@ -126,23 +128,53 @@
       <button class="wb-prev" title="Предыдущая реплика">◀</button>
       <button class="wb-next" title="Следующая реплика">▶</button>
       <span class="wb-status">Выдели слово или фразу — или ➕ для всей реплики</span>
+      <span class="wb-count" title="Добавлено за этот сеанс"></span>
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
-    </div>`;
+    </div>
+    <div class="wb-toast"></div>`;
   const lineEl = panel.querySelector(".wb-line");
   const statusEl = panel.querySelector(".wb-status");
+  const addButton = panel.querySelector(".wb-add");
+  const toastEl = panel.querySelector(".wb-toast");
+  const countEl = panel.querySelector(".wb-count");
+  let toastTimer;
+
+  /** Плашка над панелью: видна, даже если реплика уже сменилась. */
+  function toast(text, kind) {
+    toastEl.textContent = text;
+    toastEl.className = `wb-toast wb-show ${kind}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toastEl.className = "wb-toast"), kind === "wb-err" ? 6000 : 4000);
+  }
 
   function tokens(line) {
     // Слова и всё между ними — чтобы выделенная фраза собиралась ровно как в реплике.
     return Array.from(line.matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’-]*|[^\p{L}\p{N}]+/gu)).map((m) => ({ text: m[0], start: m.index, word: /[\p{L}\p{N}]/u.test(m[0][0]) }));
   }
 
+  /** Индексы слов реплики, входящих в уже добавленные слова и фразы. */
+  function addedTokens(list) {
+    const marked = new Set();
+    const words = list.map((t, i) => ({ i, w: t.word ? t.text.toLowerCase().replace(/’/g, "'") : null })).filter((x) => x.w);
+    for (const term of state.added) {
+      const parts = term.split(/\s+/);
+      for (let k = 0; k + parts.length <= words.length; k++) {
+        if (parts.every((p, j) => words[k + j].w === p)) for (let j = 0; j < parts.length; j++) marked.add(words[k + j].i);
+      }
+    }
+    return marked;
+  }
+
   function render() {
     const line = state.lines[state.index];
     panel.classList.toggle("wb-hidden", !line);
+    countEl.textContent = state.added.size ? `➕ ${state.added.size}` : "";
     if (!line) return;
     lineEl.textContent = "";
-    tokens(line).forEach((t, i) => {
+    const list = tokens(line);
+    const marked = addedTokens(list);
+    list.forEach((t, i) => {
       const span = document.createElement("span");
       span.textContent = t.text;
       if (t.word) {
@@ -150,6 +182,7 @@
         span.dataset.i = String(i);
         const [a, b] = state.selection ?? [-1, -1];
         if (i >= a && i <= b) span.classList.add("wb-selected");
+        else if (marked.has(i)) span.classList.add("wb-added");
       }
       lineEl.appendChild(span);
     });
@@ -176,22 +209,35 @@
     state.sending = true;
     const text = selectedText();
     setStatus(text ? `Добавляю «${text}»…` : "Ищу, что выучить в реплике…");
+    addButton.textContent = "⏳ Добавляю…";
+    addButton.disabled = true;
     try {
       const res = await chrome.runtime.sendMessage({
         type: "capture",
         payload: { text, context: line, title: pageTitle() },
       });
-      if (res?.ok && res.added.length) setStatus(`✓ ${res.added.map((a) => `${a.term} — ${a.translation}`).join("; ")}`, "wb-ok");
-      else if (res?.ok) setStatus(`Уже есть в комнате: ${res.duplicates.join(", ")}`, "wb-ok");
-      else setStatus(`✗ ${res?.error ?? "Расширение не ответило — обнови страницу"}`, "wb-err");
       if (res?.ok) {
+        for (const term of [...res.added.map((a) => a.term), ...res.duplicates]) state.added.add(term.toLowerCase().replace(/’/g, "'"));
         state.selection = null;
         render();
       }
+      if (res?.ok && res.added.length) {
+        const what = res.added.map((a) => `${a.term} — ${a.translation}`).join("; ");
+        toast(`✓ Добавлено: ${what}`, "wb-ok");
+        setStatus(`✓ ${what}`, "wb-ok");
+      } else if (res?.ok) {
+        toast(`Уже есть в комнате: ${res.duplicates.join(", ")}`, "wb-ok");
+        setStatus(`Уже есть: ${res.duplicates.join(", ")}`, "wb-ok");
+      } else {
+        toast(`✗ ${res?.error ?? "Расширение не ответило — обнови страницу"}`, "wb-err");
+        setStatus("✗ Не добавлено", "wb-err");
+      }
     } catch {
-      setStatus("✗ Расширение обновилось — перезагрузи страницу", "wb-err");
+      toast("✗ Расширение обновилось — перезагрузи страницу", "wb-err");
     } finally {
       state.sending = false;
+      addButton.textContent = "➕ В бота";
+      addButton.disabled = false;
     }
   }
 
