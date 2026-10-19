@@ -35,6 +35,8 @@ export type Cb =
   | { k: "talkEnd" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
+  | { k: "notForMe"; wordId: number; from: "know" | "learn" }
+  | { k: "restoreCard"; wordId: number }
   | { k: "translateStop" }
   | { k: "translateDunno" }
   | { k: "extensionKey" }
@@ -99,6 +101,8 @@ export function encodeCb(cb: Cb): string {
     case "talkEnd": return "te";
     case "captureUndo": return `cu:${cb.wordId}`;
     case "promote": return `uf:${cb.wordId}`;
+    case "notForMe": return `nf:${cb.wordId}:${cb.from === "know" ? "k" : "l"}`;
+    case "restoreCard": return `nr:${cb.wordId}`;
     case "translateStop": return "tz";
     case "translateDunno": return "tu";
     case "extensionKey": return "ek";
@@ -199,6 +203,14 @@ export function decodeCb(data: string): Cb | null {
     case "ek": return { k: "extensionKey" };
     case "tz": return { k: "translateStop" };
     case "tu": return { k: "translateDunno" };
+    case "nf": {
+      const wordId = int(a);
+      return wordId !== null && (b === "k" || b === "l") ? { k: "notForMe", wordId, from: b === "k" ? "know" : "learn" } : null;
+    }
+    case "nr": {
+      const wordId = int(a);
+      return wordId !== null ? { k: "restoreCard", wordId } : null;
+    }
     case "uf": {
       const wordId = int(a);
       return wordId !== null ? { k: "promote", wordId } : null;

@@ -41,11 +41,11 @@ describe("practice outside the schedule", () => {
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🔁 Потренироваться")));
     const labels = () => lastButtons(h.calls).map((b) => b.text);
     expect(labels()).toEqual(expect.arrayContaining(["😎 Помню", "⏹ Хватит", "⚙️ Управление словом"]));
-    expect(labels()).not.toContain("🗑 Удалить");
+    expect(labels()).not.toContain("🗑 Удалить у всех");
 
     await h.bot.handleUpdate(h.manage(100));
     expect(h.calls.at(-1)?.method).toBe("editMessageReplyMarkup");
-    expect(labels()).toEqual(expect.arrayContaining(["😎 Помню", "⏹ Хватит", "🖼 Картинка", "✏️ Изменить", "🗑 Удалить", "▴ Скрыть"]));
+    expect(labels()).toEqual(expect.arrayContaining(["😎 Помню", "⏹ Хватит", "🖼 Картинка", "✏️ Изменить", "🗑 Удалить у всех", "▴ Скрыть"]));
     expect(labels()).not.toContain("⚙️ Управление словом");
 
     await h.bot.handleUpdate(h.manage(100, "▴"));

@@ -1,3 +1,4 @@
+import { dropCard, restoreCard } from "../../services/cards";
 import { InputFile, type Bot, type InlineKeyboard } from "grammy";
 import { State } from "ts-fsrs";
 import type { Judgement, LeechHelp } from "../../llm/tutor";
@@ -12,7 +13,7 @@ import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
-import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard } from "../keyboards";
+import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard, restoreCardKeyboard } from "../keyboards";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
@@ -48,6 +49,7 @@ import {
   sentenceReviewText,
   sentenceTaskText,
   sentenceUnknownText,
+  esc,
 } from "../texts";
 
 const userModes = (ctx: BotContext) => ({
@@ -564,6 +566,29 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
     await showNext(ctx, deps, "replace");
+  });
+
+  // «🙈 Не для меня»: слово уходит только из моих карточек. Из /learn — сразу следующая карточка.
+  bot.callbackQuery(/^nf:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const word = cb?.k === "notForMe" ? await getWord(deps.db, cb.wordId) : undefined;
+    if (cb?.k !== "notForMe" || !word) return void (await ctx.answerCallbackQuery({ text: "Этого слова уже нет" }));
+    await dropCard(deps.db, ctx.user.id, word.id);
+    await ctx.answerCallbackQuery({ text: "🙈 Убрал у тебя" });
+    const text = `🙈 <b>${esc(word.term)}</b> убрано из твоих слов — у остальных осталось.`;
+    if (cb.from === "know") return void (await ctx.editMessageText(text, { ...HTML, reply_markup: restoreCardKeyboard(word.id) }));
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    await ctx.reply(text, { ...HTML, reply_markup: restoreCardKeyboard(word.id) });
+    if (ctx.chat?.type === "private") await showNext(ctx, deps, "reply");
+  });
+
+  bot.callbackQuery(/^nr:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const word = cb?.k === "restoreCard" ? await getWord(deps.db, cb.wordId) : undefined;
+    if (cb?.k !== "restoreCard" || !word) return void (await ctx.answerCallbackQuery({ text: "Этого слова уже нет" }));
+    await restoreCard(deps.db, ctx.user.id, word.id, deps.now());
+    await ctx.answerCallbackQuery({ text: "↩️ Вернул" });
+    await ctx.editMessageText(`↩️ <b>${esc(word.term)}</b> снова в твоих словах — встретится в /learn`, HTML);
   });
 
   bot.callbackQuery(/^k:/, async (ctx) => {

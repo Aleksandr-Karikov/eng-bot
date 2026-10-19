@@ -12,7 +12,13 @@ export const USEFULNESS_ICONS: Record<number, string> = { 3: "🟢", 2: "🟡", 
 export function knowKeyboard(wordId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Знаю", encodeCb({ k: "know", wordId, knows: true }))
-    .text("📚 Не знаю", encodeCb({ k: "know", wordId, knows: false }));
+    .text("📚 Не знаю", encodeCb({ k: "know", wordId, knows: false }))
+    .row()
+    .text("🙈 Не для меня", encodeCb({ k: "notForMe", wordId, from: "know" }));
+}
+
+export function restoreCardKeyboard(wordId: number): InlineKeyboard {
+  return new InlineKeyboard().text("↩️ Вернуть", encodeCb({ k: "restoreCard", wordId }));
 }
 
 /** Две оценки — «не вспомнил / вспомнил»: «С трудом» убрана, а в старых сообщениях она по-прежнему обрабатывается. */
@@ -40,7 +46,7 @@ export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordI
 }
 
 /** Действия со словом (картинка, изменить, удалить) спрятаны за одну кнопку, чтобы не мешать тренировке. */
-const MANAGE_TAGS = new Set(["im", "rd", "e", "x", "wm", "uf"]);
+const MANAGE_TAGS = new Set(["im", "rd", "e", "x", "wm", "uf", "nf"]);
 
 export function addManageButton(kb: InlineKeyboard, wordId: number): InlineKeyboard {
   return kb.text("⚙️ Управление словом", encodeCb({ k: "manage", wordId, open: true }));
@@ -65,7 +71,9 @@ export function expandManage(rows: Rows, wordId: number, opts: { picture: boolea
   if (opts.promote) kb.text("⭐ Сделать полезным — учить полностью", encodeCb({ k: "promote", wordId })).row();
   return kb
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
-    .text("🗑 Удалить", encodeCb({ k: "del", wordId }))
+    .text("🗑 Удалить у всех", encodeCb({ k: "del", wordId }))
+    .row()
+    .text("🙈 Убрать только у меня", encodeCb({ k: "notForMe", wordId, from: "learn" }))
     .row()
     .text("▴ Скрыть", encodeCb({ k: "manage", wordId, open: false }));
 }
