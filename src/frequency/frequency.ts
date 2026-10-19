@@ -19,10 +19,16 @@ export class WordfreqSource implements FrequencySource {
     this.script = resolve(script);
   }
 
+  /** Частотность не меняется — помним всё, что уже спрашивали, и запускаем Python только для новых слов. */
+  private readonly cache = new Map<string, number>();
+
   async zipf(terms: string[]): Promise<Map<string, number>> {
-    if (terms.length === 0) return new Map();
-    // Слова — одним JSON-аргументом, без shell.
-    const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(terms)], { timeout: 30_000 });
-    return new Map(Object.entries(JSON.parse(stdout) as Record<string, number>));
+    const missing = [...new Set(terms.filter((t) => !this.cache.has(t)))];
+    if (missing.length) {
+      // Слова — одним JSON-аргументом, без shell.
+      const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(missing)], { timeout: 30_000 });
+      for (const [term, z] of Object.entries(JSON.parse(stdout) as Record<string, number>)) this.cache.set(term, z);
+    }
+    return new Map(terms.filter((t) => this.cache.has(t)).map((t) => [t, this.cache.get(t)!]));
   }
 }

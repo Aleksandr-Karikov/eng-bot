@@ -20,6 +20,10 @@ describe("loadConfig", () => {
     });
   });
 
+  it("ignores a broken timeout instead of cancelling every request", () => {
+    expect(loadConfig({ BOT_TOKEN: "t", ENRICH_TIMEOUT_MS: "30s" }).enrichTimeoutMs).toBe(30_000);
+  });
+
   it("reads overrides", () => {
     const config = loadConfig({ BOT_TOKEN: "t", DB_PATH: "x.db", ENRICH_MODEL: "sonnet", ENRICH_TIMEOUT_MS: "5000" });
     expect(config).toMatchObject({ dbPath: "x.db", enrichModel: "sonnet", enrichTimeoutMs: 5000 });

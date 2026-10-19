@@ -1,22 +1,9 @@
 import { z } from "zod";
+import { fixesField, jsonArray, jsonObject } from "./json";
 import type { ClozeDraft } from "../services/cloze";
 import { MISTAKE_CATEGORIES, type CheckResult } from "./enricher";
 
-/**
- * JSON-объект из ответа модели: обычно один, но иногда Claude «передумывает» и пишет второй —
- * тогда берём последний целый объект.
- */
-export function jsonObject(text: string): unknown {
-  const end = text.lastIndexOf("}");
-  for (let start = text.indexOf("{"); start !== -1 && start < end; start = text.indexOf("{", start + 1)) {
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch {
-      // Не с этой скобки — пробуем следующую.
-    }
-  }
-  throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-}
+export { jsonObject } from "./json";
 
 export interface MnemonicItem {
   term: string;
@@ -211,12 +198,7 @@ const clozeItem = z.object({
 });
 
 export function parseCloze(text: string): ClozeDraft[] {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
-  const raw: unknown = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(raw)) throw new Error("LLM response is not an array");
-  return raw.flatMap((entry) => {
+  return jsonArray(text).flatMap((entry) => {
     const r = clozeItem.safeParse(entry);
     return r.success ? [r.data] : [];
   });
@@ -261,17 +243,7 @@ const sentenceReview = z.object({
   uses_word: z.boolean(),
   verdict: z.string().trim().default(""),
   corrected: z.string().default(""),
-  fixes: z
-    .array(
-      z.object({
-        wrong: z.string(),
-        right: z.string(),
-        why: z.string().default(""),
-        category: z.string().trim().default(""),
-        slip: z.boolean().default(false),
-      }),
-    )
-    .default([]),
+  fixes: fixesField,
   natural: z.string().trim().default(""),
 });
 
@@ -364,17 +336,7 @@ export function buildTranslationReviewPrompt(input: { task: TranslationTask; ans
 
 const translationReviewSchema = z.object({
   correct: z.boolean(),
-  fixes: z
-    .array(
-      z.object({
-        wrong: z.string(),
-        right: z.string(),
-        why: z.string().default(""),
-        category: z.string().trim().default(""),
-        slip: z.boolean().default(false),
-      }),
-    )
-    .default([]),
+  fixes: fixesField,
   corrected: z.string().default(""),
   natural: z.string().trim().default(""),
   used_word: z.boolean().nullable().default(null),
@@ -466,10 +428,13 @@ export function buildTalkReplyPrompt(input: TalkInput): string {
 }
 
 export function parseTalkReply(text: string): string {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
   // Без JSON — берём ответ как есть: реплика важнее формата.
-  const raw = start !== -1 && end > start ? z.object({ reply: z.string() }).parse(JSON.parse(text.slice(start, end + 1))).reply : text;
+  let raw = text;
+  try {
+    raw = z.object({ reply: z.string() }).parse(jsonObject(text)).reply;
+  } catch {
+    // не JSON — оставляем текст
+  }
   const reply = raw.trim().replace(/^You:\s*/i, "").trim();
   if (!reply) throw new Error("Empty talk reply");
   return reply;
@@ -498,17 +463,7 @@ export function buildTalkReviewPrompt(input: TalkInput): string {
 
 const talkReviewSchema = z.object({
   praise: z.string().trim().default(""),
-  fixes: z
-    .array(
-      z.object({
-        wrong: z.string(),
-        right: z.string(),
-        why: z.string().default(""),
-        category: z.string().trim().default(""),
-        slip: z.boolean().default(false),
-      }),
-    )
-    .default([]),
+  fixes: fixesField,
   natural: z.array(z.object({ original: z.string().trim().min(1), better: z.string().trim().min(1) })).default([]),
   used_words: z.array(z.string().trim().min(1)).default([]),
 });
@@ -598,12 +553,7 @@ const drillQuestion = z
   .refine((q) => q.correct < q.options.length);
 
 export function parseDrill(text: string): DrillQuestion[] {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
-  const raw: unknown = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(raw)) throw new Error("LLM response is not an array");
-  return raw.flatMap((entry) => {
+  return jsonArray(text).flatMap((entry) => {
     const r = drillQuestion.safeParse(entry);
     return r.success ? [r.data] : [];
   });
@@ -633,10 +583,7 @@ const mnemonicAnswer = z.array(z.object({ i: z.number(), final: z.string().trim(
 
 /** Итоговые запоминалки по порядку пунктов; "" там, где модель ничего не вернула. */
 export function parseMnemonics(text: string, count: number): string[] {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
-  const answer = mnemonicAnswer.parse(JSON.parse(text.slice(start, end + 1)));
+  const answer = mnemonicAnswer.parse(jsonArray(text));
   return Array.from({ length: count }, (_, k) => answer.find((a) => a.i === k + 1)?.final ?? "");
 }
 

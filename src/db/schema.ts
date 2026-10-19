@@ -1,4 +1,4 @@
-import { integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 const createdAt = () => integer("created_at", { mode: "timestamp_ms" }).notNull();
 
@@ -59,7 +59,8 @@ export const roomMembers = sqliteTable(
     userId: integer("user_id").notNull().references(() => users.id),
     joinedAt: integer("joined_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.roomId, t.userId] })],
+  (t) => [
+    index("room_members_user_idx").on(t.userId),primaryKey({ columns: [t.roomId, t.userId] })],
 );
 
 export const words = sqliteTable(
@@ -113,7 +114,8 @@ export const cards = sqliteTable(
     fsrs: text("fsrs").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("cards_user_word_idx").on(t.userId, t.wordId)],
+  (t) => [
+    index("cards_word_idx").on(t.wordId),uniqueIndex("cards_user_word_idx").on(t.userId, t.wordId)],
 );
 
 /** Предложения с пропуском для ступени «вставь по смыслу»; общие для всех участников комнаты. */
@@ -126,7 +128,9 @@ export const clozeSentences = sqliteTable("cloze_sentences", {
   answer: text("answer").notNull(),
   translation: text("translation").notNull(),
   createdAt: createdAt(),
-});
+}, (t) => [
+  index("cloze_word_idx").on(t.wordId),
+]);
 
 /** Ошибки из /check — записываются автору проверенного текста; из них строится профиль слабых мест. */
 export const mistakes = sqliteTable("mistakes", {
@@ -138,7 +142,9 @@ export const mistakes = sqliteTable("mistakes", {
   createdAt: createdAt(),
   /** Тема отработана в «работе над ошибками» (верные ответы подряд) — больше не предлагается. */
   resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
-});
+}, (t) => [
+  index("mistakes_user_idx").on(t.userId),
+]);
 
 /** Ответы на вопросы «работы над ошибками» — по ним тема считается отработанной. */
 export const drillAnswers = sqliteTable("drill_answers", {
@@ -147,7 +153,9 @@ export const drillAnswers = sqliteTable("drill_answers", {
   category: text("category").notNull(),
   correct: integer("correct", { mode: "boolean" }).notNull(),
   createdAt: createdAt(),
-});
+}, (t) => [
+  index("drill_answers_user_category_idx").on(t.userId, t.category),
+]);
 
 /** Очко дуэли: кто первым правильно ответил в раунде. Одна строка на выигранный раунд. */
 export const duelPoints = sqliteTable("duel_points", {
@@ -165,7 +173,10 @@ export const reviewLogs = sqliteTable("review_logs", {
   /** На какой ступени был ответ: en_ru, ru_en, cloze или know («Знаю» из уведомления). Для анализа; null у старых записей. */
   stage: text("stage"),
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),
-});
+}, (t) => [
+  index("review_logs_user_time_idx").on(t.userId, t.reviewedAt),
+  index("review_logs_card_idx").on(t.cardId),
+]);
 
 /** Слово комнаты, употреблённое в разговоре в группе (👏) — для недельного итога. */
 export const wordUses = sqliteTable("word_uses", {
@@ -174,7 +185,10 @@ export const wordUses = sqliteTable("word_uses", {
   userId: integer("user_id").notNull().references(() => users.id),
   wordId: integer("word_id").notNull().references(() => words.id),
   createdAt: createdAt(),
-});
+}, (t) => [
+  index("word_uses_user_time_idx").on(t.userId, t.createdAt),
+  index("word_uses_room_time_idx").on(t.roomId, t.createdAt),
+]);
 
 /** Упражнение, на которое бот ждёт ответ сообщением (ExerciseStore), — чтобы ожидание пережило перезапуск бота. */
 export const pendingExercises = sqliteTable("pending_exercises", {
@@ -197,7 +211,9 @@ export const stories = sqliteTable("stories", {
   questions: text("questions").notNull(),
   audioFileId: text("audio_file_id"),
   createdAt: createdAt(),
-});
+}, (t) => [
+  index("stories_room_idx").on(t.roomId),
+]);
 
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fixesField, jsonArray, jsonObject } from "./json";
 
 export interface Enrichment {
   translation: string;
@@ -137,10 +138,7 @@ export function buildPrompt(term: string, translationHint?: string, context?: st
 }
 
 export function parseEnrichment(text: string): Enrichment {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return enrichmentSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  return enrichmentSchema.parse(jsonObject(text));
 }
 
 const extractedItemSchema = z
@@ -186,12 +184,7 @@ const EXTRACT_RULES = [
 
 /** Невалидные пункты отбрасываются; если в ответе вообще нет массива — бросает. */
 export function parseExtraction(text: string): ExtractedItem[] {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end <= start) throw new Error(`No JSON array in LLM response: ${text.slice(0, 200)}`);
-  const raw: unknown = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(raw)) throw new Error("LLM response is not an array");
-  return raw
+  return jsonArray(text)
     .map((entry) => extractedItemSchema.safeParse(entry))
     .flatMap((r) => (r.success ? [r.data] : []))
     .slice(0, MAX_EXTRACT);
@@ -199,17 +192,7 @@ export function parseExtraction(text: string): ExtractedItem[] {
 
 const checkSchema = z.object({
   corrected: z.string(),
-  fixes: z
-    .array(
-      z.object({
-        wrong: z.string(),
-        right: z.string(),
-        why: z.string().default(""),
-        category: z.string().trim().default(""),
-        slip: z.boolean().default(false),
-      }),
-    )
-    .default([]),
+  fixes: fixesField,
   natural: z.string().trim().default(""),
 });
 
@@ -269,8 +252,5 @@ export function buildCheckPrompt(text: string, context: ContextMessage[] = [], a
 }
 
 export function parseCheck(text: string): CheckResult {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error(`No JSON in LLM response: ${text.slice(0, 200)}`);
-  return checkSchema.parse(JSON.parse(text.slice(start, end + 1)));
+  return checkSchema.parse(jsonObject(text));
 }

@@ -36,9 +36,8 @@ export function startCaptureServer(deps: Deps, broadcaster: CaptureBroadcaster, 
     const send = (status: number, body: unknown) => {
       res.writeHead(status, {
         "content-type": "application/json; charset=utf-8",
-        "access-control-allow-origin": "*",
-        "access-control-allow-headers": "content-type",
-        "access-control-allow-methods": "GET, POST, OPTIONS",
+        // Без CORS-заголовков: расширение ходит из service worker по host_permissions, а открытым
+        // страницам незачем уметь обращаться к боту на localhost.
       });
       res.end(JSON.stringify(body));
     };

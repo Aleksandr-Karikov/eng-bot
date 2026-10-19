@@ -1,4 +1,5 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { Limiter } from "./limiter";
 import {
   buildCheckPrompt,
   buildExtractPrompt,
@@ -84,6 +85,9 @@ async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SD
 }
 
 export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
+  /** Одновременно — не больше трёх процессов Claude Code. */
+  private readonly limiter = new Limiter(3);
+
   constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string }) {}
 
   async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
@@ -109,7 +113,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
-    return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000)));
+    return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.model, [], false));
   }
 
   async drill(profile: string, count: number, avoid: string[] = []): Promise<DrillQuestion[]> {
@@ -139,7 +143,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */
   async collocations(term: string, translation: string): Promise<Collocations> {
-    return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
   }
 
   /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */
@@ -158,7 +162,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   /** Разбор трудного слова — сильной моделью, как и запоминалки. */
   async untangle(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): Promise<LeechHelp> {
-    return parseLeechHelp(await this.ask(buildUntanglePrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseLeechHelp(await this.ask(buildUntanglePrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
   }
 
   /** История — сильной моделью: Haiku пишет скучно и натягивает слова. */
@@ -175,7 +179,13 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
-  async ask(prompt: string, timeoutMs: number, model = this.opts.model, images: ImageInput[] = []): Promise<string> {
+  /** urgent — человек ждёт ответа; фоновые подготовки (предложения, сочетания, разборы) пропускают такие вперёд. */
+  async ask(prompt: string, timeoutMs: number, model = this.opts.model, images: ImageInput[] = [], urgent = true): Promise<string> {
+    // Таймаут отсчитывается с начала самого запроса, а не с постановки в очередь.
+    return this.limiter.run(urgent, () => this.askNow(prompt, timeoutMs, model, images));
+  }
+
+  private async askNow(prompt: string, timeoutMs: number, model: string, images: ImageInput[]): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {
