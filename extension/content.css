@@ -60,3 +60,16 @@
 #wordboss-panel .wb-toast.wb-err { background: #dc2626; color: #fff; }
 /* Пока видна плашка — панель не полупрозрачная, чтобы её заметили. */
 #wordboss-panel:has(.wb-toast.wb-show) { opacity: 1; }
+#wordboss-panel .wb-word.wb-known { background: rgba(250, 204, 21, 0.18); box-shadow: inset 0 -2px 0 #facc15; }
+#wordboss-panel .wb-pop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(250, 204, 21, 0.15);
+  font-size: 15px;
+}
+#wordboss-panel .wb-pop.wb-hidden { display: none; }
+#wordboss-panel .wb-pop-text { flex: 1; }

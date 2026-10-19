@@ -1,11 +1,12 @@
 import { rateUsefulness } from "../services/usefulness";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Deps } from "../bot/context";
 import { captureKeyboard } from "../bot/keyboards";
 import { captureText } from "../bot/texts";
 import { broadcastBatch } from "../bot/word-flow";
-import { users, type User, type Word } from "../db/schema";
-import { findWord, MAX_CONTEXT, saveWord } from "../services/words";
+import { cards, users, words, type User, type Word } from "../db/schema";
+import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
+import { isMember } from "../services/rooms";
 
 /** Что прислало расширение: выделенное слово или фраза и реплика, где оно встретилось. */
 export interface CaptureInput {
@@ -119,4 +120,42 @@ export async function capture(deps: Deps, broadcaster: CaptureBroadcaster, input
     broadcaster.add(user, roomId, added);
   }
   return { ok: true, added: added.map((w) => ({ term: w.term, translation: w.translation })), duplicates };
+}
+
+/** Слова, которые человек учит в текущей комнате, — расширение подсвечивает их в субтитрах. */
+export async function knownWords(deps: Deps, key: string): Promise<CaptureResultWords> {
+  const user = await userByCaptureKey(deps, key);
+  if (!user) return { ok: false, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
+  if (user.currentRoomId == null) return { ok: true, words: [] };
+  const rows = await deps.db
+    .select({ id: words.id, term: words.term, translation: words.translation })
+    .from(cards)
+    .innerJoin(words, eq(cards.wordId, words.id))
+    .where(and(eq(cards.userId, user.id), eq(words.roomId, user.currentRoomId)));
+  return { ok: true, words: rows };
+}
+
+export type CaptureResultWords = { ok: true; words: Array<{ id: number; term: string; translation: string }> } | { ok: false; status: number; error: string };
+
+/** Сколько дополнительных реплик хранить у слова. */
+export const MORE_CONTEXTS = 3;
+
+/**
+ * «📍 Ещё пример»: слово встретилось снова — реплика сохраняется у слова (для всей комнаты).
+ * Если у слова ещё не было контекста — становится основным.
+ */
+export async function addExample(deps: Deps, input: { key: string; wordId: number; context: string; title?: string }): Promise<CaptureResult> {
+  const user = await userByCaptureKey(deps, input.key);
+  if (!user) return { ok: false, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
+  const word = await getWord(deps.db, input.wordId);
+  if (!word || !(await isMember(deps.db, word.roomId, user.id))) return { ok: false, status: 404, error: "Этого слова уже нет" };
+  const context = input.context.replace(/\s+/g, " ").trim().slice(0, MAX_CONTEXT);
+  if (!context) return { ok: false, status: 400, error: "Пустая реплика" };
+  const more = JSON.parse(word.moreContexts || "[]") as Array<{ text: string; title: string }>;
+  if (word.context === context || more.some((m) => m.text === context)) return { ok: true, added: [], duplicates: [word.term] };
+  const patch = word.context
+    ? { moreContexts: JSON.stringify([{ text: context, title: input.title ?? "" }, ...more].slice(0, MORE_CONTEXTS)) }
+    : { context };
+  await deps.db.update(words).set(patch).where(eq(words.id, word.id));
+  return { ok: true, added: [{ term: word.term, translation: word.translation }], duplicates: [] };
 }

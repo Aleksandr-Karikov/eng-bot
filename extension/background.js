@@ -23,6 +23,16 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     if (message.type === "openOptions") return chrome.runtime.openOptionsPage();
     if (!key) return reply({ ok: false, error: "Вставь ключ в настройках расширения (/extension в боте)", needsKey: true });
     if (message.type === "ping") return reply(await call(`/ping?key=${encodeURIComponent(key)}`));
+    if (message.type === "words") return reply(await call(`/words?key=${encodeURIComponent(key)}`));
+    if (message.type === "example") {
+      return reply(
+        await call("/example", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...message.payload, key }),
+        }),
+      );
+    }
     if (message.type === "capture") {
       return reply(
         await call("/capture", {

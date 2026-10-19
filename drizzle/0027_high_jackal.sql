@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `more_contexts` text DEFAULT '[]' NOT NULL;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WordBoss — слова из субтитров",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Клик по слову или фразе в субтитрах — и оно в Telegram-боте WordBoss с репликой как контекстом.",
   "permissions": ["storage"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],

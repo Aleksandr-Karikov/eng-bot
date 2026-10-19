@@ -89,6 +89,8 @@ export const words = sqliteTable(
     collocations: text("collocations").notNull().default(""),
     /** Предложение, где слово встретилось (из текста, скриншота или сообщения, на которое ответили /add). "" — нет. */
     context: text("context").notNull().default(""),
+    /** JSON Array<{ text, title }>: ещё реплики, где слово встретилось (из расширения, «📍 Ещё пример»), новые первыми. */
+    moreContexts: text("more_contexts").notNull().default("[]"),
     /** JSON-разбор «трудного» слова (LeechHelp): почему путается, отличия от похожих, примеры. "" — ещё нет. */
     leechHelp: text("leech_help").notNull().default(""),
     /** Telegram file_id картинки-ассоциации (по запоминалке). */

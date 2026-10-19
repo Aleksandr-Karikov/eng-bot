@@ -19,7 +19,56 @@
     hover: false,
     /** Что уже добавлено за этот сеанс (в нижнем регистре) — подсвечиваем в репликах. */
     added: new Set(),
+    /** Слова, которые человек уже учит (из бота): { id, term, translation, parts } — подсвечиваются в субтитрах. */
+    known: [],
+    /** Открытая подсказка по знакомому слову. */
+    popup: null,
   };
+
+  // ---------- Знакомые слова ----------
+
+  /** Грубая основа слова, чтобы «wiped» нашлось по «wipe out», а «running» — по «run late». */
+  function stem(word) {
+    let w = word.toLowerCase().replace(/’/g, "'").replace(/'s$/, "");
+    if (w.length > 3) {
+      w = w.replace(/ies$/, "y").replace(/ied$/, "y").replace(/(ing|ed|es)$/, "").replace(/s$/, "");
+      w = w.replace(/([b-df-hj-np-tv-z])\1$/, "$1").replace(/e$/, "");
+    }
+    return w;
+  }
+
+  const WILDCARDS = new Set(["someone", "somebody", "something", "one's", "someone's", "smb", "sth"]);
+
+  function setKnown(words) {
+    state.known = words.map((w) => ({
+      ...w,
+      parts: w.term.toLowerCase().replace(/^to\s+/, "").split(/\s+/).filter(Boolean).map((p) => (WILDCARDS.has(p) ? "*" : stem(p))),
+    }));
+    render();
+  }
+
+  async function loadKnown() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "words" });
+      if (res?.ok) setKnown(res.words);
+    } catch {
+      // расширение перезагрузили — подсветка появится после обновления страницы
+    }
+  }
+
+  /** Индекс слова реплики → знакомое слово, которое на нём стоит. Фразы — подряд идущими словами. */
+  function knownTokens(list) {
+    const marks = new Map();
+    const words = list.map((t, i) => ({ i, s: t.word ? stem(t.text) : null })).filter((x) => x.s);
+    for (const entry of state.known) {
+      const parts = entry.parts;
+      if (!parts.length) continue;
+      for (let k = 0; k + parts.length <= words.length; k++) {
+        if (parts.every((p, j) => p === "*" || words[k + j].s === p)) for (let j = 0; j < parts.length; j++) marks.set(words[k + j].i, entry);
+      }
+    }
+    return marks;
+  }
 
   /** Включить подробный лог: в консоли страницы localStorage.wordbossDebug = 1 и обновить страницу. */
   const debug = (...args) => {
@@ -131,12 +180,44 @@
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
     </div>
-    <div class="wb-toast"></div>`;
+    <div class="wb-toast"></div>
+    <div class="wb-pop wb-hidden"><span class="wb-pop-text"></span><button class="wb-pop-example">📍 Ещё пример</button><button class="wb-pop-close">✕</button></div>`;
   const lineEl = panel.querySelector(".wb-line");
   const statusEl = panel.querySelector(".wb-status");
   const addButton = panel.querySelector(".wb-add");
   const toastEl = panel.querySelector(".wb-toast");
   const countEl = panel.querySelector(".wb-count");
+  const popEl = panel.querySelector(".wb-pop");
+
+  function showPopup(entry) {
+    state.popup = entry;
+    popEl.querySelector(".wb-pop-text").innerHTML = "";
+    const b = document.createElement("b");
+    b.textContent = entry.term;
+    popEl.querySelector(".wb-pop-text").append(b, ` — ${entry.translation}`);
+    popEl.classList.remove("wb-hidden");
+  }
+
+  function hidePopup() {
+    state.popup = null;
+    popEl.classList.add("wb-hidden");
+  }
+
+  /** «📍 Ещё пример»: эта реплика сохранится у слова — на карточке будет видно, где оно встретилось снова. */
+  async function sendExample() {
+    const entry = state.popup;
+    const line = state.lines[state.index];
+    if (!entry || !line) return;
+    hidePopup();
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "example", payload: { wordId: entry.id, context: line, title: pageTitle() } });
+      if (res?.ok && res.added.length) toast(`📍 Сохранил пример для «${entry.term}»`, "wb-ok");
+      else if (res?.ok) toast(`Эта реплика у «${entry.term}» уже есть`, "wb-ok");
+      else toast(`✗ ${res?.error ?? "Расширение не ответило — обнови страницу"}`, "wb-err");
+    } catch {
+      toast("✗ Расширение обновилось — перезагрузи страницу", "wb-err");
+    }
+  }
   let toastTimer;
 
   /** Плашка над панелью: видна, даже если реплика уже сменилась. */
@@ -173,6 +254,7 @@
     lineEl.textContent = "";
     const list = tokens(line);
     const marked = addedTokens(list);
+    const known = knownTokens(list);
     list.forEach((t, i) => {
       const span = document.createElement("span");
       span.textContent = t.text;
@@ -182,6 +264,10 @@
         const [a, b] = state.selection ?? [-1, -1];
         if (i >= a && i <= b) span.classList.add("wb-selected");
         else if (marked.has(i)) span.classList.add("wb-added");
+        else if (known.has(i)) {
+          span.classList.add("wb-known");
+          span.dataset.known = String(known.get(i).id);
+        }
       }
       lineEl.appendChild(span);
     });
@@ -216,6 +302,7 @@
         payload: { text, context: line, title: pageTitle() },
       });
       if (res?.ok) {
+        void loadKnown();
         for (const term of [...res.added.map((a) => a.term), ...res.duplicates]) state.added.add(term.toLowerCase().replace(/’/g, "'"));
         state.selection = null;
         render();
@@ -253,6 +340,12 @@
     e.preventDefault();
     const i = Number(span.dataset.i);
     const sel = state.selection;
+    // Знакомое слово без начатого выделения — подсказка с переводом, а не новое слово.
+    if (!sel && span.dataset.known) {
+      const entry = state.known.find((k) => String(k.id) === span.dataset.known);
+      if (entry) return showPopup(entry);
+    }
+    hidePopup();
     if (sel && i >= sel[0] && i <= sel[1]) {
       state.selection = null;
       state.anchor = null;
@@ -287,6 +380,7 @@
   });
   panel.addEventListener("mouseleave", () => {
     state.hover = false;
+    hidePopup();
     if (state.pausedByUs && state.video) state.video.play().catch(() => {});
     state.pausedByUs = false;
     // Вернуться к текущей реплике.
@@ -298,6 +392,8 @@
   });
 
   panel.querySelector(".wb-add").addEventListener("click", send);
+  panel.querySelector(".wb-pop-example").addEventListener("click", sendExample);
+  panel.querySelector(".wb-pop-close").addEventListener("click", hidePopup);
   panel.querySelector(".wb-settings").addEventListener("click", () => chrome.runtime.sendMessage({ type: "openOptions" }));
   panel.querySelector(".wb-prev").addEventListener("click", () => {
     state.index = Math.max(0, state.index - 1);
@@ -359,4 +455,7 @@
   watchDom();
   findVideo();
   render();
+  void loadKnown();
+  // Друзья добавляют слова — обновляем список раз в несколько минут.
+  setInterval(loadKnown, 3 * 60_000);
 })();

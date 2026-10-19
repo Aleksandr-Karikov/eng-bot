@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { getRoom } from "../services/rooms";
 import type { Deps } from "../bot/context";
-import { capture, userByCaptureKey, type CaptureBroadcaster, type CaptureInput } from "./capture";
+import { addExample, capture, knownWords, userByCaptureKey, type CaptureBroadcaster, type CaptureInput } from "./capture";
 
 const MAX_BODY = 16 * 1024;
 
@@ -49,6 +49,20 @@ export function startCaptureServer(deps: Deps, broadcaster: CaptureBroadcaster, 
         if (!user) return send(401, { ok: false, error: "Неверный ключ — возьми новый в боте: /extension" });
         const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
         return send(200, { ok: true, name: user.firstName, room: room?.name ?? null });
+      }
+      if (req.method === "GET" && url.pathname === "/words") {
+        const result = await knownWords(deps, url.searchParams.get("key") ?? "");
+        return send(result.ok ? 200 : result.status, result);
+      }
+      if (req.method === "POST" && url.pathname === "/example") {
+        const body = (await readJson(req)) as { key?: unknown; wordId?: unknown; context?: unknown; title?: unknown };
+        const result = await addExample(deps, {
+          key: String(body.key ?? ""),
+          wordId: Number(body.wordId),
+          context: typeof body.context === "string" ? body.context : "",
+          title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
+        });
+        return send(result.ok ? 200 : result.status, result);
       }
       if (req.method === "POST" && url.pathname === "/capture") {
         const body = (await readJson(req)) as Partial<CaptureInput>;

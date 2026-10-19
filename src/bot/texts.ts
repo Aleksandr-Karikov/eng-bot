@@ -41,6 +41,14 @@ const withTranscription = (d: WordDraft, show = true) => {
   return line ? `\n${line}` : "";
 };
 
+/** Ещё одна реплика, где слово встретилось (самая свежая из «📍 Ещё пример»). */
+function moreContextLine(word: { term: string; moreContexts?: string }): string {
+  const [latest] = JSON.parse(word.moreContexts || "[]") as Array<{ text: string; title: string }>;
+  if (!latest) return "";
+  const source = latest.title ? ` <i>(${esc(latest.title)})</i>` : "";
+  return `\n${contextLine(latest.text, word.term)}${source}`;
+}
+
 /** Сочетания на карточке; collocations — JSON из базы. */
 function collocationsLine(collocations: string): string {
   const c = JSON.parse(collocations) as Collocations;
@@ -82,11 +90,11 @@ export function draftText(d: WordDraft): string {
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
 /** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
-export function cardText(word: WordDraft & { collocations?: string }, view: CardView = ALL_PARTS): string {
+export function cardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
   let answer = esc(word.translation);
   if (view.explanation && word.explanation) answer += `\n\n${esc(word.explanation)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
+  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}${moreContextLine(word)}`;
   if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   if (usefulnessLine(word)) answer += `\n\n${usefulnessLine(word)}`;
@@ -227,10 +235,10 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
-export function reverseCardText(word: WordDraft & { collocations?: string }, view: CardView = ALL_PARTS): string {
+export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
   let answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}`;
   if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
+  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}${moreContextLine(word)}`;
   if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
   return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
