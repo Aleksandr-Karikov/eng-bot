@@ -1,3 +1,4 @@
+import { applyFrequency } from "../services/usefulness";
 import { eq } from "drizzle-orm";
 import type { Deps } from "../bot/context";
 import { captureKeyboard } from "../bot/keyboards";
@@ -90,7 +91,8 @@ export async function capture(deps: Deps, broadcaster: CaptureBroadcaster, input
   const wholeLine = !selection || selection === cleanSelection(context);
   let drafts: Array<{ term: string; translation: string; explanation: string; example: string; transcriptionUk?: string; transcriptionUs?: string }>;
   try {
-    drafts = wholeLine ? await deps.enricher.extract(context) : [{ term: selection, ...(await deps.enricher.enrich(selection, undefined, context || undefined)) }];
+    const raw = wholeLine ? await deps.enricher.extract(context) : [{ term: selection, ...(await deps.enricher.enrich(selection, undefined, context || undefined)) }];
+    drafts = await applyFrequency(raw, deps.frequency);
   } catch (err) {
     console.error("Capture enrichment failed", err);
     return { ok: false, status: 502, error: "Не получилось перевести — попробуй ещё раз" };

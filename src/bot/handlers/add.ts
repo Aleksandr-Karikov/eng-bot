@@ -1,3 +1,4 @@
+import { applyFrequency } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { Enrichment } from "../../llm/enricher";
 import { findWord, MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
@@ -25,10 +26,13 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   await ctx.replyWithChatAction("typing");
   // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
   const [enrichment, mnemonic] = await Promise.all([
-    deps.enricher.enrich(parsed.term, parsed.translation).catch((err): Enrichment | undefined => {
-      console.error("Enrichment failed", parsed.term, err);
-      return undefined;
-    }),
+    deps.enricher
+      .enrich(parsed.term, parsed.translation)
+      .then(async (e) => (await applyFrequency([{ ...e, term: parsed.term }], deps.frequency))[0])
+      .catch((err): Enrichment | undefined => {
+        console.error("Enrichment failed", parsed.term, err);
+        return undefined;
+      }),
     deps.tutor
       .mnemonics([{ term: parsed.term, translation: parsed.translation ?? "" }])
       .then(([m]) => m ?? "")

@@ -1,3 +1,4 @@
+import { applyFrequency } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { Word } from "../../db/schema";
 import type { Enrichment } from "../../llm/enricher";
@@ -44,6 +45,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
       .then(([m]) => m ?? "")
       .catch(() => ""),
   ]);
+  const [rated] = enrichment ? await applyFrequency([{ ...enrichment, term }], deps.frequency) : [undefined];
   const result = await updateWord(deps.db, word.id, {
     term,
     translation,
@@ -52,7 +54,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     // Если слово переименовали, а Claude не ответил, старая транскрипция уже неверна.
     transcriptionUk: enrichment?.transcriptionUk ?? (term === word.term ? undefined : ""),
     transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
-    ...(enrichment?.usefulness ? { usefulness: enrichment.usefulness, usefulnessNote: enrichment.usefulnessNote ?? "" } : {}),
+    ...(rated?.usefulness ? { usefulness: rated.usefulness, usefulnessNote: rated.usefulnessNote ?? "" } : {}),
     mnemonic: mnemonic || undefined,
   });
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));

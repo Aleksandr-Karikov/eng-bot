@@ -12,6 +12,8 @@ export interface Enrichment {
   /** 3 — очень полезное, 2 — полезное, 1 — необязательное. */
   usefulness?: Usefulness;
   usefulnessNote?: string;
+  /** Грубое, устаревшее или жаргон одного сериала. */
+  niche?: boolean;
 }
 
 export type Usefulness = 1 | 2 | 3;
@@ -69,6 +71,7 @@ const enrichmentFields = {
   mnemonic: z.string().trim().default(""),
   usefulness: z.string().trim().toLowerCase().optional().catch(undefined),
   usefulness_note: z.string().trim().default(""),
+  niche: z.boolean().default(false).catch(false),
 };
 
 const toEnrichment = <T extends { transcription_uk: string; transcription_us: string; usefulness?: string; usefulness_note: string }>({
@@ -94,6 +97,7 @@ export const USEFULNESS_HINT = [
   "low — редкое, книжное, узкоспециальное, устаревшее, грубое или придумка конкретного сериала: достаточно узнавать, самому употреблять незачем.",
   "Оценивай частоту и пользу, а не сложность: простое частое слово — high, сложное редкое — low.",
   "usefulness_note — до 8 слов по-русски, почему так (например «очень частое в разговоре», «книжное, встретится редко»).",
+  "niche — true, если оно грубое или ругательное, устаревшее или жаргон/придумка конкретного сериала; иначе false.",
 ].join("\n");
 
 const TRANSCRIPTION_HINT =
@@ -107,7 +111,7 @@ export function buildPrompt(term: string, translationHint?: string, context?: st
     `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
     context ? `Встретилось в реплике: "${context}". Переводи и объясняй в значении из этой реплики; словарную форму не меняй.` : "",
-    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "usefulness": "high|medium|low", "usefulness_note": "..."}, где',
+    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "usefulness": "high|medium|low", "usefulness_note": "...", "niche": false}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",
     "example — короткое естественное предложение на английском с этим словом,",
@@ -158,7 +162,7 @@ const EXTRACT_RULES = [
   "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
   "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
   `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "context": "...", "usefulness": "high|medium|low", "usefulness_note": "..."}], где',
+  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "context": "...", "usefulness": "high|medium|low", "usefulness_note": "...", "niche": false}], где',
   "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
   "example — короткое предложение на английском,",
   TRANSCRIPTION_HINT,

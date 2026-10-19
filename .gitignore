@@ -5,3 +5,4 @@ data/
 tools/imagegen/.venv/
 tools/imagegen/out/
 tools/youtube/.venv/
+tools/wordfreq/.venv/

@@ -24,6 +24,7 @@ import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 import type { TalkStore } from "./talks";
+import type { FrequencySource } from "../frequency/frequency";
 import type { TranslateStore } from "./translations";
 import type { CaptureBroadcaster } from "../capture/capture";
 import type { SubtitleSource } from "../youtube/subtitles";
@@ -60,6 +61,8 @@ export interface Deps {
   capture?: CaptureBroadcaster;
   /** Порт локального приёма слов из расширения. */
   capturePort?: number;
+  /** Частотность слов для оценки полезности; undefined — оценивает только модель. */
+  frequency?: FrequencySource;
   /** Субтитры YouTube для /text со ссылкой; undefined — yt-dlp не установлен. */
   youtube?: SubtitleSource;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */

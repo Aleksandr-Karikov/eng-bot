@@ -30,6 +30,7 @@ import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
 import { CaptureBroadcaster } from "./capture/capture";
 import { startCaptureServer } from "./capture/server";
+import { WordfreqSource } from "./frequency/frequency";
 import { TranslateStore } from "./bot/translations";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
@@ -87,6 +88,7 @@ const deps: Deps = {
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
   translations: new TranslateStore(),
+  frequency: existsSync(config.wordfreqPython) ? new WordfreqSource(config.wordfreqPython, "tools/wordfreq/zipf.py") : undefined,
   youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
   images,
   pictures,
