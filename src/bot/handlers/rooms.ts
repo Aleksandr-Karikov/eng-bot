@@ -65,6 +65,8 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.reply(welcomeText(), HTML);
   });
 
+  bot.command("help", (ctx) => ctx.reply(welcomeText(), HTML));
+
   bot.command("room", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply("Управлять комнатами можно в личке со мной"));
     const { text, kb } = await roomMenu(deps, ctx.user);

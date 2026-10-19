@@ -43,6 +43,7 @@ export const COMMANDS = [
   { command: "newroom", description: "Создать комнату" },
   { command: "settings", description: "Время напоминания" },
   { command: "link", description: "Привязать группу к комнате" },
+  { command: "help", description: "Что умеет бот" },
 ];
 
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
