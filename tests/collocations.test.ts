@@ -45,7 +45,7 @@ describe("🔗 collocations", () => {
 
   it("are shown on the card under the spoiler", () => {
     const text = cardText({ term: "decision", translation: "решение", explanation: "", example: "", collocations: JSON.stringify(decision) });
-    expect(text).toMatch(/<tg-spoiler>[^]*🔗 make a decision · a tough decision[^]*<\/tg-spoiler>/);
+    expect(text).toMatch(/<tg-spoiler>[^]*<b>Сочетания:<\/b>\n• make a decision\n• a tough decision[^]*<\/tg-spoiler>/);
   });
 
   it("asks which partner fits, rates the card and shows all collocations", async () => {

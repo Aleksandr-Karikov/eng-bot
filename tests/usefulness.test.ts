@@ -42,7 +42,8 @@ describe("how useful a word is", () => {
     await h.bot.handleUpdate(h.message(100, "/learn"));
     const sent = () => String(h.calls.filter((c) => c.method === "sendMessage").at(-1)?.payload.text);
     expect(sent()).toContain("Вспомни перевод"); // EN → RU, хотя выпал бы последний режим
-    expect(sent()).toContain("⚪️ Необязательное");
+    expect(sent()).toContain("<b>trump the kipper</b> ⚪️"); // только кружок, без подписи
+    expect(sent()).not.toContain("Необязательное");
     await h.bot.handleUpdate(h.manage(100));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "⭐ Сделать полезным")));
     expect((await getWord(h.db, 1))?.usefulness).toBe(2);

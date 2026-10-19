@@ -33,7 +33,7 @@ describe("/learn cards with a picture", () => {
     expect(card.method).toBe("sendPhoto");
     expect(card.payload.photo).toBe("pic-file-1");
     expect(card.payload.has_spoiler).toBeFalsy();
-    expect(String(card.payload.caption)).toContain("<tg-spoiler>осаждаемый");
+    expect(String(card.payload.caption)).toContain("<tg-spoiler><b>осаждаемый");
     const labels = lastButtons(h.calls).map((b) => b.text);
     expect(labels).toContain("😎 Помню");
     expect(labels).not.toContain("🖼 Картинка");

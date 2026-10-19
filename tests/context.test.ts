@@ -16,8 +16,8 @@ describe("📍 where the word was met", () => {
 
   it("goes under the spoiler on both card sides and can be hidden", () => {
     const word = { term: "impasse", translation: "тупик", explanation: "", example: "", context: "The talks reached an impasse." };
-    expect(cardText(word)).toMatch(/<tg-spoiler>[^]*📍[^]*<\/tg-spoiler>/);
-    expect(reverseCardText(word)).toMatch(/<tg-spoiler>[^]*📍[^]*<\/tg-spoiler>/);
+    expect(cardText(word)).toMatch(/<tg-spoiler>[^]*Где встретилось:[^]*<\/tg-spoiler>/);
+    expect(reverseCardText(word)).toMatch(/<tg-spoiler>[^]*Где встретилось:[^]*<\/tg-spoiler>/);
     expect(cardText(word, { ...ALL_PARTS, context: false })).not.toContain("📍");
   });
 

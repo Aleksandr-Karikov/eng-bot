@@ -27,7 +27,7 @@ describe("card view", () => {
   it("shows only the translation when everything else is off", () => {
     const bare = { transcription: false, explanation: false, example: false, context: false, collocations: false, mnemonic: false, audio: false, picture: false };
     const text = cardText(word, bare);
-    expect(text).toContain("<tg-spoiler>осаждаемый</tg-spoiler>");
+    expect(text).toContain("<tg-spoiler><b>осаждаемый</b></tg-spoiler>");
     for (const part of ["постоянно", "delays", "бесы", "bɪˈset"]) expect(text).not.toContain(part);
     expect(reverseCardText(word, bare)).not.toContain("bɪˈset");
     expect(cardText(word)).toContain("бесы осадили");

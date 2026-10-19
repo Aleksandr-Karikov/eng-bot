@@ -12,8 +12,8 @@ const word = { term: "beset by", translation: "осаждаемый", explanatio
 describe("mnemonic as part of the word", () => {
   it("is shown in the description and under the spoiler on every card", () => {
     expect(draftText(word)).toContain("💡 бесы осадили");
-    expect(cardText(word)).toMatch(/<tg-spoiler>[^]*💡 бесы осадили[^]*<\/tg-spoiler>/);
-    expect(reverseCardText(word)).toMatch(/<tg-spoiler>[^]*💡 бесы осадили[^]*<\/tg-spoiler>/);
+    expect(cardText(word)).toMatch(/<tg-spoiler>[^]*Как запомнить:<\/b> бесы осадили[^]*<\/tg-spoiler>/);
+    expect(reverseCardText(word)).toMatch(/<tg-spoiler>[^]*Как запомнить:<\/b> бесы осадили[^]*<\/tg-spoiler>/);
   });
 
   it("is saved with the word on /add", async () => {

@@ -41,27 +41,40 @@ const withTranscription = (d: WordDraft, show = true) => {
   return line ? `\n${line}` : "";
 };
 
-/** Ещё одна реплика, где слово встретилось (самая свежая из «📍 Ещё пример»). */
-function moreContextLine(word: { term: string; moreContexts?: string }): string {
-  const [latest] = JSON.parse(word.moreContexts || "[]") as Array<{ text: string; title: string }>;
-  if (!latest) return "";
-  const source = latest.title ? ` <i>(${esc(latest.title)})</i>` : "";
-  return `\n${contextLine(latest.text, word.term)}${source}`;
-}
 
 /** Сочетания на карточке; collocations — JSON из базы. */
+/** Сочетаний на карточке — не больше трёх, по одному в строке: длинная строка через «·» читалась плохо. */
+const CARD_COLLOCATIONS = 3;
+
 function collocationsLine(collocations: string): string {
   const c = JSON.parse(collocations) as Collocations;
-  return c.items.length ? `\n\n🔗 ${c.items.map((i) => esc(i.phrase)).join(" · ")}` : "";
+  return c.items.length ? `\n\n<b>Сочетания:</b>\n${c.items.slice(0, CARD_COLLOCATIONS).map((i) => `• ${esc(i.phrase)}`).join("\n")}` : "";
 }
 
+/** Кружок полезности рядом со словом на карточке — без подписи; пояснение — только в черновике при добавлении. */
+const usefulnessIcon = (d: { usefulness?: number | null }) => (d.usefulness ? ` ${{ 3: "🟢", 2: "🟡", 1: "⚪️" }[d.usefulness] ?? ""}` : "");
+
 /** «📍 …» — исходное предложение, само слово в нём жирным. */
-export function contextLine(context: string, term: string): string {
+/** Реплика, где встретилось слово; само слово в ней — жирным. */
+function markedContext(context: string, term: string): string {
   const match = termPattern(term).exec(context.toLowerCase().replace(/[’‘`]/g, "'"));
-  const html = match
+  return match
     ? `${esc(context.slice(0, match.index))}<b>${esc(context.slice(match.index, match.index + match[0].length))}</b>${esc(context.slice(match.index + match[0].length))}`
     : esc(context);
-  return `📍 <i>${html}</i>`;
+}
+
+/** «📍 …» — для сообщений о добавленном слове. */
+export function contextLine(context: string, term: string): string {
+  return `📍 <i>${markedContext(context, term)}</i>`;
+}
+
+/** Блок «Где встретилось» на карточке: исходная реплика и (если есть) ещё одна, самая свежая. */
+function contextBlock(word: { term: string; context?: string; moreContexts?: string }): string {
+  if (!word.context) return "";
+  const [latest] = JSON.parse(word.moreContexts || "[]") as Array<{ text: string; title: string }>;
+  const lines = [`<i>${markedContext(word.context, word.term)}</i>`];
+  if (latest) lines.push(`<i>${markedContext(latest.text, word.term)}</i>${latest.title ? ` (${esc(latest.title)})` : ""}`);
+  return `\n\n<b>Где встретилось:</b>\n${lines.join("\n")}`;
 }
 
 const USEFULNESS_LABELS: Record<number, string> = {
@@ -90,15 +103,21 @@ export function draftText(d: WordDraft): string {
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
 /** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
+/** Подробности под спойлером — с понятными заголовками вместо значков. */
+function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView): string {
+  let text = "";
+  if (view.example && word.example) text += `\n\n<b>Пример:</b> <i>${esc(word.example)}</i>`;
+  if (view.context) text += contextBlock(word);
+  if (view.collocations && word.collocations) text += collocationsLine(word.collocations);
+  if (view.mnemonic && word.mnemonic) text += `\n\n<b>Как запомнить:</b> ${esc(word.mnemonic)}`;
+  return text;
+}
+
 export function cardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
-  let answer = esc(word.translation);
-  if (view.explanation && word.explanation) answer += `\n\n${esc(word.explanation)}`;
-  if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}${moreContextLine(word)}`;
-  if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
-  if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
-  if (usefulnessLine(word)) answer += `\n\n${usefulnessLine(word)}`;
-  return `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
+  let answer = `<b>${esc(word.translation)}</b>`;
+  if (view.explanation && word.explanation) answer += `\n${esc(word.explanation)}`;
+  answer += cardDetails(word, view);
+  return `<b>${esc(word.term)}</b>${usefulnessIcon(word)}${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод и проверь себя тапом:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {
@@ -236,12 +255,8 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
-  let answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}`;
-  if (view.example && word.example) answer += `\n\n<i>${esc(word.example)}</i>`;
-  if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}${moreContextLine(word)}`;
-  if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
-  if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
-  return `🇷🇺 <b>${esc(word.translation)}</b>\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски, проверь себя тапом по скрытому и оцени:`;
+  const answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}${cardDetails(word, view)}`;
+  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски и проверь себя тапом:`;
 }
 
 /**

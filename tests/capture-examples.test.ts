@@ -36,8 +36,7 @@ describe("known words for the extension", () => {
     expect(JSON.parse(frazzled.moreContexts)).toEqual([{ text: "She looked frazzled after the meeting.", title: "The Bear" }]);
     expect((await getWord(h.db, 2))?.context).toBe("We sat on the river bank.");
     const text = cardText(frazzled);
-    expect(text).toContain("📍 <i>I'm totally <b>frazzled</b> today.</i>");
-    expect(text).toContain("📍 <i>She looked <b>frazzled</b> after the meeting.</i> <i>(The Bear)</i>");
+    expect(text).toContain("<b>Где встретилось:</b>\n<i>I'm totally <b>frazzled</b> today.</i>\n<i>She looked <b>frazzled</b> after the meeting.</i> (The Bear)");
     void words;
   });
 });

@@ -52,9 +52,9 @@ describe("hard words", () => {
     const text = (tg: number) => [...h.calls].reverse().find((c) => c.method === "sendMessage" && c.payload.chat_id === tg)?.payload.text;
 
     await h.bot.handleUpdate(h.message(100, "/learn"));
-    expect(String(text(100))).toMatch(/<tg-spoiler>[^]*💡[^]*гараж[^]*<\/tg-spoiler>/);
+    expect(String(text(100))).toMatch(/<tg-spoiler>[^]*Как запомнить:[^]*гараж[^]*<\/tg-spoiler>/);
     await h.bot.handleUpdate(h.message(200, "/learn"));
-    expect(String(text(200))).toMatch(/<tg-spoiler>[^]*💡[^]*гараж/);
+    expect(String(text(200))).toMatch(/<tg-spoiler>[^]*Как запомнить:[^]*гараж/);
   });
 
   it("forgets the mnemonic when the meaning changes", async () => {

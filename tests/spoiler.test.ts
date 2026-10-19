@@ -18,7 +18,7 @@ describe("answers under a spoiler", () => {
     await h.bot.handleUpdate(h.message(100, "/learn"));
     const card = h.calls.filter((c) => c.method === "sendMessage").at(-1)!;
     expect(String(card.payload.text)).toMatch(/^<b>bank<\/b>/);
-    expect(String(card.payload.text)).toContain("<tg-spoiler>берег");
+    expect(String(card.payload.text)).toContain("<tg-spoiler><b>берег");
     expect(String(card.payload.text)).toContain("край реки");
     const labels = lastButtons(h.calls).map((b) => b.text);
     expect(labels).toContain("😎 Помню");
