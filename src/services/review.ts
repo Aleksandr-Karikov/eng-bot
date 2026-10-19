@@ -59,8 +59,13 @@ export async function getDueItemByCard(db: Db, userId: number, cardId: number): 
   return row;
 }
 
+async function usefulnessOf(db: Db, wordId: number): Promise<number | null> {
+  const [word] = await db.select({ usefulness: words.usefulness }).from(words).where(eq(words.id, wordId));
+  return word?.usefulness ?? null;
+}
+
 async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date, stage?: string): Promise<void> {
-  await db.update(cards).set(review(card.fsrs, answer, now)).where(eq(cards.id, card.id));
+  await db.update(cards).set(review(card.fsrs, answer, now, await usefulnessOf(db, card.wordId))).where(eq(cards.id, card.id));
   await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, stage: stage ?? null, reviewedAt: now });
 }
 
@@ -77,7 +82,7 @@ export async function answerCard(
   // не засчитаются дважды — второй увидит, что карточку уже обновили.
   const [updated] = await db
     .update(cards)
-    .set(review(card.fsrs, input.answer, input.now))
+    .set(review(card.fsrs, input.answer, input.now, await usefulnessOf(db, card.wordId)))
     .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
     .returning({ id: cards.id });
   if (!updated) return "stale";

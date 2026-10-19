@@ -37,3 +37,23 @@ describe("srs", () => {
     expect(lapsed.state).toBe(State.Relearning);
   });
 });
+
+describe("intervals by usefulness", () => {
+  it("brings useful words back sooner and lets optional ones go further", async () => {
+    const { newCard, review } = await import("../src/srs/srs");
+    const t0 = new Date("2026-10-01T10:00:00Z");
+    const after = (usefulness: number | null) => {
+      let card = newCard(t0);
+      let now = t0;
+      for (let i = 0; i < 4; i++) {
+        card = review(card.fsrs, "good", now, usefulness);
+        now = card.due;
+      }
+      return card.due.getTime() - t0.getTime();
+    };
+    const [useful, normal, optional] = [after(3), after(2), after(1)];
+    expect(useful).toBeLessThan(normal);
+    expect(optional).toBeGreaterThan(normal);
+    expect(after(null)).toBe(normal);
+  });
+});
