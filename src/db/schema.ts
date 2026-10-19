@@ -80,6 +80,10 @@ export const words = sqliteTable(
     audioUsFileId: text("audio_us_file_id"),
     /** Запоминалка от Claude для «трудного» слова (общая для комнаты), "" — ещё нет. */
     mnemonic: text("mnemonic").notNull().default(""),
+    /** Полезность: 3 — очень полезное, 2 — полезное, 1 — необязательное (учим только на узнавание); null — не оценено. */
+    usefulness: integer("usefulness"),
+    /** Почему такая полезность — коротко, по-русски. */
+    usefulnessNote: text("usefulness_note").notNull().default(""),
     /** JSON Collocations: частые сочетания и вопрос «какое слово подходит». "" — ещё не готовили. */
     collocations: text("collocations").notNull().default(""),
     /** Предложение, где слово встретилось (из текста, скриншота или сообщения, на которое ответили /add). "" — нет. */

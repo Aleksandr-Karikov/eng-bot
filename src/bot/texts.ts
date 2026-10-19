@@ -56,8 +56,23 @@ export function contextLine(context: string, term: string): string {
   return `📍 <i>${html}</i>`;
 }
 
+const USEFULNESS_LABELS: Record<number, string> = {
+  3: "🟢 Очень полезное",
+  2: "🟡 Полезное",
+  1: "⚪️ Необязательное — учим только на узнавание",
+};
+
+/** «🟢 Очень полезное — частое в разговоре»; "" — не оценено. */
+export function usefulnessLine(d: { usefulness?: number | null; usefulnessNote?: string }): string {
+  const label = d.usefulness ? USEFULNESS_LABELS[d.usefulness] : undefined;
+  if (!label) return "";
+  return d.usefulnessNote ? `${label}: ${esc(d.usefulnessNote)}` : label;
+}
+
 export function draftText(d: WordDraft): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
+  const useful = usefulnessLine(d);
+  if (useful) text += `\n${useful}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
   if (d.context) text += `\n\n${contextLine(d.context, d.term)}`;
@@ -74,6 +89,7 @@ export function cardText(word: WordDraft & { collocations?: string }, view: Card
   if (view.context && word.context) answer += `\n\n${contextLine(word.context, word.term)}`;
   if (view.collocations && word.collocations) answer += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) answer += `\n\n💡 ${esc(word.mnemonic)}`;
+  if (usefulnessLine(word)) answer += `\n\n${usefulnessLine(word)}`;
   return `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод, проверь себя тапом по скрытому и оцени:`;
 }
 

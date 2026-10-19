@@ -14,6 +14,9 @@ export interface WordDraft {
   mnemonic?: string;
   /** Где встретилось — исходное предложение. */
   context?: string;
+  /** 3 — очень полезное, 2 — полезное, 1 — необязательное; null/undefined — не оценено. */
+  usefulness?: number | null;
+  usefulnessNote?: string;
 }
 
 /** Длиннее — это уже не предложение, а абзац: на карточке только мешает. */
@@ -30,6 +33,8 @@ export function toWordDraft(d: WordDraft): WordDraft {
     transcriptionUs: d.transcriptionUs ?? "",
     mnemonic: d.mnemonic ?? "",
     context: d.context ?? "",
+    usefulness: d.usefulness,
+    usefulnessNote: d.usefulnessNote ?? "",
   };
 }
 
@@ -80,6 +85,8 @@ export async function saveWord(
       transcriptionUs: input.draft.transcriptionUs ?? "",
       mnemonic: input.draft.mnemonic ?? "",
       context: (input.draft.context ?? "").trim().slice(0, MAX_CONTEXT),
+      usefulness: input.draft.usefulness ?? null,
+      usefulnessNote: input.draft.usefulnessNote ?? "",
       createdAt: input.now,
     })
     .returning();
@@ -138,6 +145,9 @@ export async function updateWord(
     transcriptionUs?: string;
     /** undefined — оставить, а при смене значения — сбросить. */
     mnemonic?: string;
+    /** undefined — оставить как есть. */
+    usefulness?: 1 | 2 | 3;
+    usefulnessNote?: string;
   },
 ): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
   const word = await getWord(db, wordId);
@@ -161,6 +171,7 @@ export async function updateWord(
       example: patch.example,
       transcriptionUk: patch.transcriptionUk ?? word.transcriptionUk,
       transcriptionUs: patch.transcriptionUs ?? word.transcriptionUs,
+      ...(patch.usefulness !== undefined ? { usefulness: patch.usefulness, usefulnessNote: patch.usefulnessNote ?? "" } : {}),
       // Озвучка относится к самому слову — при его изменении записывается заново.
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
@@ -174,6 +185,10 @@ export async function updateWord(
 
 export async function setAudioFileId(db: Db, wordId: number, accent: "uk" | "us", fileId: string): Promise<void> {
   await db.update(words).set(accent === "uk" ? { audioUkFileId: fileId } : { audioUsFileId: fileId }).where(eq(words.id, wordId));
+}
+
+export async function setUsefulness(db: Db, wordId: number, usefulness: 1 | 2 | 3, note: string): Promise<void> {
+  await db.update(words).set({ usefulness, usefulnessNote: note }).where(eq(words.id, wordId));
 }
 
 export async function setLeechHelp(db: Db, wordId: number, help: string): Promise<void> {

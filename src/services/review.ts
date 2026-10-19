@@ -15,7 +15,8 @@ function compareQueue(a: DueItem, b: DueItem): number {
   const aNew = a.card.state === State.New ? 1 : 0;
   const bNew = b.card.state === State.New ? 1 : 0;
   if (aNew !== bNew) return aNew - bNew;
-  if (aNew) return a.card.createdAt.getTime() - b.card.createdAt.getTime() || a.card.id - b.card.id;
+  // Новые — сначала самые полезные: время на зубрёжку тратится на то, что пригодится.
+  if (aNew) return (b.word.usefulness ?? 2) - (a.word.usefulness ?? 2) || a.card.createdAt.getTime() - b.card.createdAt.getTime() || a.card.id - b.card.id;
   return a.card.due.getTime() - b.card.due.getTime();
 }
 

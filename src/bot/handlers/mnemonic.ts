@@ -1,7 +1,7 @@
 import { InputFile, type Bot } from "grammy";
 import type { Word } from "../../db/schema";
 import { STYLE_PRESETS } from "../../images/images";
-import { getWord, setImageFileId } from "../../services/words";
+import { getWord, setImageFileId, setUsefulness } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { cardView } from "../../services/card-view";
@@ -52,10 +52,22 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.answerCallbackQuery();
     const onPhoto = Boolean(ctx.callbackQuery.message?.photo);
     const pictures = Boolean(deps.images) && cardView(ctx.user).picture;
+    const promote = cb.open && (await getWord(deps.db, cb.wordId))?.usefulness === 1;
     const kb = cb.open
-      ? expandManage(rows, cb.wordId, { picture: pictures && !onPhoto, redraw: Boolean(deps.images) && onPhoto })
+      ? expandManage(rows, cb.wordId, { picture: pictures && !onPhoto, redraw: Boolean(deps.images) && onPhoto, promote })
       : collapseManage(rows, cb.wordId);
     await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch(() => {});
+  });
+
+  // «⭐ Сделать полезным»: необязательное слово начинает учиться полностью — во всех упражнениях. Общее для комнаты.
+  bot.callbackQuery(/^uf:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const word = cb?.k === "promote" ? await getWord(deps.db, cb.wordId) : undefined;
+    if (!word) return void (await ctx.answerCallbackQuery({ text: "Этого слова уже нет" }));
+    await setUsefulness(deps.db, word.id, 2, "отмечено вручную как полезное");
+    await ctx.answerCallbackQuery({ text: "⭐ Теперь учим полностью" });
+    const rows = ctx.callbackQuery.message?.reply_markup?.inline_keyboard;
+    if (rows) await ctx.editMessageReplyMarkup({ reply_markup: collapseManage(rows, word.id) }).catch(() => {});
   });
 
   bot.callbackQuery(/^mn:/, async (ctx) => {

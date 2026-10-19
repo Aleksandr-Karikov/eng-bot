@@ -7,6 +7,8 @@ import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
 import { encodeCb } from "./callbacks";
 
+export const USEFULNESS_ICONS: Record<number, string> = { 3: "🟢", 2: "🟡", 1: "⚪️" };
+
 export function knowKeyboard(wordId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Знаю", encodeCb({ k: "know", wordId, knows: true }))
@@ -38,7 +40,7 @@ export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordI
 }
 
 /** Действия со словом (картинка, изменить, удалить) спрятаны за одну кнопку, чтобы не мешать тренировке. */
-const MANAGE_TAGS = new Set(["im", "rd", "e", "x", "wm"]);
+const MANAGE_TAGS = new Set(["im", "rd", "e", "x", "wm", "uf"]);
 
 export function addManageButton(kb: InlineKeyboard, wordId: number): InlineKeyboard {
   return kb.text("⚙️ Управление словом", encodeCb({ k: "manage", wordId, open: true }));
@@ -55,10 +57,12 @@ function withoutManage(rows: Rows): InlineKeyboard {
 }
 
 /** picture — можно нарисовать/показать картинку; redraw — картинка уже на карточке, её можно перерисовать. */
-export function expandManage(rows: Rows, wordId: number, opts: { picture: boolean; redraw: boolean }): InlineKeyboard {
+/** promote — слово необязательное (учим только на узнавание): можно «сделать полезным». */
+export function expandManage(rows: Rows, wordId: number, opts: { picture: boolean; redraw: boolean; promote?: boolean }): InlineKeyboard {
   const kb = withoutManage(rows);
   if (opts.redraw) kb.text("🔄 Перерисовать", encodeCb({ k: "redraw", wordId })).row();
   else if (opts.picture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId })).row();
+  if (opts.promote) kb.text("⭐ Сделать полезным — учить полностью", encodeCb({ k: "promote", wordId })).row();
   return kb
     .text("✏️ Изменить", encodeCb({ k: "edit", wordId }))
     .text("🗑 Удалить", encodeCb({ k: "del", wordId }))
@@ -112,7 +116,8 @@ export function batchKeyboard(batch: Batch): InlineKeyboard {
   batch.items.slice(start, start + PAGE_SIZE).forEach((item, offset) => {
     const index = start + offset;
     const mark = batch.selected[index] ? "✅" : "⬜️";
-    kb.text(shorten(`${mark} ${item.term} — ${item.translation}`), encodeCb({ k: "batchToggle", id: batch.id, index })).row();
+    const useful = item.usefulness ? `${USEFULNESS_ICONS[item.usefulness] ?? ""} ` : "";
+    kb.text(shorten(`${mark} ${useful}${item.term} — ${item.translation}`), encodeCb({ k: "batchToggle", id: batch.id, index })).row();
   });
   addPageNav(kb, page, pages, (p) => encodeCb({ k: "batchPage", id: batch.id, page: p }));
   return kb

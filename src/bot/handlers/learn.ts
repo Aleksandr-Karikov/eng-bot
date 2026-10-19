@@ -133,8 +133,9 @@ async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise
   const item = await getDueItemByCard(deps.db, ctx.user.id, cardId);
   if (!item) return;
   // Предложения для «вставь по смыслу» готовим заранее — оно может выпасть на любом следующем показе.
-  if (ctx.user.modeCloze) void deps.clozeGen.ensure(item.word);
-  if (ctx.user.modeCollocation) void deps.collocationGen.ensure(item.word);
+  const optional = item.word.usefulness === 1;
+  if (ctx.user.modeCloze && !optional) void deps.clozeGen.ensure(item.word);
+  if (ctx.user.modeCollocation && !optional) void deps.collocationGen.ensure(item.word);
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
   const leech = await leechMoment(deps.db, cardId);
   if (leech.prefetch) void deps.mnemonicGen.help(item.word.id);
@@ -173,9 +174,11 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     const { card, word } = item;
     const modes = userModes(ctx);
     const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
-    if (modes.cloze && sentences.length === 0 && card.state !== State.New) void deps.clozeGen.ensure(word);
-    if (modes.collocation && card.state !== State.New) void deps.collocationGen.ensure(word);
-    const picked = pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
+    const optional = word.usefulness === 1;
+    if (modes.cloze && sentences.length === 0 && card.state !== State.New && !optional) void deps.clozeGen.ensure(word);
+    if (modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
+    // Необязательное слово учим только на узнавание: EN → RU, без упражнений на употребление.
+    const picked = optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
     if (await presentSpecial(ctx, deps, item, picked, mode, false)) return;
     const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
@@ -226,8 +229,9 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const { card, word } = item;
   const modes = userModes(ctx);
   const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
-  if (modes.collocation) void deps.collocationGen.ensure(word);
-  const picked = pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
+  const optional = word.usefulness === 1;
+  if (modes.collocation && !optional) void deps.collocationGen.ensure(word);
+  const picked = optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
   if (await presentSpecial(ctx, deps, item, picked, mode, true)) return;
   const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
   const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;

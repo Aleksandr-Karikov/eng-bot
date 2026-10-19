@@ -48,6 +48,8 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
     example: enrichment?.example ?? "",
     transcriptionUk: enrichment?.transcriptionUk ?? "",
     transcriptionUs: enrichment?.transcriptionUs ?? "",
+    usefulness: enrichment?.usefulness,
+    usefulnessNote: enrichment?.usefulnessNote ?? "",
     mnemonic,
     context: context && termPattern(parsed.term).test(context.toLowerCase().replace(/[’‘`]/g, "'")) ? context.slice(0, MAX_CONTEXT) : "",
   });

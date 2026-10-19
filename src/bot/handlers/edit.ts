@@ -52,6 +52,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     // Если слово переименовали, а Claude не ответил, старая транскрипция уже неверна.
     transcriptionUk: enrichment?.transcriptionUk ?? (term === word.term ? undefined : ""),
     transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
+    ...(enrichment?.usefulness ? { usefulness: enrichment.usefulness, usefulnessNote: enrichment.usefulnessNote ?? "" } : {}),
     mnemonic: mnemonic || undefined,
   });
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));
