@@ -13,6 +13,8 @@ export interface Config {
   imagesBackground: boolean;
   /** Python с youtube-transcript-api для субтитров YouTube; нет файла — ссылки на YouTube не разбираются. */
   youtubePython: string;
+  /** Порт локального приёма слов из расширения браузера; CAPTURE_PORT=0 — выключить. */
+  capturePort: number;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -28,5 +30,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
     imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
     youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
+    capturePort: Number(env.CAPTURE_PORT ?? 8787),
   };
 }

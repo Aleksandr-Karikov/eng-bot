@@ -40,7 +40,8 @@ export interface ImageInput {
 }
 
 export interface WordEnricher {
-  enrich(term: string, translationHint?: string): Promise<Enrichment>;
+  /** context — реплика, где встретилось: перевод и объяснение — именно в этом значении. */
+  enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment>;
   /** Выделяет из текста или списка слова и фразы, полезные для изучения, сразу с переводом. */
   extract(text: string): Promise<ExtractedItem[]>;
   /** То же для скриншота или фото страницы; note — подпись пользователя к картинке. */
@@ -76,10 +77,11 @@ const TRANSCRIPTION_HINT =
 export const SYSTEM_PROMPT =
   "Ты помогаешь русскоязычным людям учить английский. Отвечай строго одним JSON-объектом, без пояснений и без markdown.";
 
-export function buildPrompt(term: string, translationHint?: string): string {
+export function buildPrompt(term: string, translationHint?: string, context?: string): string {
   return [
     `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
+    context ? `Встретилось в реплике: "${context}". Переводи и объясняй в значении из этой реплики; словарную форму не меняй.` : "",
     'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "..."}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",

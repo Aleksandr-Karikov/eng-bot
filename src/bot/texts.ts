@@ -382,6 +382,31 @@ export function collocationResultText(c: Collocations, chosen: number): string {
   return parts.join("\n\n");
 }
 
+/** Слова, добавленные из расширения: что добавилось и откуда. */
+export function captureText(words: Array<Pick<Word, "term" | "translation" | "context">>, title: string, duplicates: string[] = []): string {
+  const lines = words.map((w) => `➕ <b>${esc(w.term)}</b> — ${esc(w.translation)}`);
+  const context = words[0]?.context ? `\n${contextLine(words[0].context, words[0].term)}` : "";
+  const source = title ? `\n🎬 <i>${esc(title)}</i>` : "";
+  const dupes = duplicates.length ? `\n\nУже были: ${duplicates.map(esc).join(", ")}` : "";
+  return `${lines.join("\n")}${context}${source}${dupes}`;
+}
+
+export function extensionText(key: string, folder: string, port: number): string {
+  return [
+    "🧩 <b>Расширение для субтитров</b>",
+    "",
+    "Смотришь сериал на inoriginal.cc в Chrome — кликаешь слово или фразу в субтитрах, и оно сразу в боте, с репликой как контекстом.",
+    "",
+    "<b>Как поставить</b> (пока работает только на этом компьютере, где запущен бот):",
+    "1. Chrome → chrome://extensions → включи «Режим разработчика».",
+    `2. «Загрузить распакованное» → папка <code>${esc(folder)}</code>`,
+    "3. Открой настройки расширения и вставь ключ:",
+    `<code>${esc(key)}</code>`,
+    "",
+    `Бот принимает слова на http://localhost:${port}. Ключ личный — по нему бот понимает, что слово твоё.`,
+  ].join("\n");
+}
+
 export function sayText(phrase: string, answer: SayAnswer): string {
   const variants = answer.variants.map((v) => {
     const meta = [v.register, v.note].filter(Boolean).map(esc).join(" — ");
@@ -433,6 +458,7 @@ export function welcomeText(): string {
     "/add слово — добавить слово (можно с переводом: bank — берег)",
     "/text текст или список — найду, что выучить, и добавлю пачкой (можно ответом на сообщение)",
     "🎬 ссылка на YouTube — достану слова из субтитров",
+    "🧩 /extension — расширение Chrome: слова из субтитров сериала в один клик",
     "📸 скриншот или фото страницы — пришли сюда (в группе — /text ответом на фото), достану слова с картинки",
     "/check — ответом на сообщение: проверю английский и подскажу, как естественнее",
     "/edit кусок — исправить слово или фразу (без текста — список последних)",

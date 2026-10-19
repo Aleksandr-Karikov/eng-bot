@@ -24,6 +24,7 @@ import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 import type { TalkStore } from "./talks";
+import type { CaptureBroadcaster } from "../capture/capture";
 import type { SubtitleSource } from "../youtube/subtitles";
 
 export type BotContext = Context & { user: User };
@@ -53,6 +54,10 @@ export interface Deps {
   practice: PracticeStore;
   pictureWishes: PictureWishStore;
   talks: TalkStore;
+  /** Слова из расширения браузера: сводка друзьям после паузы; undefined — приём выключен. */
+  capture?: CaptureBroadcaster;
+  /** Порт локального приёма слов из расширения. */
+  capturePort?: number;
   /** Субтитры YouTube для /text со ссылкой; undefined — yt-dlp не установлен. */
   youtube?: SubtitleSource;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */

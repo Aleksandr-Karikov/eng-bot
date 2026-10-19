@@ -338,3 +338,17 @@ export function collocationKeyboard(cardId: number, reps: number, wordId: number
   kb.row();
   return practice ? kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" })) : addManageButton(kb, wordId);
 }
+
+/** Под словами из расширения: отменить каждое (по ошибке кликнул) или исправить. */
+export function captureKeyboard(words: Array<{ id: number; term: string }>): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (words.length === 1) {
+    return kb.text("↩️ Отменить", encodeCb({ k: "captureUndo", wordId: words[0].id })).text("✏️ Изменить", encodeCb({ k: "edit", wordId: words[0].id }));
+  }
+  words.forEach((w) => kb.text(`↩️ ${shorten(w.term)}`, encodeCb({ k: "captureUndo", wordId: w.id })).row());
+  return kb;
+}
+
+export function extensionKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("🔄 Новый ключ", encodeCb({ k: "extensionKey" }));
+}

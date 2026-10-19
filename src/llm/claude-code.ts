@@ -79,8 +79,8 @@ async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SD
 export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string }) {}
 
-  async enrich(term: string, translationHint?: string): Promise<Enrichment> {
-    return parseEnrichment(await this.ask(buildPrompt(term, translationHint), this.opts.timeoutMs));
+  async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
+    return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context), this.opts.timeoutMs));
   }
 
   async extract(text: string): Promise<ExtractedItem[]> {

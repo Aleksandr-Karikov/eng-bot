@@ -33,6 +33,8 @@ export type Cb =
   | { k: "storyAudio"; id: number }
   | { k: "talkTopic"; index: number }
   | { k: "talkEnd" }
+  | { k: "captureUndo"; wordId: number }
+  | { k: "extensionKey" }
   | { k: "collocationPick"; cardId: number; reps: number; index: number; practice: boolean }
   | { k: "sayAdd"; id: number; index: number }
   | { k: "storyAnswer"; id: number; q: number; index: number }
@@ -92,6 +94,8 @@ export function encodeCb(cb: Cb): string {
     case "storyAudio": return `sa:${cb.id}`;
     case "talkTopic": return `tt:${cb.index}`;
     case "talkEnd": return "te";
+    case "captureUndo": return `cu:${cb.wordId}`;
+    case "extensionKey": return "ek";
     case "collocationPick": return `co:${cb.cardId}:${cb.reps}:${cb.index}${cb.practice ? ":p" : ""}`;
     case "sayAdd": return `sy:${cb.id}:${cb.index}`;
     case "storyAnswer": return `sq:${cb.id}:${cb.q}:${cb.index}`;
@@ -186,6 +190,11 @@ export function decodeCb(data: string): Cb | null {
       return index !== null ? { k: "talkTopic", index } : null;
     }
     case "te": return { k: "talkEnd" };
+    case "ek": return { k: "extensionKey" };
+    case "cu": {
+      const wordId = int(a);
+      return wordId !== null ? { k: "captureUndo", wordId } : null;
+    }
     case "co": {
       const cardId = int(a), reps = int(b), index = int(c);
       if (cardId === null || reps === null || index === null || (d !== undefined && d !== "p")) return null;

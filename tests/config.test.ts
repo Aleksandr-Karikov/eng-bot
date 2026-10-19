@@ -15,6 +15,7 @@ describe("loadConfig", () => {
       mnemonicModel: "sonnet",
       imagesBackground: false,
       youtubePython: "tools/youtube/.venv/bin/python",
+      capturePort: 8787,
     });
   });
 

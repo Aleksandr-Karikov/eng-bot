@@ -28,6 +28,8 @@ import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
+import { CaptureBroadcaster } from "./capture/capture";
+import { startCaptureServer } from "./capture/server";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
 import { startReminderLoop } from "./reminder-loop";
@@ -88,6 +90,11 @@ const deps: Deps = {
   pictures,
   botUsername: bot.botInfo.username,
 };
+if (config.capturePort) {
+  deps.capture = new CaptureBroadcaster(deps);
+  deps.capturePort = config.capturePort;
+  startCaptureServer(deps, deps.capture, config.capturePort);
+}
 setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS);
 

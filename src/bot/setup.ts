@@ -17,6 +17,7 @@ import { registerStory } from "./handlers/story";
 import { registerSpotted } from "./handlers/spotted";
 import { registerTalk } from "./handlers/talk";
 import { registerSay } from "./handlers/say";
+import { registerExtension } from "./handlers/extension";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
 
@@ -75,6 +76,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerEdit(bot, deps);
   registerTalk(bot, deps);
   registerSay(bot, deps);
+  registerExtension(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».
   bot.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
