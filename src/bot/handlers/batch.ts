@@ -69,7 +69,9 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
     console.error("Extraction failed", err);
     return void (await ctx.reply(failText));
   }
-  if (items.length === 0) return void (await ctx.reply("Не нашёл тут английского текста 🤔"));
+  if (items.length === 0) {
+    return void (await ctx.reply("Не нашёл, что стоит выучить: тут либо нет английского, либо только самые простые слова 🤔\nНужна именно эта фраза — добавь её: /add фраза"));
+  }
   const fresh = await filterNewItems(deps.db, room.id, items);
   if (fresh.length === 0) return void (await ctx.reply("Ничего нового не нашёл — всё уже есть в комнате 👌"));
 

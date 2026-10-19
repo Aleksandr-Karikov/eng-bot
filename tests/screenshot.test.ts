@@ -90,6 +90,6 @@ describe("📸 words from a screenshot", () => {
 
     const empty = await setup([]);
     await empty.h.bot.handleUpdate(photo({ id: 100, type: "private" }));
-    await vi.waitFor(() => expect(empty.h.calls.some((c) => String(c.payload.text).includes("Не нашёл тут английского"))).toBe(true));
+    await vi.waitFor(() => expect(empty.h.calls.some((c) => String(c.payload.text).includes("Не нашёл, что стоит выучить"))).toBe(true));
   });
 });
