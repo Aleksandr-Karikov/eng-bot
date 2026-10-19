@@ -23,7 +23,7 @@ const GRADES: Record<Answer, Grade> = {
  * 🟢 держим крепче (чаще повторяем), ⚪️ отпускаем (повторяем реже, иногда забудется — и ладно, его хватит узнать).
  * Время повторений само перетекает от редких слов к ходовым.
  */
-export const RETENTION: Record<number, number> = { 3: 0.94, 2: 0.9, 1: 0.8 };
+export const RETENTION: Record<number, number> = { 3: 0.92, 2: 0.9, 1: 0.87 };
 const DEFAULT_RETENTION = 0.9;
 
 const schedulers = new Map<number, ReturnType<typeof fsrs>>();
