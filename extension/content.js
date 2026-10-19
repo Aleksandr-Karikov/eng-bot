@@ -13,7 +13,6 @@
     index: -1, // какую показываем
     selection: null, // [start, end] индексы слов
     anchor: null,
-    dragging: false,
     pausedByUs: false,
     sending: false,
     /** Мышь над панелью: реплика «замерзает», можно выделять и листать. Иначе всегда показываем текущую. */
@@ -127,7 +126,7 @@
     <div class="wb-bar">
       <button class="wb-prev" title="Предыдущая реплика">◀</button>
       <button class="wb-next" title="Следующая реплика">▶</button>
-      <span class="wb-status">Выдели слово или фразу — или ➕ для всей реплики</span>
+      <span class="wb-status">Клик — слово, клик по другому — фраза. ➕ без выделения — вся реплика</span>
       <span class="wb-count" title="Добавлено за этот сеанс"></span>
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
@@ -244,32 +243,39 @@
   const pageTitle = () =>
     (document.querySelector("h1")?.textContent || document.title).replace(/\s*(смотреть|онлайн|—\s*inoriginal).*$/i, "").trim().slice(0, 200);
 
-  // Выделение: нажал на слово и протянул — фраза; клик по выделенному одиночному слову — снять.
-  lineEl.addEventListener("mousedown", (e) => {
+  // Выделение. Клик — слово; клик по другому слову — фраза от выделенного до него; клик внутри выделения — снять.
+  // Протяжка тоже работает: смотрим, зажата ли кнопка (e.buttons), а не ждём mouseup — его глушит плеер.
+  const wordAt = (x, y) => document.elementFromPoint(x, y)?.closest?.("#wordboss-panel .wb-word");
+
+  lineEl.addEventListener("pointerdown", (e) => {
     const span = e.target.closest(".wb-word");
-    if (!span) return;
+    if (!span || e.button !== 0) return;
     e.preventDefault();
     const i = Number(span.dataset.i);
-    if (e.shiftKey && state.anchor !== null) {
-      state.selection = [Math.min(state.anchor, i), Math.max(state.anchor, i)];
-    } else if (state.selection && state.selection[0] === i && state.selection[1] === i) {
+    const sel = state.selection;
+    if (sel && i >= sel[0] && i <= sel[1]) {
       state.selection = null;
       state.anchor = null;
+    } else if (sel) {
+      state.selection = [Math.min(sel[0], i), Math.max(sel[1], i)];
+      state.anchor = sel[0] <= i ? sel[0] : sel[1];
     } else {
-      state.anchor = i;
       state.selection = [i, i];
-      state.dragging = true;
+      state.anchor = i;
     }
     render();
   });
-  lineEl.addEventListener("mouseover", (e) => {
-    const span = e.target.closest(".wb-word");
-    if (!state.dragging || !span || state.anchor === null) return;
+
+  lineEl.addEventListener("pointermove", (e) => {
+    if (!(e.buttons & 1) || state.anchor === null) return;
+    const span = wordAt(e.clientX, e.clientY);
+    if (!span) return;
     const i = Number(span.dataset.i);
-    state.selection = [Math.min(state.anchor, i), Math.max(state.anchor, i)];
+    const next = [Math.min(state.anchor, i), Math.max(state.anchor, i)];
+    if (state.selection && next[0] === state.selection[0] && next[1] === state.selection[1]) return;
+    state.selection = next;
     render();
   });
-  document.addEventListener("mouseup", () => (state.dragging = false));
 
   // Пока мышь над панелью — пауза, чтобы реплика не убежала.
   panel.addEventListener("mouseenter", () => {
@@ -281,7 +287,6 @@
   });
   panel.addEventListener("mouseleave", () => {
     state.hover = false;
-    state.dragging = false;
     if (state.pausedByUs && state.video) state.video.play().catch(() => {});
     state.pausedByUs = false;
     // Вернуться к текущей реплике.
@@ -305,7 +310,7 @@
     render();
   });
   // Клики по панели не должны доходить до плеера (там клик — пауза/плей).
-  for (const type of ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup"]) {
+  for (const type of ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup", "pointermove"]) {
     panel.addEventListener(type, (e) => e.stopPropagation());
   }
 
