@@ -16,6 +16,17 @@
     dragging: false,
     pausedByUs: false,
     sending: false,
+    /** Мышь над панелью: реплика «замерзает», можно выделять и листать. Иначе всегда показываем текущую. */
+    hover: false,
+  };
+
+  /** Включить подробный лог: в консоли страницы localStorage.wordbossDebug = 1 и обновить страницу. */
+  const debug = (...args) => {
+    try {
+      if (localStorage.getItem("wordbossDebug")) console.log("[WordBoss]", ...args);
+    } catch {
+      // localStorage может быть недоступен — без лога
+    }
   };
 
   // ---------- Откуда берём реплики ----------
@@ -31,18 +42,21 @@
   /** Субтитр — это английские слова, а не таймер «12:34» или подпись кнопки плеера. */
   const looksLikeSpeech = (line) => /[A-Za-z]{2,}/.test(line) && !/^[\d:.\s/]+$/.test(line);
 
-  function pushLine(raw) {
+  function pushLine(raw, source) {
     const line = cleanCue(raw || "");
     if (!line || line.length > MAX_LINE || !looksLikeSpeech(line)) return;
     if (state.lines.at(-1) === line) return;
-    // Пока человек выделяет слова в прошлой реплике, новая не должна выбивать её из-под мыши.
-    const following = state.index === state.lines.length - 1 && !state.selection;
+    debug(source, line);
     state.lines.push(line);
     if (state.lines.length > HISTORY) {
       state.lines.shift();
       state.index -= 1;
     }
-    state.index = following || state.index < 0 ? state.lines.length - 1 : state.index;
+    // Пока мышь над панелью, новая реплика не выбивает старую из-под курсора.
+    if (!state.hover || state.index < 0) {
+      state.index = state.lines.length - 1;
+      state.selection = null;
+    }
     render();
   }
 
@@ -53,15 +67,23 @@
       track.__wordboss = true;
       // Выключенная дорожка не присылает реплики; «hidden» — присылает, но не рисует поверх видео.
       if (track.mode === "disabled" && looksEnglish(track)) track.mode = "hidden";
-      track.addEventListener("cuechange", () => {
-        if (track.mode === "disabled") return;
-        const cues = Array.from(track.activeCues || []);
-        if (cues.length) pushLine(cues.map((c) => c.text).join(" "));
-      });
+      track.addEventListener("cuechange", () => readTrack(track, "cuechange"));
     };
     Array.from(video.textTracks).forEach(hook);
     video.textTracks.addEventListener("addtrack", (e) => hook(e.track));
   }
+
+  function readTrack(track, source) {
+    if (track.mode === "disabled") return;
+    const cues = Array.from(track.activeCues || []);
+    if (cues.length) pushLine(cues.map((c) => c.text).join(" "), `${source}:${track.label || track.language}`);
+  }
+
+  /** События cuechange плеер может глушить (переключая дорожки) — подстраховываемся опросом. */
+  setInterval(() => {
+    if (!state.video) return;
+    for (const track of Array.from(state.video.textTracks)) if (["subtitles", "captions"].includes(track.kind)) readTrack(track, "poll");
+  }, 250);
 
   const looksEnglish = (track) => /^en/i.test(track.language || "") || /eng|англ/i.test(track.label || "");
 
@@ -78,7 +100,7 @@
         if (!text.trim() || text.length > MAX_LINE) continue;
         const r = node.getBoundingClientRect();
         const overVideo = r.width > 0 && r.top >= rect.top + rect.height * 0.4 && r.bottom <= rect.bottom + 40 && r.left >= rect.left - 20 && r.right <= rect.right + 20;
-        if (overVideo) pushLine(text);
+        if (overVideo) pushLine(text, "dom");
       }
     });
     observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
@@ -89,6 +111,7 @@
     const video = videos.sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
     if (!video || video === state.video) return;
     state.video = video;
+    debug("video", video.currentSrc, "tracks:", Array.from(video.textTracks).map((t) => `${t.kind}/${t.label}/${t.language}/${t.mode}`));
     watchTracks(video);
     position();
   }
@@ -204,14 +227,23 @@
 
   // Пока мышь над панелью — пауза, чтобы реплика не убежала.
   panel.addEventListener("mouseenter", () => {
+    state.hover = true;
     if (state.video && !state.video.paused) {
       state.video.pause();
       state.pausedByUs = true;
     }
   });
   panel.addEventListener("mouseleave", () => {
+    state.hover = false;
+    state.dragging = false;
     if (state.pausedByUs && state.video) state.video.play().catch(() => {});
     state.pausedByUs = false;
+    // Вернуться к текущей реплике.
+    if (state.index !== state.lines.length - 1 || state.selection) {
+      state.index = state.lines.length - 1;
+      state.selection = null;
+      render();
+    }
   });
 
   panel.querySelector(".wb-add").addEventListener("click", send);
