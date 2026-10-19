@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User } from "../db/schema";
+import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
 import { createCards } from "./cards";
 import { getUser, updateUser } from "./users";
 
@@ -103,11 +103,13 @@ export async function deleteRoom(db: Db, roomId: number): Promise<void> {
     const cardIds = (await db.select({ id: cards.id }).from(cards).where(inArray(cards.wordId, wordIds))).map((c) => c.id);
     if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
     await db.delete(clozeSentences).where(inArray(clozeSentences.wordId, wordIds));
+    await db.delete(wordUses).where(eq(wordUses.roomId, roomId));
     await db.delete(cards).where(inArray(cards.wordId, wordIds));
     await db.delete(words).where(eq(words.roomId, roomId));
   }
   const members = await listMembers(db, roomId);
   await db.delete(duelPoints).where(eq(duelPoints.roomId, roomId));
+  await db.delete(stories).where(eq(stories.roomId, roomId));
   await db.delete(roomMembers).where(eq(roomMembers.roomId, roomId));
   await db.delete(rooms).where(eq(rooms.id, roomId));
   for (const member of members) {

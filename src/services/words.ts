@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, clozeSentences, reviewLogs, words, type User, type Word } from "../db/schema";
+import { cards, clozeSentences, reviewLogs, words, type User, type Word, wordUses } from "../db/schema";
 import { createCards } from "./cards";
 import { getRoom, listMembers } from "./rooms";
 
@@ -121,8 +121,10 @@ export async function deleteWord(db: Db, wordId: number): Promise<Word | undefin
   const word = await getWord(db, wordId);
   if (!word) return undefined;
   const cardIds = (await db.select({ id: cards.id }).from(cards).where(eq(cards.wordId, wordId))).map((c) => c.id);
+  // Сначала все ссылки на слово (foreign_keys = ON): иначе удаление упадёт посередине и слово останется без карточек.
   if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
   await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
+  await db.delete(wordUses).where(eq(wordUses.wordId, wordId));
   await db.delete(cards).where(eq(cards.wordId, wordId));
   await db.delete(words).where(eq(words.id, wordId));
   return word;
