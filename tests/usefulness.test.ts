@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cards, words } from "../src/db/schema";
 import { draftText } from "../src/bot/texts";
-import { parseEnrichment } from "../src/llm/enricher";
 import { createRoom } from "../src/services/rooms";
 import { nextDue } from "../src/services/review";
 import { updateUser } from "../src/services/users";
@@ -19,11 +18,9 @@ async function room(h: ReturnType<typeof botHarness>, list: Array<[string, numbe
 }
 
 describe("how useful a word is", () => {
-  it("comes with the translation and is shown on the draft", () => {
-    const e = parseEnrichment(JSON.stringify({ translation: "окупаться", usefulness: "High", usefulness_note: "очень частое в разговоре" }));
-    expect(e).toMatchObject({ usefulness: 3, usefulnessNote: "очень частое в разговоре" });
-    expect(parseEnrichment(JSON.stringify({ translation: "x", usefulness: "whatever" })).usefulness).toBeUndefined();
-    expect(draftText({ ...e, term: "pay off" })).toContain("🟢 Очень полезное: очень частое в разговоре");
+  it("is shown on the draft with its reasons", () => {
+    expect(draftText({ term: "pay off", translation: "окупаться", explanation: "", example: "", usefulness: 3, usefulnessNote: "частое выражение" })).toContain("🟢 Очень полезное: частое выражение");
+    expect(draftText({ term: "feign", translation: "притворяться", explanation: "", example: "", usefulness: 1, usefulnessNote: "редкое слово" })).toContain("⚪️ Необязательное — учим только на узнавание: редкое слово");
   });
 
   it("new words come most useful first", async () => {

@@ -1,4 +1,4 @@
-import { applyFrequency } from "../../services/usefulness";
+import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { Word } from "../../db/schema";
 import type { Enrichment } from "../../llm/enricher";
@@ -45,7 +45,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
       .then(([m]) => m ?? "")
       .catch(() => ""),
   ]);
-  const [rated] = enrichment ? await applyFrequency([{ ...enrichment, term }], deps.frequency) : [undefined];
+  const [rated] = enrichment ? await rateUsefulness([{ ...enrichment, term }], deps.frequency) : [undefined];
   const result = await updateWord(deps.db, word.id, {
     term,
     translation,

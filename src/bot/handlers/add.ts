@@ -1,4 +1,4 @@
-import { applyFrequency } from "../../services/usefulness";
+import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { Enrichment } from "../../llm/enricher";
 import { findWord, MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
@@ -28,7 +28,7 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   const [enrichment, mnemonic] = await Promise.all([
     deps.enricher
       .enrich(parsed.term, parsed.translation)
-      .then(async (e) => (await applyFrequency([{ ...e, term: parsed.term }], deps.frequency))[0])
+      .then(async (e) => (await rateUsefulness([{ ...e, term: parsed.term }], deps.frequency))[0])
       .catch((err): Enrichment | undefined => {
         console.error("Enrichment failed", parsed.term, err);
         return undefined;

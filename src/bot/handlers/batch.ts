@@ -1,4 +1,4 @@
-import { applyFrequency } from "../../services/usefulness";
+import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { ExtractedItem } from "../../llm/enricher";
 import { filterNewItems, saveWord, toWordDraft, type WordDraft } from "../../services/words";
@@ -74,7 +74,7 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
     return void (await ctx.reply("Не нашёл, что стоит выучить: тут либо нет английского, либо только самые простые слова 🤔\nНужна именно эта фраза — добавь её: /add фраза"));
   }
   // Самые полезные — в начале списка; необязательные — в конце, но тоже отмечены: решает человек.
-  const rated = await applyFrequency(await filterNewItems(deps.db, room.id, items), deps.frequency);
+  const rated = await rateUsefulness(await filterNewItems(deps.db, room.id, items), deps.frequency);
   const fresh = rated.sort((a, b) => (b.usefulness ?? 2) - (a.usefulness ?? 2));
   if (fresh.length === 0) return void (await ctx.reply("Ничего нового не нашёл — всё уже есть в комнате 👌"));
 

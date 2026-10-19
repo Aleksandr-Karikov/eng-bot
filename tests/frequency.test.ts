@@ -1,45 +1,53 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FrequencySource } from "../src/frequency/frequency";
-import { applyFrequency, levelByZipf, singleWord } from "../src/services/usefulness";
+import { parseEnrichment } from "../src/llm/enricher";
+import { levelByZipf, rateUsefulness, scoreUsefulness, singleWord } from "../src/services/usefulness";
 
-const zipfs: Record<string, number> = { flood: 4.34, melt: 3.96, feign: 2.58, arse: 3.57, ensure: 4.6 };
+const zipfs: Record<string, number> = { flood: 4.34, melt: 3.96, feign: 2.58, arse: 3.57, ensure: 4.6, divine: 4.3 };
 const source: FrequencySource = { zipf: async (terms) => new Map(terms.map((t) => [t, zipfs[t] ?? 0])) };
 
-describe("usefulness of a single word comes from its frequency", () => {
-  it("is the same however the word was added", async () => {
-    const alone = await applyFrequency([{ term: "flood", usefulness: 3, usefulnessNote: "частое в новостях" }], source);
-    const inList = await applyFrequency([{ term: "Flood", usefulness: 2, usefulnessNote: "встречается" }], source);
-    expect(alone[0]).toMatchObject({ usefulness: 3, usefulnessNote: "частое в новостях" });
-    expect(inList[0]).toMatchObject({ usefulness: 3, usefulnessNote: "очень частое слово" });
-  });
-
-  it("uses fixed thresholds, keeps rude/dated/show jargon optional, leaves phrases to the model", async () => {
+describe("usefulness by rules", () => {
+  it("a single word: frequency is the base, the same however the word was added", async () => {
+    const [alone] = await rateUsefulness([{ term: "flood", sense: "main" as const, register: "neutral" as const }], source);
+    const [inList] = await rateUsefulness([{ term: "Flood" }], source);
+    expect(alone).toMatchObject({ usefulness: 3, usefulnessNote: "частое слово" });
+    expect(inList).toMatchObject({ usefulness: 3 });
     expect([4.34, 3.96, 3.3, 2.58].map(levelByZipf)).toEqual([3, 2, 2, 1]);
-    const rated = await applyFrequency(
-      [
-        { term: "to ensure", usefulness: 2 },
-        { term: "feign", usefulness: 2 },
-        { term: "arse", usefulness: 2, niche: true },
-        { term: "nail it", usefulness: 3 },
-        { term: "zzyzx", usefulness: 2 },
-      ],
-      source,
-    );
-    expect(rated.map((r) => r.usefulness)).toEqual([3, 1, 1, 3, 2]);
-    expect(singleWord("step in")).toBeUndefined();
   });
 
-  it("falls back to the model when frequencies are unavailable", async () => {
+  it("a rare sense of a frequent word is optional; a secondary one is at most 🟡", () => {
+    expect(scoreUsefulness({ term: "divine", sense: "rare" }, 4.3)).toEqual({ usefulness: 1, usefulnessNote: "частое слово · но это значение редкое" });
+    expect(scoreUsefulness({ term: "flood", sense: "secondary" }, 4.34)?.usefulness).toBe(2);
+  });
+
+  it("rude, dated and jargon are optional; bookish is at most 🟡; informal is just noted", () => {
+    expect(scoreUsefulness({ term: "arse", register: "rude" }, 3.57)).toEqual({ usefulness: 1, usefulnessNote: "встречается · грубое" });
+    expect(scoreUsefulness({ term: "ensure", register: "formal" }, 4.6)?.usefulness).toBe(2);
+    expect(scoreUsefulness({ term: "flood", register: "informal" }, 4.34)).toEqual({ usefulness: 3, usefulnessNote: "частое слово · разговорное" });
+  });
+
+  it("phrases use the model's bucket; without any data a word stays unrated", () => {
+    expect(scoreUsefulness({ term: "nail it", phraseFrequency: "common" }, undefined)).toEqual({ usefulness: 3, usefulnessNote: "частое выражение" });
+    expect(scoreUsefulness({ term: "keep plates spinning", phraseFrequency: "occasional", register: "informal" }, undefined)?.usefulness).toBe(2);
+    expect(scoreUsefulness({ term: "zzyzx" }, 0)).toBeUndefined();
+    expect(singleWord("over-deliver")).toBeUndefined();
+    expect(singleWord("to ensure")).toBe("ensure");
+  });
+
+  it("the model answers questions with options; unknown answers are ignored", () => {
+    const e = parseEnrichment(JSON.stringify({ translation: "x", sense: "Rare", register: "whatever", phrase_frequency: "" }));
+    expect(e).toMatchObject({ sense: "rare", register: undefined, phraseFrequency: undefined });
+  });
+
+  it("a phrase «word + particle» is never more useful than its word", () => {
+    expect(scoreUsefulness({ term: "beset by", phraseFrequency: "occasional" }, undefined, 3.08)).toEqual({ usefulness: 1, usefulnessNote: "редкое слово в основе" });
+    expect(scoreUsefulness({ term: "draw up", phraseFrequency: "common" }, undefined, 5.1)?.usefulness).toBe(3);
+  });
+
+  it("falls back gracefully when frequencies are unavailable", async () => {
     const broken: FrequencySource = { zipf: vi.fn(async () => Promise.reject(new Error("no python"))) };
     vi.spyOn(console, "error").mockImplementation(() => {});
-    expect((await applyFrequency([{ term: "flood", usefulness: 2 }], broken))[0].usefulness).toBe(2);
-    expect((await applyFrequency([{ term: "flood", usefulness: 2 }], undefined))[0].usefulness).toBe(2);
-  });
-});
-
-describe("hyphenated words", () => {
-  it("are phrases for frequency purposes", () => {
-    expect(singleWord("over-deliver")).toBeUndefined();
-    expect(singleWord("don't")).toBe("don't");
+    const [r] = await rateUsefulness([{ term: "flood", usefulness: 2 }], broken);
+    expect(r.usefulness).toBe(2);
   });
 });

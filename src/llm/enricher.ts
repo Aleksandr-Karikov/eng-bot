@@ -9,15 +9,32 @@ export interface Enrichment {
   transcriptionUs?: string;
   /** Запоминалка: созвучие или образ, связывающий слово со значением. */
   mnemonic?: string;
-  /** 3 — очень полезное, 2 — полезное, 1 — необязательное. */
-  usefulness?: Usefulness;
+  /** Факты о слове для оценки полезности (её считает код — services/usefulness). */
+  sense?: Sense;
+  register?: Register;
+  /** Только для фраз из нескольких слов. */
+  phraseFrequency?: PhraseFrequency;
+  /** Итог оценки — заполняет rateUsefulness, не модель: 3 — очень полезное, 2 — полезное, 1 — необязательное. */
+  usefulness?: number;
   usefulnessNote?: string;
-  /** Грубое, устаревшее или жаргон одного сериала. */
-  niche?: boolean;
 }
 
-export type Usefulness = 1 | 2 | 3;
-const USEFULNESS: Record<string, Usefulness> = { high: 3, medium: 2, low: 1 };
+export const SENSES = ["main", "secondary", "rare"] as const;
+export const REGISTERS = ["neutral", "informal", "formal", "rude", "dated", "niche"] as const;
+export const PHRASE_FREQUENCIES = ["common", "occasional", "rare"] as const;
+export type Sense = (typeof SENSES)[number];
+export type Register = (typeof REGISTERS)[number];
+export type PhraseFrequency = (typeof PHRASE_FREQUENCIES)[number];
+
+/** Перечисление от модели: регистр и пробелы не важны, незнакомое — как не указано. */
+const choice = <T extends readonly string[]>(values: T) =>
+  z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((v) => ((values as readonly string[]).includes(v) ? (v as T[number]) : undefined))
+    .optional()
+    .catch(undefined);
 
 export interface ExtractedItem extends Enrichment {
   term: string;
@@ -69,35 +86,32 @@ const enrichmentFields = {
   transcription_uk: z.string().trim().default(""),
   transcription_us: z.string().trim().default(""),
   mnemonic: z.string().trim().default(""),
-  usefulness: z.string().trim().toLowerCase().optional().catch(undefined),
-  usefulness_note: z.string().trim().default(""),
-  niche: z.boolean().default(false).catch(false),
+  sense: choice(SENSES),
+  register: choice(REGISTERS),
+  phrase_frequency: choice(PHRASE_FREQUENCIES),
 };
 
-const toEnrichment = <T extends { transcription_uk: string; transcription_us: string; usefulness?: string; usefulness_note: string }>({
+const toEnrichment = <T extends { transcription_uk: string; transcription_us: string; phrase_frequency?: PhraseFrequency }>({
   transcription_uk,
   transcription_us,
-  usefulness,
-  usefulness_note,
+  phrase_frequency,
   ...rest
-}: T) => ({
-  ...rest,
-  transcriptionUk: transcription_uk,
-  transcriptionUs: transcription_us,
-  usefulness: usefulness ? USEFULNESS[usefulness] : undefined,
-  usefulnessNote: usefulness_note,
-});
+}: T) => ({ ...rest, transcriptionUk: transcription_uk, transcriptionUs: transcription_us, phraseFrequency: phrase_frequency });
 
 const enrichmentSchema = z.object(enrichmentFields).transform(toEnrichment);
 
-/** Оценка полезности — чтобы не зубрить то, что почти не встретится. Без «уровня» человека: только само слово. */
+/**
+ * Факты о слове для оценки полезности. Итог («полезно ли») модель не ставит — это субъективно и прыгает;
+ * она отвечает на конкретные вопросы с вариантами, а оценку по правилам считает код (services/usefulness).
+ */
 export const USEFULNESS_HINT = [
-  "usefulness — насколько стоит учить это слово или фразу русскоязычному человеку, который смотрит сериалы и общается по-английски:",
-  "high — часто встречается в речи, сериалах и переписке и пригодится самому; medium — встречается, но реже или в отдельных темах;",
-  "low — редкое, книжное, узкоспециальное, устаревшее, грубое или придумка конкретного сериала: достаточно узнавать, самому употреблять незачем.",
-  "Оценивай частоту и пользу, а не сложность: простое частое слово — high, сложное редкое — low.",
-  "usefulness_note — до 8 слов по-русски, почему так (например «очень частое в разговоре», «книжное, встретится редко»).",
-  "niche — true, если оно грубое или ругательное, устаревшее или жаргон/придумка конкретного сериала; иначе false.",
+  "sense — в каком значении дано слово (смотри на перевод): main — основное, самое частое; secondary — обычное, но не главное;",
+  "rare — редкое, узкое или сленговое значение этого слова (как divine в значении «восхитительно»);",
+  "register — neutral; informal — разговорное; formal — книжное или официальное; rude — грубое, ругательство;",
+  "dated — устаревшее; niche — жаргон узкой сферы или придумка конкретного сериала;",
+  "phrase_frequency — только для фраз и идиом из нескольких слов: как часто их реально говорят —",
+  "common (как pay off, run late, call it a day), occasional (как keep plates spinning, tongue-tied, steady paycheck),",
+  "rare (как trump the kipper, snag yourself a peerage); для одного слова — пустая строка.",
 ].join("\n");
 
 const TRANSCRIPTION_HINT =
@@ -111,7 +125,7 @@ export function buildPrompt(term: string, translationHint?: string, context?: st
     `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
     context ? `Встретилось в реплике: "${context}". Переводи и объясняй в значении из этой реплики; словарную форму не меняй.` : "",
-    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "usefulness": "high|medium|low", "usefulness_note": "...", "niche": false}, где',
+    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "sense": "main", "register": "neutral", "phrase_frequency": ""}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",
     "example — короткое естественное предложение на английском с этим словом,",
@@ -162,7 +176,7 @@ const EXTRACT_RULES = [
   "Если это связный текст — выдели то, что стоит выучить русскоязычному человеку: фразовые глаголы, идиомы,",
   "устойчивые выражения и не самые базовые слова, пропусти очевидное (the, is, go, имена собственные).",
   `Не больше ${MAX_EXTRACT} пунктов, без повторов.`,
-  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "context": "...", "usefulness": "high|medium|low", "usefulness_note": "...", "niche": false}], где',
+  'Верни JSON-массив: [{"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "context": "...", "sense": "main", "register": "neutral", "phrase_frequency": ""}], где',
   "translation — краткий перевод на русский в значении из текста, explanation — одно предложение на русском,",
   "example — короткое предложение на английском,",
   TRANSCRIPTION_HINT,

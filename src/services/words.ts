@@ -146,7 +146,7 @@ export async function updateWord(
     /** undefined — оставить, а при смене значения — сбросить. */
     mnemonic?: string;
     /** undefined — оставить как есть. */
-    usefulness?: 1 | 2 | 3;
+    usefulness?: number;
     usefulnessNote?: string;
   },
 ): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
@@ -187,7 +187,7 @@ export async function setAudioFileId(db: Db, wordId: number, accent: "uk" | "us"
   await db.update(words).set(accent === "uk" ? { audioUkFileId: fileId } : { audioUsFileId: fileId }).where(eq(words.id, wordId));
 }
 
-export async function setUsefulness(db: Db, wordId: number, usefulness: 1 | 2 | 3, note: string): Promise<void> {
+export async function setUsefulness(db: Db, wordId: number, usefulness: number, note: string): Promise<void> {
   await db.update(words).set({ usefulness, usefulnessNote: note }).where(eq(words.id, wordId));
 }
 
