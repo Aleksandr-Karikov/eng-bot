@@ -51,7 +51,7 @@ describe("/drill shows the progress", () => {
     const drill = vi.fn(async (_profile: string, _count: number, _avoid?: string[]) => [q(1), q(2), q(3), q(4), q(5, "предлоги")]);
     const tutor: ExerciseTutor = {
       cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill, mnemonics: async () => [], imagePrompt: async () => "",
-      collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }),
+      translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }),
       reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }),
     };
     const h = botHarness({ tutor });

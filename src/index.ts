@@ -30,6 +30,7 @@ import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
 import { CaptureBroadcaster } from "./capture/capture";
 import { startCaptureServer } from "./capture/server";
+import { TranslateStore } from "./bot/translations";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
 import { startReminderLoop } from "./reminder-loop";
@@ -85,6 +86,7 @@ const deps: Deps = {
   practice: new PracticeStore(),
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
+  translations: new TranslateStore(),
   youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
   images,
   pictures,

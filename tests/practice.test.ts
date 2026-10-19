@@ -79,7 +79,7 @@ describe("practice outside the schedule", () => {
     const judge = vi.fn(async () => ({ correct: false, explanation: "", tip: "" }));
     const h = botHarness({
       random: () => 0.99,
-      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
+      tutor: { cloze: async () => [], judge, drill: async () => [], mnemonics: async () => [], translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" },
     });
     const user = await nothingDue(h);
     const [hangar] = await h.db.select().from(cards).where(eq(cards.userId, user.id)).orderBy(cards.stability);

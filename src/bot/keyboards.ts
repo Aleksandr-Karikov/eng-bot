@@ -357,3 +357,7 @@ export function captureKeyboard(words: Array<{ id: number; term: string }>): Inl
 export function extensionKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🔄 Новый ключ", encodeCb({ k: "extensionKey" }));
 }
+
+export function translateKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("🤷 Не знаю", encodeCb({ k: "translateDunno" })).text("⏹ Хватит", encodeCb({ k: "translateStop" }));
+}

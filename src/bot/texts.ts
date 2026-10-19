@@ -1,6 +1,6 @@
 import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview } from "../llm/tutor";
+import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { GoalProgress } from "../services/goals";
@@ -423,6 +423,26 @@ export function extensionText(key: string, folder: string, port: number): string
   ].join("\n");
 }
 
+export function translateTaskText(ru: string): string {
+  return `🇷🇺 <b>${esc(ru)}</b>\n\nПереведи на английский:`;
+}
+
+export function translateResultText(task: { en: string; word: string }, r: TranslationReview, progress: DrillProgress | undefined, saved: boolean): string {
+  const parts = [r.correct ? "✅ Верно!" : "❌ Есть ошибки"];
+  if (r.verdict) parts.push(esc(r.verdict));
+  if (r.fixes.length || r.natural) parts.push(checkText(r));
+  if (!r.correct && !r.natural) parts.push(`Можно так: <i>${esc(task.en)}</i>`);
+  if (task.word && r.usedWord) parts.push(`📚 <b>${esc(task.word)}</b> — засчитано как повторение`);
+  else if (task.word) parts.push(`📚 Здесь просилось <b>${esc(task.word)}</b>`);
+  if (progress) parts.push(drillProgressText(progress));
+  if (saved) parts.push("🧠 Ошибки сохранены в работу над ошибками — /mistakes");
+  return parts.join("\n\n");
+}
+
+export function translateDoneText(done: number, correct: number): string {
+  return done ? `🏁 Готово: ${done} ${plural(done, "предложение", "предложения", "предложений")}, верно — ${correct}. Ещё — /translate` : "Ок, в другой раз 👋 /translate";
+}
+
 export function sayText(phrase: string, answer: SayAnswer): string {
   const variants = answer.variants.map((v) => {
     const meta = [v.register, v.note].filter(Boolean).map(esc).join(" — ");
@@ -493,6 +513,7 @@ export function welcomeText(): string {
       "Интервалы считает FSRS. Слово никак не даётся — разберу, почему и с чем его не путать 🧩. Всё повторил — можно потренироваться вне зачёта.",
     ]),
     section("🗣 Говорить и читать", [
+      "• /translate — переводи предложения с русского: они строятся под твои ошибки и слова, которые ты учишь",
       "• /talk — переписка со мной по-английски: кафе, собеседование, фильмы или своя тема. В конце — разбор ошибок",
       "• /story — короткая история из слов комнаты с озвучкой и вопросами",
     ]),

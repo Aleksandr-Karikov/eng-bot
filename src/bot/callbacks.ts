@@ -35,6 +35,8 @@ export type Cb =
   | { k: "talkEnd" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
+  | { k: "translateStop" }
+  | { k: "translateDunno" }
   | { k: "extensionKey" }
   | { k: "collocationPick"; cardId: number; reps: number; index: number; practice: boolean }
   | { k: "sayAdd"; id: number; index: number }
@@ -97,6 +99,8 @@ export function encodeCb(cb: Cb): string {
     case "talkEnd": return "te";
     case "captureUndo": return `cu:${cb.wordId}`;
     case "promote": return `uf:${cb.wordId}`;
+    case "translateStop": return "tz";
+    case "translateDunno": return "tu";
     case "extensionKey": return "ek";
     case "collocationPick": return `co:${cb.cardId}:${cb.reps}:${cb.index}${cb.practice ? ":p" : ""}`;
     case "sayAdd": return `sy:${cb.id}:${cb.index}`;
@@ -193,6 +197,8 @@ export function decodeCb(data: string): Cb | null {
     }
     case "te": return { k: "talkEnd" };
     case "ek": return { k: "extensionKey" };
+    case "tz": return { k: "translateStop" };
+    case "tu": return { k: "translateDunno" };
     case "uf": {
       const wordId = int(a);
       return wordId !== null ? { k: "promote", wordId } : null;

@@ -23,7 +23,7 @@ async function setup(stored?: Collocations, practice = false) {
     cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "",
     reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story: async () => ({ title: "", body: "", questions: [] }),
     untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), talkReply: async () => "", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }),
-    say: async () => ({ variants: [], learn: [] }), collocations,
+    say: async () => ({ variants: [], learn: [] }), collocations, translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }),
   };
   const h = botHarness({ tutor, random: () => 0.99 });
   const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeRuEn: false, modeCloze: false, modeSentence: false, modeListen: false, modeEnRu: true });

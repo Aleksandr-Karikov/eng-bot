@@ -12,7 +12,7 @@ import { DAY, T0, makeUser } from "./helpers";
 const sentence = { sentence: "We sat on the ___ of the river.", answer: "bank", translation: "Мы сидели на берегу реки." };
 
 function tutor(judge: () => Promise<Judgement>, cloze = vi.fn(async () => [sentence])): ExerciseTutor {
-  return { cloze, judge, drill: async () => [], mnemonics: async () => [], collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" };
+  return { cloze, judge, drill: async () => [], mnemonics: async () => [], translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" };
 }
 
 /** Пользователь 100 с одним словом bank, карточка которого «выучена» на stability дней и уже к повторению. */

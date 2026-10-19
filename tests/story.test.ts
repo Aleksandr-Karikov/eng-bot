@@ -21,7 +21,7 @@ function setup(storyFn: ExerciseTutor["story"] = async () => draft) {
   const story = vi.fn(storyFn);
   const tutor: ExerciseTutor = {
     cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: async () => [], mnemonics: async () => [], imagePrompt: async () => "",
-    collocations: async () => ({ items: [] }),
+    translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }), collocations: async () => ({ items: [] }),
     say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), story,
   };
   const synthesize = vi.fn(async (_text: string, _accent: string) => Buffer.from("ogg"));

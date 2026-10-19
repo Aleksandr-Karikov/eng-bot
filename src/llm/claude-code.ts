@@ -25,6 +25,13 @@ import {
   buildTalkReplyPrompt,
   buildSayPrompt,
   buildCollocationsPrompt,
+  buildTranslationTaskPrompt,
+  buildTranslationReviewPrompt,
+  parseTranslationTask,
+  parseTranslationReview,
+  type TranslationInput,
+  type TranslationReview,
+  type TranslationTask,
   parseCollocations,
   type Collocations,
   parseSayAnswer,
@@ -120,6 +127,14 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async imagePrompt(word: ImageSubject): Promise<string> {
     const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
+  }
+
+  async translationTask(input: TranslationInput): Promise<TranslationTask> {
+    return parseTranslationTask(await this.ask(buildTranslationTaskPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+  }
+
+  async reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview> {
+    return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
   }
 
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */

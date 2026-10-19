@@ -16,6 +16,7 @@ import { registerStats } from "./handlers/stats";
 import { registerStory } from "./handlers/story";
 import { registerSpotted } from "./handlers/spotted";
 import { registerTalk } from "./handlers/talk";
+import { registerTranslate } from "./handlers/translate";
 import { registerSay } from "./handlers/say";
 import { registerExtension } from "./handlers/extension";
 import { userMiddleware } from "./middleware";
@@ -34,6 +35,7 @@ export const COMMANDS = [
   { command: "edit", description: "Исправить слово (можно по кусочку)" },
   { command: "delete", description: "Удалить слово (можно по кусочку)" },
   { command: "story", description: "История из слов комнаты" },
+  { command: "translate", description: "Тренажёр перевода с русского" },
   { command: "talk", description: "Поговорить по-английски с разбором" },
   { command: "say", description: "Как сказать это по-английски" },
   { command: "duel", description: "Дуэль в группе: кто быстрее переведёт" },
@@ -75,6 +77,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerDuel(bot, deps);
   registerStory(bot, deps);
   registerEdit(bot, deps);
+  registerTranslate(bot, deps);
   registerTalk(bot, deps);
   registerSay(bot, deps);
   registerExtension(bot, deps);

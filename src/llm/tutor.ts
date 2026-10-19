@@ -54,6 +54,35 @@ export interface TalkInput {
   lines: Array<{ who: "user" | "bot"; text: string }>;
 }
 
+/** Предложение для перевода RU → EN. */
+export interface TranslationTask {
+  ru: string;
+  /** Эталонный перевод — показываем, если «не знаю». */
+  en: string;
+  /** Тема ошибок, на которую предложение (из списка); "" — нет. */
+  topic: string;
+  /** Слово из списка, которое должно прозвучать в переводе; "" — нет. */
+  word: string;
+}
+
+export interface TranslationInput {
+  /** Темы ошибок ученика с примерами. */
+  topics: Array<{ category: string; examples: Array<{ wrong: string; right: string }> }>;
+  /** Слова, которые он сейчас учит. */
+  words: Array<{ term: string; translation: string }>;
+  /** Недавние предложения — не повторять. */
+  avoid: string[];
+}
+
+export interface TranslationReview extends CheckResult {
+  /** Смысл передан и грамматика в порядке (мелкие описки не в счёт). */
+  correct: boolean;
+  /** Нужное слово из задания употреблено верно; null — слова в задании не было. */
+  usedWord: boolean | null;
+  /** 1–2 предложения по-русски — общий вердикт. */
+  verdict: string;
+}
+
 /** Частые сочетания слова и вопрос на выбор сочетания (если у слова есть типичные «партнёры»). */
 export interface Collocations {
   items: Array<{ phrase: string; translation: string }>;
@@ -133,6 +162,10 @@ export interface DrillQuestion {
 export interface ExerciseTutor {
   cloze(term: string, translation: string): Promise<ClozeDraft[]>;
   judge(input: JudgeInput): Promise<Judgement>;
+  /** Русское предложение для тренажёра перевода — под ошибки и слова ученика. */
+  translationTask(input: TranslationInput): Promise<TranslationTask>;
+  /** Проверка перевода ученика. */
+  reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview>;
   /** Сочетания слова: с какими словами его обычно употребляют. */
   collocations(term: string, translation: string): Promise<Collocations>;
   /** Как естественно сказать это по-английски. */
@@ -277,6 +310,80 @@ export function parseLeechHelp(text: string): LeechHelp {
   const help = leechHelpSchema.parse(jsonObject(text));
   if (!help.why && help.examples.length === 0) throw new Error("Empty leech help");
   return help;
+}
+
+export function buildTranslationTaskPrompt(input: TranslationInput): string {
+  const topics = input.topics.map((t) => `- ${t.category}: ${t.examples.map((e) => `${e.wrong} → ${e.right}`).join("; ")}`);
+  return [
+    "Ты составляешь задания для тренажёра перевода с русского на английский для русскоязычного человека.",
+    "Придумай одно короткое живое русское предложение (6–14 слов) из повседневной жизни, переписки или сериалов — такое, как люди реально говорят.",
+    topics.length ? `Его типичные ошибки (тема: как было → как правильно):\n${topics.join("\n")}` : "",
+    topics.length ? "Выбери одну тему (чаще — из первых) и построй предложение так, чтобы при переводе нужно было применить именно это правило." : "",
+    input.words.length ? `Слова, которые он сейчас учит: ${input.words.map((w) => `${w.term} (${w.translation})`).join(", ")}.` : "",
+    input.words.length ? "Если естественно получается — построй предложение так, чтобы в переводе напрашивалось одно из этих слов (в русском — его перевод). Не натягивай." : "",
+    input.avoid.length ? `Не повторяй эти предложения и не делай похожие:\n${input.avoid.map((a) => `- ${a}`).join("\n")}` : "",
+    "en — естественный перевод, как сказал бы носитель; topic — выбранная тема из списка слово в слово или пустая строка; word — слово из списка, которое должно прозвучать, слово в слово, или пустая строка.",
+    'Верни JSON: {"ru": "...", "en": "...", "topic": "...", "word": "..."}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const translationTaskSchema = z.object({
+  ru: z.string().trim().min(1),
+  en: z.string().trim().min(1),
+  topic: z.string().trim().default(""),
+  word: z.string().trim().default(""),
+});
+
+export function parseTranslationTask(text: string): TranslationTask {
+  return translationTaskSchema.parse(jsonObject(text));
+}
+
+export function buildTranslationReviewPrompt(input: { task: TranslationTask; answer: string }): string {
+  const { task, answer } = input;
+  return [
+    "Русскоязычный человек тренирует перевод с русского на английский.",
+    `Задание: ${task.ru}`,
+    `Один из правильных вариантов: ${task.en}`,
+    task.word ? `В переводе ожидалось слово или фраза "${task.word}" (можно в любой форме; синоним — не ошибка, но used_word: false).` : "",
+    `Его перевод: ${answer}`,
+    "",
+    "correct — true, если смысл передан и грамматически всё верно (другие слова и порядок, если так говорят, — не ошибка; описки не считаются);",
+    "fixes — грамматические и лексические ошибки: wrong — как было, right — как правильно, why — коротко по-русски,",
+    `category — одна тема из списка: ${MISTAKE_CATEGORIES.join(", ")}, slip — true для описки;`,
+    "corrected — его перевод с исправлениями, изменённое обёрнуто в **двойные звёздочки** (если ошибок нет — как есть);",
+    "natural — как естественно сказал бы носитель, если звучит не по-английски, иначе пустая строка;",
+    task.word ? "used_word — употреблено ли ожидаемое слово верно;" : "used_word — null;",
+    "verdict — одно короткое предложение по-русски: общий итог.",
+    'Верни JSON: {"correct": true, "fixes": [{"wrong": "...", "right": "...", "why": "...", "category": "...", "slip": false}], "corrected": "...", "natural": "...", "used_word": true, "verdict": "..."}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const translationReviewSchema = z.object({
+  correct: z.boolean(),
+  fixes: z
+    .array(
+      z.object({
+        wrong: z.string(),
+        right: z.string(),
+        why: z.string().default(""),
+        category: z.string().trim().default(""),
+        slip: z.boolean().default(false),
+      }),
+    )
+    .default([]),
+  corrected: z.string().default(""),
+  natural: z.string().trim().default(""),
+  used_word: z.boolean().nullable().default(null),
+  verdict: z.string().trim().default(""),
+});
+
+export function parseTranslationReview(text: string): TranslationReview {
+  const { used_word, ...rest } = translationReviewSchema.parse(jsonObject(text));
+  return { ...rest, usedWord: used_word };
 }
 
 export function buildCollocationsPrompt(term: string, translation: string): string {

@@ -24,6 +24,7 @@ import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 import type { TalkStore } from "./talks";
+import type { TranslateStore } from "./translations";
 import type { CaptureBroadcaster } from "../capture/capture";
 import type { SubtitleSource } from "../youtube/subtitles";
 
@@ -54,6 +55,7 @@ export interface Deps {
   practice: PracticeStore;
   pictureWishes: PictureWishStore;
   talks: TalkStore;
+  translations: TranslateStore;
   /** Слова из расширения браузера: сводка друзьям после паузы; undefined — приём выключен. */
   capture?: CaptureBroadcaster;
   /** Порт локального приёма слов из расширения. */
