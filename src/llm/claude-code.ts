@@ -88,7 +88,13 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]> {
-    return parseExtraction(await this.ask(buildExtractImagePrompt(note), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]));
+    const raw = await this.ask(buildExtractImagePrompt(note), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]);
+    const items = parseExtraction(raw);
+    // Пусто — чтобы было видно почему: что за файл пришёл и что ответила модель.
+    if (items.length === 0) {
+      console.warn(`Image extraction found nothing: ${image.data.length} bytes, ${image.mediaType}, starts ${image.data.subarray(0, 4).toString("hex")}; answer: ${raw.slice(0, 300)}`);
+    }
+    return items;
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {

@@ -59,6 +59,25 @@ describe("📸 words from a screenshot", () => {
     await vi.waitFor(() => expect(extractImage).toHaveBeenCalledTimes(1));
   });
 
+  it("a photo with the caption /text works in a group, and the rest of the caption is the wish", async () => {
+    const { h, extractImage, room } = await setup();
+    await linkGroup(h.db, room.id, -300);
+    // Как шлёт Telegram: команда в подписи — в caption_entities, не в entities.
+    await h.bot.handleUpdate(photo({ id: -300, type: "group" }, "/text only idioms", { caption_entities: [{ type: "bot_command", offset: 0, length: 5 }] }));
+    await vi.waitFor(() => expect(extractImage).toHaveBeenCalledWith(expect.anything(), "only idioms"));
+    const dm = await setup();
+    await dm.h.bot.handleUpdate(photo({ id: 100, type: "private" }, "/text"));
+    await vi.waitFor(() => expect(dm.extractImage).toHaveBeenCalledWith(expect.anything(), undefined));
+  });
+
+  it("ignores photos in a group without /text", async () => {
+    const { h, extractImage, room } = await setup();
+    await linkGroup(h.db, room.id, -300);
+    await h.bot.handleUpdate(photo({ id: -300, type: "group" }, "look at this"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(extractImage).not.toHaveBeenCalled();
+  });
+
   it("refuses huge files and says when there is no English", async () => {
     const big = await setup();
     const doc = photo({ id: 100, type: "private" }, undefined, {

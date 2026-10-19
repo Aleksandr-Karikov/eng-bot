@@ -139,11 +139,15 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
     background(ctx, () => startYoutube(ctx, deps, url));
   });
 
-  // В личке картинку можно прислать просто так — как и текст.
+  // Картинка в личке — просто так, как и текст; в группе — с подписью /text.
+  // Команды в подписи grammY не распознаёт (bot.command смотрит только текст), поэтому разбираем подпись сами.
   bot.on(["message:photo", "message:document"], async (ctx, next) => {
     const image = imageOf(ctx.message);
-    if (ctx.chat.type !== "private" || !image) return next();
-    background(ctx, () => startImage(ctx, deps, image, ctx.message.caption ?? ""));
+    const caption = (ctx.message.caption ?? "").trim();
+    const command = new RegExp(`^/text(?:@${ctx.me.username})?(?:\\s+|$)`, "i").exec(caption);
+    if (!image || (ctx.chat.type !== "private" && !command)) return next();
+    const note = command ? caption.slice(command[0].length).trim() : caption;
+    background(ctx, () => startImage(ctx, deps, image, note));
   });
 
   bot.callbackQuery(/^bt:/, async (ctx) => {
