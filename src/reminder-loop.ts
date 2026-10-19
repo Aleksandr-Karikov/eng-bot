@@ -20,9 +20,9 @@ export interface ReminderDeps {
 /** Отправляет напоминания тем, кому пора. Возвращает число доставленных. */
 export async function sendReminders(deps: ReminderDeps): Promise<number> {
   let sent = 0;
-  for (const { user, dueCount, date, friend } of await collectReminders(deps.db, deps.now())) {
+  for (const { user, due, date, friend } of await collectReminders(deps.db, deps.now())) {
     try {
-      if (await deps.notifier.dm(user, reminderText(dueCount, friend), { ...HTML, reply_markup: learnKeyboard() })) {
+      if (await deps.notifier.dm(user, reminderText(due, friend), { ...HTML, reply_markup: learnKeyboard() })) {
         await markReminded(deps.db, user.id, date);
         // Ежедневное напоминание тоже считается уведомлением — чтобы «слова появились» не пришло следом.
         await markDueNotice(deps.db, user.id, deps.now());

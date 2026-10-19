@@ -40,6 +40,8 @@ describe("texts", () => {
     ]);
     expect(reminderText(1)).toContain("1 слово ждёт");
     expect(reminderText(12)).toContain("12 слов ждут");
+    expect(reminderText({ review: 5, fresh: 12 })).toBe("🔔 5 слов ждут повторения + 12 новых слов");
+    expect(reminderText({ review: 0, fresh: 1 })).toBe("🆕 1 новое слово ждёт знакомства");
   });
   it("renders done and stats texts", () => {
     expect(doneText(0, undefined, "Europe/Moscow")).toContain("нечего повторять");

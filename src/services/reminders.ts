@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs, users, type User } from "../db/schema";
 import { localParts } from "../time";
-import { countDue } from "./review";
+import { countDueSplit } from "./review";
 import { listMembers, listUserRooms } from "./rooms";
 import { updateUser } from "./users";
 
@@ -13,7 +13,8 @@ export interface FriendToday {
 
 export interface Reminder {
   user: User;
-  dueCount: number;
+  /** К повторению и новые — по отдельности. */
+  due: { review: number; fresh: number };
   /** Самый активный сегодня участник комнат пользователя — для мотивашки. */
   friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */
@@ -30,8 +31,8 @@ export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
   for (const user of candidates) {
     const { date, time } = localParts(user.timezone, now);
     if (time < user.reminderTime || user.lastReminderDate === date) continue;
-    const dueCount = await countDue(db, user.id, now);
-    if (dueCount > 0) reminders.push({ user, dueCount, date, friend: await friendToday(db, user, date, now) });
+    const due = await countDueSplit(db, user.id, now);
+    if (due.review + due.fresh > 0) reminders.push({ user, due, date, friend: await friendToday(db, user, date, now) });
     else await markReminded(db, user.id, date);
   }
   return reminders;
@@ -90,7 +91,8 @@ export async function collectDueNotices(db: Db, now: Date): Promise<DueNotice[]>
       .orderBy(desc(reviewLogs.reviewedAt))
       .limit(1);
     if (last && now.getTime() - last.at.getTime() < QUIET_AFTER_STUDY_MS) continue;
-    const dueCount = await countDue(db, user.id, now);
+    // «Снова появились слова» — только про повторение: новые слова и так пришли с «знаешь?».
+    const dueCount = (await countDueSplit(db, user.id, now)).review;
     if (dueCount >= MIN_DUE) notices.push({ user, dueCount });
   }
   return notices;

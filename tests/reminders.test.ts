@@ -41,7 +41,8 @@ describe("sendReminders", () => {
     const run = (iso: string) => sendReminders({ db, notifier, now: () => nsk(iso) });
     expect(await run("2026-10-15T19:59")).toBe(0);
     expect(await run("2026-10-15T20:00")).toBe(1);
-    expect(notifier.delivered).toEqual(["1: 🔔 1 слово ждёт повторения"]);
+    // В setup слово только что добавлено — это знакомство, а не повторение.
+    expect(notifier.delivered).toEqual(["1: 🆕 1 новое слово ждёт знакомства"]);
     expect(await run("2026-10-15T20:30")).toBe(0);
     expect(await run("2026-10-16T20:05")).toBe(1);
   });

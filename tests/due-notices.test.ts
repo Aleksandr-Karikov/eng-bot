@@ -4,6 +4,7 @@ import { cards } from "../src/db/schema";
 import type { User } from "../src/db/schema";
 import { sendDueNotices, sendReminders } from "../src/reminder-loop";
 import { answerCard } from "../src/services/review";
+import { collectDueNotices } from "../src/services/reminders";
 import { createRoom } from "../src/services/rooms";
 import { getUser, updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
@@ -19,6 +20,8 @@ async function setup(dueWords: number) {
   for (let i = 0; i < dueWords; i++) {
     await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: `w${i}`, translation: "t", explanation: "", example: "" }, now: nsk("2026-10-17T09:00") });
   }
+  // Уже знакомые слова, которым пора на повторение (новые в «снова появились слова» не считаются).
+  await db.update(cards).set({ state: 2, reps: 2 });
   return { db, alice };
 }
 
@@ -28,6 +31,16 @@ function notifier() {
 }
 
 describe("«words are back» notices", () => {
+  it("are about reviews only — a fresh batch of a friend's words does not trigger them", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, { canDm: true });
+    const room = await createRoom(db, { name: "R", createdBy: alice.id, now: nsk("2026-10-17T09:00") });
+    for (let i = 0; i < 10; i++) {
+      await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: `n${i}`, translation: "t", explanation: "", example: "" }, now: nsk("2026-10-17T09:00") });
+    }
+    expect(await collectDueNotices(db, nsk("2026-10-17T15:00"))).toEqual([]);
+  });
+
   it("notifies once at least 5 words are due, then not again for 3 hours", async () => {
     const { db } = await setup(5);
     const n = notifier();
@@ -48,7 +61,7 @@ describe("«words are back» notices", () => {
 
     const busy = await setup(6);
     const [card] = await busy.db.select().from(cards).where(eq(cards.userId, busy.alice.id));
-    await answerCard(busy.db, { userId: busy.alice.id, cardId: card.id, expectedReps: 0, answer: "good", now: nsk("2026-10-18T11:30") });
+    await answerCard(busy.db, { userId: busy.alice.id, cardId: card.id, expectedReps: 2, answer: "good", now: nsk("2026-10-18T11:30") });
     expect(await sendDueNotices({ db: busy.db, notifier: notifier(), now: () => nsk("2026-10-18T12:00") })).toBe(0);
   });
 

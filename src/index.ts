@@ -54,7 +54,12 @@ const notifier = new Notifier(
 );
 const now = () => new Date();
 
-const claude = new ClaudeCodeEnricher({ model: config.enrichModel, timeoutMs: config.enrichTimeoutMs, mnemonicModel: config.mnemonicModel });
+const claude = new ClaudeCodeEnricher({
+  model: config.enrichModel,
+  timeoutMs: config.enrichTimeoutMs,
+  mnemonicModel: config.mnemonicModel,
+  checkModel: config.checkModel,
+});
 const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, claude);

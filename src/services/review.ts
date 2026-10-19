@@ -1,4 +1,4 @@
-import { and, asc, count, eq, lte } from "drizzle-orm";
+import { and, asc, count, eq, lte, ne } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, words, type CardRow, type Word } from "../db/schema";
@@ -40,6 +40,14 @@ export async function countDue(db: Db, userId: number, now: Date): Promise<numbe
   // Считает каждую минуту для напоминаний — без загрузки самих карточек и слов.
   const [row] = await db.select({ n: count() }).from(cards).where(and(eq(cards.userId, userId), lte(cards.due, now)));
   return row?.n ?? 0;
+}
+
+/** К повторению отдельно от новых: пачка слов друга — это знакомство, а не «40 слов ждут повторения». */
+export async function countDueSplit(db: Db, userId: number, now: Date): Promise<{ review: number; fresh: number }> {
+  const due = and(eq(cards.userId, userId), lte(cards.due, now));
+  const [review] = await db.select({ n: count() }).from(cards).where(and(due, ne(cards.state, State.New)));
+  const [fresh] = await db.select({ n: count() }).from(cards).where(and(due, eq(cards.state, State.New)));
+  return { review: review?.n ?? 0, fresh: fresh?.n ?? 0 };
 }
 
 export async function getDueItemByCard(db: Db, userId: number, cardId: number): Promise<DueItem | undefined> {

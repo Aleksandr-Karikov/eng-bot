@@ -13,6 +13,7 @@ describe("loadConfig", () => {
       enrichModel: "haiku",
       enrichTimeoutMs: 30_000,
       mnemonicModel: "sonnet",
+      checkModel: "sonnet",
       imagesBackground: false,
       youtubePython: "tools/youtube/.venv/bin/python",
       capturePort: 8787,

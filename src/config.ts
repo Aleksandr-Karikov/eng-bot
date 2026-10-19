@@ -5,6 +5,8 @@ export interface Config {
   enrichTimeoutMs: number;
   /** Модель для запоминалок (сильнее основной). */
   mnemonicModel: string;
+  /** Модель для проверок: /check, ответы в упражнениях, перевод. */
+  checkModel: string;
   /** Путь к mflux-generate, если картинки включены (IMAGES_ENABLED=1). */
   mfluxBin?: string;
   /** Стиль картинок; не задан — по умолчанию (чернильный комикс). */
@@ -34,6 +36,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     enrichModel: env.ENRICH_MODEL || "haiku",
     enrichTimeoutMs: positiveNumber(env.ENRICH_TIMEOUT_MS, 30_000),
     mnemonicModel: env.MNEMONIC_MODEL || "sonnet",
+    checkModel: env.CHECK_MODEL || "sonnet",
     ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
     imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",

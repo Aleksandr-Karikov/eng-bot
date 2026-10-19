@@ -101,8 +101,14 @@ export function announceText(adderName: string, word: Word): string {
   return `📥 ${esc(adderName)} добавил(а) слово\n\n${draftText(word)}`;
 }
 
-export function reminderText(n: number, friend?: { name: string; reviews: number }): string {
-  const base = `🔔 ${n} ${plural(n, "слово", "слова", "слов")} ${n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут"} повторения`;
+/** due — число к повторению или по отдельности: к повторению и новые. */
+export function reminderText(due: number | { review: number; fresh: number }, friend?: { name: string; reviews: number }): string {
+  const { review, fresh } = typeof due === "number" ? { review: due, fresh: 0 } : due;
+  const waits = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут");
+  const newWords = `${fresh} ${plural(fresh, "новое слово", "новых слова", "новых слов")}`;
+  const base = review
+    ? `🔔 ${review} ${plural(review, "слово", "слова", "слов")} ${waits(review)} повторения${fresh ? ` + ${newWords}` : ""}`
+    : `🆕 ${newWords} ${waits(fresh)} знакомства`;
   return friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
 }
 

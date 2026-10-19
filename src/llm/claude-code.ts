@@ -88,7 +88,15 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   /** Одновременно — не больше трёх процессов Claude Code. */
   private readonly limiter = new Limiter(3);
 
-  constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string }) {}
+  /**
+   * checkModel — для проверок (/check, ответы в упражнениях, перевод): ошибка здесь подаётся человеку как факт,
+   * поэтому сильнее основной модели. По умолчанию sonnet.
+   */
+  constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string; checkModel?: string }) {}
+
+  private get checker(): string {
+    return this.opts.checkModel ?? "sonnet";
+  }
 
   async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
     return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context), this.opts.timeoutMs));
@@ -109,7 +117,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {
-    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn), this.opts.timeoutMs));
+    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
@@ -138,7 +146,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview> {
-    return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+    return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */
@@ -171,11 +179,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async reviewSentence(input: SentenceInput): Promise<SentenceReview> {
-    return parseSentenceReview(await this.ask(buildSentencePrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+    return parseSentenceReview(await this.ask(buildSentencePrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
-    return parseJudgement(await this.ask(buildJudgePrompt(input), this.opts.timeoutMs));
+    return parseJudgement(await this.ask(buildJudgePrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
