@@ -1,3 +1,4 @@
+import { startSeq } from "./seq";
 /** Список слов для /delete: что показано и на какой странице. Живёт в памяти, один на пользователя. */
 export interface Picker {
   id: number;
@@ -9,7 +10,8 @@ export interface Picker {
 }
 
 export class PickerStore {
-  private seq = 0;
+  /** С момента запуска: старая кнопка после перезапуска не попадёт в новую запись с тем же номером. */
+  private seq = startSeq();
   private readonly pickers = new Map<number, Picker>();
 
   create(userId: number, items: Picker["items"], action: Picker["action"]): Picker {

@@ -89,7 +89,10 @@ export async function saveWord(
       usefulnessNote: input.draft.usefulnessNote ?? "",
       createdAt: input.now,
     })
+    // Два почти одновременных добавления (двойной клик в расширении): второе — дубликат, а не ошибка.
+    .onConflictDoNothing()
     .returning();
+  if (!word) return { status: "duplicate" };
   const members = await listMembers(db, input.roomId);
   await createCards(db, members.map((m) => m.id), [word.id], input.now);
   return { status: "saved", word, members };

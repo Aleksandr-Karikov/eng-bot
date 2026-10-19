@@ -1,3 +1,4 @@
+import { startSeq } from "../seq";
 import type { Bot } from "grammy";
 import type { SayAnswer } from "../../llm/tutor";
 import { decodeCb } from "../callbacks";
@@ -12,7 +13,7 @@ const MAX_PHRASE = 500;
 /** Ответы /say для кнопок «➕» — последние, в памяти. */
 const KEEP = 200;
 const answers = new Map<number, SayAnswer>();
-let seq = 0;
+let seq = startSeq();
 
 async function runSay(ctx: BotContext, deps: Deps, phrase: string): Promise<void> {
   if (!phrase) return void (await ctx.reply(USAGE));

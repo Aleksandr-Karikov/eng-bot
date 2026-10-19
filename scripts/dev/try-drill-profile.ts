@@ -1,7 +1,7 @@
-import { createDb } from "../src/db/client";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
-import { buildDrillPrompt, parseDrill } from "../src/llm/tutor";
-import { mistakeProfile, recentMistakes } from "../src/services/mistakes";
+import { createDb } from "../../src/db/client";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
+import { buildDrillPrompt, parseDrill } from "../../src/llm/tutor";
+import { mistakeProfile, recentMistakes } from "../../src/services/mistakes";
 
 /** Генерирует вопросы по реальному профилю пользователя (по id в базе) и показывает сырой ответ, если разбор что-то отбросил. */
 const userId = Number(process.argv[2] ?? 1);

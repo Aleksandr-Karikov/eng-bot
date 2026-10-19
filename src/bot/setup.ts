@@ -58,7 +58,9 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
     const started = Date.now();
     await next();
     const ms = Date.now() - started;
-    if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${ctx.callbackQuery?.data ?? ctx.message?.text?.slice(0, 40) ?? "other"}`);
+    // Без текста сообщений: в лог попадали начала личной переписки. Команда или кнопка — достаточно.
+    const what = ctx.callbackQuery?.data ?? (ctx.message?.text?.startsWith("/") ? ctx.message.text.split(/\s/)[0] : ctx.message ? "message" : "other");
+    if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${what}`);
   });
   bot.use(userMiddleware(deps));
   // Любая команда отменяет брошенные «пришли ответом» — чтобы следующий текст не ушёл не туда.

@@ -1,3 +1,4 @@
+import { isMember } from "../../services/rooms";
 import { InputFile, type Bot } from "grammy";
 import type { Word } from "../../db/schema";
 import { STYLE_PRESETS } from "../../images/images";
@@ -64,6 +65,8 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     const word = cb?.k === "promote" ? await getWord(deps.db, cb.wordId) : undefined;
     if (!word) return void (await ctx.answerCallbackQuery({ text: "Этого слова уже нет" }));
+    // Меняет слово для всей комнаты — только участникам.
+    if (!(await isMember(deps.db, word.roomId, ctx.user.id))) return void (await ctx.answerCallbackQuery({ text: "Ты не в этой комнате" }));
     await setUsefulness(deps.db, word.id, 2, "отмечено вручную как полезное");
     await ctx.answerCallbackQuery({ text: "⭐ Теперь учим полностью" });
     const rows = ctx.callbackQuery.message?.reply_markup?.inline_keyboard;
@@ -125,6 +128,8 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     if (!deps.images) return void (await ctx.answerCallbackQuery({ text: "Картинки сейчас выключены" }));
     const word = cb?.k === "redrawAs" ? await getWord(deps.db, cb.wordId) : undefined;
     if (cb?.k !== "redrawAs" || !word) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
+    // Новая картинка заменит старую для всей комнаты — только участникам.
+    if (!(await isMember(deps.db, word.roomId, ctx.user.id))) return void (await ctx.answerCallbackQuery({ text: "Ты не в этой комнате" }));
     if (cb.how === "custom") {
       await ctx.answerCallbackQuery();
       if (!ctx.chat) return;

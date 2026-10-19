@@ -1,3 +1,4 @@
+import { startSeq } from "./seq";
 import type { WordDraft } from "../services/words";
 import { isFresh } from "./pending";
 
@@ -16,7 +17,8 @@ export interface Draft extends WordDraft {
 
 /** Черновики живут в памяти: после перезапуска бота слово нужно добавить заново. */
 export class DraftStore {
-  private seq = 0;
+  /** С момента запуска: старая кнопка после перезапуска не попадёт в новую запись с тем же номером. */
+  private seq = startSeq();
   private readonly drafts = new Map<number, Draft>();
 
   create(input: Omit<Draft, "id" | "awaitingEdit">): Draft {

@@ -1,3 +1,4 @@
+import { startSeq } from "./seq";
 import type { CheckResult } from "../llm/enricher";
 
 /** Ошибки из /check, ждущие подтверждения «сохранить в работу над ошибками». В памяти, сутки. */
@@ -15,7 +16,8 @@ export interface PendingMistakes {
 const TTL_MS = 24 * 60 * 60_000;
 
 export class PendingMistakesStore {
-  private seq = 0;
+  /** С момента запуска: старая кнопка после перезапуска не попадёт в новую запись с тем же номером. */
+  private seq = startSeq();
   private readonly pending = new Map<number, PendingMistakes>();
 
   create(entry: Omit<PendingMistakes, "since">): number {

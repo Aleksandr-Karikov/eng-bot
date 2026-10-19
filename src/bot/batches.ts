@@ -1,3 +1,4 @@
+import { startSeq } from "./seq";
 import type { Word } from "../db/schema";
 import type { WordDraft } from "../services/words";
 
@@ -33,7 +34,8 @@ export class Batch {
 }
 
 export class BatchStore {
-  private seq = 0;
+  /** С момента запуска: старая кнопка после перезапуска не попадёт в новую запись с тем же номером. */
+  private seq = startSeq();
   private readonly batches = new Map<number, Batch>();
 
   create(input: { userId: number; chatId: number; roomId: number; items: WordDraft[] }): Batch {

@@ -1,7 +1,7 @@
-import { checkText } from "../src/bot/texts";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { checkText } from "../../src/bot/texts";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
-/** npx tsx scripts/try-check-context.ts "проверяемый текст" "Автор: предыдущее" "Автор: ещё одно" */
+/** npx tsx scripts/dev/try-check-context.ts "проверяемый текст" "Автор: предыдущее" "Автор: ещё одно" */
 const enricher = new ClaudeCodeEnricher({ model: process.env.ENRICH_MODEL || "haiku", timeoutMs: 60_000 });
 const [text = "ths", ...rest] = process.argv.slice(2);
 const context = (rest.length ? rest : ["Александр: Have a good time"]).map((line) => {

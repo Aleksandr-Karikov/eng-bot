@@ -29,7 +29,8 @@ import type { TranslateStore } from "./translations";
 import type { CaptureBroadcaster } from "../capture/capture";
 import type { SubtitleSource } from "../youtube/subtitles";
 
-export type BotContext = Context & { user: User };
+/** groupRoom — комната привязанной группы (в группах; null — группа не привязана), её находит userMiddleware. */
+export type BotContext = Context & { user: User; groupRoom?: Room | null };
 
 export interface Deps {
   db: Db;

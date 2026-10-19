@@ -1,7 +1,7 @@
 import type { MiddlewareFn } from "grammy";
-import { findRoomByChat, joinRoom } from "../services/rooms";
+import { findRoomByChat, isMember, joinRoom } from "../services/rooms";
 import { updateUser, upsertUser } from "../services/users";
-import type { BotContext, Deps } from "./context";
+import { HTML, type BotContext, type Deps } from "./context";
 import { esc } from "./texts";
 
 /** Регистрирует пользователя, отмечает возможность писать в личку и добавляет в комнату привязанной группы. */
@@ -14,14 +14,17 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
 
     if (ctx.chat && ctx.chat.type !== "private") {
       const room = await findRoomByChat(deps.db, ctx.chat.id);
-      if (room) {
+      // Комната группы — один запрос на апдейт, дальше обработчики берут её из ctx.
+      ctx.groupRoom = room ?? null;
+      if (room && !(await isMember(deps.db, room.id, user.id))) {
         await joinRoom(deps.db, { roomId: room.id, userId: user.id, now: deps.now(), makeCurrent: false });
-        if (!user.canDm && !user.groupHintSent) {
-          await ctx.reply(
-            `${esc(user.firstName)}, чтобы получать новые слова и напоминания, открой https://t.me/${deps.botUsername} и нажми Start`,
-          );
-          ctx.user = await updateUser(deps.db, user.id, { groupHintSent: true });
-        }
+      }
+      if (room && !user.canDm && !user.groupHintSent) {
+        await ctx.reply(
+          `${esc(user.firstName)}, чтобы получать новые слова и напоминания, открой https://t.me/${deps.botUsername} и нажми Start`,
+          HTML,
+        );
+        ctx.user = await updateUser(deps.db, user.id, { groupHintSent: true });
       }
     }
     await next();

@@ -64,6 +64,11 @@ export class CaptureBroadcaster {
     if (entry) entry.words = entry.words.filter((w) => w.id !== wordId);
   }
 
+  /** При остановке бота — разослать накопленные сводки сразу, иначе они пропадут вместе с таймерами. */
+  async flushAll(): Promise<void> {
+    for (const adderId of [...this.pending.keys()]) await this.flush(adderId);
+  }
+
   async flush(adderId: number): Promise<void> {
     const entry = this.pending.get(adderId);
     if (!entry) return;

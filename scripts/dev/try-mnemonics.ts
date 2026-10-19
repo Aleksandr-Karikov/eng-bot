@@ -1,12 +1,12 @@
 /**
  * Эксперимент: текущие запоминалки трудных слов против новых (Sonnet + выбор приёма). Только чтение базы.
- *   npx tsx scripts/try-mnemonics.ts [число слов]
+ *   npx tsx scripts/dev/try-mnemonics.ts [число слов]
  */
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { createDb } from "../src/db/client";
-import { cards, reviewLogs, words } from "../src/db/schema";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { createDb } from "../../src/db/client";
+import { cards, reviewLogs, words } from "../../src/db/schema";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
 const limit = Number(process.argv[2] ?? 10);
 const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite", { migrate: false });

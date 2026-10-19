@@ -1,4 +1,4 @@
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
 const text =
   process.argv[2] ??

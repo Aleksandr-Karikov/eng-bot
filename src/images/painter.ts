@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, count, min } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, words } from "../db/schema";
 import { HARD_AFTER_LAPSES } from "../services/hard-words";
@@ -36,6 +36,7 @@ const FAILED_RETRY_MS = 24 * 60 * 60_000;
 export class BackgroundPainter {
   /** Слова, на которых рисование упало, — когда пробовать снова. */
   private readonly failedUntil = new Map<number, number>();
+  private prunedAt = 0;
   private busy = false;
 
   constructor(private readonly deps: PainterDeps) {}
@@ -68,15 +69,18 @@ export class BackgroundPainter {
       (w) => !pictures.find(w) && (this.failedUntil.get(w.id) ?? 0) <= now,
     );
     if (candidates.length === 0) return undefined;
-    const due = await db.select({ wordId: cards.wordId, due: cards.due }).from(cards);
-    const forgot = await db
-      .select({ wordId: cards.wordId })
+    // Агрегаты одним запросом каждый, а не фильтр по всем строкам внутри сортировки.
+    const dueRows = await db.select({ wordId: cards.wordId, due: min(cards.due) }).from(cards).groupBy(cards.wordId);
+    const forgotRows = await db
+      .select({ wordId: cards.wordId, n: count() })
       .from(reviewLogs)
       .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
-      .where(eq(reviewLogs.rating, "again"));
-    const forgotBy = (id: number) => forgot.filter((f) => f.wordId === id).length;
-    const nextDue = (id: number) => Math.min(...due.filter((d) => d.wordId === id).map((d) => d.due.getTime()), Infinity);
-    const hard = (id: number) => (forgotBy(id) >= HARD_AFTER_LAPSES ? 1 : 0);
+      .where(eq(reviewLogs.rating, "again"))
+      .groupBy(cards.wordId);
+    const dueBy = new Map(dueRows.map((d) => [d.wordId, d.due ? new Date(d.due).getTime() : Infinity]));
+    const forgotBy = new Map(forgotRows.map((f) => [f.wordId, f.n]));
+    const nextDue = (id: number) => dueBy.get(id) ?? Infinity;
+    const hard = (id: number) => ((forgotBy.get(id) ?? 0) >= HARD_AFTER_LAPSES ? 1 : 0);
     return candidates.sort((a, b) => hard(b.id) - hard(a.id) || nextDue(a.id) - nextDue(b.id) || a.id - b.id)[0];
   }
 
@@ -85,7 +89,11 @@ export class BackgroundPainter {
       this.tick()
         .then(async (term) => {
           if (term) console.log(`Background picture ready: ${term}`);
-          await this.deps.pictures.prune(await this.deps.db.select().from(words));
+          // Уборка старых файлов — раз в час, а не каждую минуту.
+          if (Date.now() - this.prunedAt > 60 * 60_000) {
+            this.prunedAt = Date.now();
+            await this.deps.pictures.prune(await this.deps.db.select().from(words));
+          }
         })
         .catch((err) => console.error("Background picture failed", err));
     const handle = setInterval(tick, intervalMs);

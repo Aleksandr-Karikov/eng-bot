@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, mistakes, reviewLogs, users, wordUses, words, type User } from "../db/schema";
 import { digestDue, latestDigestMoment, WEEK_MS } from "./digest";
@@ -38,12 +38,19 @@ export async function weeklyReport(db: Db, user: User, now: Date): Promise<Weekl
   const forgot = new Map<string, number>();
   for (const l of week) if (l.rating === "again") forgot.set(l.term, (forgot.get(l.term) ?? 0) + 1);
   // Новое слово — у карточки нет ответов раньше этой недели. Берём по всей истории, а не только по прошлой неделе.
+  // Одним запросом: у каких карточек недели были ответы раньше неё.
   const weekCards = [...new Set(week.map((l) => l.cardId))];
-  let started = 0;
-  for (const cardId of weekCards) {
-    const [earlier] = await db.select({ id: reviewLogs.id }).from(reviewLogs).where(and(eq(reviewLogs.cardId, cardId), lt(reviewLogs.reviewedAt, start))).limit(1);
-    if (!earlier) started++;
-  }
+  const seenBefore = weekCards.length
+    ? new Set(
+        (
+          await db
+            .selectDistinct({ cardId: reviewLogs.cardId })
+            .from(reviewLogs)
+            .where(and(inArray(reviewLogs.cardId, weekCards), lt(reviewLogs.reviewedAt, start)))
+        ).map((r) => r.cardId),
+      )
+    : new Set<number>();
+  const started = weekCards.filter((id) => !seenBefore.has(id)).length;
   const resolved = await db
     .selectDistinct({ category: mistakes.category })
     .from(mistakes)

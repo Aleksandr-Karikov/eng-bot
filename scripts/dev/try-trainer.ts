@@ -1,5 +1,5 @@
-import { clozeFull, clozeJudgedText } from "../src/bot/texts";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { clozeFull, clozeJudgedText } from "../../src/bot/texts";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
 const claude = new ClaudeCodeEnricher({ model: process.env.ENRICH_MODEL || "haiku", timeoutMs: 60_000 });
 const term = process.argv[2] ?? "take for granted";

@@ -25,7 +25,20 @@ function tokenPattern(token: string): string {
 
 const normalize = (s: string) => s.toLowerCase().replace(/[’‘`]/g, "'");
 
+/** Скомпилированные шаблоны: проверяются на каждом сообщении группы, а слова комнаты меняются редко. */
+const patterns = new Map<string, RegExp>();
+const MAX_PATTERNS = 5000;
+
 export function termPattern(term: string): RegExp {
+  const cached = patterns.get(term);
+  if (cached) return cached;
+  const compiled = compileTermPattern(term);
+  if (patterns.size >= MAX_PATTERNS) patterns.clear();
+  patterns.set(term, compiled);
+  return compiled;
+}
+
+function compileTermPattern(term: string): RegExp {
   const tokens = normalize(term).replace(/^to\s+/, "").split(/\s+/).filter(Boolean);
   const body = tokens
     .map((token, i) => (i > 0 && PARTICLES.has(token) ? `(?:\\S+\\s+)?${tokenPattern(token)}` : tokenPattern(token)))

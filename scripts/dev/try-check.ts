@@ -1,5 +1,5 @@
-import { checkText } from "../src/bot/texts";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { checkText } from "../../src/bot/texts";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
 const enricher = new ClaudeCodeEnricher({ model: process.env.ENRICH_MODEL || "haiku", timeoutMs: 60_000 });
 for (const text of process.argv.slice(2)) {

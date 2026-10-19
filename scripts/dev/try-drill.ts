@@ -1,5 +1,5 @@
-import { drillResultText } from "../src/bot/texts";
-import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { drillResultText } from "../../src/bot/texts";
+import { ClaudeCodeEnricher } from "../../src/llm/claude-code";
 
 const claude = new ClaudeCodeEnricher({ model: process.env.ENRICH_MODEL || "haiku", timeoutMs: 60_000 });
 const texts = ["Tomorrow I go to my mom, she wait me", "Yesterday I am watching film with friends", "I live in Moscow since 2015"];
