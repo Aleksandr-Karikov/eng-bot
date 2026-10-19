@@ -93,7 +93,7 @@ export async function capture(deps: Deps, broadcaster: CaptureBroadcaster, input
     drafts = wholeLine ? await deps.enricher.extract(context) : [{ term: selection, ...(await deps.enricher.enrich(selection, undefined, context || undefined)) }];
   } catch (err) {
     console.error("Capture enrichment failed", err);
-    return { ok: false, status: 502, error: "Claude не ответил — попробуй ещё раз" };
+    return { ok: false, status: 502, error: "Не получилось перевести — попробуй ещё раз" };
   }
 
   const added: Word[] = [];
