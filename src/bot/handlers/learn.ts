@@ -16,7 +16,7 @@ import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard } from "../keyb
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
-import { clearPendingInputs } from "../pending";
+import { clearPendingInputs, endLongModes } from "../pending";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import {
   audioKeyboard,
@@ -248,6 +248,7 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
   if (ctx.chat?.type !== "private") {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
+  endLongModes(deps, ctx.user.id);
   sessionCounts.set(ctx.user.id, 0);
   prefetchDrill(ctx, deps);
   await showNext(ctx, deps, "reply");
@@ -414,6 +415,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.answerCallbackQuery();
     const queue = await practiceQueue(deps.db, ctx.user.id);
     if (queue.length === 0) return void (await ctx.reply("Пока не на чем тренироваться — сначала поучи новые слова в /learn"));
+    endLongModes(deps, ctx.user.id);
     deps.practice.start(ctx.user.id, queue);
     await showPractice(ctx, deps, "reply");
   });

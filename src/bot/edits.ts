@@ -19,7 +19,9 @@ export class EditStore {
     return edit && isFresh(edit.since) ? edit : undefined;
   }
 
-  delete(userId: number): void {
+  /** chatId — снять, только если ждём ответ в этом чате. */
+  delete(userId: number, chatId?: number): void {
+    if (chatId !== undefined && this.pending.get(userId)?.chatId !== chatId) return;
     this.pending.delete(userId);
   }
 }

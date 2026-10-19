@@ -61,7 +61,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   bot.use(userMiddleware(deps));
   // Любая команда отменяет брошенные «пришли ответом» — чтобы следующий текст не ушёл не туда.
   bot.use(async (ctx, next) => {
-    if (ctx.message?.text?.startsWith("/")) clearPendingInputs(deps, ctx.user.id);
+    if (ctx.message?.text?.startsWith("/")) clearPendingInputs(deps, ctx.user.id, ctx.chat?.id);
     await next();
   });
   registerSpotted(bot, deps);

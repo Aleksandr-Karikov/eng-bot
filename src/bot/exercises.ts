@@ -56,7 +56,9 @@ export class ExerciseStore {
     return undefined;
   }
 
-  delete(userId: number): void {
+  /** chatId — снять, только если ждём ответ в этом чате. */
+  delete(userId: number, chatId?: number): void {
+    if (chatId !== undefined && this.pending.get(userId)?.chatId !== chatId) return;
     if (!this.pending.delete(userId)) return;
     this.persist(userId, undefined, this.now());
   }

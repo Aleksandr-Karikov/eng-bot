@@ -11,6 +11,8 @@ export interface TranslateSession {
   task?: ActiveTask;
   /** Следующее задание готовится, пока человек переводит текущее. */
   next?: Promise<ActiveTask | undefined>;
+  /** Задание прямо сейчас готовится (первое или после ответа). */
+  preparing?: boolean;
   recent: string[];
   done: number;
   correct: number;

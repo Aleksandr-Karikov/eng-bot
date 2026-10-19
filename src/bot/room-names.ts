@@ -23,7 +23,9 @@ export class RoomNameStore {
     return isFresh(entry.since) ? entry : undefined;
   }
 
-  clear(userId: number): void {
+  /** chatId — снять, только если ждём ответ в этом чате. */
+  clear(userId: number, chatId?: number): void {
+    if (chatId !== undefined && this.pending.get(userId)?.chatId !== chatId) return;
     this.pending.delete(userId);
   }
 }

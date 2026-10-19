@@ -37,8 +37,9 @@ export class DraftStore {
     return undefined;
   }
 
-  clearAwaiting(userId: number): void {
-    for (const d of this.drafts.values()) if (d.userId === userId) d.awaitingEdit = false;
+  /** chatId — только черновики этого чата. */
+  clearAwaiting(userId: number, chatId?: number): void {
+    for (const d of this.drafts.values()) if (d.userId === userId && (chatId === undefined || d.chatId === chatId)) d.awaitingEdit = false;
   }
 
   delete(id: number): void {

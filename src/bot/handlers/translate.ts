@@ -1,3 +1,4 @@
+import { clearPendingInputs, endLongModes } from "../pending";
 import type { Bot } from "grammy";
 import type { TranslationReview } from "../../llm/tutor";
 import { recordDrillAnswer, recordMistakes } from "../../services/mistakes";
@@ -18,13 +19,17 @@ async function makeTask(deps: Deps, userId: number, session: TranslateSession): 
 async function sendNext(ctx: BotContext, deps: Deps, session: TranslateSession): Promise<void> {
   await ctx.replyWithChatAction("typing").catch(() => {});
   let task: ActiveTask | undefined;
+  session.preparing = true;
   try {
     task = (await session.next?.catch(() => undefined)) ?? (await makeTask(deps, ctx.user.id, session));
   } catch (err) {
+    session.preparing = false;
     console.error("Translation task failed", err);
-    session.next = undefined;
+    // Без задания сессия только перехватывала бы личку («готовлю…») — закрываем.
+    if (deps.translations.get(ctx.user.id) === session) deps.translations.end(ctx.user.id);
     return void (await ctx.reply("Не получилось придумать предложение 😔 Попробуй ещё раз — /translate"));
   }
+  session.preparing = false;
   if (!task || deps.translations.get(ctx.user.id) !== session) return;
   session.task = task;
   session.recent = [...session.recent, task.ru].slice(-RECENT_TASKS);
@@ -68,6 +73,8 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
 export function registerTranslate(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("translate", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Тренажёр перевода — в личке: https://t.me/${deps.botUsername}`));
+    endLongModes(deps, ctx.user.id, "translate");
+    clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
     const session = deps.translations.start(ctx.user.id, ctx.chat.id);
     await ctx.reply(
       "🇷🇺 → 🇬🇧 <b>Тренажёр перевода</b>\n\nПереводи предложения на английский и пиши ответ сообщением. Предложения — под твои частые ошибки и слова, которые ты сейчас учишь. ⏹ — закончить.",
@@ -100,7 +107,9 @@ export function registerTranslate(bot: Bot<BotContext>, deps: Deps): void {
     const session = deps.translations.get(ctx.user.id);
     if (!session || text.startsWith("/") || session.chatId !== ctx.chat.id) return next();
     const task = session.task;
-    if (!task) return void (await ctx.reply("Секунду, готовлю следующее предложение…"));
+    // Задание ещё готовится — подождать; если и не готовится (что-то сломалось), не держать личку.
+    if (!task && (session.preparing || session.next)) return void (await ctx.reply("Секунду, готовлю следующее предложение…"));
+    if (!task) return next();
     session.task = undefined;
     session.lastAt = Date.now();
     background(ctx, () => checkAnswer(ctx, deps, session, task, text));

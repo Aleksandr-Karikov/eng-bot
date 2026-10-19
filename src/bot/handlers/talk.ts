@@ -1,3 +1,4 @@
+import { clearPendingInputs, endLongModes } from "../pending";
 import type { Bot } from "grammy";
 import type { TalkReview } from "../../llm/tutor";
 import { getRoom } from "../../services/rooms";
@@ -25,6 +26,8 @@ async function startTalk(ctx: BotContext, deps: Deps, topic: string, label: stri
   if (!ctx.chat) return;
   const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
   const words = room ? (await storyWords(deps.db, room.id, deps.random, ctx.user.id)).slice(0, TALK_WORDS) : [];
+  endLongModes(deps, ctx.user.id, "talk");
+  clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
   const talk = deps.talks.start(ctx.user.id, { topic, words, lines: [], chatId: ctx.chat.id });
   const hint = words.length ? `\n\nПопробуй употребить: ${words.map((w) => `<b>${esc(w.term)}</b>`).join(", ")}` : "";
   await ctx.reply(
