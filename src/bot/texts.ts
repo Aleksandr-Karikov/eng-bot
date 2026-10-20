@@ -103,21 +103,24 @@ export function draftText(d: WordDraft): string {
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
 /** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
-/** Подробности под спойлером — с понятными заголовками вместо значков. */
-function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView): string {
+/**
+ * Подробности — в свёрнутой цитате: основной ответ остаётся коротким, остальное раскрывается по тапу.
+ * Внутри тоже спойлер — иначе первые строки свёрнутого блока подсказывали бы ответ до проверки.
+ */
+function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView, withExplanation: boolean): string {
   let text = "";
+  if (withExplanation && view.explanation && word.explanation) text += `\n\n${esc(word.explanation)}`;
   if (view.example && word.example) text += `\n\n<b>Пример:</b> <i>${esc(word.example)}</i>`;
   if (view.context) text += contextBlock(word);
   if (view.collocations && word.collocations) text += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) text += `\n\n<b>Как запомнить:</b> ${esc(word.mnemonic)}`;
-  return text;
+  const body = text.replace(/^\n\n/, "");
+  return body ? `\n\n<blockquote expandable><tg-spoiler>${body}</tg-spoiler></blockquote>` : "";
 }
 
 export function cardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
-  let answer = `<b>${esc(word.translation)}</b>`;
-  if (view.explanation && word.explanation) answer += `\n${esc(word.explanation)}`;
-  answer += cardDetails(word, view);
-  return `<b>${esc(word.term)}</b>${usefulnessIcon(word)}${withTranscription(word, view.transcription)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни перевод и проверь себя тапом:`;
+  const answer = `<tg-spoiler><b>${esc(word.translation)}</b></tg-spoiler>`;
+  return `<b>${esc(word.term)}</b>${usefulnessIcon(word)}${withTranscription(word, view.transcription)}\n\n${answer}${cardDetails(word, view, true)}\n\nВспомни перевод и проверь себя тапом:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {
@@ -255,8 +258,8 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
-  const answer = `<b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}${cardDetails(word, view)}`;
-  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n<tg-spoiler>${answer}</tg-spoiler>\n\nВспомни по-английски и проверь себя тапом:`;
+  const answer = `<tg-spoiler><b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}</tg-spoiler>`;
+  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни по-английски и проверь себя тапом:`;
 }
 
 /**
