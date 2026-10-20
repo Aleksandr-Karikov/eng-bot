@@ -532,6 +532,8 @@ export function buildDrillPrompt(profile: string, count: number, avoid: string[]
     "предложение с одним пропуском ___ и 3–4 короткими вариантами. Ровно один вариант верный, неверные — как раз его типичные ошибки.",
     "В варианте — только то, что вставляется в пропуск, без соседних слов из предложения: «We need ___ gold» → варианты «the», «a», «—».",
     "Если верно «ничего не ставить» (нулевой артикль), этот вариант пиши как «—».",
+    "Проверь каждый вопрос: подставь верный вариант — должно получиться полное правильное предложение, где есть и слово, к которому относится правило",
+    "(для depend on в предложении должно стоять depend: «Our plans depend ___ the weather», а не «Our plans ___ the weather»).",
     "Не повторяй его примеры дословно — нужны новые предложения на то же правило.",
     'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "..."}], где',
     "correct — индекс верного варианта (с нуля), explanation — 1–2 предложения по-русски: правило и почему остальные не подходят,",
@@ -555,8 +557,33 @@ const drillQuestion = z
 export function parseDrill(text: string): DrillQuestion[] {
   return jsonArray(text).flatMap((entry) => {
     const r = drillQuestion.safeParse(entry);
-    return r.success ? [r.data] : [];
+    return r.success && completeQuestion(r.data) ? [r.data] : [];
   });
+}
+
+/**
+ * Вопрос без «опоры» правила: объяснение про «depend on», а в предложении «Our plans ___ the weather» — depend нет,
+ * и даже верный ответ даёт бессмыслицу. Ищем в объяснении английские сочетания с верным вариантом и проверяем,
+ * что их остальные слова есть в предложении (с точностью до формы: depends, depended).
+ */
+/** Предлоги и частицы: только у них правило держится за соседнее слово (depend on, interested in, give up). */
+const GOVERNED = new Set(["on", "in", "at", "of", "for", "from", "to", "with", "about", "by", "up", "out", "off", "into", "over"]);
+
+export function completeQuestion(q: { question: string; options: string[]; correct: number; explanation: string }): boolean {
+  const answer = (q.options[q.correct] ?? "").toLowerCase().trim();
+  if (!GOVERNED.has(answer)) return true;
+  const sentence = q.question.toLowerCase();
+  const stem = (w: string) => w.slice(0, Math.max(3, Math.min(5, w.length - 1)));
+  const phrases = q.explanation.toLowerCase().match(/[a-z']+(?:\s+[a-z']+){1,2}/g) ?? [];
+  for (const phrase of phrases) {
+    const parts = phrase.split(/\s+/);
+    const at = parts.indexOf(answer);
+    if (at === -1) continue;
+    // Сочетание вида «depend on»: слово прямо перед вариантом должно быть в предложении.
+    const partner = parts[at - 1];
+    if (partner && partner.length > 2 && !sentence.includes(stem(partner))) return false;
+  }
+  return true;
 }
 
 /**

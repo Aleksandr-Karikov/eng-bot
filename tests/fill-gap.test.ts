@@ -23,3 +23,26 @@ describe("filling a gap never repeats a word", () => {
     expect(drillResultText(q, 2)).toContain("We need <b>gold</b> for this ring.");
   });
 });
+
+describe("drill questions must contain what the rule is about", async () => {
+  const { completeQuestion, parseDrill } = await import("../src/llm/tutor");
+  const broken = {
+    question: "Our plans ___ the weather, so we will decide tomorrow.",
+    options: ["of", "on", "from"],
+    correct: 1,
+    explanation: "Устойчивое сочетание: depend on (зависеть от). «Depend of» и «depend from» не употребляются.",
+    category: "предлоги",
+  };
+
+  it("drops a question whose sentence lost the verb of the rule", () => {
+    expect(completeQuestion(broken)).toBe(false);
+    expect(completeQuestion({ ...broken, question: "Our plans depend ___ the weather, so we will decide tomorrow." })).toBe(true);
+    expect(completeQuestion({ ...broken, question: "It all depends ___ the weather." })).toBe(true);
+    expect(parseDrill(JSON.stringify([broken]))).toEqual([]);
+  });
+
+  it("keeps ordinary questions", () => {
+    expect(completeQuestion({ question: "We need ___ gold.", options: ["the", "a", "—"], correct: 2, explanation: "Gold — неисчисляемое, we use the zero article." })).toBe(true);
+    expect(completeQuestion({ question: "I ___ there yesterday.", options: ["go", "went"], correct: 1, explanation: "С yesterday — Past Simple: went." })).toBe(true);
+  });
+});
