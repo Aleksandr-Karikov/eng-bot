@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { words } from "../src/db/schema";
@@ -127,5 +131,12 @@ describe("📦 the extension right in the chat", () => {
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendDocument")).toBe(true));
     const doc = h.calls.find((c) => c.method === "sendDocument")!;
     expect(String(doc.payload.caption)).toContain("Загрузить распакованное");
+    // Ключ и адрес вписаны в архив — после установки ничего настраивать не нужно.
+    const zip = (doc.payload.document as { fileData: Buffer }).fileData;
+    const dir = mkdtempSync(join(tmpdir(), "ext-test-"));
+    writeFileSync(join(dir, "ext.zip"), zip);
+    const preset = JSON.parse(execFileSync("unzip", ["-p", join(dir, "ext.zip"), "wordboss/preset.json"], { encoding: "utf8" }));
+    expect(preset).toEqual({ key: "secret-key", server: "http://localhost:8787" });
+    expect(execFileSync("unzip", ["-l", join(dir, "ext.zip")], { encoding: "utf8" })).toContain("wordboss/manifest.json");
   });
 });

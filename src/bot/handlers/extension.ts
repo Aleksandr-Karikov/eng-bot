@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -25,11 +25,15 @@ function extensionVersion(): string {
 }
 
 /** Zip папки расширения (системный zip, без shell); временная папка удаляется. */
-async function packExtension(): Promise<Buffer> {
+/** Архив расширения с уже вписанными ключом и адресом (preset.json) — после установки ничего настраивать не нужно. */
+async function packExtension(preset: { key: string; server: string }): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "eng-bot-ext-"));
   try {
+    const src = join(dir, "wordboss");
+    await cp(EXTENSION_DIR, src, { recursive: true, filter: (path) => !/(^|\/)\.[^/]*$/.test(path.slice(EXTENSION_DIR.length)) });
+    await writeFile(join(src, "preset.json"), JSON.stringify(preset));
     const out = join(dir, "extension.zip");
-    await run("zip", ["-qr", out, ".", "-x", ".*"], { cwd: EXTENSION_DIR, timeout: 30_000 });
+    await run("zip", ["-qr", out, "wordboss"], { cwd: dir, timeout: 30_000 });
     return await readFile(out);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -67,13 +71,14 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     background(ctx, async () => {
       let zip: Buffer;
       try {
-        zip = await packExtension();
+        const key = ctx.user.captureKey ?? (await updateUser(deps.db, ctx.user.id, { captureKey: newKey() })).captureKey!;
+        zip = await packExtension({ key, server: extensionServer(deps) });
       } catch (err) {
         console.error("Extension zip failed", err);
         return void (await ctx.reply("Не получилось упаковать расширение 😔"));
       }
       await ctx.replyWithDocument(new InputFile(zip, `wordboss-extension-${extensionVersion()}.zip`), {
-        caption: "Распакуй архив → chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → выбери распакованную папку. Потом вставь ключ и адрес из сообщения выше в настройки расширения.",
+        caption: "Распакуй архив → chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → выбери папку wordboss. Ключ и адрес уже внутри — настраивать ничего не надо. Архив личный, не пересылай его.",
       });
     });
   });
