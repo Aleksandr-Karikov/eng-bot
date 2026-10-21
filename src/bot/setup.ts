@@ -19,6 +19,8 @@ import { registerTalk } from "./handlers/talk";
 import { registerTranslate } from "./handlers/translate";
 import { registerSay } from "./handlers/say";
 import { registerExtension } from "./handlers/extension";
+import { registerBug } from "./handlers/bug";
+import { buttonsText } from "./transcript";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
 
@@ -36,6 +38,7 @@ export const COMMANDS = [
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "room", description: "Комнаты и приглашения" },
   { command: "settings", description: "Настройки" },
+  { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
 ];
 
@@ -47,11 +50,23 @@ export const GROUP_COMMANDS = [
   { command: "story", description: "История из слов комнаты" },
   { command: "goal", description: "Цель комнаты на неделю" },
   { command: "link", description: "Привязать группу к комнате" },
+  { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
 ];
 
 export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   bot.api.config.use(retryNetworkErrors());
+  // Что бот отправил и показал (с кнопками) — для /bug.
+  bot.api.config.use(async (prev, method, payload, signal) => {
+    const res = await prev(method, payload, signal);
+    const p = payload as { chat_id?: unknown; text?: string; caption?: string; reply_markup?: unknown };
+    const chatId = typeof p.chat_id === "number" ? p.chat_id : undefined;
+    const text = p.text ?? p.caption;
+    if (res.ok && chatId !== undefined && text && /^(send|edit)/.test(method)) {
+      deps.transcript.record(chatId, { from: "bot", text: `${method === "sendMessage" || method === "sendPhoto" ? "" : `(${method}) `}${text}${buttonsText(p.reply_markup)}` });
+    }
+    return res;
+  });
   bot.api.config.use(ignoreHarmlessErrors);
   bot.api.config.use(slowApiCallLogger(SLOW_MS));
   bot.use(async (ctx, next) => {
@@ -63,6 +78,15 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
     if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${what}`);
   });
   bot.use(userMiddleware(deps));
+  // Что писал и нажимал человек — для /bug.
+  bot.use(async (ctx, next) => {
+    const chatId = ctx.chat?.id;
+    if (chatId !== undefined) {
+      const text = ctx.message?.text ?? ctx.message?.caption ?? (ctx.callbackQuery?.data ? `[нажал кнопку ${ctx.callbackQuery.data}]` : "");
+      if (text) deps.transcript.record(chatId, { from: "user", name: ctx.from?.first_name, text });
+    }
+    await next();
+  });
   // Любая команда отменяет брошенные «пришли ответом» — чтобы следующий текст не ушёл не туда.
   bot.use(async (ctx, next) => {
     if (ctx.message?.text?.startsWith("/")) clearPendingInputs(deps, ctx.user.id, ctx.chat?.id);
@@ -84,6 +108,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerTranslate(bot, deps);
   registerTalk(bot, deps);
   registerSay(bot, deps);
+  registerBug(bot, deps);
   registerExtension(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».

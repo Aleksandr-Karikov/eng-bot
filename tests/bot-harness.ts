@@ -1,3 +1,4 @@
+import { ChatTranscript } from "../src/bot/transcript";
 import { TranslateStore } from "../src/bot/translations";
 import type { Deps } from "../src/bot/context";
 import type { SubtitleSource } from "../src/youtube/subtitles";
@@ -103,7 +104,7 @@ export function botHarness(opts: {
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), youtube: opts.youtube, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
+  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
   setupBot(bot, deps);
 
   let seq = 0;

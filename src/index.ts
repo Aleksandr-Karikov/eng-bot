@@ -1,5 +1,7 @@
 import { API_CONSTANTS, Bot } from "grammy";
 import { redactLogs } from "./log-redact";
+import { captureRecentLogs } from "./log-buffer";
+import { ChatTranscript } from "./bot/transcript";
 import { setupBot, COMMANDS, GROUP_COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
@@ -47,6 +49,7 @@ try {
 
 const config = loadConfig();
 redactLogs(config.botToken);
+captureRecentLogs();
 const db = createDb(config.dbPath);
 const bot = new Bot<BotContext>(config.botToken);
 const notifier = new Notifier(
@@ -94,6 +97,7 @@ const deps: Deps = {
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
   translations: new TranslateStore(),
+  transcript: new ChatTranscript(),
   frequency: existsSync(config.wordfreqPython) ? new WordfreqSource(config.wordfreqPython, "tools/wordfreq/zipf.py") : undefined,
   youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
   images,

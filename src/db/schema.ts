@@ -200,6 +200,19 @@ export const pendingExercises = sqliteTable("pending_exercises", {
   since: integer("since", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** /bug: описание от пользователя и снимок того, что было вокруг (переписка, ошибки в логах). */
+export const bugReports = sqliteTable("bug_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  chatId: integer("chat_id").notNull(),
+  description: text("description").notNull(),
+  /** JSON: { replied?, transcript[], logs[] }. */
+  context: text("context").notNull(),
+  /** open | fixed | wontfix */
+  status: text("status").notNull().default("open"),
+  createdAt: createdAt(),
+});
+
 /** Истории из слов комнаты (/story и еженедельно в группу): текст, вопросы на понимание и озвучка. */
 export const stories = sqliteTable("stories", {
   id: integer("id").primaryKey({ autoIncrement: true }),

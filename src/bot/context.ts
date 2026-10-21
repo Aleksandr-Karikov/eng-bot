@@ -24,6 +24,7 @@ import type { PictureWishStore } from "./picture-wishes";
 import type { PracticeStore } from "./practice";
 import type { RoomNameStore } from "./room-names";
 import type { TalkStore } from "./talks";
+import type { ChatTranscript } from "./transcript";
 import type { FrequencySource } from "../frequency/frequency";
 import type { TranslateStore } from "./translations";
 import type { CaptureBroadcaster } from "../capture/capture";
@@ -58,6 +59,8 @@ export interface Deps {
   pictureWishes: PictureWishStore;
   talks: TalkStore;
   translations: TranslateStore;
+  /** Недавняя переписка чатов — контекст для /bug. */
+  transcript: ChatTranscript;
   /** Слова из расширения браузера: сводка друзьям после паузы; undefined — приём выключен. */
   capture?: CaptureBroadcaster;
   /** Порт локального приёма слов из расширения. */
