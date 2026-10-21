@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Ставит два LaunchAgent'а текущего пользователя:
 #   com.engbot.bot    — бот: старт при входе в систему, перезапуск при падении, мак не засыпает, пока бот работает;
-#   com.engbot.backup — бэкап базы каждый день в 04:00 (если мак спал — сразу после пробуждения).
+#   com.engbot.backup — бэкап базы каждый день в 04:00 (если мак спал — сразу после пробуждения);
+#   com.engbot.ngrok  — туннель ngrok к Mini App (и /ext для расширения), если ngrok установлен.
 # Логи: data/logs/. Удалить: scripts/launchd/uninstall.sh
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
@@ -49,10 +50,39 @@ cat > "$AGENTS/com.engbot.backup.plist" <<PLIST
 </plist>
 PLIST
 
-for label in com.engbot.bot com.engbot.backup; do
+LABELS=(com.engbot.bot com.engbot.backup)
+NGROK=$(command -v ngrok || true)
+if [ -n "$NGROK" ]; then
+  LABELS+=(com.engbot.ngrok)
+  cat > "$AGENTS/com.engbot.ngrok.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.engbot.ngrok</string>
+  <key>ProgramArguments</key>
+  <array><string>$NGROK</string><string>http</string><string>8788</string><string>--log</string><string>stdout</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>HOME</key><string>$HOME</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>$REPO/data/logs/ngrok.log</string>
+  <key>StandardErrorPath</key><string>$REPO/data/logs/ngrok.log</string>
+</dict>
+</plist>
+PLIST
+fi
+
+for label in $LABELS; do
   plutil -lint "$AGENTS/$label.plist" > /dev/null
   launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
-  launchctl bootstrap "$DOMAIN" "$AGENTS/$label.plist"
+  # Сразу после bootout launchd ещё выгружает старый процесс и отвечает «Input/output error» — повторяем.
+  for attempt in 1 2 3 4 5; do
+    launchctl bootstrap "$DOMAIN" "$AGENTS/$label.plist" 2>/dev/null && break
+    [ $attempt = 5 ] && { echo "Не удалось запустить $label"; exit 1; }
+    sleep 1
+  done
 done
 echo "Installed. Status: launchctl print $DOMAIN/com.engbot.bot | grep -E 'state|pid'"
 echo "Logs: tail -f $REPO/data/logs/bot.log $REPO/data/logs/bot.err.log"

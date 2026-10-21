@@ -484,7 +484,7 @@ export function captureText(words: Array<Pick<Word, "term" | "translation" | "co
   return `${lines.join("\n")}${context}${source}${dupes}`;
 }
 
-/** server — адрес, который вставить в настройки расширения (публичный через Funnel или localhost). */
+/** server — адрес, который вставить в настройки расширения (публичный через ngrok или localhost). */
 export function extensionText(key: string, server: string): string {
   return [
     "🧩 <b>Расширение для субтитров</b>",

@@ -13,7 +13,7 @@ ls -1t data/backups/eng-bot-*.sqlite | tail -n +15 | while read -r old; do rm -f
 echo "$(date '+%F %T') backup ok: $file ($(du -h "$file" | cut -f1))"
 # Логи бота: launchd дописывает их бесконечно. Больше 10 МБ — в .1 (предыдущий .1 затирается), сам лог обнуляется
 # (бот пишет с O_APPEND, так что дальше просто продолжит с начала файла).
-for log in data/logs/bot.log data/logs/bot.err.log; do
+for log in data/logs/bot.log data/logs/bot.err.log data/logs/ngrok.log; do
   if [[ -f "$log" && $(stat -f%z "$log") -gt 10485760 ]]; then
     cp "$log" "$log.1" && : > "$log"
     echo "$(date '+%F %T') rotated $log"

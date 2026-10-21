@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { isValid, parse } from "@telegram-apps/init-data-node";
 import type { Api } from "grammy";
 import { Hono } from "hono";
+import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { appAnswer, appAudio, appMe, appPicture, appQueue, appUser } from "./api";
@@ -45,6 +46,14 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const png = await appPicture(deps, ctx.api, c.get("user"), Number(c.req.query("card")));
     return png ? c.body(new Uint8Array(png), 200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" }) : c.notFound();
   });
+
+  // Сервер расширения — через тот же адрес (/ext/…), чтобы хватало одного туннеля ngrok.
+  if (deps.capturePort) {
+    app.all("/ext/*", (c) => {
+      const url = new URL(c.req.url);
+      return proxy(`http://127.0.0.1:${deps.capturePort}${url.pathname.slice(4)}${url.search}`, { ...c.req, headers: { "content-type": c.req.header("content-type") ?? "" } });
+    });
+  }
 
   app.get("/", (c) => c.redirect("/app/"));
   // APP_URL часто пишут без «/» на конце — относительные пути к файлам приложения тогда бы сломались.

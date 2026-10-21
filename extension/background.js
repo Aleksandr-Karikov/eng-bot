@@ -23,7 +23,8 @@ async function settings() {
 async function call(path, init) {
   const { server } = await settings();
   try {
-    const res = await fetch(`${server}${path}`, init);
+    // Без этого заголовка ngrok вместо ответа отдаёт свою страницу-предупреждение.
+    const res = await fetch(`${server}${path}`, { ...init, headers: { ...init?.headers, "ngrok-skip-browser-warning": "1" } });
     const body = await res.json().catch(() => ({}));
     return res.ok ? body : { ok: false, error: body.error || `Бот ответил ${res.status}` };
   } catch {

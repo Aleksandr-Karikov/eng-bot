@@ -41,8 +41,8 @@ async function packExtension(preset: { key: string; server: string }): Promise<B
 }
 
 /**
- * Куда расширению слать слова: если приложение открыто наружу (Tailscale Funnel по APP_URL),
- * сервер расширения висит там же по пути /ext — работает с любого компьютера; иначе только localhost.
+ * Куда расширению слать слова: если приложение открыто наружу (ngrok по APP_URL), сервер приложения
+ * пробрасывает /ext на сервер расширения — работает с любого компьютера; иначе только localhost.
  */
 function extensionServer(deps: Deps): string {
   return deps.appUrl ? `${new URL(deps.appUrl).origin}/ext` : `http://localhost:${deps.capturePort}`;
