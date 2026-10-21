@@ -117,3 +117,15 @@ describe("words from the browser extension", () => {
     expect((await getUser(h.db, user.id))!.captureKey).not.toBe(key);
   });
 });
+
+describe("📦 the extension right in the chat", () => {
+  it("sends a fresh zip of the extension folder", async () => {
+    const { h } = await setup();
+    h.deps.capturePort = 8787;
+    await h.bot.handleUpdate(h.message(100, "/extension"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "📦 Скачать расширение")));
+    await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendDocument")).toBe(true));
+    const doc = h.calls.find((c) => c.method === "sendDocument")!;
+    expect(String(doc.payload.caption)).toContain("Загрузить распакованное");
+  });
+});

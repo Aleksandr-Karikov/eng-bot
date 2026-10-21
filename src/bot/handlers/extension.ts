@@ -1,10 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-import type { Bot } from "grammy";
+import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { InputFile, type Bot } from "grammy";
 import { deleteWord, getWord } from "../../services/words";
 import { updateUser } from "../../services/users";
 import { decodeCb } from "../callbacks";
-import { HTML, type BotContext, type Deps } from "../context";
+import { background, HTML, type BotContext, type Deps } from "../context";
 import { extensionKeyboard } from "../keyboards";
 import { esc, extensionText } from "../texts";
 
@@ -12,6 +18,23 @@ import { esc, extensionText } from "../texts";
 const EXTENSION_DIR = resolve("extension");
 
 const newKey = () => randomBytes(18).toString("base64url");
+const run = promisify(execFile);
+
+function extensionVersion(): string {
+  return (JSON.parse(readFileSync(join(EXTENSION_DIR, "manifest.json"), "utf8")) as { version: string }).version;
+}
+
+/** Zip папки расширения (системный zip, без shell); временная папка удаляется. */
+async function packExtension(): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "eng-bot-ext-"));
+  try {
+    const out = join(dir, "extension.zip");
+    await run("zip", ["-qr", out, ".", "-x", ".*"], { cwd: EXTENSION_DIR, timeout: 30_000 });
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 /**
  * Куда расширению слать слова: если приложение открыто наружу (Tailscale Funnel по APP_URL),
@@ -35,7 +58,24 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Ключ личный — напиши /extension в личку: https://t.me/${deps.botUsername}`));
     if (!deps.capturePort) return void (await ctx.reply("Приём слов из расширения выключен (CAPTURE_PORT=0)"));
     const key = ctx.user.captureKey ?? (await updateUser(deps.db, ctx.user.id, { captureKey: newKey() })).captureKey!;
-    await ctx.reply(extensionText(key, EXTENSION_DIR, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
+    await ctx.reply(extensionText(key, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
+  });
+
+  // Архив расширения прямо в чат — не нужно пересылать файлы вручную. Собирается из папки extension/, всегда свежий.
+  bot.callbackQuery(/^ez$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "Упаковываю…" });
+    background(ctx, async () => {
+      let zip: Buffer;
+      try {
+        zip = await packExtension();
+      } catch (err) {
+        console.error("Extension zip failed", err);
+        return void (await ctx.reply("Не получилось упаковать расширение 😔"));
+      }
+      await ctx.replyWithDocument(new InputFile(zip, `wordboss-extension-${extensionVersion()}.zip`), {
+        caption: "Распакуй архив → chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → выбери распакованную папку. Потом вставь ключ и адрес из сообщения выше в настройки расширения.",
+      });
+    });
   });
 
   // Новый ключ — если старый куда-то утёк: прежний сразу перестаёт работать.
@@ -43,7 +83,7 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     if (!deps.capturePort) return void (await ctx.answerCallbackQuery());
     const user = await updateUser(deps.db, ctx.user.id, { captureKey: newKey() });
     await ctx.answerCallbackQuery({ text: "Новый ключ — вставь его в настройки расширения" });
-    await ctx.editMessageText(extensionText(user.captureKey!, EXTENSION_DIR, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
+    await ctx.editMessageText(extensionText(user.captureKey!, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
   });
 
   // «↩️ Отменить» под словом из расширения: удаляет без подтверждения — его только что добавили одним кликом.

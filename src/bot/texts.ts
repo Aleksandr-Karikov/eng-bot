@@ -485,7 +485,7 @@ export function captureText(words: Array<Pick<Word, "term" | "translation" | "co
 }
 
 /** server — адрес, который вставить в настройки расширения (публичный через Funnel или localhost). */
-export function extensionText(key: string, folder: string, server: string): string {
+export function extensionText(key: string, server: string): string {
   return [
     "🧩 <b>Расширение для субтитров</b>",
     "",
@@ -493,7 +493,7 @@ export function extensionText(key: string, folder: string, server: string): stri
     "",
     "<b>Как поставить:</b>",
     "1. Chrome → chrome://extensions → включи «Режим разработчика».",
-    `2. «Загрузить распакованное» → папка расширения (у Александра: <code>${esc(folder)}</code>, можно попросить у него архивом).`,
+    "2. Нажми «📦 Скачать расширение» ниже, распакуй архив → «Загрузить распакованное» → выбери распакованную папку.",
     "3. Открой настройки расширения и вставь ключ и адрес бота:",
     `Ключ: <code>${esc(key)}</code>`,
     `Адрес: <code>${esc(server)}</code>`,

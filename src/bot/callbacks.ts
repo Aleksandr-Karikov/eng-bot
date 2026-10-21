@@ -42,6 +42,7 @@ export type Cb =
   | { k: "translateStop" }
   | { k: "translateDunno" }
   | { k: "extensionKey" }
+  | { k: "extensionZip" }
   | { k: "collocationPick"; cardId: number; reps: number; index: number; practice: boolean }
   | { k: "sayAdd"; id: number; index: number }
   | { k: "storyAnswer"; id: number; q: number; index: number }
@@ -110,6 +111,7 @@ export function encodeCb(cb: Cb): string {
     case "translateStop": return "tz";
     case "translateDunno": return "tu";
     case "extensionKey": return "ek";
+    case "extensionZip": return "ez";
     case "collocationPick": return `co:${cb.cardId}:${cb.reps}:${cb.index}${cb.practice ? ":p" : ""}`;
     case "sayAdd": return `sy:${cb.id}:${cb.index}`;
     case "storyAnswer": return `sq:${cb.id}:${cb.q}:${cb.index}`;
@@ -205,6 +207,7 @@ export function decodeCb(data: string): Cb | null {
     }
     case "te": return { k: "talkEnd" };
     case "ek": return { k: "extensionKey" };
+    case "ez": return { k: "extensionZip" };
     case "tz": return { k: "translateStop" };
     case "tu": return { k: "translateDunno" };
     case "nf": {

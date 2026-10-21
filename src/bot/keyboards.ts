@@ -386,7 +386,10 @@ export function captureKeyboard(words: Array<{ id: number; term: string }>): Inl
 }
 
 export function extensionKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("🔄 Новый ключ", encodeCb({ k: "extensionKey" }));
+  return new InlineKeyboard()
+    .text("📦 Скачать расширение", encodeCb({ k: "extensionZip" }))
+    .row()
+    .text("🔄 Новый ключ", encodeCb({ k: "extensionKey" }));
 }
 
 export function translateKeyboard(): InlineKeyboard {
