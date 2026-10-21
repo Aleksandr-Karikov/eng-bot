@@ -12,7 +12,9 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
   padding: 24px 20px;
   border-radius: 20px;
   background: var(--tg-theme-bg-color, #fff);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  /* Полегче тени и свой слой на видеокарте — при свайпе карточка сдвигается готовой, без перерисовки. */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  will-change: transform;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -31,6 +33,7 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .row { display: flex; gap: 8px; justify-content: center; }
 .stamp {
   position: absolute;
+  will-change: opacity;
   top: 18px;
   padding: 4px 10px;
   border: 3px solid;
