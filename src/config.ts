@@ -50,9 +50,9 @@ export function loadConfig(
     imagesBackground:
       env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
     youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
-    capturePort: Number(env.CAPTURE_PORT ?? 80),
+    capturePort: Number(env.CAPTURE_PORT ?? 8787),
     wordfreqPython: env.WORDFREQ_PYTHON || "tools/wordfreq/.venv/bin/python",
-    appPort: Number(env.APP_PORT ?? 80),
+    appPort: Number(env.APP_PORT ?? 8788),
     ...(env.APP_URL ? { appUrl: env.APP_URL } : {}),
   };
 }
