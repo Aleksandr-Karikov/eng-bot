@@ -3,6 +3,7 @@ import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/tel
 import { useCallback, useEffect, useState } from "react";
 import { getMe, getQueue, pictureUrl, sendAnswer, type Answer, type Card, type Me } from "./api";
 import { SwipeCard } from "./SwipeCard";
+import { useBottomButtons } from "./bottomButtons";
 
 const haptic = (kind: "light" | "medium") => {
   try {
@@ -66,19 +67,7 @@ export function App() {
 
   const card = queue[0];
   const total = done + queue.length;
-  if (!card) {
-    return (
-      <Placeholder
-        header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
-        description="Новые слова и повторения появятся сами — бот напомнит."
-        action={
-          <Button size="l" stretched onClick={() => miniApp.close()}>
-            Закрыть
-          </Button>
-        }
-      />
-    );
-  }
+  if (!card) return <Done done={done} />;
 
   return (
     <div className="screen">
@@ -91,5 +80,23 @@ export function App() {
       <Progress value={total ? (done / total) * 100 : 0} />
       <SwipeCard key={`${card.cardId}-${card.reps}`} card={card} onAnswer={(a) => answer(card, a)} />
     </div>
+  );
+}
+
+/** Конец очереди: нативная кнопка «Закрыть» внизу (или своя — вне Telegram). */
+function Done({ done }: { done: number }) {
+  const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
+  return (
+    <Placeholder
+      header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
+      description="Новые слова и повторения появятся сами — бот напомнит."
+      action={
+        native ? undefined : (
+          <Button size="l" stretched onClick={() => miniApp.close()}>
+            Закрыть
+          </Button>
+        )
+      }
+    />
   );
 }

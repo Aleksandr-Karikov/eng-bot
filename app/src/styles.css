@@ -41,3 +41,16 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 }
 .stamp-know { left: 16px; color: #22c55e; transform: rotate(-12deg); }
 .stamp-forgot { right: 16px; color: #ef4444; transform: rotate(12deg); }
+
+/* Своя панель кнопок (когда нет нативных): закреплена внизу, карточка прокручивается над ней. */
+.actions.fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+}
+.screen { padding-bottom: 96px; }

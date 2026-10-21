@@ -1,6 +1,7 @@
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useBottomButtons } from "./bottomButtons";
 import { mediaUrl, pictureUrl, type Answer, type Card } from "./api";
 
 const USEFULNESS = { 3: "🟢", 2: "🟡", 1: "⚪️" } as Record<number, string>;
@@ -40,9 +41,20 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
     };
   }, [w.hasPicture, card.cardId]);
 
-  const fling = (answer: Answer, direction: number) => {
-    void animate(x, direction * 600, { duration: 0.2 }).then(() => onAnswer(answer));
-  };
+  const fling = useCallback(
+    (answer: Answer, direction: number) => {
+      void animate(x, direction * 600, { duration: 0.2 }).then(() => onAnswer(answer));
+    },
+    [x, onAnswer],
+  );
+  const show = useCallback(() => setFlipped(true), []);
+  const good = useCallback(() => fling("good", 1), [fling]);
+  const again = useCallback(() => fling("again", -1), [fling]);
+  // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
+  const native = useBottomButtons(
+    flipped ? { text: "😎 Помню", onClick: good } : { text: "Показать ответ", onClick: show },
+    flipped ? { text: "😵 Забыл", onClick: again } : undefined,
+  );
 
   return (
     <div className="deck">
@@ -102,35 +114,39 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
         )}
       </motion.div>
 
-      {flipped ? (
-        <div className="actions">
-          <div className="row">
-            <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
-              🔊 UK
-            </Button>
-            <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
-              🔊 US
-            </Button>
-          </div>
-          <div className="row">
-            <Button mode="gray" size="l" stretched onClick={() => fling("again", -1)}>
-              😵 Забыл
-            </Button>
-            <Button size="l" stretched onClick={() => fling("good", 1)}>
-              😎 Помню
-            </Button>
-          </div>
+      {flipped && (
+        <div className="row">
+          <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
+            🔊 UK
+          </Button>
+          <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
+            🔊 US
+          </Button>
           {card.isNew && (
-            <Button mode="plain" size="m" stretched onClick={() => fling("easy", 1)}>
+            <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
               ✅ Уже знаю
             </Button>
           )}
         </div>
-      ) : (
-        <div className="actions">
-          <Button size="l" stretched onClick={() => setFlipped(true)}>
-            Показать ответ
-          </Button>
+      )}
+
+      {/* Без нативных кнопок (браузер, старый Telegram) — своя панель, закреплённая внизу. */}
+      {!native && (
+        <div className="actions fixed">
+          {flipped ? (
+            <div className="row">
+              <Button mode="gray" size="l" stretched onClick={again}>
+                😵 Забыл
+              </Button>
+              <Button size="l" stretched onClick={good}>
+                😎 Помню
+              </Button>
+            </div>
+          ) : (
+            <Button size="l" stretched onClick={show}>
+              Показать ответ
+            </Button>
+          )}
         </div>
       )}
     </div>
