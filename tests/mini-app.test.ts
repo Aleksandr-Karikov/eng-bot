@@ -42,6 +42,13 @@ describe("📚 Mini App API", () => {
     void cards;
   });
 
+  it("opens at /app without a trailing slash too", async () => {
+    const { app } = await setup();
+    const res = await app.request("/app");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/app/");
+  });
+
   it("serves audio only for your own cards", async () => {
     const { app, auth } = await setup();
     expect((await app.request("/api/audio?card=999&accent=uk", { headers: auth })).status).toBe(404);

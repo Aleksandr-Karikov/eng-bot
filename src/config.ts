@@ -31,7 +31,9 @@ function positiveNumber(value: string | undefined, fallback: number): number {
   return value && Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
+export function loadConfig(
+  env: Record<string, string | undefined> = process.env,
+): Config {
   const botToken = env.BOT_TOKEN;
   if (!botToken) throw new Error("BOT_TOKEN is not set (see .env.example)");
   return {
@@ -41,13 +43,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     enrichTimeoutMs: positiveNumber(env.ENRICH_TIMEOUT_MS, 30_000),
     mnemonicModel: env.MNEMONIC_MODEL || "sonnet",
     checkModel: env.CHECK_MODEL || "sonnet",
-    ...(env.IMAGES_ENABLED === "1" ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" } : {}),
+    ...(env.IMAGES_ENABLED === "1"
+      ? { mfluxBin: env.MFLUX_BIN || "tools/imagegen/.venv/bin/mflux-generate" }
+      : {}),
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
-    imagesBackground: env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
+    imagesBackground:
+      env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
     youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
-    capturePort: Number(env.CAPTURE_PORT ?? 8787),
+    capturePort: Number(env.CAPTURE_PORT ?? 80),
     wordfreqPython: env.WORDFREQ_PYTHON || "tools/wordfreq/.venv/bin/python",
-    appPort: Number(env.APP_PORT ?? 8788),
+    appPort: Number(env.APP_PORT ?? 80),
     ...(env.APP_URL ? { appUrl: env.APP_URL } : {}),
   };
 }
