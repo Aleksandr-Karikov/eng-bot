@@ -33,6 +33,7 @@ import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
 import { CaptureBroadcaster } from "./capture/capture";
 import { startCaptureServer } from "./capture/server";
+import { startAppServer } from "./app/server";
 import { WordfreqSource } from "./frequency/frequency";
 import { TranslateStore } from "./bot/translations";
 import { TalkStore } from "./bot/talks";
@@ -110,11 +111,17 @@ if (config.capturePort) {
   deps.capturePort = config.capturePort;
   captureServer = startCaptureServer(deps, deps.capture, config.capturePort);
 }
+if (config.appPort) startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort);
+deps.appUrl = config.appUrl;
 setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS, { scope: { type: "all_private_chats" } });
 await bot.api.setMyCommands(GROUP_COMMANDS, { scope: { type: "all_group_chats" } });
 // Прежнее общее меню (scope по умолчанию) — тоже на короткое, чтобы не всплывало старое длинное.
 await bot.api.setMyCommands(COMMANDS);
+// Кнопка у поля ввода в личке: открывает Mini App с карточками (если задан APP_URL), иначе — обычное меню команд.
+await bot.api
+  .setChatMenuButton({ menu_button: config.appUrl ? { type: "web_app", text: "📚 Учить", web_app: { url: config.appUrl } } : { type: "commands" } })
+  .catch((err) => console.error("Menu button failed", err));
 
 const stopReminders = startReminderLoop({
   db,

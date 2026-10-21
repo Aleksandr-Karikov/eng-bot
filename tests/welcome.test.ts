@@ -28,7 +28,7 @@ describe("/start and /help", () => {
 describe("simpler menus", () => {
   it("keeps the DM menu short and gives groups their own", async () => {
     const { GROUP_COMMANDS } = await import("../src/bot/setup");
-    expect(COMMANDS.length).toBeLessThanOrEqual(11);
+    expect(COMMANDS.length).toBeLessThanOrEqual(12);
     expect(GROUP_COMMANDS.map((c) => c.command)).toEqual(expect.arrayContaining(["check", "duel", "link"]));
   });
 

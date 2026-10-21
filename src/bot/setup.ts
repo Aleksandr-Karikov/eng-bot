@@ -30,6 +30,7 @@ const SLOW_MS = 2000;
 /** Меню в личке — только главное; остальные команды работают и перечислены в /help. */
 export const COMMANDS = [
   { command: "learn", description: "Повторить слова" },
+  { command: "app", description: "Карточки в приложении (свайпы)" },
   { command: "add", description: "Добавить слово" },
   { command: "check", description: "Проверить английский (ответом на сообщение)" },
   { command: "mistakes", description: "Работа над ошибками" },

@@ -14,6 +14,15 @@ const EXTENSION_DIR = resolve("extension");
 const newKey = () => randomBytes(18).toString("base64url");
 
 export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
+  // Mini App с карточками: кнопка открывает его прямо в Telegram (работает только в личке).
+  bot.command("app", async (ctx) => {
+    if (!deps.appUrl) return void (await ctx.reply("Приложение с карточками пока не включено (APP_URL)"));
+    if (ctx.chat.type !== "private") return void (await ctx.reply(`Приложение открывается в личке: https://t.me/${deps.botUsername}`));
+    await ctx.reply("📚 Карточки со свайпами: вправо — помню, влево — забыл.", {
+      reply_markup: { inline_keyboard: [[{ text: "📚 Открыть карточки", web_app: { url: deps.appUrl } }]] },
+    });
+  });
+
   bot.command("extension", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Ключ личный — напиши /extension в личку: https://t.me/${deps.botUsername}`));
     if (!deps.capturePort) return void (await ctx.reply("Приём слов из расширения выключен (CAPTURE_PORT=0)"));

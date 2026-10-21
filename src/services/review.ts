@@ -36,6 +36,13 @@ export async function nextDue(db: Db, userId: number, now: Date): Promise<DueIte
   return ahead;
 }
 
+/** Очередь /learn целиком (с тем же запасом «на 20 минут вперёд», что у nextDue) — для Mini App, которое грузит карточки заранее. */
+export async function dueQueue(db: Db, userId: number, now: Date, limit: number): Promise<DueItem[]> {
+  const items = await dueItems(db, userId, now);
+  const list = items.length ? items : await dueItems(db, userId, new Date(now.getTime() + LEARN_AHEAD_MS));
+  return list.slice(0, limit);
+}
+
 export async function countDue(db: Db, userId: number, now: Date): Promise<number> {
   // Считает каждую минуту для напоминаний — без загрузки самих карточек и слов.
   const [row] = await db.select({ n: count() }).from(cards).where(and(eq(cards.userId, userId), lte(cards.due, now)));

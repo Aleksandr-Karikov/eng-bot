@@ -14,9 +14,12 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.300",
+    "@hono/node-server": "2.1.5",
+    "@telegram-apps/init-data-node": "2.0.10",
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.44.7",
     "grammy": "^1.46.0",
+    "hono": "4.13.13",
     "ts-fsrs": "^5.4.2",
     "zod": "^4.6.7"
   },

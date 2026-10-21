@@ -18,6 +18,7 @@ describe("loadConfig", () => {
       youtubePython: "tools/youtube/.venv/bin/python",
       capturePort: 8787,
       wordfreqPython: "tools/wordfreq/.venv/bin/python",
+      appPort: 8788,
     });
   });
 

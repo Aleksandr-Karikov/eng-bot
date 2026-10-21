@@ -59,6 +59,8 @@ export interface Deps {
   pictureWishes: PictureWishStore;
   talks: TalkStore;
   translations: TranslateStore;
+  /** Публичный адрес Mini App (APP_URL); нет — кнопки «Учить» нет. */
+  appUrl?: string;
   /** Недавняя переписка чатов — контекст для /bug. */
   transcript: ChatTranscript;
   /** Слова из расширения браузера: сводка друзьям после паузы; undefined — приём выключен. */

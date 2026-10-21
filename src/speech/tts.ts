@@ -10,7 +10,8 @@ export type Accent = "uk" | "us";
 
 /** Озвучка слова или фразы в OGG/Opus — формат голосовых сообщений Telegram. */
 export interface SpeechSynth {
-  synthesize(text: string, accent: Accent): Promise<Buffer>;
+  /** format: ogg (Opus) — для голосовых Telegram; m4a (AAC) — для браузера Mini App (Safari не играет Ogg). */
+  synthesize(text: string, accent: Accent, format?: "ogg" | "m4a"): Promise<Buffer>;
 }
 
 const VOICES: Record<Accent, string> = { uk: "Daniel", us: "Samantha" };
@@ -25,16 +26,17 @@ export function speakableText(text: string): string {
  * чтобы фраза вида "-o x" не стала параметром команды. На Linux заменить на Piper/espeak-ng.
  */
 export class MacSaySynth implements SpeechSynth {
-  async synthesize(text: string, accent: Accent): Promise<Buffer> {
+  async synthesize(text: string, accent: Accent, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
     const dir = await mkdtemp(join(tmpdir(), "eng-bot-tts-"));
     try {
       const input = join(dir, "text.txt");
       const aiff = join(dir, "speech.aiff");
-      const ogg = join(dir, "speech.ogg");
+      const out = join(dir, `speech.${format}`);
       await writeFile(input, speakableText(text), "utf8");
       await run("say", ["-v", VOICES[accent], "-f", input, "-o", aiff], { timeout: 20_000 });
-      await run("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, "-c:a", "libopus", "-b:a", "32k", ogg], { timeout: 20_000 });
-      return await readFile(ogg);
+      const codec = format === "ogg" ? ["-c:a", "libopus", "-b:a", "32k"] : ["-c:a", "aac", "-b:a", "64k"];
+      await run("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, ...codec, out], { timeout: 20_000 });
+      return await readFile(out);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
