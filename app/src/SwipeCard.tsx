@@ -62,9 +62,8 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
         className="card"
         style={{ x, rotate }}
         drag={flipped ? "x" : false}
-        // Не дотянул — просто вернуть в центр, без пружинящих ограничений и инерции.
-        dragSnapToOrigin
-        dragMomentum={false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.9}
         onDragEnd={(_, info) => {
           if (info.offset.x > SWIPE_PX) fling("good", 1);
           else if (info.offset.x < -SWIPE_PX) fling("again", -1);
@@ -78,8 +77,6 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
           ЗАБЫЛ
         </motion.div>
 
-        {/* Прокручивается внутренний блок, а двигается внешний: так при свайпе не перерисовывается содержимое. */}
-        <div className="card-body">
         <div className="front">
           <Title level="1" weight="2">
             {enRu ? w.term : w.translation} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
@@ -115,7 +112,6 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
         ) : (
           <Text className="hint tap">Вспомни {enRu ? "перевод" : "по-английски"} и нажми, чтобы проверить</Text>
         )}
-        </div>
       </motion.div>
 
       {flipped && (
