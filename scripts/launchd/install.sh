@@ -52,6 +52,10 @@ PLIST
 
 LABELS=(com.engbot.bot com.engbot.backup)
 NGROK=$(command -v ngrok || true)
+# Постоянный адрес туннеля — из APP_URL в .env (бесплатный домен ngrok), иначе ngrok выдаст случайный.
+NGROK_URL=$(grep -E '^APP_URL=https://[^/]*ngrok' "$REPO/.env" 2>/dev/null | sed -E 's|^APP_URL=(https://[^/]+).*|\1|' || true)
+NGROK_ARGS=""
+[ -n "$NGROK_URL" ] && NGROK_ARGS="<string>--url</string><string>$NGROK_URL</string>"
 if [ -n "$NGROK" ]; then
   LABELS+=(com.engbot.ngrok)
   cat > "$AGENTS/com.engbot.ngrok.plist" <<PLIST
@@ -61,7 +65,7 @@ if [ -n "$NGROK" ]; then
 <dict>
   <key>Label</key><string>com.engbot.ngrok</string>
   <key>ProgramArguments</key>
-  <array><string>$NGROK</string><string>http</string><string>8788</string><string>--log</string><string>stdout</string></array>
+  <array><string>$NGROK</string><string>http</string><string>8788</string>$NGROK_ARGS<string>--log</string><string>stdout</string></array>
   <key>EnvironmentVariables</key>
   <dict><key>HOME</key><string>$HOME</string></dict>
   <key>RunAtLoad</key><true/>
@@ -78,9 +82,9 @@ for label in $LABELS; do
   plutil -lint "$AGENTS/$label.plist" > /dev/null
   launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
   # Сразу после bootout launchd ещё выгружает старый процесс и отвечает «Input/output error» — повторяем.
-  for attempt in 1 2 3 4 5; do
+  for attempt in $(seq 1 30); do
     launchctl bootstrap "$DOMAIN" "$AGENTS/$label.plist" 2>/dev/null && break
-    [ $attempt = 5 ] && { echo "Не удалось запустить $label"; exit 1; }
+    [ $attempt = 30 ] && { echo "Не удалось запустить $label"; exit 1; }
     sleep 1
   done
 done
