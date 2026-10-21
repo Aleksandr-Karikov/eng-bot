@@ -9,3 +9,4 @@ tools/wordfreq/.venv/
 app/node_modules/
 app/dist/
 data/audio/
+wordboss-extension-*.zip

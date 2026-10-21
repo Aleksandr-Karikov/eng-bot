@@ -13,6 +13,14 @@ const EXTENSION_DIR = resolve("extension");
 
 const newKey = () => randomBytes(18).toString("base64url");
 
+/**
+ * Куда расширению слать слова: если приложение открыто наружу (Tailscale Funnel по APP_URL),
+ * сервер расширения висит там же по пути /ext — работает с любого компьютера; иначе только localhost.
+ */
+function extensionServer(deps: Deps): string {
+  return deps.appUrl ? `${new URL(deps.appUrl).origin}/ext` : `http://localhost:${deps.capturePort}`;
+}
+
 export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
   // Mini App с карточками: кнопка открывает его прямо в Telegram (работает только в личке).
   bot.command("app", async (ctx) => {
@@ -27,7 +35,7 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Ключ личный — напиши /extension в личку: https://t.me/${deps.botUsername}`));
     if (!deps.capturePort) return void (await ctx.reply("Приём слов из расширения выключен (CAPTURE_PORT=0)"));
     const key = ctx.user.captureKey ?? (await updateUser(deps.db, ctx.user.id, { captureKey: newKey() })).captureKey!;
-    await ctx.reply(extensionText(key, EXTENSION_DIR, deps.capturePort), { ...HTML, reply_markup: extensionKeyboard() });
+    await ctx.reply(extensionText(key, EXTENSION_DIR, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
   });
 
   // Новый ключ — если старый куда-то утёк: прежний сразу перестаёт работать.
@@ -35,7 +43,7 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     if (!deps.capturePort) return void (await ctx.answerCallbackQuery());
     const user = await updateUser(deps.db, ctx.user.id, { captureKey: newKey() });
     await ctx.answerCallbackQuery({ text: "Новый ключ — вставь его в настройки расширения" });
-    await ctx.editMessageText(extensionText(user.captureKey!, EXTENSION_DIR, deps.capturePort), { ...HTML, reply_markup: extensionKeyboard() });
+    await ctx.editMessageText(extensionText(user.captureKey!, EXTENSION_DIR, extensionServer(deps)), { ...HTML, reply_markup: extensionKeyboard() });
   });
 
   // «↩️ Отменить» под словом из расширения: удаляет без подтверждения — его только что добавили одним кликом.

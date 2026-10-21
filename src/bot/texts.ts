@@ -484,19 +484,21 @@ export function captureText(words: Array<Pick<Word, "term" | "translation" | "co
   return `${lines.join("\n")}${context}${source}${dupes}`;
 }
 
-export function extensionText(key: string, folder: string, port: number): string {
+/** server — адрес, который вставить в настройки расширения (публичный через Funnel или localhost). */
+export function extensionText(key: string, folder: string, server: string): string {
   return [
     "🧩 <b>Расширение для субтитров</b>",
     "",
     "Смотришь сериал на inoriginal.cc в Chrome — кликаешь слово или фразу в субтитрах, и оно сразу в боте, с репликой как контекстом.",
     "",
-    "<b>Как поставить</b> (пока работает только на этом компьютере, где запущен бот):",
+    "<b>Как поставить:</b>",
     "1. Chrome → chrome://extensions → включи «Режим разработчика».",
-    `2. «Загрузить распакованное» → папка <code>${esc(folder)}</code>`,
-    "3. Открой настройки расширения и вставь ключ:",
-    `<code>${esc(key)}</code>`,
+    `2. «Загрузить распакованное» → папка расширения (у Александра: <code>${esc(folder)}</code>, можно попросить у него архивом).`,
+    "3. Открой настройки расширения и вставь ключ и адрес бота:",
+    `Ключ: <code>${esc(key)}</code>`,
+    `Адрес: <code>${esc(server)}</code>`,
     "",
-    `Бот принимает слова на http://localhost:${port}. Ключ личный — по нему бот понимает, что слово твоё.`,
+    "Ключ личный — по нему бот понимает, что слово твоё. Никому его не пересылай.",
   ].join("\n");
 }
 
