@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Api } from "grammy";
+import { compressPicture } from "../images/compress";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
@@ -107,20 +108,28 @@ export async function appAudio(deps: Deps, user: User, cardId: number, accent: "
   return audio;
 }
 
-/** Картинка слова: нарисованная заранее (с диска) или уже отправленная в Telegram — скачиваем по file_id и кладём на диск. */
+/**
+ * Картинка слова для Mini App: нарисованная (уже сжатая при генерации) — с диска; отправленная в Telegram раньше,
+ * до сжатия, — скачиваем по file_id один раз, сжимаем и кладём на диск.
+ */
 export async function appPicture(deps: Deps, api: Api | undefined, user: User, cardId: number): Promise<Buffer | undefined> {
   const word = await ownWord(deps, user, cardId);
   if (!word) return undefined;
   const onDisk = deps.pictures?.find(word);
-  if (onDisk) return readFile(onDisk);
+  if (onDisk?.endsWith(".jpg")) return readFile(onDisk);
+  const original = onDisk ? await readFile(onDisk) : await fromTelegram(api, word);
+  if (!original) return undefined;
+  const jpeg = await compressPicture(original);
+  await deps.pictures?.save(word, jpeg);
+  return jpeg;
+}
+
+async function fromTelegram(api: Api | undefined, word: Word): Promise<Buffer | undefined> {
   if (!word.imageFileId || !api) return undefined;
   const file = await api.getFile(word.imageFileId);
   if (!file.file_path) return undefined;
   const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
-  if (!response.ok) return undefined;
-  const png = Buffer.from(await response.arrayBuffer());
-  await deps.pictures?.save(word, png);
-  return png;
+  return response.ok ? Buffer.from(await response.arrayBuffer()) : undefined;
 }
 
 export const appWord = (deps: Deps, id: number) => getWord(deps.db, id);

@@ -1,7 +1,7 @@
 import { hapticFeedback, miniApp } from "@telegram-apps/sdk-react";
 import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { getMe, getQueue, sendAnswer, type Answer, type Card, type Me } from "./api";
+import { getMe, getQueue, pictureUrl, sendAnswer, type Answer, type Card, type Me } from "./api";
 import { SwipeCard } from "./SwipeCard";
 
 const haptic = (kind: "light" | "medium") => {
@@ -34,6 +34,11 @@ export function App() {
   }, []);
 
   useEffect(() => void load(), [load]);
+
+  // Картинки текущей и пары следующих карточек — заранее, пока человек вспоминает слово.
+  useEffect(() => {
+    for (const next of queue.slice(0, 3)) if (next.word.hasPicture) void pictureUrl(next.cardId);
+  }, [queue]);
 
   /** Ответ — сразу следующая карточка, запрос уходит в фоне; очередь кончилась — догружаем. */
   const answer = useCallback(

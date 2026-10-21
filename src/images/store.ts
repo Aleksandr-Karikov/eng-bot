@@ -18,12 +18,15 @@ export class PictureStore {
 
   private fileName(word: PictureKey): string {
     const hash = createHash("sha1").update(`${word.term}\n${word.translation}`).digest("hex").slice(0, 12);
-    return `${word.id}-${hash}.png`;
+    return `${word.id}-${hash}.jpg`;
   }
 
   find(word: PictureKey): string | undefined {
     const path = join(this.dir, this.fileName(word));
-    return existsSync(path) ? path : undefined;
+    if (existsSync(path)) return path;
+    // Старые, ещё не пережатые (scripts/compress-pictures.ts переводит их в JPEG).
+    const png = path.replace(/\.jpg$/, ".png");
+    return existsSync(png) ? png : undefined;
   }
 
   async save(word: PictureKey, png: Buffer): Promise<void> {
@@ -35,6 +38,9 @@ export class PictureStore {
   async prune(words: PictureKey[]): Promise<void> {
     if (!existsSync(this.dir)) return;
     const keep = new Set(words.map((w) => this.fileName(w)));
-    for (const file of await readdir(this.dir)) if (file.endsWith(".png") && !keep.has(file)) await rm(join(this.dir, file), { force: true });
+    for (const file of await readdir(this.dir)) {
+      const asJpg = file.replace(/\.png$/, ".jpg");
+      if (/\.(png|jpg)$/.test(file) && !keep.has(asJpg)) await rm(join(this.dir, file), { force: true });
+    }
   }
 }

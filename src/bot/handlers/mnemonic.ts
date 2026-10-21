@@ -29,7 +29,7 @@ async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { styl
     console.error("Picture failed", word.term, err);
     return void (await ctx.reply("Не получилось нарисовать картинку 😔 Попробуй позже"));
   }
-  const message = await ctx.replyWithPhoto(new InputFile(picture, "picture.png"), {
+  const message = await ctx.replyWithPhoto(new InputFile(picture, "picture.jpg"), {
     ...HTML,
     caption: pictureCaption(word.term, word.translation),
     has_spoiler: true,

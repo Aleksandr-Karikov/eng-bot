@@ -24,7 +24,8 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .back { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, #e5e5ea); padding-top: 14px; }
 .answer { text-align: center; color: var(--tg-theme-accent-text-color, #2481cc); }
 .block { line-height: 1.45; }
-.picture { width: 100%; max-height: 240px; object-fit: cover; border-radius: 14px; }
+.picture { width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 14px; overflow: hidden; background: var(--tg-theme-secondary-bg-color, #eee); }
+.picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .tap { text-align: center; margin-top: auto; }
 .actions { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 8px; justify-content: center; }

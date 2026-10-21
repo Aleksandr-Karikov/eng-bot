@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ExerciseTutor } from "../llm/tutor";
+import { compressPicture } from "./compress";
 
 const run = promisify(execFile);
 
@@ -86,7 +87,9 @@ export class ImageService {
     if (running) return running;
     const task = (async () => {
       const prompt = await this.tutor.imagePrompt({ ...word, ...(opts.wish ? { wish: opts.wish } : {}) });
-      return this.enqueue(() => this.synth.draw(`${prompt}, ${opts.style ?? this.style}`));
+      const png = await this.enqueue(() => this.synth.draw(`${prompt}, ${opts.style ?? this.style}`));
+      // Сразу сжимаем: дальше картинка и уходит в Telegram, и хранится, и отдаётся в Mini App уже лёгкой.
+      return compressPicture(png);
     })().finally(() => this.inFlight.delete(key));
     this.inFlight.set(key, task);
     return task;

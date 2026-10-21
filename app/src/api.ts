@@ -66,3 +66,15 @@ export async function mediaUrl(path: string): Promise<string | undefined> {
     return undefined;
   }
 }
+
+/** Картинки — по одной загрузке на карточку: кэш blob-ссылок, чтобы подгрузить заранее и не качать дважды. */
+const pictures = new Map<number, Promise<string | undefined>>();
+
+export function pictureUrl(cardId: number): Promise<string | undefined> {
+  let url = pictures.get(cardId);
+  if (!url) {
+    url = mediaUrl(`/api/picture?card=${cardId}`);
+    pictures.set(cardId, url);
+  }
+  return url;
+}

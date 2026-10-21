@@ -41,7 +41,7 @@ describe("PictureStore", () => {
     const word = { id: 7, term: "snag", translation: "урвать" };
     expect(pictures.find(word)).toBeUndefined();
     await pictures.save(word, Buffer.from("png"));
-    expect(pictures.find(word)).toMatch(/7-[0-9a-f]+\.png$/);
+    expect(pictures.find(word)).toMatch(/7-[0-9a-f]+\.jpg$/);
     expect(pictures.find({ ...word, translation: "зацепка" })).toBeUndefined();
   });
 });
@@ -115,5 +115,17 @@ describe("pictures from disk in the bot", () => {
     await h.bot.handleUpdate(h.callback(100, `im:${res.word.id}`));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendPhoto")).toBe(true));
     expect(draw).not.toHaveBeenCalled();
+  });
+});
+
+describe("pictures are compressed once, right after drawing", () => {
+  it("turns a big PNG into a small 512 px JPEG", async () => {
+    const sharp = (await import("sharp")).default;
+    const { compressPicture } = await import("../src/images/compress");
+    const png = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: { r: 200, g: 80, b: 40 } } }).png().toBuffer();
+    const jpeg = await compressPicture(png);
+    const meta = await sharp(jpeg).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBe(512);
   });
 });

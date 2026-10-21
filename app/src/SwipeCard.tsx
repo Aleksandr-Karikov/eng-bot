@@ -1,7 +1,7 @@
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useEffect, useState } from "react";
-import { mediaUrl, type Answer, type Card } from "./api";
+import { mediaUrl, pictureUrl, type Answer, type Card } from "./api";
 
 const USEFULNESS = { 3: "🟢", 2: "🟡", 1: "⚪️" } as Record<number, string>;
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
@@ -30,10 +30,15 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
   const w = card.word;
   const enRu = card.stage === "en_ru";
 
+  // Картинка грузится сразу при показе карточки (обычно уже подгружена заранее), а не после переворота.
   useEffect(() => {
-    if (!flipped || !w.hasPicture || picture) return;
-    void mediaUrl(`/api/picture?card=${card.cardId}`).then(setPicture);
-  }, [flipped, w.hasPicture, picture, card.cardId]);
+    if (!w.hasPicture) return;
+    let alive = true;
+    void pictureUrl(card.cardId).then((url) => alive && setPicture(url));
+    return () => {
+      alive = false;
+    };
+  }, [w.hasPicture, card.cardId]);
 
   const fling = (answer: Answer, direction: number) => {
     void animate(x, direction * 600, { duration: 0.2 }).then(() => onAnswer(answer));
@@ -73,7 +78,6 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
               {enRu ? w.translation : w.term}
             </Title>
             {!enRu && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
-            {picture && <img className="picture" src={picture} alt="" />}
             {w.explanation && <Text className="block">{w.explanation}</Text>}
             {w.example && (
               <Text className="block">
@@ -90,6 +94,8 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
                 <b>Как запомнить:</b> {w.mnemonic}
               </Text>
             )}
+            {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
+            {w.hasPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
         ) : (
           <Text className="hint tap">Вспомни {enRu ? "перевод" : "по-английски"} и нажми, чтобы проверить</Text>

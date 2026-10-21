@@ -43,7 +43,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.get("/api/picture", async (c) => {
     const png = await appPicture(deps, ctx.api, c.get("user"), Number(c.req.query("card")));
-    return png ? c.body(new Uint8Array(png), 200, { "content-type": "image/png", "cache-control": "private, max-age=86400" }) : c.notFound();
+    return png ? c.body(new Uint8Array(png), 200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" }) : c.notFound();
   });
 
   app.get("/", (c) => c.redirect("/app/"));
