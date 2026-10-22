@@ -2,6 +2,8 @@ import { z } from "zod";
 import { fixesField, jsonArray, jsonObject } from "./json";
 
 export interface Enrichment {
+  /** Английский вариант, если спросили русское слово (/add зуб → tooth); иначе нет. */
+  term?: string;
   translation: string;
   explanation: string;
   example: string;
@@ -101,7 +103,12 @@ const toEnrichment = <T extends { transcription_uk: string; transcription_us: st
   ...rest
 }: T) => ({ ...rest, transcriptionUk: transcription_uk, transcriptionUs: transcription_us, phraseFrequency: phrase_frequency });
 
-const enrichmentSchema = z.object(enrichmentFields).transform(toEnrichment);
+const enrichmentSchema = z
+  .object({ ...enrichmentFields, term: z.string().trim().optional() })
+  .transform(({ term, ...rest }) => ({ ...toEnrichment(rest), ...(term ? { term } : {}) }));
+
+/** Русское слово без латиницы: человек спрашивает «как это по-английски». */
+export const isRussian = (text: string) => /[а-яё]/i.test(text) && !/[a-z]/i.test(text);
 
 /**
  * Факты о слове для оценки полезности. Итог («полезно ли») модель не ставит — это субъективно и прыгает;
@@ -124,11 +131,16 @@ export const SYSTEM_PROMPT =
   "Ты помогаешь русскоязычным людям учить английский. Отвечай строго одним JSON-объектом, без пояснений и без markdown.";
 
 export function buildPrompt(term: string, translationHint?: string, context?: string): string {
+  const russian = isRussian(term);
   return [
-    `Английское слово или фраза: "${term}".`,
+    russian
+      ? `Русское слово или фраза: "${term}". Подбери самый употребительный английский эквивалент (слово или устойчивое выражение) и опиши его — всё ниже про английский вариант.`
+      : `Английское слово или фраза: "${term}".`,
     translationHint ? `Пользователь имеет в виду значение "${translationHint}" — опиши именно его.` : "",
     context ? `Встретилось в реплике: "${context}". Переводи и объясняй в значении из этой реплики; словарную форму не меняй.` : "",
-    'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "sense": "main", "register": "neutral", "phrase_frequency": ""}, где',
+    russian
+      ? 'Верни JSON: {"term": "...", "translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "sense": "main", "register": "neutral", "phrase_frequency": ""}, где term — этот английский эквивалент,'
+      : 'Верни JSON: {"translation": "...", "explanation": "...", "example": "...", "transcription_uk": "...", "transcription_us": "...", "sense": "main", "register": "neutral", "phrase_frequency": ""}, где',
     "translation — краткий перевод на русский (1–3 самых частых значения через запятую),",
     "explanation — объяснение значения на русском в одном предложении,",
     "example — короткое естественное предложение на английском с этим словом,",

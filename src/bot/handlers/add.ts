@@ -1,6 +1,6 @@
 import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
-import type { Enrichment } from "../../llm/enricher";
+import { isRussian, type Enrichment } from "../../llm/enricher";
 import { findWord, MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { termPattern } from "../../services/word-uses";
 import { decodeCb } from "../callbacks";
@@ -19,35 +19,56 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   if (!parsed) return void (await ctx.reply(USAGE));
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
-  if (await findWord(deps.db, room.id, parsed.term)) {
-    return void (await ctx.reply(`«${esc(parsed.term)}» уже есть в комнате`, HTML));
-  }
+  // «/add зуб — tooth» — написали наоборот: слово английское, перевод русский.
+  if (parsed.translation && isRussian(parsed.term) && !isRussian(parsed.translation)) [parsed.term, parsed.translation] = [parsed.translation, parsed.term];
+  // «/add зуб» — английский вариант подберёт модель, а слово в черновике будет уже английским.
+  const fromRussian = isRussian(parsed.term);
+  const exists = async (term: string) => {
+    if (!(await findWord(deps.db, room.id, term))) return false;
+    await ctx.reply(`«${esc(term)}» уже есть в комнате`, HTML);
+    return true;
+  };
+  if (!fromRussian && (await exists(parsed.term))) return;
 
   await ctx.replyWithChatAction("typing");
-  // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
-  const [enrichment, mnemonic] = await Promise.all([
-    deps.enricher
-      .enrich(parsed.term, parsed.translation)
-      .then(async (e) => (await rateUsefulness([{ ...e, term: parsed.term }], deps.frequency))[0])
-      .catch((err): Enrichment | undefined => {
-        console.error("Enrichment failed", parsed.term, err);
-        return undefined;
-      }),
+  const enrich = deps.enricher
+    .enrich(parsed.term, parsed.translation)
+    .then(async (e) => (await rateUsefulness([{ ...e, term: e.term ?? parsed.term }], deps.frequency))[0])
+    .catch((err): Enrichment | undefined => {
+      console.error("Enrichment failed", parsed.term, err);
+      return undefined;
+    });
+  const mnemonicFor = (term: string, translation: string) =>
     deps.tutor
-      .mnemonics([{ term: parsed.term, translation: parsed.translation ?? "" }])
+      .mnemonics([{ term, translation }])
       .then(([m]) => m ?? "")
       .catch((err) => {
-        console.error("Mnemonic failed", parsed.term, err);
+        console.error("Mnemonic failed", term, err);
         return "";
-      }),
-  ]);
+      });
+
+  let enrichment: Enrichment | undefined;
+  let mnemonic: string;
+  if (fromRussian) {
+    // Запоминалку — уже для английского слова, поэтому после перевода.
+    enrichment = await enrich;
+    if (!enrichment?.term) return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(parsed.term)}». Напиши сразу по-английски: /add tooth`, HTML));
+    parsed.translation = parsed.term;
+    parsed.term = enrichment.term;
+    if (await exists(parsed.term)) return;
+    mnemonic = await mnemonicFor(parsed.term, enrichment.translation);
+  } else {
+    // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
+    [enrichment, mnemonic] = await Promise.all([enrich, mnemonicFor(parsed.term, parsed.translation ?? "")]);
+  }
 
   const draft = deps.drafts.create({
     userId: ctx.user.id,
     chatId: ctx.chat.id,
     roomId: room.id,
     term: parsed.term,
-    translation: parsed.translation ?? enrichment?.translation ?? "",
+    // Для русского слова перевод — от модели (она могла уточнить его), а не само русское слово.
+    translation: (fromRussian ? enrichment?.translation : parsed.translation) ?? enrichment?.translation ?? "",
     explanation: enrichment?.explanation ?? "",
     example: enrichment?.example ?? "",
     transcriptionUk: enrichment?.transcriptionUk ?? "",
