@@ -299,6 +299,7 @@
 
   const MAX_ACTIVE = 2;
   const QUEUE_SHOWN = 5;
+  const DONE_SHOWN_MS = 15_000;
   let queueSeq = 0;
 
   function send() {
@@ -357,8 +358,15 @@
     item.doneAt = Date.now();
     render();
     pump();
-    // Готовая строка через несколько секунд тускнеет.
+    // Готовая строка через несколько секунд тускнеет, а через 15 с исчезает; ошибки остаются — их можно повторить.
     setTimeout(renderQueue, 8_000);
+    if (item.status !== "err") {
+      setTimeout(() => {
+        state.queue = state.queue.filter((i) => i !== item);
+        render();
+        renderQueue();
+      }, DONE_SHOWN_MS);
+    }
   }
 
   /** Подсветку знакомых слов обновляем одним запросом после пачки добавлений, а не после каждого. */
