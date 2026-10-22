@@ -1,14 +1,15 @@
 import { Cell, List, Placeholder, Section, Select, Spinner, Switch } from "@telegram-apps/telegram-ui";
 import { useEffect, useState } from "react";
 import { changeSetting, getSettings, type SettingChange, type Settings, type Toggle } from "./api";
-import { haptic, notify } from "./telegram";
+import { haptic, notify, useBackButton } from "./telegram";
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** ⚙️ Те же настройки, что /settings в боте: каждое изменение сохраняется сразу. */
-export function SettingsScreen() {
+export function SettingsScreen({ onExit }: { onExit: () => void }) {
   const [settings, setSettings] = useState<Settings>();
   const [error, setError] = useState<string>();
+  useBackButton(onExit);
 
   useEffect(() => {
     getSettings()

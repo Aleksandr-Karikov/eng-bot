@@ -1,13 +1,13 @@
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { getMe, getQueue, pictureUrl, sendAnswer, type Answer, type Card, type Me } from "./api";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
 import { haptic } from "./telegram";
 
 /** 📚 Карточки: очередь /learn со свайпами. */
-export function Learn() {
+export function Learn({ corner }: { corner: ReactNode }) {
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<Card[]>([]);
   const [done, setDone] = useState(0);
@@ -51,27 +51,43 @@ export function Learn() {
     [load],
   );
 
-  if (error) return <Placeholder header="Не получилось загрузить" description={error} />;
-  if (loading && queue.length === 0) {
+  const card = queue[0];
+  const total = done + queue.length;
+  // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
+  const header = (
+    <header className="top">
+      <Text weight="2">{me?.room ?? "WordBoss"}</Text>
+      <div className="top-right">
+        {card && (
+          <Text className="hint">
+            {done} / {total}
+          </Text>
+        )}
+        {corner}
+      </div>
+    </header>
+  );
+
+  if (error || (loading && !card) || !card) {
     return (
-      <div className="center">
-        <Spinner size="l" />
+      <div className="screen">
+        {header}
+        {error ? (
+          <Placeholder header="Не получилось загрузить" description={error} />
+        ) : loading ? (
+          <div className="center">
+            <Spinner size="l" />
+          </div>
+        ) : (
+          <Done done={done} />
+        )}
       </div>
     );
   }
 
-  const card = queue[0];
-  const total = done + queue.length;
-  if (!card) return <Done done={done} />;
-
   return (
     <div className="screen">
-      <header className="top">
-        <Text weight="2">{me?.room ?? "WordBoss"}</Text>
-        <Text className="hint">
-          {done} / {total}
-        </Text>
-      </header>
+      {header}
       <Progress value={total ? (done / total) * 100 : 0} />
       <SwipeCard key={`${card.cardId}-${card.reps}`} card={card} view={me?.view} onAnswer={(a) => answer(card, a)} />
     </div>

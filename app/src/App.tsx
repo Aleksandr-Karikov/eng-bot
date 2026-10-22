@@ -1,49 +1,56 @@
-import { Tabbar } from "@telegram-apps/telegram-ui";
-import { useState } from "react";
+import { settingsButton } from "@telegram-apps/sdk-react";
+import { useCallback, useEffect, useState } from "react";
 import { Learn } from "./Learn";
 import { SettingsScreen } from "./Settings";
 import { Words } from "./Words";
 import { haptic } from "./telegram";
 
-const TABS = [
-  { id: "learn", icon: "📚", text: "Карточки" },
-  { id: "words", icon: "📖", text: "Слова" },
-  { id: "settings", icon: "⚙️", text: "Настройки" },
-] as const;
+type Page = "learn" | "words" | "settings";
 
-type Tab = (typeof TABS)[number]["id"];
-
-/** Вкладку можно открыть сразу: …/app/?tab=words. */
-function startTab(): Tab {
+/** Страницу можно открыть сразу: …/app/?tab=words. */
+function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  return TABS.find((t) => t.id === asked)?.id ?? "learn";
+  return asked === "words" || asked === "settings" ? asked : "learn";
 }
 
-/** Три вкладки внизу. Карточки при уходе с вкладки закрываются — их нативные кнопки прячутся сами. */
+/**
+ * Главное — карточки на весь экран. Слова и настройки — отдельные страницы: кнопки 📖 и ⚙️ в углу,
+ * настройки ещё и из штатного меню Telegram (⋮ → «Настройки»); назад — нативной кнопкой «Назад».
+ */
 export function App() {
-  const [tab, setTab] = useState<Tab>(startTab);
+  const [page, setPage] = useState<Page>(startPage);
+  const open = useCallback((next: Page) => {
+    haptic.select();
+    setPage(next);
+  }, []);
+  const back = useCallback(() => setPage("learn"), []);
+
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    try {
+      settingsButton.mount();
+      settingsButton.show();
+      off = settingsButton.onClick(() => open("settings"));
+    } catch {
+      // нет в этой версии Telegram или открыто вне Telegram
+    }
+    return () => off?.();
+  }, [open]);
+
+  if (page === "words") return <Words onExit={back} />;
+  if (page === "settings") return <SettingsScreen onExit={back} />;
   return (
-    <>
-      <main className="page">
-        {tab === "learn" && <Learn />}
-        {tab === "words" && <Words />}
-        {tab === "settings" && <SettingsScreen />}
-      </main>
-      <Tabbar className="tabbar">
-        {TABS.map((t) => (
-          <Tabbar.Item
-            key={t.id}
-            text={t.text}
-            selected={tab === t.id}
-            onClick={() => {
-              if (t.id !== tab) haptic.select();
-              setTab(t.id);
-            }}
-          >
-            <span className="tab-icon">{t.icon}</span>
-          </Tabbar.Item>
-        ))}
-      </Tabbar>
-    </>
+    <Learn
+      corner={
+        <div className="corner">
+          <button className="corner-button" aria-label="Слова" onClick={() => open("words")}>
+            📖
+          </button>
+          <button className="corner-button" aria-label="Настройки" onClick={() => open("settings")}>
+            ⚙️
+          </button>
+        </div>
+      }
+    />
   );
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getWords, type WordItem, type WordStatus } from "./api";
 import { WordPage } from "./WordPage";
 import { USEFULNESS } from "./format";
-import { haptic } from "./telegram";
+import { haptic, useBackButton } from "./telegram";
 
 const STATUS_LABEL: Record<WordStatus, string> = {
   new: "новое",
@@ -24,8 +24,14 @@ const FILTERS: Array<{ id: string; label: string; match: (s: WordStatus) => bool
 /** Как в боте: регистр и лишние пробелы не важны; ищем и по слову, и по переводу. */
 const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
+/** «Назад» со списка — к карточкам. Отдельным компонентом: на странице слова кнопку «Назад» держит она сама. */
+function BackToCards({ onExit }: { onExit: () => void }) {
+  useBackButton(onExit);
+  return null;
+}
+
 /** 📖 Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
-export function Words() {
+export function Words({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<{ room: string | null; words: WordItem[] }>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
@@ -56,18 +62,21 @@ export function Words() {
   }, [load]);
 
   if (open !== undefined) return <WordPage id={open} onClose={close} />;
-  if (error) return <Placeholder header="Не получилось загрузить" description={error} />;
+  const back = <BackToCards onExit={onExit} />;
+  if (error) return <>{back}<Placeholder header="Не получилось загрузить" description={error} /></>;
   if (!data) {
     return (
       <div className="center">
+        {back}
         <Spinner size="l" />
       </div>
     );
   }
-  if (!data.room) return <Placeholder header="Нет комнаты" description="Выбери комнату во вкладке «Настройки» или создай в боте: /newroom" />;
+  if (!data.room) return <>{back}<Placeholder header="Нет комнаты" description="Выбери комнату в настройках (⚙️) или создай в боте: /newroom" /></>;
 
   return (
     <List>
+      {back}
       <Input placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="chips">
         {FILTERS.map((f) => (

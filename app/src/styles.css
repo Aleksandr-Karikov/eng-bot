@@ -50,7 +50,7 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--tabbar-h);
+  bottom: 0;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   background: var(--tg-theme-secondary-bg-color, #f1f1f4);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
@@ -58,12 +58,20 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 }
 .screen { padding-bottom: 96px; }
 
-/* Вкладки внизу: страница не уходит под них. */
-:root { --tabbar-h: calc(84px + env(safe-area-inset-bottom)); }
-.page { height: 100%; box-sizing: border-box; padding-bottom: var(--tabbar-h); overflow-y: auto; }
-.page > .screen { min-height: 100%; }
-.tabbar { z-index: 20; background: var(--tg-theme-bottom-bar-bg-color, var(--tg-theme-bg-color, #fff)); }
-.tab-icon { font-size: 22px; line-height: 1; }
+/* Кнопки 📖 и ⚙️ в углу — вместо вкладок, чтобы карточке оставалось место. */
+.top-right { display: flex; align-items: center; gap: 10px; }
+.corner { display: flex; gap: 4px; }
+.corner-button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.corner-button:active { opacity: 0.6; }
 
 /* 📖 Слова */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 16px; scrollbar-width: none; }
