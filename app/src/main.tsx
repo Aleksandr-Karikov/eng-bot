@@ -28,10 +28,19 @@ function setupTelegram(): void {
   }
 }
 
+/** Тёмная или светлая — как тема Telegram, а не как система телефона (они могут не совпадать). */
+function appearance(): "dark" | "light" | undefined {
+  try {
+    return themeParams.isDark() ? "dark" : "light";
+  } catch {
+    return undefined;
+  }
+}
+
 setupTelegram();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <AppRoot>
+    <AppRoot appearance={appearance()}>
       <App />
     </AppRoot>
   </StrictMode>,

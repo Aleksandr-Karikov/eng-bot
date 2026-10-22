@@ -206,7 +206,7 @@ export function clozeKeyboard(cardId: number, reps: number, wordId: number): Inl
   return addManageButton(new InlineKeyboard().text("🤷 Не знаю", encodeCb({ k: "dunno", cardId, reps })).row(), wordId);
 }
 
-const CARD_PART_LABELS: Array<[CardPart, string]> = [
+export const CARD_PART_LABELS: Array<[CardPart, string]> = [
   ["transcription", "🔤 Транскрипция"],
   ["explanation", "📖 Объяснение"],
   ["example", "✏️ Пример"],
@@ -217,7 +217,7 @@ const CARD_PART_LABELS: Array<[CardPart, string]> = [
   ["picture", "🖼 Картинки"],
 ];
 
-const MODE_LABELS: Array<[Stage, string, keyof User]> = [
+export const MODE_LABELS: Array<[Stage, string, keyof User]> = [
   ["en_ru", "EN → RU", "modeEnRu"],
   ["ru_en", "RU → EN", "modeRuEn"],
   ["cloze", "Вставь по смыслу", "modeCloze"],

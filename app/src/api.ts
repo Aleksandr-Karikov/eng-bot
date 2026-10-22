@@ -24,7 +24,11 @@ export interface Me {
   name: string;
   room: string | null;
   due: { review: number; fresh: number };
+  /** Какие части карточки показывать (⚙️ → 🃏 Карточка). */
+  view: CardView;
 }
+
+export type CardView = Record<"transcription" | "explanation" | "example" | "context" | "collocations" | "mnemonic" | "audio" | "picture", boolean>;
 
 export type Answer = "again" | "good" | "easy";
 
@@ -44,18 +48,74 @@ const headers = () => ({ authorization: `tma ${initData()}`, "ngrok-skip-browser
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { ...init?.headers, ...headers() } });
-  if (!res.ok) throw new Error(res.status === 401 ? "Открой приложение из бота" : `Ошибка ${res.status}`);
-  return res.json() as Promise<T>;
+  if (res.status === 401) throw new Error("Открой приложение из бота");
+  // Ошибки действий («Хотя бы один режим должен остаться…») сервер присылает текстом для человека.
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Ошибка ${res.status}`);
+  return body as T;
 }
+
+const post = <T>(path: string, body: object = {}) =>
+  call<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const getMe = () => call<Me & { ok: true }>("/api/me");
 export const getQueue = () => call<{ cards: Card[] }>("/api/queue").then((r) => r.cards);
-export const sendAnswer = (card: Card, answer: Answer) =>
-  call("/api/answer", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ cardId: card.cardId, reps: card.reps, answer, stage: card.stage }),
-  });
+export const sendAnswer = (card: Card, answer: Answer) => post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage });
+
+/** Как слово идёт у меня: dropped — убрал у себя («🙈 Не для меня»). */
+export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";
+
+export interface WordItem {
+  id: number;
+  term: string;
+  translation: string;
+  usefulness: number | null;
+  status: WordStatus;
+}
+
+export interface WordDetails extends Omit<Card["word"], "id"> {
+  id: number;
+  moreContexts: Array<{ text: string; title: string }>;
+  collocations: Array<{ phrase: string; translation: string }>;
+  /** Есть ли слово в моих карточках. */
+  mine: boolean;
+}
+
+export type WordAction = "drop" | "restore" | "promote" | "delete";
+
+export const getWords = () => call<{ room: string | null; words: WordItem[] }>("/api/words");
+export const getWord = (id: number) => call<{ word: WordDetails }>(`/api/words/${id}`).then((r) => r.word);
+export const editWord = (id: number, patch: { translation: string; explanation: string }) => post(`/api/words/${id}/edit`, patch);
+export const wordAction = (id: number, action: WordAction) => post(`/api/words/${id}/${action}`);
+
+export interface Toggle {
+  key: string;
+  label: string;
+  on: boolean;
+}
+
+export interface Settings {
+  rooms: Array<{ id: number; name: string; current: boolean }>;
+  reminderHour: number;
+  notifyDue: boolean;
+  weeklyReport: boolean;
+  modes: Toggle[];
+  drill: boolean;
+  card: Toggle[];
+}
+
+/** Одна настройка за раз, например { reminderHour: 9 } или { mode: "cloze", on: false }. */
+export type SettingChange =
+  | { room: number }
+  | { reminderHour: number }
+  | { notifyDue: boolean }
+  | { weeklyReport: boolean }
+  | { drill: boolean }
+  | { mode: string; on: boolean }
+  | { cardPart: string; on: boolean };
+
+export const getSettings = () => call<{ settings: Settings }>("/api/settings").then((r) => r.settings);
+export const changeSetting = (change: SettingChange) => post<{ settings: Settings }>("/api/settings", change).then((r) => r.settings);
 
 /** Картинка и озвучка тоже под подписью — <img>/<audio> так не умеют, поэтому через fetch и blob-ссылку. */
 export async function mediaUrl(path: string): Promise<string | undefined> {
@@ -67,14 +127,17 @@ export async function mediaUrl(path: string): Promise<string | undefined> {
   }
 }
 
-/** Картинки — по одной загрузке на карточку: кэш blob-ссылок, чтобы подгрузить заранее и не качать дважды. */
-const pictures = new Map<number, Promise<string | undefined>>();
+/** Картинки — по одной загрузке: кэш blob-ссылок, чтобы подгрузить заранее и не качать дважды. */
+const pictures = new Map<string, Promise<string | undefined>>();
 
-export function pictureUrl(cardId: number): Promise<string | undefined> {
-  let url = pictures.get(cardId);
+function cachedPicture(query: string): Promise<string | undefined> {
+  let url = pictures.get(query);
   if (!url) {
-    url = mediaUrl(`/api/picture?card=${cardId}`);
-    pictures.set(cardId, url);
+    url = mediaUrl(`/api/picture?${query}`);
+    pictures.set(query, url);
   }
   return url;
 }
+
+export const pictureUrl = (cardId: number) => cachedPicture(`card=${cardId}`);
+export const wordPictureUrl = (wordId: number) => cachedPicture(`word=${wordId}`);

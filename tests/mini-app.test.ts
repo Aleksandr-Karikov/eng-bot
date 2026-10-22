@@ -6,6 +6,8 @@ import { sign } from "@telegram-apps/init-data-node";
 import { cards, reviewLogs } from "../src/db/schema";
 import { createApp } from "../src/app/server";
 import { createRoom } from "../src/services/rooms";
+import { getUser } from "../src/services/users";
+import { getWord } from "../src/services/words";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
 import { botHarness } from "./bot-harness";
@@ -72,5 +74,63 @@ describe("📚 Mini App API", () => {
     } finally {
       server.close();
     }
+  });
+
+  describe("📖 words and ⚙️ settings", () => {
+    const post = (app: Awaited<ReturnType<typeof setup>>["app"], auth: object, path: string, body: object = {}) =>
+      app.request(path, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    it("lists the room's words with my status and opens one", async () => {
+      const { app, auth } = await setup();
+      const list = await (await app.request("/api/words", { headers: auth })).json();
+      expect(list).toMatchObject({ ok: true, room: "R", words: [{ term: "bank", translation: "берег", status: "new", usefulness: 3 }] });
+      const { word } = await (await app.request(`/api/words/${list.words[0].id}`, { headers: auth })).json();
+      expect(word).toMatchObject({ term: "bank", mine: true, collocations: [], moreContexts: [] });
+    });
+
+    it("edits, drops and restores, promotes and deletes like the bot's buttons", async () => {
+      const { h, app, auth } = await setup();
+      const id = (await (await app.request("/api/words", { headers: auth })).json()).words[0].id;
+      expect((await post(app, auth, `/api/words/${id}/edit`, { translation: "" })).status).toBe(400);
+      expect((await post(app, auth, `/api/words/${id}/edit`, { translation: "банк", explanation: "финансы" })).status).toBe(200);
+      expect(await getWord(h.db, id)).toMatchObject({ translation: "банк", explanation: "финансы" });
+      await post(app, auth, `/api/words/${id}/drop`);
+      expect((await (await app.request("/api/words", { headers: auth })).json()).words[0].status).toBe("dropped");
+      await post(app, auth, `/api/words/${id}/restore`);
+      expect((await (await app.request("/api/words", { headers: auth })).json()).words[0].status).toBe("new");
+      await post(app, auth, `/api/words/${id}/promote`);
+      expect((await getWord(h.db, id))!.usefulness).toBe(2);
+      expect((await post(app, auth, `/api/words/${id}/hack`)).status).toBe(400);
+      await post(app, auth, `/api/words/${id}/delete`);
+      expect(await getWord(h.db, id)).toBeUndefined();
+      expect((await app.request(`/api/words/${id}`, { headers: auth })).status).toBe(404);
+    });
+
+    it("does not show or change words of rooms I am not in", async () => {
+      const { h, app, auth } = await setup();
+      const stranger = await makeUser(h.db, 300);
+      const other = await createRoom(h.db, { name: "Other", createdBy: stranger.id, now: T0 });
+      const saved = await saveWord(h.db, { roomId: other.id, addedBy: stranger.id, draft: { term: "secret", translation: "секрет", explanation: "", example: "" }, now: T0 });
+      if (saved.status !== "saved") throw new Error(saved.status);
+      const word = saved.word;
+      expect((await app.request(`/api/words/${word.id}`, { headers: auth })).status).toBe(404);
+      expect((await post(app, auth, `/api/words/${word.id}/delete`)).status).toBe(404);
+      expect((await app.request(`/api/audio?word=${word.id}&accent=uk`, { headers: auth })).status).toBe(404);
+      expect((await post(app, auth, "/api/settings", { room: other.id })).status).toBe(400);
+    });
+
+    it("changes settings one at a time, with the bot's rules", async () => {
+      const { h, app, auth } = await setup();
+      const { settings } = await (await app.request("/api/settings", { headers: auth })).json();
+      expect(settings).toMatchObject({ rooms: [{ name: "R", current: true }], reminderHour: 20, notifyDue: true, drill: true });
+      expect(settings.modes.map((m: { key: string }) => m.key)).toContain("cloze");
+      await post(app, auth, "/api/settings", { reminderHour: 9 });
+      await post(app, auth, "/api/settings", { cardPart: "mnemonic", on: false });
+      await post(app, auth, "/api/settings", { weeklyReport: false });
+      expect(await getUser(h.db, 1)).toMatchObject({ reminderTime: "09:00", cardHidden: "mnemonic", weeklyReport: false });
+      for (const key of ["ru_en", "cloze", "sentence", "listen", "collocation"]) await post(app, auth, "/api/settings", { mode: key, on: false });
+      const last = await post(app, auth, "/api/settings", { mode: "en_ru", on: false });
+      expect(await last.json()).toEqual({ ok: false, error: "Хотя бы один режим должен остаться включённым" });
+    });
   });
 });

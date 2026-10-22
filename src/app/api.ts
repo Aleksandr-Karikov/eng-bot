@@ -6,10 +6,10 @@ import { compressPicture } from "../images/compress";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
+import { cardView } from "../services/card-view";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
-import { getWord } from "../services/words";
 import type { Answer } from "../srs/srs";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
@@ -43,7 +43,7 @@ export async function appUser(deps: Pick<Deps, "db">, telegramId: number): Promi
 
 export async function appMe(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
-  return { name: user.firstName, room: room?.name ?? null, due: await countDueSplit(deps.db, user.id, deps.now()) };
+  return { name: user.firstName, room: room?.name ?? null, due: await countDueSplit(deps.db, user.id, deps.now()), view: cardView(user) };
 }
 
 function hasPicture(deps: Deps, word: Word): boolean {
@@ -92,14 +92,12 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
 }
 
 /** Своё слово: только из карточек этого человека — чужие слова через API не достать. */
-async function ownWord(deps: Deps, user: User, cardId: number): Promise<Word | undefined> {
+export async function ownWord(deps: Deps, user: User, cardId: number): Promise<Word | undefined> {
   return (await getDueItemByCard(deps.db, user.id, cardId))?.word;
 }
 
 /** Озвучка в AAC для браузера, кэш на диске. */
-export async function appAudio(deps: Deps, user: User, cardId: number, accent: "uk" | "us"): Promise<Buffer | undefined> {
-  const word = await ownWord(deps, user, cardId);
-  if (!word) return undefined;
+export async function appAudio(deps: Deps, word: Word, accent: "uk" | "us"): Promise<Buffer> {
   const file = join(AUDIO_DIR, `${word.id}-${accent}-${Buffer.from(word.term).toString("hex").slice(0, 24)}.m4a`);
   if (existsSync(file)) return readFile(file);
   const audio = await deps.speech.synthesize(word.term, accent, "m4a");
@@ -112,9 +110,7 @@ export async function appAudio(deps: Deps, user: User, cardId: number, accent: "
  * Картинка слова для Mini App: нарисованная (уже сжатая при генерации) — с диска; отправленная в Telegram раньше,
  * до сжатия, — скачиваем по file_id один раз, сжимаем и кладём на диск.
  */
-export async function appPicture(deps: Deps, api: Api | undefined, user: User, cardId: number): Promise<Buffer | undefined> {
-  const word = await ownWord(deps, user, cardId);
-  if (!word) return undefined;
+export async function appPicture(deps: Deps, api: Api | undefined, word: Word): Promise<Buffer | undefined> {
   const onDisk = deps.pictures?.find(word);
   if (onDisk?.endsWith(".jpg")) return readFile(onDisk);
   const original = onDisk ? await readFile(onDisk) : await fromTelegram(api, word);
@@ -131,5 +127,3 @@ async function fromTelegram(api: Api | undefined, word: Word): Promise<Buffer | 
   const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
   return response.ok ? Buffer.from(await response.arrayBuffer()) : undefined;
 }
-
-export const appWord = (deps: Deps, id: number) => getWord(deps.db, id);

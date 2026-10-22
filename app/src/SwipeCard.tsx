@@ -2,18 +2,10 @@ import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { mediaUrl, pictureUrl, type Answer, type Card } from "./api";
-
-const USEFULNESS = { 3: "🟢", 2: "🟡", 1: "⚪️" } as Record<number, string>;
+import { mediaUrl, pictureUrl, type Answer, type Card, type CardView } from "./api";
+import { transcription, USEFULNESS } from "./format";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
-
-function transcription(w: Card["word"]): string {
-  const uk = w.transcriptionUk.trim();
-  const us = w.transcriptionUs.trim();
-  if (uk && uk === us) return uk;
-  return [uk && `🇬🇧 ${uk}`, us && `🇺🇸 ${us}`].filter(Boolean).join("  ·  ");
-}
 
 async function play(card: Card, accent: "uk" | "us") {
   const url = await mediaUrl(`/api/audio?card=${card.cardId}&accent=${accent}`);
@@ -21,7 +13,10 @@ async function play(card: Card, accent: "uk" | "us") {
 }
 
 /** Карточка: тап — перевернуть, свайп вправо — «помню», влево — «забыл». Кнопки — то же самое. */
-export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer) => void }) {
+/** Пока настройки не пришли — показываем всё. */
+const ALL: CardView = { transcription: true, explanation: true, example: true, context: true, collocations: true, mnemonic: true, audio: true, picture: true };
+
+export function SwipeCard({ card, view = ALL, onAnswer }: { card: Card; view?: CardView; onAnswer: (a: Answer) => void }) {
   const [flipped, setFlipped] = useState(false);
   const [picture, setPicture] = useState<string>();
   const x = useMotionValue(0);
@@ -30,16 +25,17 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
   const forgotOpacity = useTransform(x, [-SWIPE_PX, -20], [1, 0]);
   const w = card.word;
   const enRu = card.stage === "en_ru";
+  const withPicture = w.hasPicture && view.picture;
 
   // Картинка грузится сразу при показе карточки (обычно уже подгружена заранее), а не после переворота.
   useEffect(() => {
-    if (!w.hasPicture) return;
+    if (!withPicture) return;
     let alive = true;
     void pictureUrl(card.cardId).then((url) => alive && setPicture(url));
     return () => {
       alive = false;
     };
-  }, [w.hasPicture, card.cardId]);
+  }, [withPicture, card.cardId]);
 
   const fling = useCallback(
     (answer: Answer, direction: number) => {
@@ -81,7 +77,7 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
           <Title level="1" weight="2">
             {enRu ? w.term : w.translation} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
           </Title>
-          {enRu && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
+          {enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
         </div>
 
         {flipped ? (
@@ -89,25 +85,25 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
             <Title level="2" weight="2" className="answer">
               {enRu ? w.translation : w.term}
             </Title>
-            {!enRu && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
+            {!enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
             {w.explanation && <Text className="block">{w.explanation}</Text>}
-            {w.example && (
+            {view.example && w.example && (
               <Text className="block">
                 <b>Пример:</b> <i>{w.example}</i>
               </Text>
             )}
-            {w.context && (
+            {view.context && w.context && (
               <Text className="block">
                 <b>Где встретилось:</b> <i>{w.context}</i>
               </Text>
             )}
-            {w.mnemonic && (
+            {view.mnemonic && w.mnemonic && (
               <Text className="block">
                 <b>Как запомнить:</b> {w.mnemonic}
               </Text>
             )}
             {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
-            {w.hasPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
+            {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
         ) : (
           <Text className="hint tap">Вспомни {enRu ? "перевод" : "по-английски"} и нажми, чтобы проверить</Text>
@@ -116,12 +112,16 @@ export function SwipeCard({ card, onAnswer }: { card: Card; onAnswer: (a: Answer
 
       {flipped && (
         <div className="row">
-          <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
-            🔊 UK
-          </Button>
-          <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
-            🔊 US
-          </Button>
+          {view.audio && (
+            <>
+              <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
+                🔊 UK
+              </Button>
+              <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
+                🔊 US
+              </Button>
+            </>
+          )}
           {card.isNew && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
               ✅ Уже знаю

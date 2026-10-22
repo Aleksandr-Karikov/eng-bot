@@ -6,7 +6,8 @@ import { Hono } from "hono";
 import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
-import { appAnswer, appAudio, appMe, appPicture, appQueue, appUser } from "./api";
+import { appAnswer, appAudio, appMe, appPicture, appQueue, appUser, ownWord } from "./api";
+import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
   deps: Deps;
@@ -38,13 +39,46 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const r = await appAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400);
   });
+  /** Слово для озвучки и картинки: из своей карточки (?card=) или из своей комнаты (?word=, страница слова). */
+  const mediaWord = (c: { req: { query: (k: string) => string | undefined } }, user: User) =>
+    c.req.query("word") ? memberWord(deps, user, Number(c.req.query("word"))) : ownWord(deps, user, Number(c.req.query("card")));
   app.get("/api/audio", async (c) => {
-    const audio = await appAudio(deps, c.get("user"), Number(c.req.query("card")), c.req.query("accent") === "us" ? "us" : "uk");
-    return audio ? c.body(new Uint8Array(audio), 200, { "content-type": "audio/mp4", "cache-control": "private, max-age=86400" }) : c.notFound();
+    const word = await mediaWord(c, c.get("user"));
+    if (!word) return c.notFound();
+    const audio = await appAudio(deps, word, c.req.query("accent") === "us" ? "us" : "uk");
+    return c.body(new Uint8Array(audio), 200, { "content-type": "audio/mp4", "cache-control": "private, max-age=86400" });
   });
   app.get("/api/picture", async (c) => {
-    const png = await appPicture(deps, ctx.api, c.get("user"), Number(c.req.query("card")));
-    return png ? c.body(new Uint8Array(png), 200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" }) : c.notFound();
+    const word = await mediaWord(c, c.get("user"));
+    const jpeg = word && (await appPicture(deps, ctx.api, word));
+    return jpeg ? c.body(new Uint8Array(jpeg), 200, { "content-type": "image/jpeg", "cache-control": "private, max-age=86400" }) : c.notFound();
+  });
+
+  // 📖 Слова и ⚙️ Настройки — те же правила, что у кнопок в боте.
+  app.get("/api/words", async (c) => c.json({ ok: true, ...(await appWords(deps, c.get("user"))) }));
+  app.get("/api/words/:id", async (c) => {
+    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    return word ? c.json({ ok: true, word: await appWordDetails(deps, c.get("user"), word) }) : c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+  });
+  app.post("/api/words/:id/edit", async (c) => {
+    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+    const r = await appEditWord(deps, word, await c.req.json().catch(() => ({})));
+    return c.json(r, r.ok ? 200 : 400);
+  });
+  const ACTIONS = new Set<WordAction>(["drop", "restore", "promote", "delete"]);
+  app.post("/api/words/:id/:action", async (c) => {
+    const action = c.req.param("action") as WordAction;
+    if (!ACTIONS.has(action)) return c.json({ ok: false, error: "Непонятное действие" }, 400);
+    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+    await appWordAction(deps, c.get("user"), word, action);
+    return c.json({ ok: true });
+  });
+  app.get("/api/settings", async (c) => c.json({ ok: true, settings: await appSettings(deps, c.get("user")) }));
+  app.post("/api/settings", async (c) => {
+    const r = await appChangeSetting(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return r.ok ? c.json({ ok: true, settings: await appSettings(deps, r.user) }) : c.json(r, 400);
   });
 
   // Сервер расширения — через тот же адрес (/ext/…), чтобы хватало одного туннеля ngrok.
