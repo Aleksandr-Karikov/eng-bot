@@ -1,20 +1,51 @@
 {
   "manifest_version": 3,
-  "name": "WordBoss — слова из субтитров",
-  "version": "0.5.0",
-  "description": "Клик по слову или фразе в субтитрах — и оно в Telegram-боте WordBoss с репликой как контекстом.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://*.ngrok-free.app/*", "https://*.ngrok-free.dev/*", "https://*.ngrok.app/*", "https://*.ngrok.dev/*"],
-  "background": { "service_worker": "background.js" },
+  "name": "WordBoss — слова в Telegram-бота",
+  "version": "0.6.0",
+  "description": "Слова и фразы с любой страницы — в Telegram-бота WordBoss: клик по субтитрам на inoriginal.cc, рамка вокруг любого текста или картинки, правый клик по выделенному.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*.ngrok-free.app/*",
+    "https://*.ngrok-free.dev/*",
+    "https://*.ngrok.app/*",
+    "https://*.ngrok.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://inoriginal.cc/*", "https://*.inoriginal.cc/*"],
-      "js": ["content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://inoriginal.cc/*",
+        "https://*.inoriginal.cc/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
       "all_frames": true,
       "run_at": "document_idle"
     }
   ],
   "options_page": "options.html",
-  "action": { "default_title": "WordBoss: настройки" }
+  "action": {
+    "default_title": "WordBoss: выделить область с текстом (Alt+Shift+S)"
+  },
+  "commands": {
+    "region": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "Выделить область с текстом"
+    }
+  }
 }

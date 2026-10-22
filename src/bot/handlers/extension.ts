@@ -98,7 +98,6 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     if (!word) return void (await ctx.answerCallbackQuery({ text: "Этого слова уже нет" }));
     if (word.addedBy !== ctx.user.id) return void (await ctx.answerCallbackQuery({ text: "Отменить может только тот, кто добавил" }));
     await deleteWord(deps.db, word.id);
-    deps.capture?.forget(ctx.user.id, word.id);
     await ctx.answerCallbackQuery({ text: "Отменено" });
     await ctx.reply(`↩️ Убрал <b>${esc(word.term)}</b>`, HTML);
   });

@@ -72,6 +72,8 @@ export interface WordEnricher {
   extract(text: string): Promise<ExtractedItem[]>;
   /** То же для скриншота или фото страницы; note — подпись пользователя к картинке. */
   extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]>;
+  /** Английский текст с картинки дословно, построчно ("" — текста нет): для области экрана из расширения. */
+  readImage?(image: ImageInput): Promise<string>;
   /** Проверяет английский текст: ошибки обязательно, «как естественнее» — отдельно. */
   /** leadIn — предыдущие сообщения того же автора, которые проверяемое продолжает (одна реплика). */
   check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult>;
@@ -165,6 +167,15 @@ export function buildExtractImagePrompt(note?: string): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function buildReadImagePrompt(): string {
+  return [
+    "На картинке — кусок экрана: кадр видео с субтитрами, картинка, скан, мем или страница.",
+    "Перепиши весь английский текст с неё дословно, сохраняя порядок и деление на строки. Ничего не переводи и не объясняй.",
+    "Кнопки интерфейса, время, счётчики и прочий мусор вокруг основного текста пропусти.",
+    "Верни только сам текст, без кавычек и пояснений. Если английского текста нет — верни пустую строку.",
+  ].join("\n");
 }
 
 const EXTRACT_RULES = [

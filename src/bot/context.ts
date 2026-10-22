@@ -27,7 +27,6 @@ import type { TalkStore } from "./talks";
 import type { ChatTranscript } from "./transcript";
 import type { FrequencySource } from "../frequency/frequency";
 import type { TranslateStore } from "./translations";
-import type { CaptureBroadcaster } from "../capture/capture";
 import type { SubtitleSource } from "../youtube/subtitles";
 
 /** groupRoom — комната привязанной группы (в группах; null — группа не привязана), её находит userMiddleware. */
@@ -63,8 +62,6 @@ export interface Deps {
   appUrl?: string;
   /** Недавняя переписка чатов — контекст для /bug. */
   transcript: ChatTranscript;
-  /** Слова из расширения браузера: сводка друзьям после паузы; undefined — приём выключен. */
-  capture?: CaptureBroadcaster;
   /** Порт локального приёма слов из расширения. */
   capturePort?: number;
   /** Частотность слов для оценки полезности; undefined — оценивает только модель. */

@@ -31,7 +31,6 @@ import { existsSync } from "node:fs";
 import type { Server } from "node:http";
 import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
-import { CaptureBroadcaster } from "./capture/capture";
 import { startCaptureServer } from "./capture/server";
 import { startAppServer } from "./app/server";
 import { WordfreqSource } from "./frequency/frequency";
@@ -107,9 +106,8 @@ const deps: Deps = {
 };
 let captureServer: Server | undefined;
 if (config.capturePort) {
-  deps.capture = new CaptureBroadcaster(deps);
   deps.capturePort = config.capturePort;
-  captureServer = startCaptureServer(deps, deps.capture, config.capturePort);
+  captureServer = startCaptureServer(deps, config.capturePort);
 }
 if (config.appPort) startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort);
 deps.appUrl = config.appUrl;
@@ -138,7 +136,7 @@ const shutdown = () => {
   stopReminders();
   stopPainter();
   captureServer?.close();
-  void (deps.capture?.flushAll() ?? Promise.resolve()).finally(() => void bot.stop());
+  void bot.stop();
 };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

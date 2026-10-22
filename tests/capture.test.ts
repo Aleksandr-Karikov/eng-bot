@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { words } from "../src/db/schema";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
-import { capture, CaptureBroadcaster, cleanSelection } from "../src/capture/capture";
+import { capture, cleanSelection, readImage } from "../src/capture/capture";
 import { startCaptureServer } from "../src/capture/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { getUser, updateUser } from "../src/services/users";
@@ -48,8 +48,7 @@ describe("words from the browser extension", () => {
 
   it("adds the selection at once, translated in the sense of the line, with the line as context", async () => {
     const { h, enrich, user } = await setup();
-    const broadcaster = new CaptureBroadcaster(h.deps, 60_000);
-    const result = await capture(h.deps, broadcaster, { key: "secret-key", text: "beat around the bush,", context: line, title: "The Rainmaker S1E3" });
+    const result = await capture(h.deps, { key: "secret-key", text: "beat around the bush,", context: line, title: "The Rainmaker S1E3" });
     expect(result).toEqual({ ok: true, added: [{ term: "beat around the bush", translation: "ходить вокруг да около" }], duplicates: [] });
     expect(enrich).toHaveBeenCalledWith("beat around the bush", undefined, line);
     expect((await h.db.select().from(words)).map((w) => [w.term, w.context])).toEqual([["beat around the bush", line]]);
@@ -62,44 +61,43 @@ describe("words from the browser extension", () => {
 
   it("without a selection lets Claude pick from the whole line and reports duplicates", async () => {
     const { h, extract } = await setup();
-    const broadcaster = new CaptureBroadcaster(h.deps, 60_000);
-    await capture(h.deps, broadcaster, { key: "secret-key", text: "beat around the bush", context: line });
-    const result = await capture(h.deps, broadcaster, { key: "secret-key", text: "", context: line });
+    await capture(h.deps, { key: "secret-key", text: "beat around the bush", context: line });
+    const result = await capture(h.deps, { key: "secret-key", text: "", context: line });
     expect(extract).toHaveBeenCalledWith(line);
     expect(result).toEqual({ ok: true, added: [{ term: "a long shot", translation: "маловероятно" }], duplicates: ["beat around the bush"] });
   });
 
   it("rejects a wrong key or a user without a room", async () => {
     const { h, user } = await setup();
-    const broadcaster = new CaptureBroadcaster(h.deps, 60_000);
-    expect(await capture(h.deps, broadcaster, { key: "nope", text: "x", context: line })).toMatchObject({ ok: false, status: 401 });
+    expect(await capture(h.deps, { key: "nope", text: "x", context: line })).toMatchObject({ ok: false, status: 401 });
     await updateUser(h.db, user.id, { currentRoomId: null });
-    expect(await capture(h.deps, broadcaster, { key: "secret-key", text: "x", context: line })).toMatchObject({ ok: false, status: 400 });
+    expect(await capture(h.deps, { key: "secret-key", text: "x", context: line })).toMatchObject({ ok: false, status: 400 });
   });
 
-  it("tells friends once, after a pause, without the words that were undone", async () => {
-    vi.useFakeTimers();
-    try {
-      const { h } = await setup();
-      const broadcaster = new CaptureBroadcaster(h.deps, 10 * 60_000);
-      h.deps.capture = broadcaster;
-      await capture(h.deps, broadcaster, { key: "secret-key", text: "beat around the bush", context: line });
-      await capture(h.deps, broadcaster, { key: "secret-key", text: "a long shot", context: line });
-      expect(dms(h, 200)).toEqual([]);
-      await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "↩️ Отменить")));
-      expect((await h.db.select().from(words)).map((w) => w.term)).toEqual(["beat around the bush"]);
-      await vi.advanceTimersByTimeAsync(10 * 60_000);
-      expect(dms(h, 200)).toHaveLength(1);
-      expect(dms(h, 200)[0]).toContain("beat around the bush");
-      expect(dms(h, 200)[0]).not.toContain("a long shot");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("tells friends right away, each word with «знаешь?» buttons like any new word", async () => {
+    const { h } = await setup();
+    await capture(h.deps, { key: "secret-key", text: "beat around the bush", context: line });
+    await capture(h.deps, { key: "secret-key", text: "a long shot", context: line });
+    const prompts = h.calls.filter((c) => c.method === "sendMessage" && c.payload.chat_id === 200);
+    expect(prompts).toHaveLength(2);
+    expect(String(prompts[0].payload.text)).toContain("beat around the bush");
+    expect(JSON.stringify(prompts[1].payload.reply_markup)).toContain("Не для меня");
+  });
+
+  it("🔲 reads the text of a screen area for the panel, only with a valid key", async () => {
+    const { h } = await setup();
+    const readImageMock = vi.fn(async () => "Cracking on nicely, I gather.");
+    h.deps.enricher = { ...h.deps.enricher, readImage: readImageMock };
+    const image = `data:image/jpeg;base64,${Buffer.from("fake-jpeg").toString("base64")}`;
+    expect(await readImage(h.deps, { key: "nope", image })).toMatchObject({ ok: false, status: 401 });
+    expect(await readImage(h.deps, { key: "secret-key", image: "not an image" })).toMatchObject({ ok: false, status: 400 });
+    expect(await readImage(h.deps, { key: "secret-key", image })).toEqual({ ok: true, text: "Cracking on nicely, I gather." });
+    expect(readImageMock).toHaveBeenCalledWith({ data: Buffer.from("fake-jpeg"), mediaType: "image/jpeg" });
   });
 
   it("listens on localhost: /ping checks the key, /capture adds", async () => {
     const { h } = await setup();
-    server = startCaptureServer(h.deps, new CaptureBroadcaster(h.deps, 60_000), 0);
+    server = startCaptureServer(h.deps, 0);
     await new Promise((r) => server!.once("listening", r));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     expect(await (await fetch(`${base}/ping?key=secret-key`)).json()).toEqual({ ok: true, name: "User100", room: "R" });

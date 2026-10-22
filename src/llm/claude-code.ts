@@ -14,6 +14,7 @@ import {
   type ExtractedItem,
   type ImageInput,
   buildExtractImagePrompt,
+  buildReadImagePrompt,
   type WordEnricher,
 } from "./enricher";
 import {
@@ -114,6 +115,21 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
       console.warn(`Image extraction found nothing: ${image.data.length} bytes, ${image.mediaType}, starts ${image.data.subarray(0, 4).toString("hex")}; answer: ${raw.slice(0, 300)}`);
     }
     return items;
+  }
+
+  async readImage(image: ImageInput): Promise<string> {
+    const raw = (await this.ask(buildReadImagePrompt(), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]))
+      .replace(/^```\w*\n?|```$/g, "")
+      .trim();
+    // Модель иногда всё равно заворачивает ответ в JSON: {"text": "..."}.
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === "string") return parsed.trim();
+      if (parsed && typeof parsed === "object" && typeof (parsed as { text?: unknown }).text === "string") return (parsed as { text: string }).text.trim();
+    } catch {
+      // обычный текст
+    }
+    return raw;
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {

@@ -1,17 +1,17 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { getRoom } from "../services/rooms";
 import type { Deps } from "../bot/context";
-import { addExample, capture, knownWords, userByCaptureKey, type CaptureBroadcaster, type CaptureInput } from "./capture";
+import { addExample, capture, knownWords, MAX_IMAGE_BYTES, readImage, userByCaptureKey, type CaptureInput } from "./capture";
 
 const MAX_BODY = 16 * 1024;
 
-function readJson(req: IncomingMessage): Promise<unknown> {
+function readJson(req: IncomingMessage, max = MAX_BODY): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(new Error("too large"));
         req.destroy();
       } else chunks.push(chunk);
@@ -31,7 +31,7 @@ function readJson(req: IncomingMessage): Promise<unknown> {
  * Приём слов из расширения браузера. Слушает только 127.0.0.1 — снаружи Мака недоступен;
  * кто есть кто — по личному ключу из /extension.
  */
-export function startCaptureServer(deps: Deps, broadcaster: CaptureBroadcaster, port: number): Server {
+export function startCaptureServer(deps: Deps, port: number): Server {
   const server = createServer(async (req, res) => {
     const send = (status: number, body: unknown) => {
       res.writeHead(status, {
@@ -72,7 +72,13 @@ export function startCaptureServer(deps: Deps, broadcaster: CaptureBroadcaster, 
           context: typeof body.context === "string" ? body.context : "",
           title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
         };
-        const result = await capture(deps, broadcaster, input);
+        const result = await capture(deps, input);
+        return send(result.ok ? 200 : result.status, result);
+      }
+      if (req.method === "POST" && url.pathname === "/read-image") {
+        // base64 длиннее картинки на треть.
+        const body = (await readJson(req, Math.ceil(MAX_IMAGE_BYTES * 1.4))) as { key?: unknown; image?: unknown };
+        const result = await readImage(deps, { key: String(body.key ?? ""), image: typeof body.image === "string" ? body.image : "" });
         return send(result.ok ? 200 : result.status, result);
       }
       send(404, { ok: false, error: "not found" });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
-import { CaptureBroadcaster } from "../src/capture/capture";
 import { startCaptureServer } from "../src/capture/server";
 import { sign } from "@telegram-apps/init-data-node";
 import { cards, reviewLogs } from "../src/db/schema";
@@ -62,7 +61,7 @@ describe("📚 Mini App API", () => {
   it("passes /ext/… through to the extension server, so one tunnel serves both", async () => {
     const { h } = await setup();
     await updateUser(h.db, 1, { captureKey: "k1" });
-    const server = startCaptureServer(h.deps, new CaptureBroadcaster(h.deps, 60_000), 0);
+    const server = startCaptureServer(h.deps, 0);
     try {
       await new Promise((r) => server.once("listening", r));
       h.deps.capturePort = (server.address() as AddressInfo).port;

@@ -1,4 +1,5 @@
-// WordBoss: панель с текущей репликой субтитров — клик по слову или протяжка по фразе отправляет её в бота.
+// WordBoss: панель с текущей репликой субтитров (или текстом из рамки / выделения на любой странице) —
+// клик по слову или протяжка по фразе ставит её в очередь на добавление в бота.
 (() => {
   if (window.__wordbossLoaded) return;
   window.__wordbossLoaded = true;
@@ -14,7 +15,6 @@
     selection: null, // [start, end] индексы слов
     anchor: null,
     pausedByUs: false,
-    sending: false,
     /** Мышь над панелью: реплика «замерзает», можно выделять и листать. Иначе всегда показываем текущую. */
     hover: false,
     /** Что уже добавлено за этот сеанс (в нижнем регистре) — подсвечиваем в репликах. */
@@ -23,6 +23,10 @@
     known: [],
     /** Открытая подсказка по знакомому слову. */
     popup: null,
+    /** Очередь добавления: { id, text, context, title, status: wait|busy|ok|dup|err, detail, doneAt }. */
+    queue: [],
+    /** Сообщение без реплики («⏳ Распознаю…», ошибка рамки) — панель показывается и без текста. */
+    notice: false,
   };
 
   // ---------- Знакомые слова ----------
@@ -179,15 +183,17 @@
       <span class="wb-count" title="Добавлено за этот сеанс"></span>
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
+      <button class="wb-close" title="Скрыть панель">✕</button>
     </div>
+    <div class="wb-queue"></div>
     <div class="wb-toast"></div>
     <div class="wb-pop wb-hidden"><span class="wb-pop-text"></span><button class="wb-pop-example">📍 Ещё пример</button><button class="wb-pop-close">✕</button></div>`;
   const lineEl = panel.querySelector(".wb-line");
   const statusEl = panel.querySelector(".wb-status");
-  const addButton = panel.querySelector(".wb-add");
   const toastEl = panel.querySelector(".wb-toast");
   const countEl = panel.querySelector(".wb-count");
   const popEl = panel.querySelector(".wb-pop");
+  const queueEl = panel.querySelector(".wb-queue");
 
   function showPopup(entry) {
     state.popup = entry;
@@ -248,10 +254,10 @@
 
   function render() {
     const line = state.lines[state.index];
-    panel.classList.toggle("wb-hidden", !line);
+    panel.classList.toggle("wb-hidden", !line && !state.notice && !state.queue.length);
     countEl.textContent = state.added.size ? `➕ ${state.added.size}` : "";
-    if (!line) return;
     lineEl.textContent = "";
+    if (!line) return;
     const list = tokens(line);
     const marked = addedTokens(list);
     const known = knownTokens(list);
@@ -288,43 +294,109 @@
     statusEl.className = `wb-status ${kind}`;
   }
 
-  async function send() {
+  // ---------- Очередь добавления ----------
+  // Нажал «➕» — слово встало в очередь, можно сразу выделять следующее. Бот готовит по 2 слова одновременно.
+
+  const MAX_ACTIVE = 2;
+  const QUEUE_SHOWN = 5;
+  let queueSeq = 0;
+
+  function send() {
     const line = state.lines[state.index];
-    if (!line || state.sending) return;
-    state.sending = true;
-    const text = selectedText();
-    setStatus(text ? `Добавляю «${text}»…` : "Ищу, что выучить в реплике…");
-    addButton.textContent = "⏳ Добавляю…";
-    addButton.disabled = true;
+    if (!line) return;
+    enqueue(selectedText(), line);
+    state.selection = null;
+    state.anchor = null;
+    render();
+  }
+
+  function enqueue(text, context) {
+    state.queue.push({ id: ++queueSeq, text, context, title: pageTitle(), status: "wait" });
+    // Держим только недавние: старые готовые строки уже не нужны.
+    while (state.queue.length > 20) {
+      const old = state.queue.findIndex((i) => i.status !== "wait" && i.status !== "busy");
+      if (old < 0) break;
+      state.queue.splice(old, 1);
+    }
+    pump();
+  }
+
+  function pump() {
+    let active = state.queue.filter((i) => i.status === "busy").length;
+    for (const item of state.queue) {
+      if (active >= MAX_ACTIVE) break;
+      if (item.status !== "wait") continue;
+      active++;
+      void run(item);
+    }
+    renderQueue();
+  }
+
+  async function run(item) {
+    item.status = "busy";
     try {
-      const res = await chrome.runtime.sendMessage({
-        type: "capture",
-        payload: { text, context: line, title: pageTitle() },
-      });
+      const res = await chrome.runtime.sendMessage({ type: "capture", payload: { text: item.text, context: item.context, title: item.title } });
       if (res?.ok) {
-        void loadKnown();
         for (const term of [...res.added.map((a) => a.term), ...res.duplicates]) state.added.add(term.toLowerCase().replace(/’/g, "'"));
-        state.selection = null;
-        render();
-      }
-      if (res?.ok && res.added.length) {
-        const what = res.added.map((a) => `${a.term} — ${a.translation}`).join("; ");
-        toast(`✓ Добавлено: ${what}`, "wb-ok");
-        setStatus(`✓ ${what}`, "wb-ok");
-      } else if (res?.ok) {
-        toast(`Уже есть в комнате: ${res.duplicates.join(", ")}`, "wb-ok");
-        setStatus(`Уже есть: ${res.duplicates.join(", ")}`, "wb-ok");
+        if (res.added.length) {
+          item.status = "ok";
+          item.detail = res.added.map((a) => `${a.term} — ${a.translation}`).join("; ");
+        } else {
+          item.status = "dup";
+          item.detail = `уже есть: ${res.duplicates.join(", ")}`;
+        }
+        scheduleKnown();
       } else {
-        toast(`✗ ${res?.error ?? "Расширение не ответило — обнови страницу"}`, "wb-err");
-        setStatus("✗ Не добавлено", "wb-err");
+        item.status = "err";
+        item.detail = res?.error ?? "Расширение не ответило — обнови страницу";
       }
     } catch {
-      toast("✗ Расширение обновилось — перезагрузи страницу", "wb-err");
-    } finally {
-      state.sending = false;
-      addButton.textContent = "➕ В бота";
-      addButton.disabled = false;
+      item.status = "err";
+      item.detail = "Расширение обновилось — перезагрузи страницу";
     }
+    item.doneAt = Date.now();
+    render();
+    pump();
+    // Готовая строка через несколько секунд тускнеет.
+    setTimeout(renderQueue, 8_000);
+  }
+
+  /** Подсветку знакомых слов обновляем одним запросом после пачки добавлений, а не после каждого. */
+  let knownTimer;
+  function scheduleKnown() {
+    clearTimeout(knownTimer);
+    knownTimer = setTimeout(loadKnown, 1500);
+  }
+
+  const ICONS = { wait: "🕓", busy: "⏳", ok: "✓", dup: "=", err: "✗" };
+
+  function renderQueue() {
+    queueEl.textContent = "";
+    for (const item of state.queue.slice(-QUEUE_SHOWN)) {
+      const row = document.createElement("div");
+      const faded = item.doneAt && item.status !== "err" && Date.now() - item.doneAt > 7_000;
+      row.className = `wb-q wb-q-${item.status}${faded ? " wb-q-faded" : ""}`;
+      const label = item.text || `вся реплика: ${item.context.slice(0, 40)}${item.context.length > 40 ? "…" : ""}`;
+      row.append(`${ICONS[item.status]} `);
+      const b = document.createElement("b");
+      b.textContent = item.status === "ok" ? item.detail : label;
+      row.append(b);
+      if (item.status === "dup" || item.status === "err") row.append(` — ${item.detail}`);
+      if (item.status === "err") {
+        const retry = document.createElement("button");
+        retry.textContent = "🔄";
+        retry.title = "Попробовать ещё раз";
+        retry.addEventListener("click", () => {
+          item.status = "wait";
+          item.doneAt = undefined;
+          pump();
+        });
+        row.append(" ", retry);
+      }
+      queueEl.append(row);
+    }
+    // Панель выросла или сжалась — вне видео она прижата к низу окна, пересчитываем.
+    if (!state.video) position();
   }
 
   const pageTitle = () =>
@@ -383,8 +455,8 @@
     hidePopup();
     if (state.pausedByUs && state.video) state.video.play().catch(() => {});
     state.pausedByUs = false;
-    // Вернуться к текущей реплике.
-    if (state.index !== state.lines.length - 1 || state.selection) {
+    // Вернуться к текущей реплике — только у субтитров; текст из рамки листают сами.
+    if (state.video && (state.index !== state.lines.length - 1 || state.selection)) {
       state.index = state.lines.length - 1;
       state.selection = null;
       render();
@@ -395,6 +467,15 @@
   panel.querySelector(".wb-pop-example").addEventListener("click", sendExample);
   panel.querySelector(".wb-pop-close").addEventListener("click", hidePopup);
   panel.querySelector(".wb-settings").addEventListener("click", () => chrome.runtime.sendMessage({ type: "openOptions" }));
+  panel.querySelector(".wb-close").addEventListener("click", () => {
+    state.lines = [];
+    state.index = -1;
+    state.selection = null;
+    state.notice = false;
+    state.queue = state.queue.filter((i) => i.status === "wait" || i.status === "busy");
+    hidePopup();
+    render();
+  });
   panel.querySelector(".wb-prev").addEventListener("click", () => {
     state.index = Math.max(0, state.index - 1);
     state.selection = null;
@@ -437,7 +518,14 @@
     const host = document.fullscreenElement || document.body;
     if (panel.parentElement !== host) host.appendChild(panel);
     const video = state.video;
-    if (!video) return;
+    // Не у видео (текст из рамки или выделения) — внизу по центру окна.
+    if (!video) {
+      const width = Math.min(720, window.innerWidth - 32);
+      panel.style.width = `${width}px`;
+      panel.style.left = `${(window.innerWidth - width) / 2}px`;
+      panel.style.top = `${Math.max(8, window.innerHeight - panel.offsetHeight - 24)}px`;
+      return;
+    }
     const r = video.getBoundingClientRect();
     panel.style.left = `${Math.max(8, r.left + r.width * 0.1)}px`;
     panel.style.width = `${Math.max(280, r.width * 0.8)}px`;
@@ -451,6 +539,74 @@
     findVideo();
     position();
   }, 1000);
+
+  // ---------- Текст не из субтитров: рамка (region.js) и «➕ В WordBoss» в меню по правому клику ----------
+
+  /** Длинный текст — по предложениям, чтобы реплика в панели была читаемой. */
+  function splitText(text) {
+    const out = [];
+    for (const para of text.split(/\n+/)) {
+      const sentences = para.replace(/\s+/g, " ").trim().match(/[^.!?…]+(?:[.!?…]+["'”’)»]*|$)/g) ?? [];
+      let chunk = "";
+      for (const sentence of sentences.map((x) => x.trim()).filter(Boolean)) {
+        if (chunk && (chunk + " " + sentence).length > MAX_LINE) {
+          out.push(chunk);
+          chunk = "";
+        }
+        chunk = chunk ? `${chunk} ${sentence}` : sentence;
+        while (chunk.length > MAX_LINE) {
+          const cut = chunk.lastIndexOf(" ", MAX_LINE);
+          out.push(chunk.slice(0, cut > 0 ? cut : MAX_LINE));
+          chunk = chunk.slice(cut > 0 ? cut + 1 : MAX_LINE);
+        }
+      }
+      if (chunk) out.push(chunk);
+    }
+    return out.filter(looksLikeSpeech);
+  }
+
+  /** Показать текст в панели с первого куска; ◀ ▶ листают куски. */
+  function showText(text) {
+    const parts = splitText(text);
+    if (!parts.length) return fail("Не нашёл тут английского текста 🤔");
+    state.lines = [...state.lines, ...parts].slice(-HISTORY);
+    state.index = state.lines.length - parts.length;
+    state.selection = null;
+    state.notice = false;
+    setStatus(parts.length > 1 ? `Кусок 1 из ${parts.length} — ◀ ▶ листают. Клик — слово, протяжка — фраза` : "Клик — слово, клик по другому — фраза. ➕ без выделения — весь текст");
+    render();
+    position();
+  }
+
+  /** Сообщение в строке состояния; без текста в панели — показать панель ради него. */
+  function notice(text, kind) {
+    setStatus(text, kind);
+    if (!state.lines[state.index]) state.notice = true;
+    render();
+    position();
+  }
+
+  const fail = (text) => notice(`✗ ${text}`, "wb-err");
+
+  /** «➕ В WordBoss» по выделенному: предложение вокруг — контекст и реплика в панели, само выделенное — сразу в очередь. */
+  function addSelection() {
+    const sel = window.getSelection();
+    const text = sel?.toString().replace(/\s+/g, " ").trim() ?? "";
+    if (!text) return;
+    const block = sel.anchorNode?.parentElement?.closest("p, li, td, blockquote, h1, h2, h3, h4, div") ?? sel.anchorNode?.parentElement;
+    const around = (block?.innerText || text).replace(/\s+/g, " ");
+    const sentence = (around.match(/[^.!?…]+(?:[.!?…]+|$)/g) ?? []).map((x) => x.trim()).find((x) => x.includes(text)) ?? text;
+    const context = sentence.length > MAX_LINE ? text : sentence;
+    showText(context);
+    enqueue(text.length > 120 ? "" : text, context);
+  }
+
+  window.__wordbossAPI = {
+    showText,
+    fail,
+    addSelection,
+    status: (text) => notice(text, ""),
+  };
 
   watchDom();
   findVideo();

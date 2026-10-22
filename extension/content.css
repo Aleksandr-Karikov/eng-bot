@@ -73,3 +73,44 @@
 }
 #wordboss-panel .wb-pop.wb-hidden { display: none; }
 #wordboss-panel .wb-pop-text { flex: 1; }
+
+/* Очередь добавления: строка на слово, готовые через несколько секунд тускнеют. */
+#wordboss-panel .wb-queue { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; font-size: 13px; }
+#wordboss-panel .wb-queue:empty { display: none; }
+#wordboss-panel .wb-q { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d1d5db; transition: opacity 0.4s; }
+#wordboss-panel .wb-q b { font-weight: 600; color: #f9fafb; }
+#wordboss-panel .wb-q-ok, #wordboss-panel .wb-q-ok b { color: #86efac; }
+#wordboss-panel .wb-q-err, #wordboss-panel .wb-q-err b { color: #fca5a5; }
+#wordboss-panel .wb-q-faded { opacity: 0.45; }
+#wordboss-panel .wb-q button { padding: 0 6px; font-size: 12px; }
+/* Пока в очереди что-то есть — панель видна целиком, чтобы следить за результатом. */
+#wordboss-panel:has(.wb-q-busy, .wb-q-wait, .wb-q-err) { opacity: 1; }
+
+/* Рамка выделения области. */
+#wordboss-region {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  cursor: crosshair;
+  background: rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+#wordboss-region .wb-region-box {
+  display: none;
+  position: fixed;
+  border: 2px solid #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.2);
+}
+#wordboss-region .wb-region-hint {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.9);
+  color: #f9fafb;
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  pointer-events: none;
+}
