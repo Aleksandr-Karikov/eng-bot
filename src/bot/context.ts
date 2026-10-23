@@ -30,7 +30,12 @@ import type { TranslateStore } from "./translations";
 import type { SubtitleSource } from "../youtube/subtitles";
 
 /** groupRoom — комната привязанной группы (в группах; null — группа не привязана), её находит userMiddleware. */
-export type BotContext = Context & { user: User; groupRoom?: Room | null };
+export type BotContext = Context & {
+  user: User;
+  groupRoom?: Room | null;
+  /** Короткий итог прошлого ответа («✅ Верно: …») — встанет шапкой следующего задания (см. present), а не отдельным сообщением. */
+  lead?: string;
+};
 
 export interface Deps {
   db: Db;

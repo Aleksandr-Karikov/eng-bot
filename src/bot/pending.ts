@@ -1,4 +1,5 @@
 import type { Deps } from "./context";
+import { pausesOf } from "./pauses";
 
 /**
  * Сколько бот ждёт ответ сообщением (название комнаты, исправление, перевод, ответ на «вставь по смыслу»).
@@ -18,6 +19,8 @@ export function clearPendingInputs(deps: Deps, userId: number, chatId?: number):
   deps.exercises.delete(userId, chatId);
   deps.drafts.clearAwaiting(userId, chatId);
   deps.pictureWishes.clear(userId, chatId);
+  const pause = pausesOf(deps).get(userId);
+  if (pause && (chatId === undefined || pause.chatId === chatId)) pausesOf(deps).delete(userId);
 }
 
 /**

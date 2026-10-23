@@ -10,7 +10,7 @@ import { encodeCb } from "./callbacks";
 export const USEFULNESS_ICONS: Record<number, string> = { 3: "🟢", 2: "🟡", 1: "⚪️" };
 
 export function knowKeyboard(wordId: number): InlineKeyboard {
-  return new InlineKeyboard()
+  return addAudioRow(new InlineKeyboard(), wordId)
     .text("✅ Знаю", encodeCb({ k: "know", wordId, knows: true }))
     .text("📚 Не знаю", encodeCb({ k: "know", wordId, knows: false }))
     .row()
@@ -34,7 +34,7 @@ export function audioKeyboard(wordId: number): InlineKeyboard {
   return addAudioRow(new InlineKeyboard(), wordId);
 }
 
-/** withAudio — только там, где озвучка не подсказывает ответ (EN → RU, после ответа). */
+/** withAudio — озвучка слова; в RU → EN она подсказывает ответ, но нажимают её сами, когда уже вспомнили. */
 export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false, stage?: Stage): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage }))
@@ -343,7 +343,7 @@ export function storyQuestionKeyboard(id: number, q: number, options: string[]):
 
 /** Под разбором трудного слова: картинка (если включены) и исправить перевод. */
 export function leechKeyboard(wordId: number, withPicture: boolean): InlineKeyboard {
-  const kb = new InlineKeyboard();
+  const kb = addAudioRow(new InlineKeyboard(), wordId);
   if (withPicture) kb.text("🖼 Картинка", encodeCb({ k: "picture", wordId }));
   return kb.text("✏️ Изменить", encodeCb({ k: "edit", wordId }));
 }
@@ -379,7 +379,7 @@ export function collocationKeyboard(cardId: number, reps: number, wordId: number
 export function captureKeyboard(words: Array<{ id: number; term: string }>): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (words.length === 1) {
-    return kb.text("↩️ Отменить", encodeCb({ k: "captureUndo", wordId: words[0].id })).text("✏️ Изменить", encodeCb({ k: "edit", wordId: words[0].id }));
+    return addAudioRow(kb, words[0].id).text("↩️ Отменить", encodeCb({ k: "captureUndo", wordId: words[0].id })).text("✏️ Изменить", encodeCb({ k: "edit", wordId: words[0].id }));
   }
   words.forEach((w) => kb.text(`↩️ ${shorten(w.term)}`, encodeCb({ k: "captureUndo", wordId: w.id })).row());
   return kb;
@@ -390,6 +390,11 @@ export function extensionKeyboard(): InlineKeyboard {
     .text("📦 Скачать расширение", encodeCb({ k: "extensionZip" }))
     .row()
     .text("🔄 Новый ключ", encodeCb({ k: "extensionKey" }));
+}
+
+/** Под разбором перевода: следующее предложение — когда дочитал. */
+export function translatePauseKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("▶ Дальше", encodeCb({ k: "translateNext" })).text("⏹ Хватит", encodeCb({ k: "translateStop" }));
 }
 
 export function translateKeyboard(): InlineKeyboard {

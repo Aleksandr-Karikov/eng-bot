@@ -64,8 +64,9 @@ describe("/drill shows the progress", () => {
     expect(texts().some((t) => t.includes("«артикли»: 1/3"))).toBe(true);
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "the")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "the")));
-    expect(texts().some((t) => t.includes("Тема «артикли» отработана"))).toBe(true);
-    // Q4 тоже про артикли — пропущен, следующий сразу про предлоги.
+    expect(texts().at(-1)).toContain("Тема «артикли» отработана");
+    // Q4 тоже про артикли — пропущен, следующий (по «▶ Дальше») сразу про предлоги.
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
     expect(texts().at(-1)).toContain("Q5");
     // Следующий набор вопросов — без уже заданных.
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "the")));

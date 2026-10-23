@@ -48,14 +48,27 @@ describe("🔗 collocations", () => {
     expect(text).toMatch(/<tg-spoiler>[^]*<b>Сочетания:<\/b>\n• make a decision\n• a tough decision[^]*<\/tg-spoiler>/);
   });
 
-  it("asks which partner fits, rates the card and shows all collocations", async () => {
+  it("asks which partner fits and rates the card; right — a short line on top of the next task", async () => {
     const { h } = await setup(decision);
     // random 0.99 — последний из доступных, то есть сочетания.
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(texts(h).at(-1)).toContain("Какое слово подходит к <b>decision</b>");
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "make")));
-    expect(texts(h).find((t) => t.startsWith("✅ Верно"))).toContain("🔗 <b>Сочетания:</b>");
+    expect(texts(h).at(-1)).toMatch(/^✅ Верно: We need to <b>make<\/b> a decision/);
     expect(await logs(h)).toEqual(["collocation:good"]);
+  });
+
+  it("wrong — the explanation and all collocations stay in place until «▶ Дальше»", async () => {
+    const { h } = await setup(decision);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    const before = h.calls.filter((c) => c.method === "sendMessage").length;
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "do")));
+    expect(h.calls.filter((c) => c.method === "sendMessage")).toHaveLength(before);
+    const result = h.calls.filter((c) => c.method === "editMessageText").at(-1)!;
+    expect(String(result.payload.text)).toContain("🔗 <b>Сочетания:</b>");
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
+    expect(h.calls.filter((c) => c.method === "sendMessage").length).toBeGreaterThan(before);
+    expect(await logs(h)).toEqual(["collocation:again"]);
   });
 
   it("without a ready quiz shows a regular card and prepares collocations once", async () => {

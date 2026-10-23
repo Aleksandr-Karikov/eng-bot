@@ -13,6 +13,10 @@ export interface TranslateSession {
   next?: Promise<ActiveTask | undefined>;
   /** Задание прямо сейчас готовится (первое или после ответа). */
   preparing?: boolean;
+  /** Под разбором ответа ждём «▶ Дальше» — следующее предложение придёт по кнопке. */
+  paused?: boolean;
+  /** Сообщение с текущим заданием: после ответа убираем с него кнопки. */
+  taskMessageId?: number;
   recent: string[];
   done: number;
   correct: number;

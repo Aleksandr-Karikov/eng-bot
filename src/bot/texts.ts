@@ -375,7 +375,7 @@ export function drillResultText(q: DrillQuestion, chosen: number, progress?: Dri
   return [verdict, filled, q.explanation ? esc(q.explanation) : "", progress ? drillProgressText(progress) : ""].filter(Boolean).join("\n\n");
 }
 
-function drillProgressText(p: DrillProgress): string {
+export function drillProgressText(p: DrillProgress): string {
   const topic = `«${esc(p.category)}»`;
   if (p.resolved) return `🎉 Тема ${topic} отработана — больше её не предлагаю. Новая ошибка в ней из /check вернёт тему.`;
   if (p.streak === 0) return `🧠 Тема ${topic}: счёт заново — нужно ${RESOLVE_STREAK} верных ответа подряд.`;

@@ -78,10 +78,18 @@ export async function present(
   mode: PresentMode,
   photo?: string | InputFile,
 ): Promise<Message> {
+  // Итог прошлого ответа — в начале этого же сообщения: следующее задание его не вытесняет наверх.
+  const lead = ctx.lead;
+  ctx.lead = undefined;
+  if (lead && photo && lead.length + text.length + 2 > CAPTION_LIMIT) await ctx.reply(lead, { parse_mode: "HTML" });
+  else if (lead) text = `${lead}\n\n${text}`;
   const sent = photo ? await ctx.replyWithPhoto(photo, { ...options, caption: text }) : await ctx.reply(text, options);
   if (mode === "replace") await ctx.deleteMessage().catch(() => {});
   return sent;
 }
+
+/** Лимит подписи к фото в Telegram. */
+const CAPTION_LIMIT = 1024;
 
 let questionSeq = 0;
 

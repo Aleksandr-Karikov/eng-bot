@@ -1,6 +1,7 @@
 import { startTranslate } from "./translate";
 import { dropCard, restoreCard } from "../../services/cards";
-import { InputFile, type Bot, type InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile, type Bot } from "grammy";
+import type { Message } from "grammy/types";
 import { State } from "ts-fsrs";
 import type { Judgement, LeechHelp } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
@@ -15,12 +16,14 @@ import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
 import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard, restoreCardKeyboard } from "../keyboards";
-import { decodeCb } from "../callbacks";
+import { decodeCb, encodeCb, type NextAfter } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
 import { clearPendingInputs, endLongModes } from "../pending";
+import { isPaused, pausesOf } from "../pauses";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import {
+  addManageButton,
   audioKeyboard,
   clozeKeyboard,
   practiceClozeKeyboard,
@@ -44,6 +47,7 @@ import {
   dictationText,
   collocationQuizText,
   collocationResultText,
+  fillGap,
   leechText,
   LISTEN_TASK_TEXT,
   mistakesAskText,
@@ -93,7 +97,7 @@ async function presentSpecial(
   deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence" });
   const text = (practice ? PRACTICE_HEADER : "") + (stage === "listen" ? LISTEN_TASK_TEXT : sentenceTaskText(word));
   const keyboard = practice ? practiceClozeKeyboard(card.id, word.id) : clozeKeyboard(card.id, card.reps, word.id);
-  await present(ctx, text, { ...HTML, reply_markup: keyboard }, mode);
+  rememberTask(deps, ctx.user.id, await present(ctx, text, { ...HTML, reply_markup: keyboard }, mode));
   if (voice) await sendWordVoice(ctx, deps, word, accent, voice);
   return true;
 }
@@ -110,8 +114,51 @@ function perBot<T>(): (deps: Deps) => Map<number, T> {
 }
 const sessionCountsOf = perBot<number>();
 
+
 /** Лимит подписи к фото в Telegram. */
 const CAPTION_LIMIT = 1024;
+
+/**
+ * Итог ответа и что дальше. Верно и пояснять нечего (lead) — короткая строка встаёт шапкой следующего задания,
+ * ничего не уезжает наверх. Иначе — разбор отдельным сообщением (или на месте вопроса, edit) с «▶ Дальше»:
+ * следующее задание придёт по кнопке, и разбор можно спокойно дочитать.
+ */
+async function proceed(
+  ctx: BotContext,
+  deps: Deps,
+  then: NextAfter,
+  result: { lead?: string; text: string; keyboard?: InlineKeyboard; edit?: boolean },
+): Promise<void> {
+  if (result.lead !== undefined) {
+    // Вопрос (сочетания, работа над ошибками) уходит вместе с итогом в шапку следующего — сам он больше не нужен.
+    if (result.edit) await ctx.deleteMessage().catch(() => {});
+    ctx.lead = result.lead;
+    return goOn(ctx, deps, then);
+  }
+  const keyboard = (result.keyboard ?? new InlineKeyboard()).row().text("▶ Дальше", encodeCb({ k: "next", then }));
+  if (ctx.chat) pausesOf(deps).set(ctx.user.id, { chatId: ctx.chat.id, at: Date.now() });
+  if (result.edit) await ctx.editMessageText(result.text, { ...HTML, reply_markup: keyboard });
+  else await ctx.reply(result.text, { ...HTML, reply_markup: keyboard });
+}
+
+async function goOn(ctx: BotContext, deps: Deps, then: NextAfter): Promise<void> {
+  pausesOf(deps).delete(ctx.user.id);
+  if (then === "practice") return showPractice(ctx, deps, "reply");
+  if (then === "learn") return showNext(ctx, deps, "reply");
+  const state = deps.drills.get(ctx.user.id);
+  const next = state?.questions.shift();
+  if (state && next) return sendDrillQuestion(ctx, state, next, "reply");
+  deps.drills.delete(ctx.user.id);
+  await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn. Что уже отработано — /mistakes.");
+}
+
+const thenOf = (pending: { practice?: boolean }): NextAfter => (pending.practice ? "practice" : "learn");
+
+/** Запомнить сообщение с заданием, которое ждёт ответ текстом, — чтобы потом убрать с него кнопки. */
+function rememberTask(deps: Deps, userId: number, sent: Message): void {
+  const pending = deps.exercises.get(userId);
+  if (pending && pending.messageId === undefined) deps.exercises.set(userId, { ...pending, messageId: sent.message_id });
+}
 
 /** Вопрос «работы над ошибками» подмешивается после каждых DRILL_EVERY ответов. */
 const DRILL_EVERY = 5;
@@ -171,7 +218,14 @@ async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
   }
   leechNoticesOf(deps).delete(ctx.user.id);
   const help = JSON.parse(word.leechHelp) as LeechHelp;
-  await ctx.reply(leechText(word, help, notice.forgot), { ...HTML, reply_markup: leechKeyboard(word.id, Boolean(deps.images)) });
+  // Разбор длинный — следующая карточка по «▶ Дальше»; итог прошлого ответа — в его начале.
+  const lead = ctx.lead;
+  ctx.lead = undefined;
+  const text = leechText(word, help, notice.forgot);
+  await ctx.reply(lead ? `${lead}\n\n${text}` : text, {
+    ...HTML,
+    reply_markup: leechKeyboard(word.id, Boolean(deps.images)).row().text("▶ Дальше", encodeCb({ k: "next", then: "learn" })),
+  });
   return true;
 }
 
@@ -179,10 +233,10 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   clearPendingInputs(deps, ctx.user.id);
-  // Разбор встал после прошлой карточки — следующую присылаем новым сообщением под ним, а у прошлой убираем кнопки.
-  if ((await flushLeech(ctx, deps)) && mode === "replace") {
-    await ctx.editMessageReplyMarkup().catch(() => {});
-    mode = "reply";
+  // Разбор трудного слова встал после прошлой карточки — у неё убираем кнопки, следующая придёт по «▶ Дальше» под разбором.
+  if (await flushLeech(ctx, deps)) {
+    if (mode === "replace") await ctx.editMessageReplyMarkup().catch(() => {});
+    return;
   }
   if (await maybeDrill(ctx, deps, mode)) return;
   const item = await nextDue(deps.db, ctx.user.id, deps.now());
@@ -220,7 +274,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
         card.reps,
         card.state === State.New,
         word.id,
-        stage === "en_ru" && view.audio,
+        (stage === "en_ru" || stage === "ru_en") && view.audio,
         stage,
       );
     }
@@ -231,6 +285,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
+  rememberTask(deps, ctx.user.id, sent);
   // Картинка, нарисованная в фоне, ушла в Telegram впервые — дальше отправляем по file_id.
   const best = "photo" in sent ? sent.photo?.at(-1) : undefined;
   if (photoWordId !== undefined && best) await setImageFileId(deps.db, photoWordId, best.file_id);
@@ -257,11 +312,11 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const sentence = stage === "cloze" ? pickCloze(sentences, Math.floor(deps.random() * sentences.length)) : undefined;
   if (sentence && ctx.chat) {
     deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence, practice: true });
-    return void (await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id, word.id) }, mode));
+    return rememberTask(deps, ctx.user.id, await present(ctx, PRACTICE_HEADER + clozeText(sentence), { ...HTML, reply_markup: practiceClozeKeyboard(card.id, word.id) }, mode));
   }
   const view = cardView(ctx.user);
   const text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
-  await present(ctx, PRACTICE_HEADER + text, { ...HTML, reply_markup: practiceKeyboard(card.id, word.id, stage !== "ru_en" && view.audio) }, mode);
+  await present(ctx, PRACTICE_HEADER + text, { ...HTML, reply_markup: practiceKeyboard(card.id, word.id, view.audio) }, mode);
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
@@ -269,6 +324,7 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
   endLongModes(deps, ctx.user.id);
+  pausesOf(deps).delete(ctx.user.id);
   sessionCountsOf(deps).set(ctx.user.id, 0);
   prefetchDrill(ctx, deps);
   await showNext(ctx, deps, "reply");
@@ -312,9 +368,6 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answe
   return true;
 }
 
-/** Ответ на «вставь по смыслу»: точное совпадение — сразу, иначе судит Claude. */
-const continueAfter = (ctx: BotContext, deps: Deps, pending: PendingExercise) =>
-  pending.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply");
 
 /** Диктант: точно или с опечаткой — засчитано, иначе — «забыл». */
 async function checkDictation(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: string): Promise<void> {
@@ -322,8 +375,11 @@ async function checkDictation(ctx: BotContext, deps: Deps, pending: PendingExerc
   if (!word) return void (await ctx.reply("Это слово уже удалили — /learn, чтобы продолжить"));
   const grade = gradeDictation(answer, word.term);
   if (!pending.practice && !(await rate(ctx, deps, pending, grade === "wrong" ? "again" : "good"))) return;
-  await ctx.reply(dictationText(grade, word, answer), { ...HTML, reply_markup: audioKeyboard(word.id) });
-  await continueAfter(ctx, deps, pending);
+  await proceed(ctx, deps, thenOf(pending), {
+    lead: grade === "exact" ? `✅ Верно: <b>${esc(word.term)}</b> — ${esc(word.translation)}` : undefined,
+    text: dictationText(grade, word, answer),
+    keyboard: audioKeyboard(word.id),
+  });
 }
 
 /** Своё предложение: Claude смотрит, верно ли употреблено слово (это и оценка), и правит остальные ошибки. */
@@ -336,10 +392,7 @@ async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExerci
     review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });
   } catch (err) {
     console.error("Sentence review failed", err);
-    if (pending.practice) {
-      await ctx.reply(`Не получилось проверить 😔\n\n${sentenceUnknownText(word)}`, HTML);
-      return continueAfter(ctx, deps, pending);
-    }
+    if (pending.practice) return proceed(ctx, deps, "practice", { text: `Не получилось проверить 😔\n\n${sentenceUnknownText(word)}` });
     await ctx.reply(`Не получилось проверить 😔\n\n${sentenceUnknownText(word)}\n\nОцени себя сам:`, {
       ...HTML,
       reply_markup: rateKeyboard(pending.cardId, pending.reps, false, word.id, false, "sentence"),
@@ -353,21 +406,18 @@ async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExerci
     // Как в /check: в работу над ошибками — только после «✅ Сохранить».
     const id = deps.pendingMistakes.create({ authorUserId: ctx.user.id, callerUserId: ctx.user.id, fixes: real, baseText: text });
     const ask = mistakesAskText(undefined, real.map((f) => f.category ?? ""));
-    await ctx.reply(`${text}\n\n${ask}`, { ...HTML, reply_markup: mistakesAskKeyboard(id) });
-  } else {
-    await ctx.reply(text, { ...HTML, reply_markup: audioKeyboard(word.id) });
+    return proceed(ctx, deps, thenOf(pending), { text: `${text}\n\n${ask}`, keyboard: mistakesAskKeyboard(id) });
   }
-  await continueAfter(ctx, deps, pending);
+  await proceed(ctx, deps, thenOf(pending), { text, keyboard: audioKeyboard(word.id) });
 }
 
 async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingExercise & { kind: "cloze" }, answer: string): Promise<void> {
   const s = pending.sentence;
   // Вне зачёта: ответ проверяем, но карточку не оцениваем и продолжаем тренировку.
-  const continueAfter = () => (pending.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply"));
+  const then = thenOf(pending);
   if (isExactAnswer(answer, { answer: s.answer, term: pending.term })) {
     if (!pending.practice && !(await rate(ctx, deps, pending, "good"))) return;
-    await ctx.reply(clozeCorrectText(s), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
-    return continueAfter();
+    return proceed(ctx, deps, then, { lead: `✅ Верно: ${clozeFull(s)}`, text: clozeCorrectText(s), keyboard: audioKeyboard(pending.wordId) });
   }
   await ctx.replyWithChatAction("typing");
   const word = await getWord(deps.db, pending.wordId);
@@ -382,10 +432,7 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingExercise 
     });
   } catch (err) {
     console.error("Cloze judge failed", err);
-    if (pending.practice) {
-      await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}`, HTML);
-      return continueAfter();
-    }
+    if (pending.practice) return proceed(ctx, deps, then, { text: `Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}` });
     await ctx.reply(`Не получилось проверить 😔 Правильно так:\n\n${clozeFull(s)}\n\nОцени себя сам:`, {
       ...HTML,
       reply_markup: rateKeyboard(pending.cardId, pending.reps, false, pending.wordId, true, "cloze"),
@@ -393,8 +440,9 @@ async function checkCloze(ctx: BotContext, deps: Deps, pending: PendingExercise 
     return;
   }
   if (!pending.practice && !(await rate(ctx, deps, pending, judgement.correct ? "good" : "again"))) return;
-  await ctx.reply(clozeJudgedText(s, judgement), { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
-  await continueAfter();
+  // Засчитано без пояснений — как точный ответ; иначе пояснение стоит прочитать.
+  const plain = judgement.correct && !judgement.explanation && !judgement.tip;
+  await proceed(ctx, deps, then, { lead: plain ? `✅ Засчитано: ${clozeFull(s)}` : undefined, text: clozeJudgedText(s, judgement), keyboard: audioKeyboard(pending.wordId) });
 }
 
 /** «🤷 Не знаю»: правильный ответ для показанного упражнения. */
@@ -432,12 +480,15 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const progress = await recordDrillAnswer(deps.db, ctx.user.id, q.category, cb.index === q.correct, deps.now());
     // Отработанная тема: уже готовые вопросы по ней больше не показываем.
     if (progress?.resolved) state.questions = state.questions.filter((other) => !sameTopic(other.category, progress.category));
-    await ctx.editMessageText(drillResultText(q, cb.index, progress), HTML);
-    if (!state.standalone) return showNext(ctx, deps, "reply");
-    const next = state.questions.shift();
-    if (next) return sendDrillQuestion(ctx, state, next, "reply");
-    deps.drills.delete(ctx.user.id);
-    await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn. Что уже отработано — /mistakes.");
+    const right = cb.index === q.correct;
+    // Верно и без новостей по теме — коротко в шапку следующего; ошибку и «тема отработана» стоит прочитать.
+    const quiet = right && !progress?.resolved;
+    const progressLine = progress && quiet ? `\n${drillResultText(q, cb.index, progress).split("\n\n").at(-1)}` : "";
+    await proceed(ctx, deps, state.standalone ? "drill" : "learn", {
+      lead: quiet ? `✅ Верно: ${fillGap(q.question, q.options[q.correct] ?? "")}${progressLine}` : undefined,
+      text: drillResultText(q, cb.index, progress),
+      edit: true,
+    });
   });
 
   bot.callbackQuery(/^px$/, async (ctx) => {
@@ -460,7 +511,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (pending?.practice) {
       deps.exercises.delete(ctx.user.id);
       const text = await unknownText(deps, pending);
-      if (text) await ctx.editMessageText(text, { ...HTML, reply_markup: audioKeyboard(pending.wordId) });
+      if (text) return proceed(ctx, deps, "practice", { text, keyboard: audioKeyboard(pending.wordId), edit: true });
     }
     await showPractice(ctx, deps, "reply");
   });
@@ -494,19 +545,25 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
     const revealed = pending ? await unknownText(deps, pending) : sentence ? clozeUnknownText(sentence) : undefined;
-    await ctx.editMessageText(revealed ?? draftText(item.word), {
-      ...HTML,
-      reply_markup: audioKeyboard(item.word.id),
-    });
-    await showNext(ctx, deps, "reply");
+    // Правильный ответ — на месте задания; следующее — по «▶ Дальше», когда прочитал.
+    await proceed(ctx, deps, "learn", { text: revealed ?? draftText(item.word), keyboard: audioKeyboard(item.word.id), edit: true });
   });
 
   // Ответ на «вставь по смыслу». Регистрируется раньше общего обработчика текста (иначе ответ стал бы /add).
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;
     const pending = deps.exercises.get(ctx.user.id);
+    if (!text.startsWith("/") && !pending && isPaused(deps, ctx.user.id, ctx.chat.id)) {
+      return void (await ctx.reply("Нажми «▶ Дальше» под разбором — пришлю следующее задание. Добавить слово — /add"));
+    }
     if (text.startsWith("/") || !pending || pending.chatId !== ctx.chat.id) return next();
     deps.exercises.delete(ctx.user.id);
+    // Ответили — «🤷 Не знаю» у задания больше не нужна; «⚙️ Управление словом» оставляем.
+    if (pending.messageId !== undefined) {
+      void ctx.api
+        .editMessageReplyMarkup(pending.chatId, pending.messageId, { reply_markup: pending.practice ? undefined : addManageButton(new InlineKeyboard(), pending.wordId) })
+        .catch(() => {});
+    }
     if (pending.kind === "cloze") background(ctx, () => checkCloze(ctx, deps, pending, text));
     else if (pending.kind === "sentence") background(ctx, () => checkSentence(ctx, deps, pending, text));
     else await checkDictation(ctx, deps, pending, text);
@@ -534,8 +591,26 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       await afterAnswer(ctx, deps, cb.cardId);
     }
     void ctx.answerCallbackQuery({ text: correct ? "✅" : "❌" }).catch(() => {});
-    await ctx.editMessageText(collocationResultText(collocations, cb.index), { ...HTML, reply_markup: audioKeyboard(item.word.id) });
-    await (cb.practice ? showPractice(ctx, deps, "reply") : showNext(ctx, deps, "reply"));
+    const quiz = collocations.quiz;
+    await proceed(ctx, deps, cb.practice ? "practice" : "learn", {
+      lead: correct ? `✅ Верно: ${fillGap(quiz.question, quiz.options[quiz.correct] ?? "")}` : undefined,
+      text: collocationResultText(collocations, cb.index),
+      keyboard: audioKeyboard(item.word.id),
+      edit: true,
+    });
+  });
+
+  // «▶ Дальше» под разбором: кнопку убираем (разбор остаётся), дальше — следующее задание.
+  bot.callbackQuery(/^nx:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "next") return void (await ctx.answerCallbackQuery());
+    void ctx.answerCallbackQuery().catch(() => {});
+    const rows = (ctx.callbackQuery.message?.reply_markup?.inline_keyboard ?? [])
+      .map((row) => row.filter((b) => !("callback_data" in b && b.callback_data.startsWith("nx:"))))
+      .filter((row) => row.length > 0);
+    await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard(rows) }).catch(() => {});
+    if (cb.then === "drill" && !deps.drills.get(ctx.user.id)) return void (await ctx.reply("Вопросы закончились — /drill, чтобы начать заново"));
+    await goOn(ctx, deps, cb.then);
   });
 
   bot.callbackQuery(/^l$/, async (ctx) => {

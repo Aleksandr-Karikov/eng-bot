@@ -126,6 +126,9 @@ describe("drill questions in /learn", () => {
     expect(String(result.payload.text)).toContain("❌");
     expect(String(result.payload.text)).toContain("Tomorrow I <b>am visiting</b> my mom.");
     expect(String(result.payload.text)).toContain("Present Continuous");
+    // Ошибку объясняем и ждём «▶ Дальше» — следующая карточка не выталкивает разбор наверх.
+    expect(String(sent(h).at(-1))).toContain("🧠");
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
     expect(String(sent(h).at(-1))).not.toContain("🧠");
   });
 
@@ -162,8 +165,8 @@ describe("drill questions in /learn", () => {
     await h.bot.handleUpdate(h.message(100, "/drill"));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Q1:"))).toBe(true));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "am visiting")));
-    expect(String(h.calls.filter((c) => c.method === "editMessageText").at(-1)!.payload.text)).toContain("✅");
-    expect(sent(h).at(-1)).toContain("Q2:");
+    // Верно — итог шапкой следующего вопроса, одним сообщением.
+    expect(sent(h).at(-1)).toMatch(/^✅ Верно: Q1: Tomorrow I <b>am visiting<\/b> my mom\.[^]*Q2:/);
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "am visiting")));
     expect(sent(h).at(-1)).toContain("Готово");
   });

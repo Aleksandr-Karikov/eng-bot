@@ -2,6 +2,9 @@ import { CARD_PARTS, type CardPart } from "../services/card-view";
 import { STAGES, type Stage } from "../services/exercises";
 import type { Answer } from "../srs/srs";
 
+export const NEXT_AFTER = ["learn", "practice", "drill"] as const;
+export type NextAfter = (typeof NEXT_AFTER)[number];
+
 export type Cb =
   | { k: "know"; wordId: number; knows: boolean }
   | { k: "show"; cardId: number; reps: number }
@@ -11,6 +14,8 @@ export type Cb =
   | { k: "practiceRate"; cardId: number; remembered: boolean }
   | { k: "practiceDunno"; cardId: number }
   | { k: "practiceStop" }
+  /** «▶ Дальше» под разбором ответа: что показать следом — карточку /learn, тренировку или вопрос /drill. */
+  | { k: "next"; then: NextAfter }
   | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
@@ -41,6 +46,7 @@ export type Cb =
   | { k: "restoreCard"; wordId: number }
   | { k: "translateStop" }
   | { k: "translateDunno" }
+  | { k: "translateNext" }
   | { k: "extensionKey" }
   | { k: "extensionZip" }
   | { k: "collocationPick"; cardId: number; reps: number; index: number; practice: boolean }
@@ -81,6 +87,7 @@ export function encodeCb(cb: Cb): string {
     case "practiceRate": return `pr:${cb.cardId}:${cb.remembered ? "g" : "a"}`;
     case "practiceDunno": return `pu:${cb.cardId}`;
     case "practiceStop": return "pz";
+    case "next": return `nx:${cb.then[0]}`;
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
@@ -110,6 +117,7 @@ export function encodeCb(cb: Cb): string {
     case "restoreCard": return `nr:${cb.wordId}`;
     case "translateStop": return "tz";
     case "translateDunno": return "tu";
+    case "translateNext": return "tn";
     case "extensionKey": return "ek";
     case "extensionZip": return "ez";
     case "collocationPick": return `co:${cb.cardId}:${cb.reps}:${cb.index}${cb.practice ? ":p" : ""}`;
@@ -155,6 +163,10 @@ export function decodeCb(data: string): Cb | null {
     case "l": return { k: "learn" };
     case "px": return { k: "practiceStart" };
     case "pz": return { k: "practiceStop" };
+    case "nx": {
+      const then = NEXT_AFTER.find((n) => n[0] === a);
+      return then ? { k: "next", then } : null;
+    }
     case "pr": {
       const cardId = int(a);
       return cardId !== null && (b === "g" || b === "a") ? { k: "practiceRate", cardId, remembered: b === "g" } : null;
@@ -210,6 +222,7 @@ export function decodeCb(data: string): Cb | null {
     case "ez": return { k: "extensionZip" };
     case "tz": return { k: "translateStop" };
     case "tu": return { k: "translateDunno" };
+    case "tn": return { k: "translateNext" };
     case "nf": {
       const wordId = int(a);
       return wordId !== null && (b === "k" || b === "l") ? { k: "notForMe", wordId, from: b === "k" ? "know" : "learn" } : null;

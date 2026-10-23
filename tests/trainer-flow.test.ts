@@ -62,6 +62,40 @@ describe("trainer ladder", () => {
     expect(await h.db.select().from(words)).toHaveLength(1);
   });
 
+  it("cloze: right — one message «✅ Верно: …» + the next task; the answered task loses «🤷 Не знаю»", async () => {
+    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "", tip: "" })), random: () => 0.99 });
+    await setup(h, 20, true);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    const taskId = h.calls.filter((c) => c.method === "sendMessage").length;
+    await h.bot.handleUpdate(h.message(100, "bank"));
+    await vi.waitFor(() => expect(sent(h).length).toBeGreaterThan(taskId));
+    // Итог не отдельным сообщением, а в начале следующего.
+    expect(sent(h).slice(taskId)).toHaveLength(1);
+    expect(sent(h).at(-1)).toMatch(/^✅ Верно: We sat on the <b>bank<\/b> of the river\./);
+    const stripped = h.calls.find((c) => c.method === "editMessageReplyMarkup" && c.payload.message_id !== undefined);
+    expect(JSON.stringify(stripped?.payload.reply_markup)).not.toContain("Не знаю");
+    expect(JSON.stringify(stripped?.payload.reply_markup)).toContain("Управление словом");
+  });
+
+  it("cloze: wrong — the explanation waits for «▶ Дальше», the next task does not push it up", async () => {
+    const h = botHarness({ tutor: tutor(async () => ({ correct: false, explanation: "Нужно существительное.", tip: "" })), random: () => 0.99 });
+    await setup(h, 20, true);
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.message(100, "shore of"));
+    await vi.waitFor(() => expect(sent(h).at(-1)).toContain("❌ Не то"));
+    expect(lastButtons(h.calls).map((b) => b.text)).toContain("▶ Дальше");
+    // Текст под разбором — не новое слово, а подсказка нажать «Дальше».
+    await h.bot.handleUpdate(h.message(100, "shore"));
+    expect(sent(h).at(-1)).toContain("Нажми «▶ Дальше»");
+    expect(h.deps.drafts.findAwaiting(1, 100)).toBeUndefined();
+    const before = sent(h).length;
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
+    expect(sent(h).length).toBe(before + 1);
+    // Кнопка «Дальше» с разбора убрана (остальные кнопки берутся из нажатого сообщения — в тестовом Telegram их нет).
+    const strip = h.calls.filter((c) => c.method === "editMessageReplyMarkup").at(-1)!;
+    expect(JSON.stringify(strip.payload.reply_markup)).not.toContain("Дальше");
+  });
+
   it("cloze: Claude accepts a synonym with an explanation", async () => {
     const h = botHarness({ tutor: tutor(async () => ({ correct: true, explanation: "shore тоже подходит", tip: "" })), random: () => 0.99 });
     await setup(h, 20, true);

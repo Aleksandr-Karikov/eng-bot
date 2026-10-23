@@ -38,7 +38,7 @@ describe("pronunciation", () => {
     expect(synthesize).toHaveBeenLastCalledWith("bank", "us");
   });
 
-  it("shows 🔊 on EN → RU cards but not on RU → EN (it would give the answer away)", async () => {
+  it("shows 🔊 on EN → RU and RU → EN cards (on RU → EN one presses it after recalling)", async () => {
     const h = botHarness({ random: () => 0.5 });
     const { user } = await setup(h);
     await h.bot.handleUpdate(h.message(100, "/learn"));
@@ -46,7 +46,7 @@ describe("pronunciation", () => {
 
     await h.db.update(cards).set({ state: 2, stability: 5, due: new Date(T0.getTime() - DAY) }).where(eq(cards.userId, user.id));
     await h.bot.handleUpdate(h.message(100, "/learn"));
-    expect(lastButtons(h.calls).map((b) => b.text)).not.toContain("🔊 UK");
+    expect(lastButtons(h.calls).map((b) => b.text)).toContain("🔊 UK");
   });
 
   it("deletes the voice message when moving to the next card", async () => {

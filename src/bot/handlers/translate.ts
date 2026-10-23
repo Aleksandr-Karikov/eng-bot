@@ -5,8 +5,8 @@ import { recordDrillAnswer, recordMistakes } from "../../services/mistakes";
 import { answerCard, getDueItemByCard } from "../../services/review";
 import { translationMaterial } from "../../services/translate";
 import { background, HTML, type BotContext, type Deps } from "../context";
-import { translateKeyboard } from "../keyboards";
-import { esc, translateDoneText, translateResultText, translateTaskText } from "../texts";
+import { translateKeyboard, translatePauseKeyboard } from "../keyboards";
+import { drillProgressText, esc, translateDoneText, translateResultText, translateTaskText } from "../texts";
 import { RECENT_TASKS, type ActiveTask, type TranslateSession } from "../translations";
 
 async function makeTask(deps: Deps, userId: number, session: TranslateSession): Promise<ActiveTask | undefined> {
@@ -16,7 +16,9 @@ async function makeTask(deps: Deps, userId: number, session: TranslateSession): 
 }
 
 /** Следующее задание: заранее подготовленное или свежее; сразу начинаем готовить ещё одно. */
-async function sendNext(ctx: BotContext, deps: Deps, session: TranslateSession): Promise<void> {
+/** lead — короткий итог прошлого ответа («✅ Верно: …») в начале сообщения с новым заданием. */
+async function sendNext(ctx: BotContext, deps: Deps, session: TranslateSession, lead?: string): Promise<void> {
+  session.paused = false;
   await ctx.replyWithChatAction("typing").catch(() => {});
   let task: ActiveTask | undefined;
   session.preparing = true;
@@ -37,7 +39,15 @@ async function sendNext(ctx: BotContext, deps: Deps, session: TranslateSession):
     console.error("Translation prefetch failed", err);
     return undefined;
   });
-  await ctx.reply(translateTaskText(task.ru), { ...HTML, reply_markup: translateKeyboard() });
+  const text = translateTaskText(task.ru);
+  const sent = await ctx.reply(lead ? `${lead}\n\n${text}` : text, { ...HTML, reply_markup: translateKeyboard() });
+  session.taskMessageId = sent.message_id;
+}
+
+/** Разбор, который стоит прочитать: следующее предложение — по «▶ Дальше», а не сразу под ним. */
+async function pause(ctx: BotContext, session: TranslateSession, text: string): Promise<void> {
+  session.paused = true;
+  await ctx.reply(text, { ...HTML, reply_markup: translatePauseKeyboard() });
 }
 
 /**
@@ -51,8 +61,7 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
     review = await deps.tutor.reviewTranslation({ task, answer });
   } catch (err) {
     console.error("Translation review failed", err);
-    await ctx.reply(`Не получилось проверить 😔 Можно так: <b>${esc(task.en)}</b>`, HTML);
-    return sendNext(ctx, deps, session);
+    return pause(ctx, session, `Не получилось проверить 😔 Можно так: <b>${esc(task.en)}</b>`);
   }
   session.done++;
   if (review.correct) session.correct++;
@@ -66,8 +75,12 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
     const item = await getDueItemByCard(deps.db, ctx.user.id, task.card.cardId);
     if (item) await answerCard(deps.db, { userId: ctx.user.id, cardId: item.card.id, expectedReps: item.card.reps, answer: "good", now, stage: "translate" });
   }
-  await ctx.reply(translateResultText(task, review, progress, real.length > 0), HTML);
-  await sendNext(ctx, deps, session);
+  // Верно и без поправок — одной строкой в шапку следующего задания; иначе разбор ждёт «▶ Дальше».
+  const quiet = review.correct && real.length === 0 && !review.natural && !progress?.resolved;
+  if (!quiet) return pause(ctx, session, translateResultText(task, review, progress, real.length > 0));
+  const used = task.word && review.usedWord ? `\n📚 <b>${esc(task.word)}</b> — засчитано как повторение` : "";
+  const topic = progress ? `\n${drillProgressText(progress)}` : "";
+  await sendNext(ctx, deps, session, `✅ Верно: <i>${esc(answer)}</i>${used}${topic}`);
 }
 
 export async function startTranslate(ctx: BotContext, deps: Deps): Promise<void> {
@@ -100,7 +113,15 @@ export function registerTranslate(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.answerCallbackQuery();
     session.task = undefined;
     await ctx.editMessageReplyMarkup().catch(() => {});
-    await ctx.reply(`🤷 Можно так:\n<b>${esc(task.en)}</b>`, HTML);
+    await pause(ctx, session, `🤷 Можно так:\n<b>${esc(task.en)}</b>`);
+  });
+
+  bot.callbackQuery(/^tn$/, async (ctx) => {
+    const session = deps.translations.get(ctx.user.id);
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    if (!session) return void (await ctx.reply("Тренировка уже закончилась — /translate"));
+    if (!session.paused) return;
     background(ctx, () => sendNext(ctx, deps, session));
   });
 
@@ -111,9 +132,12 @@ export function registerTranslate(bot: Bot<BotContext>, deps: Deps): void {
     if (!session || text.startsWith("/") || session.chatId !== ctx.chat.id) return next();
     const task = session.task;
     // Задание ещё готовится — подождать; если и не готовится (что-то сломалось), не держать личку.
+    if (!task && session.paused) return void (await ctx.reply("Нажми «▶ Дальше» под разбором — пришлю следующее предложение"));
     if (!task && (session.preparing || session.next)) return void (await ctx.reply("Секунду, готовлю следующее предложение…"));
     if (!task) return next();
     session.task = undefined;
+    // Ответили — «🤷 Не знаю» и «⏹» у задания больше не нужны (⏹ есть и под разбором, и под следующим).
+    if (session.taskMessageId !== undefined) void ctx.api.editMessageReplyMarkup(session.chatId, session.taskMessageId).catch(() => {});
     session.lastAt = Date.now();
     background(ctx, () => checkAnswer(ctx, deps, session, task, text));
   });

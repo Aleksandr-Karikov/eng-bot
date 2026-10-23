@@ -36,7 +36,7 @@ async function setup(forgotBefore: number) {
 const sent = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text));
 
 describe("🧩 hard words", () => {
-  it("on the 4th «Забыл» explains the word, then sends the next card below it", async () => {
+  it("on the 4th «Забыл» explains the word; the next card comes below it on «▶ Дальше»", async () => {
     const { h, untangle } = await setup(3);
     // Разбор готовится заранее (на 3-м «Забыл») — здесь он уже есть.
     await h.db.update(words).set({ leechHelp: JSON.stringify(help) }).where(eq(words.id, 1));
@@ -48,7 +48,9 @@ describe("🧩 hard words", () => {
     expect(texts[leech]).toContain("забыто уже 4 раза");
     expect(texts[leech]).toContain("prudish — ханжеский");
     expect(texts[leech]).toContain("<b>prudent</b> to save money");
-    expect(texts[leech + 1]).toContain("bank");
+    expect(leech).toBe(texts.length - 1);
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
+    expect(sent(h).at(-1)).toContain("bank");
     expect(untangle).not.toHaveBeenCalled();
   });
 

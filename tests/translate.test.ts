@@ -88,12 +88,17 @@ describe("🇷🇺→🇬🇧 /translate", () => {
     expect(await h.db.select().from(reviewLogs)).toEqual([]);
   });
 
-  it("«🤷 Не знаю» shows a translation and moves on; «⏹ Хватит» sums up", async () => {
+  it("«🤷 Не знаю» shows a translation and waits for «▶ Дальше»; «⏹ Хватит» sums up", async () => {
     const { h } = await setup({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" });
     await h.bot.handleUpdate(h.message(100, "/translate"));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Мы немного опаздываем"))).toBe(true));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🤷 Не знаю")));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Можно так") && t.includes("running a bit late"))).toBe(true));
+    // Пока не нажал «Дальше», следующего предложения нет, а текст не становится ни ответом, ни новым словом.
+    expect(sent(h).some((t) => t.includes("Это окупится"))).toBe(false);
+    await h.bot.handleUpdate(h.message(100, "hmm"));
+    expect(sent(h).at(-1)).toContain("Нажми «▶ Дальше»");
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Это окупится"))).toBe(true));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "⏹ Хватит")));
     expect(sent(h).at(-1)).toContain("Ок, в другой раз");
