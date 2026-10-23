@@ -20,7 +20,7 @@ import { decodeCb, encodeCb, type NextAfter } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
 import { clearPendingInputs, endLongModes } from "../pending";
-import { isPaused, pausesOf } from "../pauses";
+import { activePause, pausesOf } from "../pauses";
 import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
 import {
   addManageButton,
@@ -136,7 +136,7 @@ async function proceed(
     return goOn(ctx, deps, then);
   }
   const keyboard = (result.keyboard ?? new InlineKeyboard()).row().text("▶ Дальше", encodeCb({ k: "next", then }));
-  if (ctx.chat) pausesOf(deps).set(ctx.user.id, { chatId: ctx.chat.id, at: Date.now() });
+  if (ctx.chat) pausesOf(deps).set(ctx.user.id, { chatId: ctx.chat.id, at: Date.now(), then });
   if (result.edit) await ctx.editMessageText(result.text, { ...HTML, reply_markup: keyboard });
   else await ctx.reply(result.text, { ...HTML, reply_markup: keyboard });
 }
@@ -553,8 +553,12 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.on("message:text", async (ctx, next) => {
     const text = ctx.message.text;
     const pending = deps.exercises.get(ctx.user.id);
-    if (!text.startsWith("/") && !pending && isPaused(deps, ctx.user.id, ctx.chat.id)) {
-      return void (await ctx.reply("Нажми «▶ Дальше» под разбором — пришлю следующее задание. Добавить слово — /add"));
+    const pause = !text.startsWith("/") && !pending ? activePause(deps, ctx.user.id, ctx.chat.id) : undefined;
+    if (pause) {
+      // Кнопка — прямо здесь: вдруг под разбором её уже нет или до него далеко листать.
+      return void (await ctx.reply("Разбор ждёт: следующее задание — по кнопке. Добавить слово — /add", {
+        reply_markup: new InlineKeyboard().text("▶ Дальше", encodeCb({ k: "next", then: pause.then })),
+      }));
     }
     if (text.startsWith("/") || !pending || pending.chatId !== ctx.chat.id) return next();
     deps.exercises.delete(ctx.user.id);
@@ -609,6 +613,8 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       .map((row) => row.filter((b) => !("callback_data" in b && b.callback_data.startsWith("nx:"))))
       .filter((row) => row.length > 0);
     await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard(rows) }).catch(() => {});
+    // Вторая «Дальше» (под разбором и под подсказкой): следующее задание уже ждёт ответа — второе не присылаем.
+    if (!pausesOf(deps).has(ctx.user.id) && deps.exercises.get(ctx.user.id)) return;
     if (cb.then === "drill" && !deps.drills.get(ctx.user.id)) return void (await ctx.reply("Вопросы закончились — /drill, чтобы начать заново"));
     await goOn(ctx, deps, cb.then);
   });

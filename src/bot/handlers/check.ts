@@ -1,4 +1,4 @@
-import type { Bot } from "grammy";
+import { InlineKeyboard, type Bot } from "grammy";
 import type { CheckResult } from "../../llm/enricher";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { recordMistakes } from "../../services/mistakes";
@@ -138,7 +138,11 @@ export function registerCheck(bot: Bot<BotContext>, deps: Deps): void {
       ? mistakesSavedText(pending.authorName, pending.fixes.map((f) => f.category ?? ""))
       : "✖️ Ошибки не сохранены";
     await ctx.answerCallbackQuery({ text: cb.save ? "Сохранено" : "Не сохраняю" });
-    await ctx.editMessageText(`${pending.baseText}\n\n${outcome}`, HTML);
+    // Убираем только «Сохранить / Не сохранять»: под разбором в /learn рядом «▶ Дальше» — без неё тренировка встаёт.
+    const rest = (ctx.callbackQuery.message?.reply_markup?.inline_keyboard ?? [])
+      .map((row) => row.filter((b) => !("callback_data" in b && b.callback_data.startsWith("mk:"))))
+      .filter((row) => row.length > 0);
+    await ctx.editMessageText(`${pending.baseText}\n\n${outcome}`, { ...HTML, ...(rest.length ? { reply_markup: new InlineKeyboard(rest) } : {}) });
   });
 
   // Запоминаем обычные сообщения групп (не команды), чтобы потом дать /check контекст.

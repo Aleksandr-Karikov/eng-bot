@@ -86,7 +86,7 @@ describe("trainer ladder", () => {
     expect(lastButtons(h.calls).map((b) => b.text)).toContain("▶ Дальше");
     // Текст под разбором — не новое слово, а подсказка нажать «Дальше».
     await h.bot.handleUpdate(h.message(100, "shore"));
-    expect(sent(h).at(-1)).toContain("Нажми «▶ Дальше»");
+    expect(sent(h).at(-1)).toContain("Разбор ждёт");
     expect(h.deps.drafts.findAwaiting(1, 100)).toBeUndefined();
     const before = sent(h).length;
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));

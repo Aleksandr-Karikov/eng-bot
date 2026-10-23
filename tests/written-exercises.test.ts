@@ -54,6 +54,26 @@ describe("✍️ own sentence", () => {
     expect((await h.db.select().from(mistakes)).map((m) => m.userId)).toEqual([user.id]);
   });
 
+  it("«✅ Сохранить» under a review keeps «▶ Дальше» — /learn goes on (bug #2)", async () => {
+    const reviewSentence = vi.fn(async () =>
+      review({ usesWord: false, verdict: "не то значение", fixes: [{ wrong: "for once at least", right: "at least once", why: "…", category: "выбор слова", slip: false }] }),
+    );
+    const h = botHarness({ tutor: tutor(reviewSentence) });
+    await setup(h, "modeSentence");
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.message(100, "I want to visit the bank for once at least"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Сохранить твои ошибки"));
+    await h.bot.handleUpdate(h.manage(100, "✅ Сохранить"));
+    const saved = h.calls.filter((c) => c.method === "editMessageText").at(-1)!;
+    expect(String(saved.payload.text)).toContain("Сохранено");
+    const buttons = JSON.stringify(saved.payload.reply_markup);
+    expect(buttons).toContain("▶ Дальше");
+    expect(buttons).not.toContain("Сохранить");
+    const before = h.calls.filter((c) => c.method === "sendMessage").length;
+    await h.bot.handleUpdate(h.manage(100, "▶ Дальше"));
+    expect(h.calls.filter((c) => c.method === "sendMessage").length).toBe(before + 1);
+  });
+
   it("counts a misused word as «Забыл» and shows an example", async () => {
     const h = botHarness({ tutor: tutor(async () => review({ usesWord: false, verdict: "Здесь bank — банк, а не берег" })) });
     await setup(h, "modeSentence");
