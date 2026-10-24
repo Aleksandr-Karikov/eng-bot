@@ -63,7 +63,9 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   // 🎧 Аудиоурок — в личку от бота (Telegram играет его в фоне, приложение так не умеет).
   app.post("/api/lesson", async (c) => {
     if (!ctx.api) return c.json({ ok: false, error: "Бот недоступен" }, 503);
-    return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user")) });
+    const body = (await c.req.json().catch(() => ({}))) as { accent?: unknown };
+    const accent = body.accent === "uk" || body.accent === "us" ? body.accent : "mix";
+    return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user"), accent) });
   });
   app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
   // 🧠 Ответ на вопрос по ошибкам из очереди.

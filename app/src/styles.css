@@ -169,3 +169,6 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .chips.modes > * { padding: 4px 9px !important; min-height: 32px; }
 .chips.modes > * * { font-size: 14px !important; }
 .practice-note { font-size: 13px; text-align: center; }
+.lesson { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.lesson .row { width: 100%; }
+.lesson-sent { display: block; text-align: center; }

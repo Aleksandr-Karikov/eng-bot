@@ -18,6 +18,8 @@ export type Cb =
   | { k: "next"; then: NextAfter }
   /** «↩️ Отменить»: последний ответ по этой карточке. */
   | { k: "undo"; cardId: number; stage?: Stage }
+  /** 🎧 Аудиоурок с выбранным акцентом. */
+  | { k: "lesson"; accent: "uk" | "us" | "mix" }
   | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
@@ -90,6 +92,7 @@ export function encodeCb(cb: Cb): string {
     case "practiceDunno": return `pu:${cb.cardId}`;
     case "practiceStop": return "pz";
     case "next": return `nx:${cb.then[0]}`;
+    case "lesson": return `ls:${cb.accent}`;
     case "undo": return `ud:${cb.cardId}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
@@ -166,6 +169,7 @@ export function decodeCb(data: string): Cb | null {
     case "l": return { k: "learn" };
     case "px": return { k: "practiceStart" };
     case "pz": return { k: "practiceStop" };
+    case "ls": return a === "uk" || a === "us" || a === "mix" ? { k: "lesson", accent: a } : null;
     case "ud": {
       const cardId = int(a);
       const stage = STAGES.find((s) => STAGE_CODES[s] === b);

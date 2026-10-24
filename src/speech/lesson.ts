@@ -41,11 +41,14 @@ export function spokenTranslation(translation: string): string {
     .join(", ");
 }
 
+/** Акцент урока: британский, американский или по очереди. */
+export type LessonAccent = Accent | "mix";
+
 /**
  * Аудиоурок одним mp3: на каждое слово — оно по-английски, пауза, чтобы вспомнить, перевод по-русски, пример.
- * Английский — основным синтезом (Kokoro), русский — голосом macOS. Акцент чередуется, чтобы слышать оба.
+ * Английский — основным синтезом (Kokoro), русский — голосом macOS. mix — акцент чередуется, чтобы слышать оба.
  */
-export async function buildLesson(speech: SpeechSynth, list: Array<Pick<Word, "term" | "translation" | "example">>): Promise<Buffer> {
+export async function buildLesson(speech: SpeechSynth, list: Array<Pick<Word, "term" | "translation" | "example">>, accent: LessonAccent = "mix"): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "eng-bot-lesson-"));
   try {
     let n = 0;
@@ -72,13 +75,13 @@ export async function buildLesson(speech: SpeechSynth, list: Array<Pick<Word, "t
     await add(await macSay(`Аудиоурок. ${list.length} слов. После английского слова — пауза: вспомни перевод.`, RUSSIAN_VOICE, "m4a"));
     await pause(WORD_GAP);
     for (const [i, word] of list.entries()) {
-      const accent: Accent = i % 2 ? "us" : "uk";
-      await add(await speech.synthesize(word.term, accent, "m4a"));
+      const voice: Accent = accent === "mix" ? (i % 2 ? "us" : "uk") : accent;
+      await add(await speech.synthesize(word.term, voice, "m4a"));
       await pause(RECALL_PAUSE);
       await add(await macSay(spokenTranslation(word.translation) || word.translation, RUSSIAN_VOICE, "m4a"));
       if (word.example) {
         await pause(SHORT_PAUSE);
-        await add(await speech.synthesize(word.example, accent, "m4a"));
+        await add(await speech.synthesize(word.example, voice, "m4a"));
       }
       await pause(WORD_GAP);
     }
