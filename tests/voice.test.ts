@@ -77,11 +77,23 @@ describe("🎙 voice messages", () => {
     expect(line).toMatchObject({ text: "thought", whisper: "Sod.", score: 0.2 });
   });
 
+  it("/pron: the word can be listened to before recording", async () => {
+    const { h, synthesize } = await setup();
+    await h.bot.handleUpdate(h.message(100, "/pron thought"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🔊 UK")));
+    await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendVoice")).toBe(true));
+    expect(synthesize).toHaveBeenCalledWith("thought", "uk");
+    expect(() => buttonData(h.calls, "🔊 US")).not.toThrow();
+  });
+
   it("/pron uk: the accent is passed on", async () => {
     const { h, pronunciation } = await setup(vi.fn(async () => "Thought"));
     await h.bot.handleUpdate(h.message(100, "/pron uk figure out"));
     await h.bot.handleUpdate(h.voiceMessage(100));
     await vi.waitFor(() => expect(pronunciation).toHaveBeenCalledWith(expect.anything(), "figure out", "uk"));
+    // Свой акцент — одна кнопка послушать.
+    const markup = h.calls.find((c) => String(c.payload.text).includes("figure out"))!.payload.reply_markup as { inline_keyboard: unknown[][] };
+    expect(markup.inline_keyboard.flat()).toHaveLength(1);
   });
 
   it("a voice outside /talk and /pron gets a hint; too long ones are refused", async () => {

@@ -1,9 +1,10 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Bot } from "grammy";
+import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import { listRoomWords } from "../../services/words";
 import type { Pronunciation } from "../../speech/stt";
 import type { Accent } from "../../speech/tts";
+import { decodeCb, encodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { endLongModes } from "../pending";
 import { esc } from "../texts";
@@ -51,6 +52,13 @@ export function pronunciationText(text: string, whisper: string, p: Pronunciatio
   ].join("\n");
 }
 
+/** 🔊 Послушать, как надо, перед записью: своего акцента — одна кнопка, без выбора — обе. */
+function listenKeyboard(accent: Accent | "any"): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const a of accent === "any" ? (["uk", "us"] as const) : [accent]) kb.text(`🔊 ${a.toUpperCase()}`, encodeCb({ k: "pronListen", accent: a }));
+  return kb;
+}
+
 async function pickWord(deps: Deps, ctx: BotContext): Promise<string | undefined> {
   if (ctx.user.currentRoomId == null) return undefined;
   const words = (await listRoomWords(deps.db, ctx.user.currentRoomId)).filter((w) => w.term.split(" ").length <= 3);
@@ -78,7 +86,25 @@ export function registerPronounce(bot: Bot<BotContext>, deps: Deps): void {
     if (!text) return void (await ctx.reply("Напиши слово: /pron thought"));
     endLongModes(deps, ctx.user.id);
     targets.set(ctx.user.id, { text, accent, chatId: ctx.chat.id, at: Date.now() });
-    await ctx.reply(`🎤 Скажи голосовым: <b>${esc(text)}</b>\n\nЭто эксперимент — пришли пару раз как надо и пару раз нарочно с ошибкой.`, HTML);
+    await ctx.reply(`🎤 Скажи голосовым: <b>${esc(text)}</b>\n\nСначала можно послушать, как звучит. Это эксперимент — запиши пару раз.`, {
+      ...HTML,
+      reply_markup: listenKeyboard(accent),
+    });
+  });
+
+  bot.callbackQuery(/^pl:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const target = targets.get(ctx.user.id);
+    if (cb?.k !== "pronListen" || !target) return void (await ctx.answerCallbackQuery({ text: "Задание устарело — /pron" }));
+    void ctx.answerCallbackQuery().catch(() => {});
+    background(ctx, async () => {
+      try {
+        await ctx.replyWithVoice(new InputFile(await deps.speech.synthesize(target.text, cb.accent), "pronunciation.ogg"));
+      } catch (err) {
+        console.error("Pron sample failed", err);
+        await ctx.reply("Озвучка недоступна 😔");
+      }
+    });
   });
 
   bot.on("message:voice", async (ctx, next) => {
