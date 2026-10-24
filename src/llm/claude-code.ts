@@ -1,4 +1,5 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { currentLang, type Language } from "../lang";
 import { Limiter } from "./limiter";
 import {
   buildCheckPrompt,
@@ -7,7 +8,7 @@ import {
   parseEnrichment,
   parseCheck,
   parseExtraction,
-  SYSTEM_PROMPT,
+  systemPrompt,
   type CheckResult,
   type ContextMessage,
   type Enrichment,
@@ -100,15 +101,15 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
-    return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context), this.opts.timeoutMs));
+    return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context, currentLang()), this.opts.timeoutMs));
   }
 
   async extract(text: string): Promise<ExtractedItem[]> {
-    return parseExtraction(await this.ask(buildExtractPrompt(text), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+    return parseExtraction(await this.ask(buildExtractPrompt(text, currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
   }
 
   async extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]> {
-    const raw = await this.ask(buildExtractImagePrompt(note), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]);
+    const raw = await this.ask(buildExtractImagePrompt(note, currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]);
     const items = parseExtraction(raw);
     // Пусто — чтобы было видно почему: что за файл пришёл и что ответила модель.
     if (items.length === 0) {
@@ -118,7 +119,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async readImage(image: ImageInput): Promise<string> {
-    const raw = (await this.ask(buildReadImagePrompt(), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]))
+    const raw = (await this.ask(buildReadImagePrompt(currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]))
       .replace(/^```\w*\n?|```$/g, "")
       .trim();
     // Модель иногда всё равно заворачивает ответ в JSON: {"text": "..."}.
@@ -133,83 +134,85 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {
-    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
-    return parseCloze(await this.ask(buildClozePrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.model, [], false));
+    return parseCloze(await this.ask(buildClozePrompt(term, translation, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.model, [], false));
   }
 
   async drill(profile: string, count: number, avoid: string[] = []): Promise<DrillQuestion[]> {
-    return parseDrill(await this.ask(buildDrillPrompt(profile, count, avoid), Math.max(this.opts.timeoutMs, 60_000)));
+    return parseDrill(await this.ask(buildDrillPrompt(profile, count, avoid, currentLang()), Math.max(this.opts.timeoutMs, 60_000)));
   }
 
   /** Запоминалки — более сильной моделью (по умолчанию sonnet): придумывать ассоциации Haiku умеет плохо. */
   async mnemonics(items: MnemonicItem[]): Promise<string[]> {
     if (items.length === 0) return [];
-    const raw = await this.ask(buildMnemonicPrompt(items), Math.max(this.opts.timeoutMs, 30_000 + items.length * 6_000), this.opts.mnemonicModel ?? "sonnet");
+    const raw = await this.ask(buildMnemonicPrompt(items, currentLang()), Math.max(this.opts.timeoutMs, 30_000 + items.length * 6_000), this.opts.mnemonicModel ?? "sonnet");
     return parseMnemonics(raw, items.length);
   }
 
   /** Сцена для картинки — тоже сильной моделью: Haiku часто рисует случайную обстановку вместо смысла. */
   async imagePrompt(word: ImageSubject): Promise<string> {
-    const raw = await this.ask(buildImagePromptPrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
+    const raw = await this.ask(buildImagePromptPrompt(word, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet");
     return parseImagePrompt(raw);
   }
 
   async translationTask(input: TranslationInput): Promise<TranslationTask> {
-    return parseTranslationTask(await this.ask(buildTranslationTaskPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+    return parseTranslationTask(await this.ask(buildTranslationTaskPrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 45_000)));
   }
 
   async reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview> {
-    return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */
   async collocations(term: string, translation: string): Promise<Collocations> {
-    return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
+    return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
   }
 
   /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */
   async say(phrase: string): Promise<SayAnswer> {
-    return parseSayAnswer(await this.ask(buildSayPrompt(phrase), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseSayAnswer(await this.ask(buildSayPrompt(phrase, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   async talkReply(input: TalkInput): Promise<string> {
-    return parseTalkReply(await this.ask(buildTalkReplyPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+    return parseTalkReply(await this.ask(buildTalkReplyPrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 45_000)));
   }
 
   /** Разбор разговора — сильной моделью: нужно заметить и ошибки, и неестественные фразы. */
   async talkReview(input: TalkInput): Promise<TalkReview> {
-    return parseTalkReview(await this.ask(buildTalkReviewPrompt(input), Math.max(this.opts.timeoutMs, 90_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseTalkReview(await this.ask(buildTalkReviewPrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 90_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   /** Разбор трудного слова — сильной моделью, как и запоминалки. */
   async untangle(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }): Promise<LeechHelp> {
-    return parseLeechHelp(await this.ask(buildUntanglePrompt(word), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
+    return parseLeechHelp(await this.ask(buildUntanglePrompt(word, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
   }
 
   /** История — сильной моделью: Haiku пишет скучно и натягивает слова. */
   async story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft> {
-    return parseStory(await this.ask(buildStoryPrompt(words), Math.max(this.opts.timeoutMs, 120_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseStory(await this.ask(buildStoryPrompt(words, currentLang()), Math.max(this.opts.timeoutMs, 120_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   async reviewSentence(input: SentenceInput): Promise<SentenceReview> {
-    return parseSentenceReview(await this.ask(buildSentencePrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseSentenceReview(await this.ask(buildSentencePrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
-    return parseJudgement(await this.ask(buildJudgePrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseJudgement(await this.ask(buildJudgePrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
   /** urgent — человек ждёт ответа; фоновые подготовки (предложения, сочетания, разборы) пропускают такие вперёд. */
   async ask(prompt: string, timeoutMs: number, model = this.opts.model, images: ImageInput[] = [], urgent = true): Promise<string> {
+    // Язык — в момент вызова: из очереди запрос может уйти уже в контексте того, кто освободил место.
+    const lang = currentLang();
     // Таймаут отсчитывается с начала самого запроса, а не с постановки в очередь.
-    return this.limiter.run(urgent, () => this.askNow(prompt, timeoutMs, model, images));
+    return this.limiter.run(urgent, () => this.askNow(prompt, timeoutMs, model, images, lang));
   }
 
-  private async askNow(prompt: string, timeoutMs: number, model: string, images: ImageInput[]): Promise<string> {
+  private async askNow(prompt: string, timeoutMs: number, model: string, images: ImageInput[], lang: Language): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {
@@ -219,7 +222,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
         options: {
           abortController,
           model,
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt: systemPrompt(lang),
           maxTurns: 1,
           // Без инструментов и без пользовательских настроек/плагинов/хуков — только ответ модели.
           tools: [],
