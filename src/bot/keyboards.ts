@@ -150,10 +150,21 @@ export function addLearnLangButtons(kb: InlineKeyboard, langs: LangCode[]): Inli
   return kb;
 }
 
-/** Что учим: под приветствием /start. */
-export function learnLangKeyboard(): InlineKeyboard {
+/** Что учим: под приветствием /start и в /lang (current — отмечен ✓). */
+export function learnLangKeyboard(current?: LangCode): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const code of LANG_CODES) kb.text(`${LANGUAGES[code].flag} ${LANGUAGES[code].name[0].toUpperCase()}${LANGUAGES[code].name.slice(1)}`, encodeCb({ k: "learnLang", lang: code }));
+  for (const code of LANG_CODES) {
+    const { flag, name } = LANGUAGES[code];
+    kb.text(`${code === current ? "✓ " : ""}${flag} ${name[0].toUpperCase()}${name.slice(1)}`, encodeCb({ k: "learnLang", lang: code }));
+  }
+  return kb;
+}
+
+/** 🔗 Комната группы: на какую из своих общих комнат сменить или завести новую (на выбранном языке). */
+export function groupLinkKeyboard(rooms: Room[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const room of rooms) kb.text(`→ ${roomTitle(room)}`, encodeCb({ k: "groupLink", roomId: room.id })).row();
+  for (const code of LANG_CODES) kb.text(`➕ Новая ${LANGUAGES[code].flag}`, encodeCb({ k: "groupNew", lang: code }));
   return kb;
 }
 

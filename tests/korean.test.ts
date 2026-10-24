@@ -145,3 +145,59 @@ describe("🇰🇷 Korean", () => {
     expect(langs).toEqual(["ko"]);
   });
 });
+
+describe("/lang and the group's room", () => {
+  it("/lang switches languages and returns to the last room of each one", async () => {
+    const h = botHarness();
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const shared = await createRoom(h.db, { name: "Комната", createdBy: user.id, now: T0 });
+    await updateUser(h.db, user.id, { currentRoomId: shared.id });
+    await h.bot.handleUpdate(h.message(100, "/lang"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Сейчас учишь: 🇬🇧 английский — «Комната»"));
+    expect(lastButtons(h.calls).map((b) => b.text)).toEqual(["✓ 🇬🇧 Английский", "🇰🇷 Корейский"]);
+    // Первый раз корейский — заводится словарь.
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🇰🇷 Корейский")));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Учим корейский! Текущая комната — «Мои слова 🇰🇷»"));
+    // Обратно — в ту английскую комнату, где был, а не в личный словарь.
+    await h.bot.handleUpdate(h.message(100, "/lang"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🇬🇧 Английский")));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Учим английский — комната «Комната»"));
+    expect((await makeUser(h.db, 100)).currentRoomId).toBe(shared.id);
+    // И снова на корейский — уже без вступления.
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🇰🇷 Корейский")));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Учим корейский — комната «Мои слова 🇰🇷»"));
+  });
+
+  it("/link in a group: link to a new Korean room, then switch to an own shared room", async () => {
+    const h = botHarness();
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const shared = await createRoom(h.db, { name: "Друзья", createdBy: user.id, now: T0 });
+    await h.bot.handleUpdate(h.groupMessage(100, -500, "/link"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("К какой комнате привязать группу?"));
+    expect(lastButtons(h.calls).map((b) => b.text)).toEqual(["→ Друзья", "➕ Новая 🇬🇧", "➕ Новая 🇰🇷"]);
+    await h.bot.handleUpdate(h.groupCallback(100, -500, buttonData(h.calls, "➕ Новая 🇰🇷")));
+    await vi.waitFor(() => expect(h.calls.some((c) => c.method === "editMessageText" && String(c.payload.text).includes("учит 🇰🇷 корейский"))).toBe(true));
+    const [korean] = await h.db.select().from(rooms).where(eq(rooms.telegramChatId, -500));
+    expect(korean).toMatchObject({ language: "ko", name: "Group" });
+    // Сменить на свою общую — старая отвязывается, слова в ней остаются.
+    await h.bot.handleUpdate(h.groupMessage(100, -500, "/link"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Группа привязана к «Group 🇰🇷» — учит 🇰🇷 корейский"));
+    await h.bot.handleUpdate(h.groupCallback(100, -500, buttonData(h.calls, "→ Друзья")));
+    await vi.waitFor(() => expect(h.calls.filter((c) => c.method === "editMessageText").at(-1)?.payload.text).toContain("комната «Друзья»"));
+    const linked = await h.db.select().from(rooms).where(eq(rooms.telegramChatId, -500));
+    expect(linked.map((r) => r.id)).toEqual([shared.id]);
+  });
+
+  it("someone else's group room can't be relinked by a regular member", async () => {
+    const h = botHarness();
+    const owner = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    await updateUser(h.db, (await makeUser(h.db, 200)).id, { canDm: true });
+    const room = await createRoom(h.db, { name: "Группа", createdBy: owner.id, now: T0, telegramChatId: -600 });
+    await h.bot.handleUpdate(h.groupMessage(200, -600, "/link"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Сменить комнату может админ группы или создатель комнаты"));
+    await h.bot.handleUpdate(h.groupCallback(200, -600, "gn:ko"));
+    await vi.waitFor(() => expect(h.calls.at(-1)?.method).toBe("answerCallbackQuery"));
+    const linked = await h.db.select().from(rooms).where(eq(rooms.telegramChatId, -600));
+    expect(linked.map((r) => r.id)).toEqual([room.id]);
+  });
+});

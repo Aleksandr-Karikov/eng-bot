@@ -10,6 +10,8 @@ export const users = sqliteTable("users", {
   reminderTime: text("reminder_time").notNull().default("20:00"),
   timezone: text("timezone").notNull().default("Europe/Moscow"),
   currentRoomId: integer("current_room_id"),
+  /** Последняя текущая комната каждого языка, JSON {"en": id, "ko": id}: /lang возвращает туда, где человек был. */
+  lastRooms: text("last_rooms").notNull().default("{}"),
   lastReminderDate: text("last_reminder_date"),
   canDm: integer("can_dm", { mode: "boolean" }).notNull().default(false),
   groupHintSent: integer("group_hint_sent", { mode: "boolean" }).notNull().default(false),

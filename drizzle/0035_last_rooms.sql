@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `last_rooms` text DEFAULT '{}' NOT NULL;

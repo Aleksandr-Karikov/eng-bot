@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { users, type User } from "../db/schema";
+import { rooms, users, type User } from "../db/schema";
 
 /** Пояс новых пользователей. В схеме default остался Europe/Moscow: менять его в SQLite — пересоздавать таблицу. */
 export const DEFAULT_TIMEZONE = "Asia/Novosibirsk";
@@ -48,6 +48,23 @@ export async function getUser(db: Db, id: number): Promise<User | undefined> {
 }
 
 export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<User> {
-  const [user] = await db.update(users).set(patch).where(eq(users.id, id)).returning();
+  let set: UserPatch & { lastRooms?: string } = patch;
+  // Новая текущая комната — запоминаем как последнюю для её языка (/lang вернёт сюда).
+  if (patch.currentRoomId != null) {
+    const [room] = await db.select({ language: rooms.language }).from(rooms).where(eq(rooms.id, patch.currentRoomId));
+    const [before] = await db.select({ lastRooms: users.lastRooms }).from(users).where(eq(users.id, id));
+    if (room && before) set = { ...patch, lastRooms: JSON.stringify({ ...parseLastRooms(before.lastRooms), [room.language]: patch.currentRoomId }) };
+  }
+  const [user] = await db.update(users).set(set).where(eq(users.id, id)).returning();
   return user;
+}
+
+/** {"en": 7, "ko": 12} — последняя комната каждого языка. */
+export function parseLastRooms(json: string): Record<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
 }

@@ -41,6 +41,7 @@ export const COMMANDS = [
   { command: "pron", description: "Проверить произношение голосовым" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "sets", description: "Готовые наборы слов по уровням и темам" },
+  { command: "lang", description: "Язык: английский или корейский" },
   { command: "settings", description: "Настройки" },
   { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
@@ -53,7 +54,7 @@ export const GROUP_COMMANDS = [
   { command: "duel", description: "Дуэль: кто быстрее переведёт" },
   { command: "story", description: "История из слов комнаты" },
   { command: "goal", description: "Цель комнаты на неделю" },
-  { command: "link", description: "Привязать группу к комнате" },
+  { command: "link", description: "Комната группы и её язык" },
   { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
 ];

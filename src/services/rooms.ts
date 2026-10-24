@@ -4,7 +4,7 @@ import type { Db } from "../db/client";
 import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
 import { LANGUAGES, type LangCode } from "../lang";
 import { createCards } from "./cards";
-import { getUser, updateUser } from "./users";
+import { getUser, parseLastRooms, updateUser } from "./users";
 
 export async function createRoom(
   db: Db,
@@ -51,6 +51,18 @@ export async function ensurePersonalRoom(db: Db, userId: number, now: Date, lang
     (await personalRoom(db, userId, language)) ??
     createRoom(db, { name: personalRoomName(language), createdBy: userId, now, personal: true, language })
   );
+}
+
+/**
+ * Куда вернуть человека, когда он переключается на язык (/lang): в последнюю комнату этого языка, где он был;
+ * нет такой — в общую комнату этого языка; нет и её — в личный словарь (created — его только что завели).
+ */
+export async function roomForLanguage(db: Db, user: User, language: LangCode, now: Date): Promise<{ room: Room; created: boolean }> {
+  const mine = (await listUserRooms(db, user.id)).filter((r) => r.language === language);
+  const last = parseLastRooms(user.lastRooms)[language];
+  const room = mine.find((r) => r.id === last) ?? mine.find((r) => r.personalOf == null) ?? mine.find((r) => r.personalOf === user.id);
+  if (room) return { room, created: false };
+  return { room: await ensurePersonalRoom(db, user.id, now, language), created: true };
 }
 
 export async function isMember(db: Db, roomId: number, userId: number): Promise<boolean> {
@@ -121,6 +133,11 @@ export async function linkGroup(
   if (room?.telegramChatId != null) return "room_has_group";
   await db.update(rooms).set({ telegramChatId: chatId }).where(eq(rooms.id, roomId));
   return "linked";
+}
+
+/** Отвязать группу от её комнаты (комната со словами остаётся). */
+export async function unlinkGroup(db: Db, chatId: number): Promise<void> {
+  await db.update(rooms).set({ telegramChatId: null }).where(eq(rooms.telegramChatId, chatId));
 }
 
 /**

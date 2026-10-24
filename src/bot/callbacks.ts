@@ -70,6 +70,8 @@ export type Cb =
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "learnLang"; lang: LangCode }
+  | { k: "groupLink"; roomId: number }
+  | { k: "groupNew"; lang: LangCode }
   | { k: "roomRename"; roomId: number }
   | { k: "roomDel"; roomId: number }
   | { k: "roomDelOk"; roomId: number }
@@ -147,6 +149,8 @@ export function encodeCb(cb: Cb): string {
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "learnLang": return `ll:${cb.lang}`;
+    case "groupLink": return `gl:${cb.roomId}`;
+    case "groupNew": return `gn:${cb.lang}`;
     case "roomRename": return `rn:${cb.roomId}`;
     case "roomDel": return `rx:${cb.roomId}`;
     case "roomDelOk": return `rxo:${cb.roomId}`;
@@ -240,6 +244,11 @@ export function decodeCb(data: string): Cb | null {
     case "te": return { k: "talkEnd" };
     case "pn": return { k: "pronNext" };
     case "ll": return isLangCode(a) ? { k: "learnLang", lang: a } : null;
+    case "gn": return isLangCode(a) ? { k: "groupNew", lang: a } : null;
+    case "gl": {
+      const roomId = int(a);
+      return roomId !== null ? { k: "groupLink", roomId } : null;
+    }
     case "pl": return a === "uk" || a === "us" ? { k: "pronListen", accent: a } : null;
     case "ek": return { k: "extensionKey" };
     case "ez": return { k: "extensionZip" };
