@@ -1,7 +1,6 @@
-import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
-import { isRussian, type Enrichment } from "../../llm/enricher";
-import { findWord, MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
+import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
+import { prepareWord } from "../../services/prepare-word";
 import { termPattern } from "../../services/word-uses";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
@@ -19,64 +18,20 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   if (!parsed) return void (await ctx.reply(USAGE));
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
-  // «/add зуб — tooth» — написали наоборот: слово английское, перевод русский.
-  if (parsed.translation && isRussian(parsed.term) && !isRussian(parsed.translation)) [parsed.term, parsed.translation] = [parsed.translation, parsed.term];
-  // «/add зуб» — английский вариант подберёт модель, а слово в черновике будет уже английским.
-  const fromRussian = isRussian(parsed.term);
-  const exists = async (term: string) => {
-    if (!(await findWord(deps.db, room.id, term))) return false;
-    await ctx.reply(`«${esc(term)}» уже есть в комнате`, HTML);
-    return true;
-  };
-  if (!fromRussian && (await exists(parsed.term))) return;
-
   await ctx.replyWithChatAction("typing");
-  const enrich = deps.enricher
-    .enrich(parsed.term, parsed.translation)
-    .then(async (e) => (await rateUsefulness([{ ...e, term: e.term ?? parsed.term }], deps.frequency))[0])
-    .catch((err): Enrichment | undefined => {
-      console.error("Enrichment failed", parsed.term, err);
-      return undefined;
-    });
-  const mnemonicFor = (term: string, translation: string) =>
-    deps.tutor
-      .mnemonics([{ term, translation }])
-      .then(([m]) => m ?? "")
-      .catch((err) => {
-        console.error("Mnemonic failed", term, err);
-        return "";
-      });
-
-  let enrichment: Enrichment | undefined;
-  let mnemonic: string;
-  if (fromRussian) {
-    // Запоминалку — уже для английского слова, поэтому после перевода.
-    enrichment = await enrich;
-    if (!enrichment?.term) return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(parsed.term)}». Напиши сразу по-английски: /add tooth`, HTML));
-    parsed.translation = parsed.term;
-    parsed.term = enrichment.term;
-    if (await exists(parsed.term)) return;
-    mnemonic = await mnemonicFor(parsed.term, enrichment.translation);
-  } else {
-    // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
-    [enrichment, mnemonic] = await Promise.all([enrich, mnemonicFor(parsed.term, parsed.translation ?? "")]);
+  const prepared = await prepareWord(deps, room.id, parsed);
+  if (prepared.status === "exists") return void (await ctx.reply(`«${esc(prepared.term)}» уже есть в комнате`, HTML));
+  if (prepared.status === "no-english") {
+    return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(prepared.term)}». Напиши сразу по-английски: /add tooth`, HTML));
   }
+  const word = prepared.draft;
 
   const draft = deps.drafts.create({
     userId: ctx.user.id,
     chatId: ctx.chat.id,
     roomId: room.id,
-    term: parsed.term,
-    // Для русского слова перевод — от модели (она могла уточнить его), а не само русское слово.
-    translation: (fromRussian ? enrichment?.translation : parsed.translation) ?? enrichment?.translation ?? "",
-    explanation: enrichment?.explanation ?? "",
-    example: enrichment?.example ?? "",
-    transcriptionUk: enrichment?.transcriptionUk ?? "",
-    transcriptionUs: enrichment?.transcriptionUs ?? "",
-    usefulness: enrichment?.usefulness,
-    usefulnessNote: enrichment?.usefulnessNote ?? "",
-    mnemonic,
-    context: context && termPattern(parsed.term).test(context.toLowerCase().replace(/[’‘`]/g, "'")) ? context.slice(0, MAX_CONTEXT) : "",
+    ...word,
+    context: context && termPattern(word.term).test(context.toLowerCase().replace(/[’‘`]/g, "'")) ? context.slice(0, MAX_CONTEXT) : "",
   });
   if (!draft.translation) return askForTranslation(ctx, deps, draft, "Не получилось подобрать перевод для");
   await sendPreview(ctx, draft);

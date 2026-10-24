@@ -1,7 +1,8 @@
-import { Cell, Chip, Input, List, Placeholder, Section, Spinner } from "@telegram-apps/telegram-ui";
+import { Button, Cell, Chip, Input, List, Placeholder, Section, Spinner } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getWords, type WordItem, type WordStatus } from "./api";
 import { WordPage } from "./WordPage";
+import { AddWord } from "./AddWord";
 import { USEFULNESS } from "./format";
 import { haptic, useBackButton } from "./telegram";
 
@@ -37,6 +38,7 @@ export function Words({ onExit }: { onExit: () => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState<number>();
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +64,16 @@ export function Words({ onExit }: { onExit: () => void }) {
   }, [load]);
 
   if (open !== undefined) return <WordPage id={open} onClose={close} />;
+  if (adding) {
+    return (
+      <AddWord
+        onExit={() => {
+          setAdding(false);
+          void load();
+        }}
+      />
+    );
+  }
   const back = <BackToCards onExit={onExit} />;
   if (error) return <>{back}<Placeholder header="Не получилось загрузить" description={error} /></>;
   if (!data) {
@@ -77,6 +89,11 @@ export function Words({ onExit }: { onExit: () => void }) {
   return (
     <List>
       {back}
+      <div className="form-buttons add-word">
+        <Button size="m" stretched mode="bezeled" onClick={() => setAdding(true)}>
+          ➕ Добавить слово
+        </Button>
+      </div>
       <Input placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="chips">
         {FILTERS.map((f) => (

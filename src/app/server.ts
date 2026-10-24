@@ -9,7 +9,7 @@ import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
 import { appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
-import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
+import { appAddWord, appChangeSetting, appEditWord, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
   deps: Deps;
@@ -85,6 +85,15 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
 
   // 📖 Слова и ⚙️ Настройки — те же правила, что у кнопок в боте.
   app.get("/api/words", async (c) => c.json({ ok: true, ...(await appWords(deps, c.get("user"))) }));
+  // ➕ Новое слово: черновик (перевод готовит модель), потом сохранение. Раньше /api/words/:id — иначе «prepare» стал бы id.
+  app.post("/api/words/prepare", async (c) => {
+    const r = await appPrepareWord(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 409 | 422);
+  });
+  app.post("/api/words", async (c) => {
+    const r = await appAddWord(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 409);
+  });
   app.get("/api/words/:id", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
     return word ? c.json({ ok: true, word: await appWordDetails(deps, c.get("user"), word) }) : c.json({ ok: false, error: "Этого слова уже нет" }, 404);

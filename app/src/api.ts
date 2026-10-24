@@ -229,3 +229,19 @@ export interface Progress {
 }
 
 export const getProgress = () => call<Progress & { ok: true }>("/api/progress");
+
+/** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
+export interface WordDraft {
+  term: string;
+  translation: string;
+  explanation: string;
+  example: string;
+  transcriptionUk?: string;
+  transcriptionUs?: string;
+  mnemonic?: string;
+  usefulness?: number | null;
+  usefulnessNote?: string;
+}
+
+export const prepareWord = (text: string) => post<{ draft: WordDraft }>("/api/words/prepare", { text }).then((r) => r.draft);
+export const addWord = (draft: WordDraft) => post<{ id: number }>("/api/words", draft);

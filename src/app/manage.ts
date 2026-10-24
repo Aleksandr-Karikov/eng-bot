@@ -10,7 +10,9 @@ import { HARD_AFTER_LAPSES } from "../services/hard-words";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
-import { deleteWord, getWord, listRoomWords, setUsefulness, updateWord } from "../services/words";
+import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setUsefulness, updateWord } from "../services/words";
+import { prepareWord } from "../services/prepare-word";
+import { broadcastWord } from "../bot/word-flow";
 
 /** Как слово идёт у этого человека: нет карточки — убрал у себя («🙈 Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";
@@ -142,4 +144,46 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
   }
   if (!patch) return { ok: false, error: "Непонятная настройка" };
   return { ok: true, user: await updateUser(deps.db, user.id, patch) };
+}
+
+/** ➕ Слово из приложения, шаг 1: черновик (как /add) — перевод, транскрипция, пример, полезность, запоминалка. */
+export async function appPrepareWord(deps: Deps, user: User, body: { text?: unknown }) {
+  const parsed = typeof body.text === "string" ? parseAddInput(body.text.slice(0, 200)) : null;
+  if (!parsed) return { status: 400, body: { ok: false, error: "Напиши слово или фразу" } };
+  if (user.currentRoomId == null) return { status: 400, body: { ok: false, error: "Сначала выбери комнату в настройках" } };
+  const prepared = await prepareWord(deps, user.currentRoomId, parsed);
+  if (prepared.status === "exists") return { status: 409, body: { ok: false, error: `«${prepared.term}» уже есть в комнате` } };
+  if (prepared.status === "no-english") return { status: 422, body: { ok: false, error: `Не получилось подобрать английское слово для «${prepared.term}» — напиши по-английски` } };
+  return { status: 200, body: { ok: true, draft: prepared.draft } };
+}
+
+const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/** Шаг 2: сохранить (перевод и объяснение человек мог поправить) и разослать друзьям «знаешь?», как из бота. */
+export async function appAddWord(deps: Deps, user: User, body: Record<string, unknown>) {
+  const term = text(body.term, 120);
+  const translation = text(body.translation, 300);
+  if (!term || !translation) return { status: 400, body: { ok: false, error: "Нужны слово и перевод" } };
+  if (user.currentRoomId == null) return { status: 400, body: { ok: false, error: "Сначала выбери комнату в настройках" } };
+  const usefulness = typeof body.usefulness === "number" && [1, 2, 3].includes(body.usefulness) ? body.usefulness : null;
+  const result = await saveWord(deps.db, {
+    roomId: user.currentRoomId,
+    addedBy: user.id,
+    draft: {
+      term,
+      translation,
+      explanation: text(body.explanation, 1000),
+      example: text(body.example, 500),
+      transcriptionUk: text(body.transcriptionUk, 120),
+      transcriptionUs: text(body.transcriptionUs, 120),
+      mnemonic: text(body.mnemonic, 1000),
+      usefulness,
+      usefulnessNote: text(body.usefulnessNote, 300),
+    },
+    now: deps.now(),
+  });
+  if (result.status === "duplicate") return { status: 409, body: { ok: false, error: `«${term}» уже есть в комнате` } };
+  if (result.status === "no-room") return { status: 400, body: { ok: false, error: "Комнату уже удалили" } };
+  void broadcastWord(deps, result.word, result.members, user).catch((err) => console.error("App word broadcast failed", err));
+  return { status: 200, body: { ok: true, id: result.word.id } };
 }

@@ -156,3 +156,7 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .dots { display: inline-flex; gap: 4px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tg-theme-secondary-bg-color, rgba(127, 127, 127, 0.25)); box-shadow: inset 0 0 0 1px var(--tg-theme-hint-color, #8e8e93); }
 .dot.on { background: #22c55e; box-shadow: none; }
+
+/* ➕ Новое слово */
+.add-word { padding-top: 12px; }
+.draft-extra { display: block; padding: 6px 16px 10px; }

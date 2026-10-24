@@ -4,7 +4,7 @@ import { startCaptureServer } from "../src/capture/server";
 import { sign } from "@telegram-apps/init-data-node";
 import { cards, reviewLogs, words } from "../src/db/schema";
 import { createApp } from "../src/app/server";
-import { createRoom } from "../src/services/rooms";
+import { createRoom, joinRoom } from "../src/services/rooms";
 import { getUser } from "../src/services/users";
 import { getWord } from "../src/services/words";
 import { updateUser } from "../src/services/users";
@@ -13,6 +13,8 @@ import { botHarness } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
 const TOKEN = "123:test-token";
+
+const joinRoomFor = (h: ReturnType<typeof botHarness>, roomId: number, userId: number) => joinRoom(h.db, { roomId, userId, now: T0, makeCurrent: true });
 
 async function setup() {
   const h = botHarness();
@@ -167,6 +169,34 @@ describe("📚 Mini App API", () => {
       expect(queue[5]).toMatchObject({ category: "артикли", options: ["do", "make"] });
       const res = await app.request("/api/drill", { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ category: "артикли", correct: true }) });
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe("➕ adding a word from the app", () => {
+    it("prepares a draft like /add, then saves it and tells friends", async () => {
+      const h = botHarness({
+        enricher: {
+          enrich: async () => ({ term: "tooth", translation: "зуб", explanation: "часть рта", example: "I lost a tooth.", transcriptionUk: "/tuːθ/", transcriptionUs: "/tuθ/" }),
+          extract: async () => [], extractImage: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }),
+        },
+      });
+      const me = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+      const friend = await updateUser(h.db, (await makeUser(h.db, 200, "Артём")).id, { canDm: true });
+      const room = await createRoom(h.db, { name: "R", createdBy: me.id, now: T0 });
+      await joinRoomFor(h, room.id, friend.id);
+      const app = createApp({ deps: h.deps, botToken: TOKEN });
+      const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, TOKEN, new Date())}`, "content-type": "application/json" };
+      const post = (path: string, body: object) => app.request(path, { method: "POST", headers, body: JSON.stringify(body) });
+
+      const { draft } = await (await post("/api/words/prepare", { text: "зуб" })).json();
+      expect(draft).toMatchObject({ term: "tooth", translation: "зуб", example: "I lost a tooth." });
+      expect((await post("/api/words", { ...draft, translation: "зуб (во рту)" })).status).toBe(200);
+      const [saved] = await h.db.select().from(words);
+      expect(saved).toMatchObject({ term: "tooth", translation: "зуб (во рту)", addedBy: me.id });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(h.calls.some((c) => c.method === "sendMessage" && c.payload.chat_id === 200 && String(c.payload.text).includes("tooth"))).toBe(true);
+      // Второй раз — уже есть.
+      expect((await post("/api/words/prepare", { text: "tooth" })).status).toBe(409);
     });
   });
 });
