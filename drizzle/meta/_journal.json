@@ -232,6 +232,13 @@
       "when": 1792833548190,
       "tag": "0032_black_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1792834305729,
+      "tag": "0033_personal_rooms",
+      "breakpoints": true
     }
   ]
 }
