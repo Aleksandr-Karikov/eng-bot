@@ -7,7 +7,7 @@ import { getUser, updateUser } from "./users";
 
 export async function createRoom(
   db: Db,
-  input: { name: string; createdBy: number; now: Date; telegramChatId?: number },
+  input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean },
 ): Promise<Room> {
   const [room] = await db
     .insert(rooms)
@@ -15,12 +15,29 @@ export async function createRoom(
       name: input.name,
       inviteCode: randomBytes(6).toString("base64url"),
       telegramChatId: input.telegramChatId ?? null,
+      personalOf: input.personal ? input.createdBy : null,
       createdBy: input.createdBy,
       createdAt: input.now,
     })
     .returning();
-  await joinRoom(db, { roomId: room.id, userId: input.createdBy, now: input.now, makeCurrent: true });
+  // Личный словарь становится текущим, только если другой комнаты ещё нет — общую с друзьями он не вытесняет.
+  await joinRoom(db, { roomId: room.id, userId: input.createdBy, now: input.now, makeCurrent: !input.personal });
   return room;
+}
+
+export const PERSONAL_ROOM_NAME = "Мои слова";
+
+export async function personalRoom(db: Db, userId: number): Promise<Room | undefined> {
+  const [room] = await db.select().from(rooms).where(eq(rooms.personalOf, userId));
+  return room;
+}
+
+/**
+ * Личный словарь «Мои слова»: есть у каждого, создаётся сам — одиночке не нужно разбираться с комнатами,
+ * а слова из готовых наборов идут сюда, а не в общую комнату с друзьями.
+ */
+export async function ensurePersonalRoom(db: Db, userId: number, now: Date): Promise<Room> {
+  return (await personalRoom(db, userId)) ?? createRoom(db, { name: PERSONAL_ROOM_NAME, createdBy: userId, now, personal: true });
 }
 
 export async function isMember(db: Db, roomId: number, userId: number): Promise<boolean> {

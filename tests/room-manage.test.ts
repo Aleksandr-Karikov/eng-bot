@@ -65,10 +65,10 @@ describe("/room management", () => {
     const h = botHarness({ enricher: { enrich, extractImage: async () => [], extract: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }) } });
     await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     await h.bot.handleUpdate(h.message(100, "/room"));
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Новая комната")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Комната для друзей")));
     expect(h.calls.some((c) => String(c.payload.text).includes("Как назвать"))).toBe(true);
     await h.bot.handleUpdate(h.message(100, "English club"));
-    await vi.waitFor(async () => expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["English club"]));
+    await vi.waitFor(async () => expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["Мои слова", "English club"]));
     expect(enrich).not.toHaveBeenCalled();
 
     await h.bot.handleUpdate(h.message(100, "/newroom"));

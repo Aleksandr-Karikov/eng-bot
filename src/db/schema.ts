@@ -48,6 +48,8 @@ export const rooms = sqliteTable("rooms", {
   weeklyGoal: integer("weekly_goal").notNull().default(0),
   /** Начало недели (дата дайджеста), за которую уже поздравили с выполненной целью. */
   goalReachedWeek: text("goal_reached_week"),
+  /** Личный словарь «Мои слова» этого человека: создаётся сам, друзей в него не зовут (для них — общие комнаты). */
+  personalOf: integer("personal_of").unique().references(() => users.id),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
 });

@@ -138,8 +138,9 @@ export function batchKeyboard(batch: Batch): InlineKeyboard {
 /** canManage — переименовать и удалить текущую комнату может только её создатель. */
 export function roomKeyboard(otherRooms: Room[], current?: Room, canManage = false): InlineKeyboard {
   const kb = new InlineKeyboard();
-  if (current) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
-  kb.text("➕ Новая комната", encodeCb({ k: "room", action: "new" }));
+  // Личный словарь — без приглашения: позвать друзей можно в общую комнату (➕).
+  if (current && current.personalOf == null) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
+  kb.text(current?.personalOf != null ? "➕ Комната для друзей" : "➕ Новая комната", encodeCb({ k: "room", action: "new" }));
   for (const room of otherRooms) kb.row().text(`→ ${room.name}`, encodeCb({ k: "roomsw", roomId: room.id }));
   if (current && canManage) {
     kb.row()

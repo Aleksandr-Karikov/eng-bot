@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { words } from "../src/db/schema";
+import { rooms, words } from "../src/db/schema";
+import { eq } from "drizzle-orm";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { capture, cleanSelection, readImage } from "../src/capture/capture";
 import { startCaptureServer } from "../src/capture/server";
@@ -67,11 +68,14 @@ describe("words from the browser extension", () => {
     expect(result).toEqual({ ok: true, added: [{ term: "a long shot", translation: "маловероятно" }], duplicates: ["beat around the bush"] });
   });
 
-  it("rejects a wrong key or a user without a room", async () => {
+  it("rejects a wrong key; without a room the word goes to the personal dictionary", async () => {
     const { h, user } = await setup();
     expect(await capture(h.deps, { key: "nope", text: "x", context: line })).toMatchObject({ ok: false, status: 401 });
     await updateUser(h.db, user.id, { currentRoomId: null });
-    expect(await capture(h.deps, { key: "secret-key", text: "x", context: line })).toMatchObject({ ok: false, status: 400 });
+    expect(await capture(h.deps, { key: "secret-key", text: "beat around the bush", context: line })).toMatchObject({ ok: true });
+    const [word] = await h.db.select().from(words);
+    const [room] = await h.db.select().from(rooms).where(eq(rooms.id, word.roomId));
+    expect(room).toMatchObject({ name: "Мои слова", personalOf: user.id });
   });
 
   it("tells friends right away, each word with «знаешь?» buttons like any new word", async () => {

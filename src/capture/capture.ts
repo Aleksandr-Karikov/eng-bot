@@ -6,7 +6,7 @@ import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
-import { isMember, listMembers } from "../services/rooms";
+import { ensurePersonalRoom, isMember, listMembers } from "../services/rooms";
 
 /** Что прислало расширение: выделенное слово или фраза и реплика, где оно встретилось. */
 export interface CaptureInput {
@@ -47,8 +47,8 @@ export async function userByCaptureKey(deps: Pick<Deps, "db">, key: string): Pro
 export async function capture(deps: Deps, input: CaptureInput): Promise<CaptureResult> {
   const user = await userByCaptureKey(deps, input.key);
   if (!user) return { ok: false, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
-  if (user.currentRoomId == null) return { ok: false, status: 400, error: "Сначала выбери комнату в боте: /room" };
-  const roomId = user.currentRoomId;
+  // Без комнаты — в личный словарь.
+  const roomId = user.currentRoomId ?? (await ensurePersonalRoom(deps.db, user.id, deps.now())).id;
   const context = (input.context ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CONTEXT);
   const selection = cleanSelection(input.text ?? "");
   if (!selection && !context) return { ok: false, status: 400, error: "Нечего добавлять" };

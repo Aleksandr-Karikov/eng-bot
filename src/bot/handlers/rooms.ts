@@ -21,6 +21,13 @@ async function roomMenu(deps: Deps, user: User) {
   }
   const current = rooms.find((r) => r.id === user.currentRoomId) ?? rooms[0];
   const members = await listMembers(deps.db, current.id);
+  if (current.personalOf === user.id) {
+    const text = [
+      `📒 Сейчас: <b>${esc(current.name)}</b> — твой личный словарь.`,
+      "Учить вместе с друзьями — в общей комнате: создай её (➕) и позови их ссылкой, или вступи по ссылке друга.",
+    ].join("\n");
+    return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
+  }
   const text = [
     `🏠 Текущая комната: <b>${esc(current.name)}</b>`,
     `Участники: ${members.map((m) => esc(m.firstName)).join(", ")}`,
@@ -87,6 +94,8 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     if (cb.action === "new") return askRoomName(ctx, deps);
     const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
     if (!room) return void (await ctx.reply("Сначала создай комнату: /newroom"));
+    // В личный словарь не зовут: туда идут и слова из наборов — друзей бы ими засыпало.
+    if (room.personalOf != null) return askRoomName(ctx, deps);
     await ctx.reply(`Ссылка-приглашение в «${esc(room.name)}»:\n${inviteLink(deps.botUsername, room)}`, HTML);
   });
 
@@ -157,7 +166,9 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     if (existing) return void (await ctx.reply(`Группа уже привязана к «${esc(existing.name)}»`, HTML));
 
     const user = await getUser(deps.db, ctx.user.id);
-    if (user?.currentRoomId == null) {
+    const current = user?.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+    // Личный словарь к группе не привязываем — для группы заводится своя общая комната.
+    if (user?.currentRoomId == null || current?.personalOf != null) {
       const room = await createRoom(deps.db, {
         name: "title" in ctx.chat ? ctx.chat.title : "Группа",
         createdBy: ctx.user.id,

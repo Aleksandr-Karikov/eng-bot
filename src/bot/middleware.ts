@@ -1,6 +1,6 @@
 import type { MiddlewareFn } from "grammy";
-import { findRoomByChat, isMember, joinRoom } from "../services/rooms";
-import { updateUser, upsertUser } from "../services/users";
+import { ensurePersonalRoom, findRoomByChat, isMember, joinRoom } from "../services/rooms";
+import { getUser, updateUser, upsertUser } from "../services/users";
 import { HTML, type BotContext, type Deps } from "./context";
 import { esc } from "./texts";
 
@@ -10,6 +10,11 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
     if (!ctx.from || ctx.from.is_bot) return;
     let user = await upsertUser(deps.db, ctx.from, deps.now());
     if (ctx.chat?.type === "private" && !user.canDm) user = await updateUser(deps.db, user.id, { canDm: true });
+    // Пришёл в личку без комнаты — сразу личный словарь: со словами можно работать без «создай комнату».
+    if (ctx.chat?.type === "private" && user.currentRoomId == null) {
+      await ensurePersonalRoom(deps.db, user.id, deps.now());
+      user = (await getUser(deps.db, user.id)) ?? user;
+    }
     ctx.user = user;
 
     if (ctx.chat && ctx.chat.type !== "private") {

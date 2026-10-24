@@ -82,7 +82,8 @@ describe("saving into a deleted room", () => {
     await deleteRoom(h.db, room.id);
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
     expect(h.calls.some((c) => String(c.payload.text).includes("Комнату уже удалили"))).toBe(true);
-    expect(await h.db.select().from(rooms)).toHaveLength(0);
+    // Удалённая комната не вернулась; остался только личный словарь, который бот заводит сам.
+    expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["Мои слова"]);
   });
 });
 

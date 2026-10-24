@@ -218,6 +218,13 @@
       "when": 1792828448917,
       "tag": "0030_smart_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1792833310989,
+      "tag": "0031_nappy_white_tiger",
+      "breakpoints": true
     }
   ]
 }

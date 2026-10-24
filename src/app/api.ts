@@ -17,7 +17,7 @@ import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { practiceQueue } from "../services/practice";
-import { getRoom } from "../services/rooms";
+import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
 import type { Answer } from "../srs/srs";
 
@@ -62,7 +62,11 @@ export interface AppCard {
   };
 }
 
-export async function appUser(deps: Pick<Deps, "db">, telegramId: number): Promise<User | undefined> {
+export async function appUser(deps: Pick<Deps, "db" | "now">, telegramId: number): Promise<User | undefined> {
+  const user = await getUserByTelegramId(deps.db, telegramId);
+  if (!user || user.currentRoomId != null) return user;
+  // Как в боте: без комнаты — личный словарь, а не «сначала выбери комнату».
+  await ensurePersonalRoom(deps.db, user.id, deps.now());
   return getUserByTelegramId(deps.db, telegramId);
 }
 
