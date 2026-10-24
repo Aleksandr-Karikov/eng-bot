@@ -68,6 +68,13 @@ export class JsonLineWorker {
       // Предупреждения библиотек — в stderr; в лог бота только последнее, если процесс упал.
       let lastErr = "";
       proc.stderr.on("data", (chunk: Buffer) => (lastErr = chunk.toString().slice(-500)));
+      // Не запустился вовсе (нет python) — без этого обработчика Node уронил бы весь процесс бота.
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+        for (const w of this.waiting.values()) w.reject(err);
+        this.waiting.clear();
+      });
       proc.on("exit", (code) => {
         clearTimeout(timer);
         const err = new Error(`${this.name} exited (${code}): ${lastErr.trim()}`);

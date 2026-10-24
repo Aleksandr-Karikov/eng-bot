@@ -25,3 +25,14 @@ describe("🔊 Kokoro voices", () => {
     expect(say.synthesize).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("worker that cannot start", () => {
+  it("a missing python does not crash the process — the phrase falls back to say", async () => {
+    const said: string[] = [];
+    const fallback: SpeechSynth = { synthesize: async (text) => (said.push(text), Buffer.from("say")) };
+    const broken = new KokoroSynth("/nonexistent/python", "x.py", fallback);
+    expect((await broken.synthesize("hi", "uk")).toString()).toBe("say");
+    expect(said).toEqual(["hi"]);
+    broken.close();
+  });
+});

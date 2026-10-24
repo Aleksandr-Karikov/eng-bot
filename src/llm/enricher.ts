@@ -142,7 +142,7 @@ const TRANSCRIPTION_HINT =
 
 /** Корейский: вместо IPA — романизация (слот transcription_uk), второго произношения нет. */
 const TRANSCRIPTION_HINT_KO =
-  "transcription_uk — романизация по системе Revised Romanization, по слогам через дефис (사랑 → sa-rang), для фразы — целиком; transcription_us — пустая строка.";
+  "transcription_uk — романизация словарной формы (term) по системе Revised Romanization, по слогам через дефис (사랑 → sa-rang), для фразы — целиком; transcription_us — пустая строка.";
 
 const transcriptionHint = (lang: Language) => (lang.code === "en" ? TRANSCRIPTION_HINT : TRANSCRIPTION_HINT_KO);
 

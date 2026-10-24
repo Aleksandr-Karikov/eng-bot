@@ -16,6 +16,8 @@ export interface Rated {
 
 /** Отдельное слово (не фраза): частотность для него осмысленна. «to ensure» — тоже слово. */
 export function singleWord(term: string): string | undefined {
+  // Корейское слово — одно, если без пробелов (사랑, 먹다).
+  if (/^[\uac00-\ud7a3]+$/.test(term.trim())) return term.trim();
   const word = term.trim().toLowerCase().replace(/^to\s+/, "");
   // Через дефис (over-deliver) wordfreq считает как два слова — это уже фраза.
   return /^[a-z][a-z']*$/.test(word.replace(/’/g, "'")) ? word.replace(/’/g, "'") : undefined;

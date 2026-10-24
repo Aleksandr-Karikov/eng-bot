@@ -10,6 +10,8 @@ export interface FrequencySource {
 }
 
 /** wordfreq (Python): объединяет субтитры, новости, Википедию, соцсети — то, что люди реально читают и слышат. */
+const HANGUL = /[\uac00-\ud7a3]/;
+
 export class WordfreqSource implements FrequencySource {
   private readonly python: string;
   private readonly script: string;
@@ -24,9 +26,13 @@ export class WordfreqSource implements FrequencySource {
 
   async zipf(terms: string[]): Promise<Map<string, number>> {
     const missing = [...new Set(terms.filter((t) => !this.cache.has(t)))];
-    if (missing.length) {
+    // Язык — по самому слову: хангыль — корейский (wordfreq с MeCab), остальное — английский, как всегда.
+    const korean = missing.filter((t) => HANGUL.test(t));
+    const english = missing.filter((t) => !HANGUL.test(t));
+    for (const [list, lang] of [[english, undefined], [korean, "ko"]] as const) {
+      if (!list.length) continue;
       // Слова — одним JSON-аргументом, без shell.
-      const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(missing)], { timeout: 30_000 });
+      const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(list), ...(lang ? [lang] : [])], { timeout: 30_000 });
       for (const [term, z] of Object.entries(JSON.parse(stdout) as Record<string, number>)) this.cache.set(term, z);
     }
     return new Map(terms.filter((t) => this.cache.has(t)).map((t) => [t, this.cache.get(t)!]));
