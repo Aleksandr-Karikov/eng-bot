@@ -4,18 +4,15 @@ import type { Quiz } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { haptic } from "./telegram";
 
-/** Сколько видно «✅ Верно» перед следующим заданием, если пояснять нечего. */
-const RIGHT_PAUSE_MS = 900;
-
 /**
- * Вопрос с вариантами — 🔗 сочетания или 🧠 вопрос по ошибкам. Ответ — нажатием; верно и без пояснений — дальше само,
- * иначе разбор остаётся на экране до «Дальше» (как в боте). onAnswer может вернуть, что ещё показать в разборе.
+ * Вопрос с вариантами — 🔗 сочетания или 🧠 вопрос по ошибкам. Ответ — нажатием, разбор остаётся на экране
+ * до «Дальше»: даже после верного ответа в нём есть что прочитать (объяснение, сочетания). onAnswer может вернуть,
+ * что ещё показать в разборе.
  */
 export function ChoiceCard({
   title,
   quiz,
   extra,
-  quietWhenRight = true,
   onAnswer,
   onNext,
 }: {
@@ -23,8 +20,6 @@ export function ChoiceCard({
   quiz: Quiz;
   /** Что показать в разборе (например, все сочетания слова). */
   extra?: ReactNode;
-  /** false — даже верный ответ ждёт «Дальше» (есть что прочитать). */
-  quietWhenRight?: boolean;
   onAnswer: (correct: boolean) => Promise<ReactNode | void> | void;
   onNext: () => void;
 }) {
@@ -41,13 +36,12 @@ export function ChoiceCard({
       haptic.done(ok);
       const more = await onAnswer(ok);
       if (more) setNote(more);
-      if (ok && quietWhenRight && !more) setTimeout(onNext, RIGHT_PAUSE_MS);
     },
-    [chosen, quiz.correct, onAnswer, onNext, quietWhenRight],
+    [chosen, quiz.correct, onAnswer],
   );
 
-  // До ответа нижних кнопок нет; после неверного (или когда есть что дочитать) — «Дальше».
-  const waiting = answered && (!right || !quietWhenRight || Boolean(note));
+  // До ответа нижних кнопок нет; после — «Дальше».
+  const waiting = answered;
   const native = useBottomButtons(waiting ? { text: "Дальше", onClick: onNext } : undefined);
 
   const [before, after] = splitGap(quiz.question);
