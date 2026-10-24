@@ -79,10 +79,12 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
   const header = (
     <header className="top">
-      <Text weight="2">{me?.room ?? "WordBoss"}</Text>
+      <Text weight="2" className="top-title">
+        {me?.room ?? "WordBoss"}
+      </Text>
       <div className="top-right">
         {card && (
-          <Text className="hint">
+          <Text className="hint top-count">
             {done} / {total}
           </Text>
         )}

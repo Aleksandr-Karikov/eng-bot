@@ -59,7 +59,11 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .screen { padding-bottom: 96px; }
 
 /* Кнопки 📖 и ⚙️ в углу — вместо вкладок, чтобы карточке оставалось место. */
-.top-right { display: flex; align-items: center; gap: 10px; }
+.top { gap: 8px; }
+/* Кнопок в углу бывает до четырёх (↩️ 🆕 📖 ⚙️): название комнаты сжимается с «…», счётчик не переносится. */
+.top-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-count { white-space: nowrap; }
+.top-right { display: flex; align-items: center; gap: 8px; flex: none; }
 .corner { display: flex; gap: 4px; }
 .corner-button {
   width: 34px;
@@ -88,7 +92,8 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 
 /* 🆕 Новые от друзей */
 .triage-card { touch-action: none; }
-.stamp-drop { left: 50%; top: auto; bottom: 18px; transform: translateX(-50%); color: var(--tg-theme-hint-color, #8e8e93); }
+/* По центру карточки: внизу она налезала на «Добавил(а) …». */
+.stamp-drop { left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-8deg); white-space: nowrap; color: var(--tg-theme-hint-color, #8e8e93); }
 .triage-translation { font-size: 20px; color: var(--tg-theme-accent-text-color, #2481cc); cursor: pointer; }
 .triage-translation.hidden { color: var(--tg-theme-hint-color, #8e8e93); text-decoration: underline dotted; }
 .triage-by { margin-top: auto; text-align: center; }
