@@ -16,6 +16,8 @@ export type Cb =
   | { k: "practiceStop" }
   /** «▶ Дальше» под разбором ответа: что показать следом — карточку /learn, тренировку или вопрос /drill. */
   | { k: "next"; then: NextAfter }
+  /** «↩️ Отменить»: последний ответ по этой карточке. */
+  | { k: "undo"; cardId: number; stage?: Stage }
   | { k: "duel"; roundId: number; index: number }
   | { k: "dunno"; cardId: number; reps: number }
   | { k: "mode"; stage: Stage }
@@ -88,6 +90,7 @@ export function encodeCb(cb: Cb): string {
     case "practiceDunno": return `pu:${cb.cardId}`;
     case "practiceStop": return "pz";
     case "next": return `nx:${cb.then[0]}`;
+    case "undo": return `ud:${cb.cardId}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
@@ -163,6 +166,12 @@ export function decodeCb(data: string): Cb | null {
     case "l": return { k: "learn" };
     case "px": return { k: "practiceStart" };
     case "pz": return { k: "practiceStop" };
+    case "ud": {
+      const cardId = int(a);
+      const stage = STAGES.find((s) => STAGE_CODES[s] === b);
+      if (cardId === null) return null;
+      return stage ? { k: "undo", cardId, stage } : { k: "undo", cardId };
+    }
     case "nx": {
       const then = NEXT_AFTER.find((n) => n[0] === a);
       return then ? { k: "next", then } : null;

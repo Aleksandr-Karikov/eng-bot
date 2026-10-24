@@ -175,6 +175,8 @@ export const reviewLogs = sqliteTable("review_logs", {
   /** На какой ступени был ответ: en_ru, ru_en, cloze или know («Знаю» из уведомления). Для анализа; null у старых записей. */
   stage: text("stage"),
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),
+  /** JSON карточки до ответа ({ due, state, reps, stability, fsrs }) — чтобы ответ можно было отменить; null у старых записей. */
+  before: text("before"),
 }, (t) => [
   index("review_logs_user_time_idx").on(t.userId, t.reviewedAt),
   index("review_logs_card_idx").on(t.cardId),

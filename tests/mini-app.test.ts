@@ -43,6 +43,12 @@ describe("📚 Mini App API", () => {
     expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "good", stage: "en_ru" })).json()).toEqual({ ok: true, result: "stale" });
     expect((await h.db.select().from(reviewLogs)).map((l) => l.stage)).toEqual(["app_en_ru"]);
     expect((await answer({ cardId: queue[0].cardId, reps: 1, answer: "hack" })).status).toBe(400);
+    // ↩️ Отменить последний свайп — и ответить заново.
+    const undo = () => app.request("/api/undo", { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ cardId: queue[0].cardId }) });
+    expect((await undo()).status).toBe(200);
+    expect(await h.db.select().from(reviewLogs)).toEqual([]);
+    expect((await undo()).status).toBe(409);
+    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "again", stage: "en_ru" })).json()).toEqual({ ok: true, result: "ok" });
     void cards;
   });
 

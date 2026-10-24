@@ -1,4 +1,4 @@
-import { and, asc, count, eq, lte, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, lte, ne } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, words, type CardRow, type Word } from "../db/schema";
@@ -71,9 +71,13 @@ async function usefulnessOf(db: Db, wordId: number): Promise<number | null> {
   return word?.usefulness ?? null;
 }
 
+/** Карточка до ответа — в запись ответа, чтобы его можно было отменить (undoAnswer). */
+const snapshotOf = (card: CardRow) =>
+  JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
+
 async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date, stage?: string): Promise<void> {
   await db.update(cards).set(review(card.fsrs, answer, now, await usefulnessOf(db, card.wordId))).where(eq(cards.id, card.id));
-  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, stage: stage ?? null, reviewedAt: now });
+  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, stage: stage ?? null, reviewedAt: now, before: snapshotOf(card) });
 }
 
 export async function answerCard(
@@ -93,8 +97,38 @@ export async function answerCard(
     .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
     .returning({ id: cards.id });
   if (!updated) return "stale";
-  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: input.answer, stage: input.stage ?? null, reviewedAt: input.now });
+  await db.insert(reviewLogs).values({
+    userId: card.userId,
+    cardId: card.id,
+    rating: input.answer,
+    stage: input.stage ?? null,
+    reviewedAt: input.now,
+    before: snapshotOf(card),
+  });
   return "ok";
+}
+
+/**
+ * «↩️ Отменить»: последний ответ этого человека по карточке — карточка как была до него, запись ответа удаляется.
+ * Только если после него карточку больше не оценивали (иначе отмена перепутала бы историю). undefined — нечего отменять.
+ */
+export async function undoAnswer(db: Db, input: { userId: number; cardId: number }): Promise<{ rating: Answer } | undefined> {
+  const [log] = await db
+    .select()
+    .from(reviewLogs)
+    .where(and(eq(reviewLogs.userId, input.userId), eq(reviewLogs.cardId, input.cardId)))
+    .orderBy(desc(reviewLogs.id))
+    .limit(1);
+  if (!log?.before) return undefined;
+  const before = JSON.parse(log.before) as { due: number; state: number; reps: number; stability: number; fsrs: string };
+  const [restored] = await db
+    .update(cards)
+    .set({ due: new Date(before.due), state: before.state, reps: before.reps, stability: before.stability, fsrs: before.fsrs })
+    .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId), eq(cards.reps, before.reps + 1)))
+    .returning({ id: cards.id });
+  if (!restored) return undefined;
+  await db.delete(reviewLogs).where(eq(reviewLogs.id, log.id));
+  return { rating: log.rating as Answer };
 }
 
 export async function markKnown(

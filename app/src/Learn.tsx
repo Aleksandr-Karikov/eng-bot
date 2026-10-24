@@ -1,10 +1,13 @@
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { getMe, getQueue, pictureUrl, sendAnswer, type Answer, type Card, type Me } from "./api";
+import { getMe, getQueue, pictureUrl, sendAnswer, undoAnswer, type Answer, type Card, type Me } from "./api";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
-import { haptic } from "./telegram";
+import { haptic, notify } from "./telegram";
+
+/** Сколько последних свайпов можно отменить подряд. */
+const UNDO_DEPTH = 5;
 
 /** 📚 Карточки: очередь /learn со свайпами. */
 export function Learn({ corner }: { corner: ReactNode }) {
@@ -13,6 +16,8 @@ export function Learn({ corner }: { corner: ReactNode }) {
   const [done, setDone] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
+  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<unknown> }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,7 +45,8 @@ export function Learn({ corner }: { corner: ReactNode }) {
   const answer = useCallback(
     (card: Card, value: Answer) => {
       haptic.tap(value === "again" ? "medium" : "light");
-      void sendAnswer(card, value).catch(() => {});
+      const sent = sendAnswer(card, value).catch(() => {});
+      setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
       setDone((n) => n + 1);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -50,6 +56,23 @@ export function Learn({ corner }: { corner: ReactNode }) {
     },
     [load],
   );
+
+  /** ↩️ Свайпнул не туда — ответ отменяется, карточка снова сверху. */
+  const undo = useCallback(async () => {
+    const last = history.at(-1);
+    if (!last) return;
+    setHistory((h) => h.slice(0, -1));
+    haptic.tap("light");
+    try {
+      await last.sent;
+      await undoAnswer(last.card);
+      setQueue((q) => [last.card, ...q.filter((c) => c.cardId !== last.card.cardId)]);
+      setDone((n) => Math.max(0, n - 1));
+    } catch (err) {
+      haptic.done(false);
+      notify(err instanceof Error ? err.message : String(err));
+    }
+  }, [history]);
 
   const card = queue[0];
   const total = done + queue.length;
@@ -62,6 +85,11 @@ export function Learn({ corner }: { corner: ReactNode }) {
           <Text className="hint">
             {done} / {total}
           </Text>
+        )}
+        {history.length > 0 && (
+          <button className="corner-button" aria-label="Отменить последний ответ" onClick={() => void undo()}>
+            ↩️
+          </button>
         )}
         {corner}
       </div>

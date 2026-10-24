@@ -294,6 +294,14 @@ export function mnemonicKeyboard(wordId: number, hasPicture: boolean): InlineKey
   return new InlineKeyboard().text(hasPicture ? "🖼 Картинка" : "🖼 Нарисовать", encodeCb({ k: "picture", wordId }));
 }
 
+const ANSWER_LABELS: Record<string, string> = { again: "Забыл", good: "Помню", easy: "Уже знаю", hard: "Трудно" };
+
+/** «↩️ Отменить «Забыл»» — под следующей карточкой, если прошлую оценили не той кнопкой. */
+export function addUndoRow(kb: InlineKeyboard, undo: { cardId: number; answer: string; stage?: Stage } | undefined): InlineKeyboard {
+  if (!undo) return kb;
+  return kb.row().text(`↩️ Отменить «${ANSWER_LABELS[undo.answer] ?? undo.answer}»`, encodeCb({ k: "undo", cardId: undo.cardId, stage: undo.stage })).row();
+}
+
 export function practiceStartKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🔁 Потренироваться вне зачёта", encodeCb({ k: "practiceStart" }));
 }

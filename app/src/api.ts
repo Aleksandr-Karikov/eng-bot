@@ -61,6 +61,7 @@ const post = <T>(path: string, body: object = {}) =>
 export const getMe = () => call<Me & { ok: true }>("/api/me");
 export const getQueue = () => call<{ cards: Card[] }>("/api/queue").then((r) => r.cards);
 export const sendAnswer = (card: Card, answer: Answer) => post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage });
+export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («🙈 Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";

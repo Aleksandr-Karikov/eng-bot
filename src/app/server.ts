@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
+import { undoAnswer } from "../services/review";
 import { appAnswer, appAudio, appMe, appPicture, appQueue, appUser, ownWord } from "./api";
 import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
@@ -38,6 +39,12 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/answer", async (c) => {
     const r = await appAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400);
+  });
+  // ↩️ Отменить последний свайп: карточка — как до ответа.
+  app.post("/api/undo", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { cardId?: unknown };
+    const undone = await undoAnswer(deps.db, { userId: c.get("user").id, cardId: Number(body.cardId) });
+    return undone ? c.json({ ok: true }) : c.json({ ok: false, error: "Этот ответ уже не отменить" }, 409);
   });
   /** Слово для озвучки и картинки: из своей карточки (?card=) или из своей комнаты (?word=, страница слова). */
   const mediaWord = (c: { req: { query: (k: string) => string | undefined } }, user: User) =>

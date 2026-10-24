@@ -11,11 +11,11 @@ import { practiceQueue } from "../../services/practice";
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
-import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt } from "../../services/review";
+import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
-import { collocationKeyboard, leechKeyboard, mistakesAskKeyboard, restoreCardKeyboard } from "../keyboards";
+import { addUndoRow, collocationKeyboard, leechKeyboard, mistakesAskKeyboard, restoreCardKeyboard } from "../keyboards";
 import { decodeCb, encodeCb, type NextAfter } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
@@ -80,13 +80,14 @@ async function presentSpecial(
   stage: Stage,
   mode: PresentMode,
   practice: boolean,
+  undo?: LastAnswer,
 ): Promise<boolean> {
   const { card, word } = item;
   if (stage === "collocation") {
     const quiz = storedCollocations(word)?.quiz;
     if (!quiz) return false;
     const text = (practice ? PRACTICE_HEADER : "") + collocationQuizText(quiz, word.term);
-    await present(ctx, text, { ...HTML, reply_markup: collocationKeyboard(card.id, card.reps, word.id, quiz.options, practice) }, mode);
+    await present(ctx, text, { ...HTML, reply_markup: addUndoRow(collocationKeyboard(card.id, card.reps, word.id, quiz.options, practice), undo) }, mode);
     return true;
   }
   if (!ctx.chat || (stage !== "sentence" && stage !== "listen")) return false;
@@ -96,7 +97,7 @@ async function presentSpecial(
   const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };
   deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence" });
   const text = (practice ? PRACTICE_HEADER : "") + (stage === "listen" ? LISTEN_TASK_TEXT : sentenceTaskText(word));
-  const keyboard = practice ? practiceClozeKeyboard(card.id, word.id) : clozeKeyboard(card.id, card.reps, word.id);
+  const keyboard = practice ? practiceClozeKeyboard(card.id, word.id) : addUndoRow(clozeKeyboard(card.id, card.reps, word.id), undo);
   rememberTask(deps, ctx.user.id, await present(ctx, text, { ...HTML, reply_markup: keyboard }, mode));
   if (voice) await sendWordVoice(ctx, deps, word, accent, voice);
   return true;
@@ -113,6 +114,9 @@ function perBot<T>(): (deps: Deps) => Map<number, T> {
   };
 }
 const sessionCountsOf = perBot<number>();
+/** Последняя оценка кнопкой — её можно отменить с ближайшей следующей карточки («↩️ Отменить «Забыл»»). */
+type LastAnswer = { cardId: number; answer: string; stage?: Stage };
+const lastAnswerOf = perBot<LastAnswer>();
 
 
 /** Лимит подписи к фото в Telegram. */
@@ -229,17 +233,21 @@ async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
   return true;
 }
 
-async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise<void> {
+/** forced — показать эту карточку (после «↩️ Отменить»), а не очередную; stage — в том же виде, что была. */
+async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?: { item: { card: CardRow; word: Word }; stage?: Stage }): Promise<void> {
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   clearPendingInputs(deps, ctx.user.id);
+  // Отменить прошлую оценку можно только с ближайшего следующего сообщения.
+  const undo = lastAnswerOf(deps).get(ctx.user.id);
+  lastAnswerOf(deps).delete(ctx.user.id);
   // Разбор трудного слова встал после прошлой карточки — у неё убираем кнопки, следующая придёт по «▶ Дальше» под разбором.
-  if (await flushLeech(ctx, deps)) {
+  if (!forced && (await flushLeech(ctx, deps))) {
     if (mode === "replace") await ctx.editMessageReplyMarkup().catch(() => {});
     return;
   }
-  if (await maybeDrill(ctx, deps, mode)) return;
-  const item = await nextDue(deps.db, ctx.user.id, deps.now());
+  if (!forced && (await maybeDrill(ctx, deps, mode))) return;
+  const item = forced?.item ?? (await nextDue(deps.db, ctx.user.id, deps.now()));
   let text: string;
   let replyMarkup: InlineKeyboard | undefined;
   let photo: string | InputFile | undefined;
@@ -252,14 +260,15 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
     if (modes.cloze && sentences.length === 0 && card.state !== State.New && !optional) void deps.clozeGen.ensure(word);
     if (modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
     // Необязательное слово учим только на узнавание: EN → RU, без упражнений на употребление.
-    const picked = optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
-    if (await presentSpecial(ctx, deps, item, picked, mode, false)) return;
+    const again = forced?.stage === "en_ru" || forced?.stage === "ru_en" ? forced.stage : forced ? "en_ru" : undefined;
+    const picked = again ?? (optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz)));
+    if (await presentSpecial(ctx, deps, item, picked, mode, false, undo)) return;
     const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     if (sentence && ctx.chat) {
       deps.exercises.set(ctx.user.id, { kind: "cloze", cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, sentence });
       text = clozeText(sentence);
-      replyMarkup = clozeKeyboard(card.id, card.reps, word.id);
+      replyMarkup = addUndoRow(clozeKeyboard(card.id, card.reps, word.id), undo);
     } else {
       const view = cardView(ctx.user);
       text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
@@ -269,19 +278,16 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode): Promise
         photo = word.imageFileId ?? (painted ? new InputFile(painted) : undefined);
         if (painted) photoWordId = word.id;
       }
-      replyMarkup = rateKeyboard(
-        card.id,
-        card.reps,
-        card.state === State.New,
-        word.id,
-        (stage === "en_ru" || stage === "ru_en") && view.audio,
-        stage,
+      replyMarkup = addUndoRow(
+        rateKeyboard(card.id, card.reps, card.state === State.New, word.id, (stage === "en_ru" || stage === "ru_en") && view.audio, stage),
+        undo,
       );
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone);
-    replyMarkup = practiceStartKeyboard();
+    // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
+    replyMarkup = addUndoRow(practiceStartKeyboard(), undo);
     sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
@@ -656,7 +662,23 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
+    lastAnswerOf(deps).set(ctx.user.id, { cardId: cb.cardId, answer: cb.answer, stage });
     await showNext(ctx, deps, "replace");
+  });
+
+  // «↩️ Отменить «Забыл»»: прошлая оценка отменяется, та карточка возвращается — оценить заново.
+  bot.callbackQuery(/^ud:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "undo") return void (await ctx.answerCallbackQuery());
+    const undone = await undoAnswer(deps.db, { userId: ctx.user.id, cardId: cb.cardId });
+    const item = undone ? await getDueItemByCard(deps.db, ctx.user.id, cb.cardId) : undefined;
+    if (!undone || !item) return void (await ctx.answerCallbackQuery({ text: "Этот ответ уже не отменить" }));
+    void ctx.answerCallbackQuery({ text: "↩️ Отменено — оцени заново" }).catch(() => {});
+    const count = sessionCountsOf(deps).get(ctx.user.id);
+    if (count) sessionCountsOf(deps).set(ctx.user.id, count - 1);
+    // Разбор «трудного слова», заказанный этим ответом, больше не к месту.
+    if (leechNoticesOf(deps).get(ctx.user.id)?.wordId === item.word.id) leechNoticesOf(deps).delete(ctx.user.id);
+    await showNext(ctx, deps, "replace", { item, stage: cb.stage });
   });
 
   // «🙈 Не для меня»: слово уходит только из моих карточек. Из /learn — сразу следующая карточка.
