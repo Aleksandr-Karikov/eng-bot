@@ -7,6 +7,9 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
+import { decide, listSets, nextSetItems, undoDecision, type SetDecision } from "../services/word-sets";
+import { setItems, wordSets } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts } from "../bot/texts";
@@ -220,7 +223,8 @@ export async function ownWord(deps: Deps, user: User, cardId: number): Promise<W
 }
 
 /** Озвучка в AAC для браузера, кэш на диске. */
-export async function appAudio(deps: Deps, word: Word, accent: "uk" | "us"): Promise<Buffer> {
+/** key — чей звук в кэше: id слова, а для слова из набора — «set<id>» (оно ещё не в словаре). */
+export async function appAudio(deps: Deps, word: { id: number | string; term: string }, accent: "uk" | "us"): Promise<Buffer> {
   const file = join(AUDIO_DIR, `${word.id}-${accent}-${Buffer.from(word.term).toString("hex").slice(0, 24)}.m4a`);
   if (existsSync(file)) return readFile(file);
   const audio = await deps.speech.synthesize(word.term, accent, "m4a");
@@ -290,4 +294,59 @@ export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown
 export async function appProgress(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
   return progressReport(deps.db, user, room, deps.now());
+}
+
+/** 📦 Наборы: список с прогрессом, следующие слова набора, решение по слову (или его отмена). */
+export async function appSets(deps: Deps, user: User) {
+  return (await listSets(deps.db, user.id)).map(({ set, total, done }) => ({
+    id: set.id,
+    title: set.title,
+    description: set.description,
+    kind: set.kind,
+    total,
+    done,
+  }));
+}
+
+export async function appSetItems(deps: Deps, user: User, setId: number) {
+  const [set] = await deps.db.select().from(wordSets).where(eq(wordSets.id, setId));
+  if (!set) return undefined;
+  const left = await nextSetItems(deps.db, user.id, setId, 10_000);
+  const items = left.slice(0, 50);
+  return {
+    set: { id: set.id, title: set.title },
+    /** Сколько всего осталось разобрать (слова приходят порциями). */
+    remaining: left.length,
+    items: items.map((i) => ({
+      id: i.id,
+      term: i.term,
+      translation: i.translation,
+      explanation: i.explanation,
+      example: i.example,
+      transcriptionUk: i.transcriptionUk,
+      transcriptionUs: i.transcriptionUs,
+      usefulness: i.usefulness,
+    })),
+  };
+}
+
+const SET_DECISIONS = new Set<SetDecision>(["learn", "know", "drop"]);
+
+export async function appSetDecide(deps: Deps, user: User, body: { itemId?: unknown; decision?: unknown; undo?: unknown }) {
+  const itemId = Number(body.itemId);
+  if (!Number.isInteger(itemId)) return { status: 400, body: { ok: false, error: "bad item" } };
+  if (body.undo === true) {
+    const ok = await undoDecision(deps.db, { userId: user.id, itemId });
+    return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
+  }
+  const decision = String(body.decision) as SetDecision;
+  if (!SET_DECISIONS.has(decision)) return { status: 400, body: { ok: false, error: "bad decision" } };
+  const ok = await decide(deps.db, { userId: user.id, itemId, decision, now: deps.now() });
+  return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже разобрано" } };
+}
+
+/** Слово набора для озвучки (до «учу» его нет в словаре). */
+export async function setItemForAudio(deps: Deps, itemId: number) {
+  const [item] = await deps.db.select().from(setItems).where(eq(setItems.id, itemId));
+  return item ? { id: `set${item.id}`, term: item.term } : undefined;
 }

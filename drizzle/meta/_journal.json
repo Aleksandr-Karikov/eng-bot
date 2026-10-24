@@ -225,6 +225,13 @@
       "when": 1792833310989,
       "tag": "0031_nappy_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1792833548190,
+      "tag": "0032_black_mesmero",
+      "breakpoints": true
     }
   ]
 }

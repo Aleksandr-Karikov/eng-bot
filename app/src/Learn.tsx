@@ -30,7 +30,7 @@ function savedMode(): QueueMode {
 const UNDO_DEPTH = 5;
 
 /** 📚 Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () => void }) {
+export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: () => void }) {
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
@@ -183,7 +183,7 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} />
+          <Done done={done} onSets={onSets} />
         )}
       </div>
     );
@@ -243,7 +243,7 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
 }
 
 /** Конец очереди: нативная кнопка «Закрыть» внизу (или своя — вне Telegram). */
-function Done({ done }: { done: number }) {
+function Done({ done, onSets }: { done: number; onSets: () => void }) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   return (
     <Placeholder
@@ -251,6 +251,9 @@ function Done({ done }: { done: number }) {
       description="Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
       action={
         <div className="actions">
+          <Button mode="bezeled" size="m" stretched onClick={onSets}>
+            📦 Взять слова из готового набора
+          </Button>
           <LessonButton />
           {!native && (
             <Button size="l" stretched onClick={() => miniApp.close()}>

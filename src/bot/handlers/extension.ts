@@ -58,6 +58,17 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
     });
   });
 
+  // 📦 Готовые наборы слов — в приложении (колода со свайпами).
+  bot.command("sets", async (ctx) => {
+    if (!deps.appUrl) return void (await ctx.reply("Наборы слов открываются в приложении, а оно пока не включено (APP_URL)"));
+    if (ctx.chat.type !== "private") return void (await ctx.reply(`Наборы слов — в личке: https://t.me/${deps.botUsername}`));
+    const url = new URL(deps.appUrl);
+    url.searchParams.set("tab", "sets");
+    await ctx.reply("📦 Готовые наборы слов: по уровням (A1–C1) и темам — путешествия, работа, IT, идиомы, фразовые глаголы, разговорный. Листаешь: знаю / учу / не для меня.", {
+      reply_markup: { inline_keyboard: [[{ text: "📦 Открыть наборы", web_app: { url: url.toString() } }]] },
+    });
+  });
+
   bot.command("extension", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Ключ личный — напиши /extension в личку: https://t.me/${deps.botUsername}`));
     if (!deps.capturePort) return void (await ctx.reply("Приём слов из расширения выключен (CAPTURE_PORT=0)"));

@@ -2,17 +2,19 @@ import { settingsButton } from "@telegram-apps/sdk-react";
 import { useCallback, useEffect, useState } from "react";
 import { Learn } from "./Learn";
 import { ProgressScreen } from "./Progress";
+import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Triage } from "./Triage";
 import { Words } from "./Words";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "triage" | "progress";
+type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  return asked === "words" || asked === "settings" || asked === "triage" || asked === "progress" ? asked : "learn";
+  const pages: Page[] = ["words", "settings", "triage", "progress", "sets"];
+  return pages.find((p) => p === asked) ?? "learn";
 }
 
 /**
@@ -39,13 +41,15 @@ export function App() {
     return () => off?.();
   }, [open]);
 
-  if (page === "words") return <Words onExit={back} />;
+  if (page === "words") return <Words onExit={back} onSets={() => open("sets")} />;
   if (page === "settings") return <SettingsScreen onExit={back} />;
   if (page === "triage") return <Triage onExit={back} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
+  if (page === "sets") return <Sets onExit={back} />;
   return (
     <Learn
       onTriage={() => open("triage")}
+      onSets={() => open("sets")}
       corner={
         <div className="corner">
           <button className="corner-button" aria-label="Прогресс" onClick={() => open("progress")}>

@@ -236,6 +236,48 @@ export const stories = sqliteTable("stories", {
   index("stories_room_idx").on(t.roomId),
 ]);
 
+/** 📦 Готовые наборы слов: по уровням (A1–C1) и по темам. Слова уже с переводом — разбор идёт без ожидания модели. */
+export const wordSets = sqliteTable("word_sets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  /** level — уровень A1…C1; topic — тема. */
+  kind: text("kind").notNull(),
+  description: text("description").notNull().default(""),
+  position: integer("position").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+export const setItems = sqliteTable("set_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  setId: integer("set_id").notNull().references(() => wordSets.id),
+  term: text("term").notNull(),
+  translation: text("translation").notNull(),
+  explanation: text("explanation").notNull().default(""),
+  example: text("example").notNull().default(""),
+  transcriptionUk: text("transcription_uk").notNull().default(""),
+  transcriptionUs: text("transcription_us").notNull().default(""),
+  usefulness: integer("usefulness"),
+  usefulnessNote: text("usefulness_note").notNull().default(""),
+  position: integer("position").notNull().default(0),
+}, (t) => [
+  index("set_items_set_idx").on(t.setId),
+]);
+
+/** Решение человека по слову набора: learn — учу (wordId — куда добавлено), know — знаю, drop — не для меня. */
+export const setDecisions = sqliteTable("set_decisions", {
+  userId: integer("user_id").notNull().references(() => users.id),
+  itemId: integer("item_id").notNull().references(() => setItems.id),
+  decision: text("decision").notNull(),
+  wordId: integer("word_id"),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.itemId] }),
+]);
+
+export type WordSet = typeof wordSets.$inferSelect;
+export type SetItem = typeof setItems.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;
 export type Word = typeof words.$inferSelect;

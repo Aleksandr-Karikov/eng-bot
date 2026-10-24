@@ -32,7 +32,7 @@ function BackToCards({ onExit }: { onExit: () => void }) {
 }
 
 /** 📖 Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
-export function Words({ onExit }: { onExit: () => void }) {
+export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => void }) {
   const [data, setData] = useState<{ room: string | null; words: WordItem[] }>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
@@ -92,6 +92,9 @@ export function Words({ onExit }: { onExit: () => void }) {
       <div className="form-buttons add-word">
         <Button size="m" stretched mode="bezeled" onClick={() => setAdding(true)}>
           ➕ Добавить слово
+        </Button>
+        <Button size="m" stretched mode="bezeled" onClick={onSets}>
+          📦 Наборы слов
         </Button>
       </div>
       <Input placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -172,3 +172,8 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .lesson { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .lesson .row { width: 100%; }
 .lesson-sent { display: block; text-align: center; }
+
+/* 📦 Наборы */
+.set-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.set-progress > :first-child { flex: 1; }
+.add-word { display: flex; gap: 8px; }

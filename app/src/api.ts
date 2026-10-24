@@ -259,3 +259,29 @@ export const requestLesson = (accent: LessonAccent) =>
 
 /** 💡 Другая запоминалка (для всей комнаты). */
 export const newMnemonic = (id: number) => post<{ mnemonic: string }>(`/api/words/${id}/mnemonic`).then((r) => r.mnemonic);
+
+/** 📦 Готовый набор слов и сколько в нём уже разобрано. */
+export interface WordSetInfo {
+  id: number;
+  title: string;
+  description: string;
+  kind: "level" | "topic";
+  total: number;
+  done: number;
+}
+
+export interface SetItem {
+  id: number;
+  term: string;
+  translation: string;
+  explanation: string;
+  example: string;
+  transcriptionUk: string;
+  transcriptionUs: string;
+  usefulness: number | null;
+}
+
+export const getSets = () => call<{ sets: WordSetInfo[] }>("/api/sets").then((r) => r.sets);
+export const getSetItems = (id: number) => call<{ set: { id: number; title: string }; remaining: number; items: SetItem[] }>(`/api/sets/${id}`);
+export const decideSetItem = (item: SetItem, decision: "learn" | "know" | "drop", undo = false) =>
+  post("/api/sets/decide", { itemId: item.id, decision, undo });

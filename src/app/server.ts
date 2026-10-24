@@ -7,7 +7,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
-import { QUEUE_MODES, appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -73,6 +73,16 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const r = await appDrillAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400);
   });
+  // 📦 Готовые наборы слов.
+  app.get("/api/sets", async (c) => c.json({ ok: true, sets: await appSets(deps, c.get("user")) }));
+  app.get("/api/sets/:id", async (c) => {
+    const r = await appSetItems(deps, c.get("user"), Number(c.req.param("id")));
+    return r ? c.json({ ok: true, ...r }) : c.json({ ok: false, error: "Нет такого набора" }, 404);
+  });
+  app.post("/api/sets/decide", async (c) => {
+    const r = await appSetDecide(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 409);
+  });
   // ↩️ Отменить последний свайп: карточка — как до ответа.
   app.post("/api/undo", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { cardId?: unknown };
@@ -83,7 +93,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   const mediaWord = (c: { req: { query: (k: string) => string | undefined } }, user: User) =>
     c.req.query("word") ? memberWord(deps, user, Number(c.req.query("word"))) : ownWord(deps, user, Number(c.req.query("card")));
   app.get("/api/audio", async (c) => {
-    const word = await mediaWord(c, c.get("user"));
+    const word = c.req.query("item") ? await setItemForAudio(deps, Number(c.req.query("item"))) : await mediaWord(c, c.get("user"));
     if (!word) return c.notFound();
     const audio = await appAudio(deps, word, c.req.query("accent") === "us" ? "us" : "uk");
     return c.body(new Uint8Array(audio), 200, { "content-type": "audio/mp4", "cache-control": "private, max-age=86400" });

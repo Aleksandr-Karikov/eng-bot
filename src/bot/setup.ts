@@ -38,7 +38,7 @@ export const COMMANDS = [
   { command: "translate", description: "Тренажёр перевода с русского" },
   { command: "talk", description: "Поговорить по-английски с разбором" },
   { command: "stats", description: "Прогресс твой и друзей" },
-  { command: "room", description: "Комнаты и приглашения" },
+  { command: "sets", description: "Готовые наборы слов по уровням и темам" },
   { command: "settings", description: "Настройки" },
   { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
