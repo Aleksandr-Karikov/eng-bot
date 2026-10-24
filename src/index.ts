@@ -25,7 +25,7 @@ import { FluxSynth, ImageService } from "./images/images";
 import { BackgroundPainter, onAcPower } from "./images/painter";
 import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
-import { MacSaySynth } from "./speech/tts";
+import { KokoroSynth, MacSaySynth } from "./speech/tts";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import type { Server } from "node:http";
@@ -58,6 +58,8 @@ const notifier = new Notifier(
 );
 const now = () => new Date();
 
+// Озвучка: нейросетевые голоса Kokoro, если поставлены (tools/tts), иначе встроенный голос macOS.
+const speech = existsSync(config.ttsPython) ? new KokoroSynth(config.ttsPython, "tools/tts/kokoro_server.py", new MacSaySynth()) : new MacSaySynth();
 const claude = new ClaudeCodeEnricher({
   model: config.enrichModel,
   timeoutMs: config.enrichTimeoutMs,
@@ -87,7 +89,7 @@ const deps: Deps = {
   history: new ChatHistory(),
   exercises,
   drills: new DrillStore(),
-  speech: new MacSaySynth(),
+  speech,
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
@@ -135,6 +137,7 @@ const stopPainter =
 const shutdown = () => {
   stopReminders();
   stopPainter();
+  if (speech instanceof KokoroSynth) speech.close();
   captureServer?.close();
   void bot.stop();
 };

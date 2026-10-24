@@ -21,6 +21,8 @@ export interface Config {
   appUrl?: string;
   /** Python с wordfreq — частотность слов для оценки полезности. */
   wordfreqPython: string;
+  /** Python с Kokoro (tools/tts); нет такого файла — озвучка встроенным голосом macOS. */
+  ttsPython: string;
   /** Порт локального приёма слов из расширения браузера; CAPTURE_PORT=0 — выключить. */
   capturePort: number;
 }
@@ -52,6 +54,7 @@ export function loadConfig(
     youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
     capturePort: Number(env.CAPTURE_PORT ?? 8787),
     wordfreqPython: env.WORDFREQ_PYTHON || "tools/wordfreq/.venv/bin/python",
+    ttsPython: env.TTS_PYTHON || "tools/tts/.venv/bin/python",
     appPort: Number(env.APP_PORT ?? 8788),
     ...(env.APP_URL ? { appUrl: env.APP_URL } : {}),
   };
