@@ -85,3 +85,25 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .word-picture { width: calc(100% - 32px); max-height: none; margin: 8px 16px; }
 .danger { color: var(--tg-theme-destructive-text-color, #e53935); }
 .form-buttons { padding: 0 16px; }
+
+/* 🆕 Новые от друзей */
+.triage-card { touch-action: none; }
+.stamp-drop { left: 50%; top: auto; bottom: 18px; transform: translateX(-50%); color: var(--tg-theme-hint-color, #8e8e93); }
+.triage-translation { font-size: 20px; color: var(--tg-theme-accent-text-color, #2481cc); cursor: pointer; }
+.triage-translation.hidden { color: var(--tg-theme-hint-color, #8e8e93); text-decoration: underline dotted; }
+.triage-by { margin-top: auto; text-align: center; }
+.swipe-hint { text-align: center; font-size: 13px; }
+.corner-badge { position: relative; }
+.corner-badge .badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ef4444;
+  color: #fff;
+  font: 600 11px/16px -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  box-sizing: border-box;
+}

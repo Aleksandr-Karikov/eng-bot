@@ -114,6 +114,8 @@ export const cards = sqliteTable(
     reps: integer("reps").notNull(),
     stability: real("stability").notNull(),
     fsrs: text("fsrs").notNull(),
+    /** Когда человек решил про новое слово друга: «учу», «знаю» (в «знаешь?» или колодой в приложении); null — ещё не решал. */
+    triagedAt: integer("triaged_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
   },
   (t) => [

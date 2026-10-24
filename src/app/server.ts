@@ -7,7 +7,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
-import { appAnswer, appAudio, appMe, appPicture, appQueue, appUser, ownWord } from "./api";
+import { appAnswer, appAudio, appMe, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
@@ -39,6 +39,12 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/answer", async (c) => {
     const r = await appAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400);
+  });
+  // 🆕 Новые слова от друзей: колода и решение по карточке (или его отмена — undo: true).
+  app.get("/api/triage", async (c) => c.json({ ok: true, cards: await appTriageQueue(deps, c.get("user")) }));
+  app.post("/api/triage", async (c) => {
+    const r = await appTriage(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 409);
   });
   // ↩️ Отменить последний свайп: карточка — как до ответа.
   app.post("/api/undo", async (c) => {

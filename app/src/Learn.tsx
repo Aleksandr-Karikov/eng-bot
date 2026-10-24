@@ -10,7 +10,7 @@ import { haptic, notify } from "./telegram";
 const UNDO_DEPTH = 5;
 
 /** 📚 Карточки: очередь /learn со свайпами. */
-export function Learn({ corner }: { corner: ReactNode }) {
+export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () => void }) {
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<Card[]>([]);
   const [done, setDone] = useState(0);
@@ -89,6 +89,11 @@ export function Learn({ corner }: { corner: ReactNode }) {
         {history.length > 0 && (
           <button className="corner-button" aria-label="Отменить последний ответ" onClick={() => void undo()}>
             ↩️
+          </button>
+        )}
+        {me && me.triage > 0 && (
+          <button className="corner-button corner-badge" aria-label="Новые слова от друзей" onClick={onTriage}>
+            🆕<span className="badge">{me.triage > 99 ? "99+" : me.triage}</span>
           </button>
         )}
         {corner}

@@ -1,0 +1,1 @@
+ALTER TABLE `cards` ADD `triaged_at` integer;

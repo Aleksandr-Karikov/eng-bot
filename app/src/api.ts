@@ -26,6 +26,8 @@ export interface Me {
   due: { review: number; fresh: number };
   /** Какие части карточки показывать (⚙️ → 🃏 Карточка). */
   view: CardView;
+  /** Сколько новых слов от друзей ждут разбора. */
+  triage: number;
 }
 
 export type CardView = Record<"transcription" | "explanation" | "example" | "context" | "collocations" | "mnemonic" | "audio" | "picture", boolean>;
@@ -62,6 +64,19 @@ export const getMe = () => call<Me & { ok: true }>("/api/me");
 export const getQueue = () => call<{ cards: Card[] }>("/api/queue").then((r) => r.cards);
 export const sendAnswer = (card: Card, answer: Answer) => post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage });
 export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
+
+/** Новое слово друга в колоде на разбор. */
+export interface TriageCard {
+  cardId: number;
+  addedBy: string;
+  word: Card["word"];
+}
+
+export type TriageAction = "learn" | "know" | "drop";
+
+export const getTriage = () => call<{ cards: TriageCard[] }>("/api/triage").then((r) => r.cards);
+export const sendTriage = (card: TriageCard, action: TriageAction, undo = false) =>
+  post("/api/triage", { cardId: card.cardId, wordId: card.word.id, action, undo });
 
 /** Как слово идёт у меня: dropped — убрал у себя («🙈 Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";

@@ -7,6 +7,7 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
+import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
@@ -43,7 +44,13 @@ export async function appUser(deps: Pick<Deps, "db">, telegramId: number): Promi
 
 export async function appMe(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
-  return { name: user.firstName, room: room?.name ?? null, due: await countDueSplit(deps.db, user.id, deps.now()), view: cardView(user) };
+  return {
+    name: user.firstName,
+    room: room?.name ?? null,
+    due: await countDueSplit(deps.db, user.id, deps.now()),
+    view: cardView(user),
+    triage: await triageCount(deps.db, user.id),
+  };
 }
 
 function hasPicture(deps: Deps, word: Word): boolean {
@@ -126,4 +133,39 @@ async function fromTelegram(api: Api | undefined, word: Word): Promise<Buffer | 
   if (!file.file_path) return undefined;
   const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
   return response.ok ? Buffer.from(await response.arrayBuffer()) : undefined;
+}
+
+/** 🆕 Новые слова от друзей — колода на разбор: карточка слова и кто его добавил. */
+export async function appTriageQueue(deps: Deps, user: User) {
+  const items = await triageQueue(deps.db, user.id);
+  return items.map(({ card, word, addedBy }) => ({
+    cardId: card.id,
+    addedBy,
+    word: {
+      id: word.id,
+      term: word.term,
+      translation: word.translation,
+      explanation: word.explanation,
+      example: word.example,
+      context: word.context,
+      mnemonic: word.mnemonic,
+      transcriptionUk: word.transcriptionUk,
+      transcriptionUs: word.transcriptionUs,
+      usefulness: word.usefulness,
+      hasPicture: hasPicture(deps, word),
+    },
+  }));
+}
+
+const TRIAGE_ACTIONS = new Set<TriageAction>(["learn", "know", "drop"]);
+
+export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown; wordId?: unknown; action?: unknown; undo?: unknown }) {
+  const action = String(body.action) as TriageAction;
+  const cardId = Number(body.cardId);
+  if (!TRIAGE_ACTIONS.has(action) || !Number.isInteger(cardId)) return { status: 400, body: { ok: false, error: "bad action" } };
+  const now = deps.now();
+  const ok = body.undo
+    ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
+    : await triage(deps.db, { userId: user.id, cardId, action, now });
+  return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
 }
