@@ -11,6 +11,8 @@ export interface Quiz {
 
 export interface Card {
   kind: "card";
+  /** Режим «Трудные»: вне зачёта, ответы не оцениваются. */
+  practice?: boolean;
   cardId: number;
   reps: number;
   isNew: boolean;
@@ -91,10 +93,14 @@ export interface DrillProgress {
   resolved: boolean;
 }
 
-export const getQueue = () => call<{ cards: QueueItem[] }>("/api/queue").then((r) => r.cards);
+/** Режим тренировки: всё, только повторения, только новые, трудные (вне зачёта). */
+export type QueueMode = "all" | "reviews" | "fresh" | "hard";
+
+export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }>(`/api/queue?mode=${mode}`).then((r) => r.cards);
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
-export const sendAnswer = (card: Card, answer: Answer) => post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage });
+export const sendAnswer = (card: Card, answer: Answer) =>
+  post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
 export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
 
 /** Новое слово друга в колоде на разбор. */
@@ -214,7 +220,7 @@ export interface CheckResult {
 }
 
 export const checkAnswer = (card: Card, answer: string, dunno = false) =>
-  post<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno });
+  post<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno, practice: card.practice });
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
 
 export interface Progress {

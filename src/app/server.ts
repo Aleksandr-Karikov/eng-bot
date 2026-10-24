@@ -7,7 +7,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
-import { appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appAddWord, appChangeSetting, appEditWord, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -37,7 +37,10 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
 
   app.get("/api/me", async (c) => c.json({ ok: true, ...(await appMe(deps, c.get("user"))) }));
-  app.get("/api/queue", async (c) => c.json({ ok: true, cards: await appQueue(deps, c.get("user")) }));
+  app.get("/api/queue", async (c) => {
+    const mode = QUEUE_MODES.find((m) => m === c.req.query("mode")) ?? "all";
+    return c.json({ ok: true, cards: await appQueue(deps, c.get("user"), mode) });
+  });
   app.post("/api/answer", async (c) => {
     const r = await appAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400);

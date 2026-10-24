@@ -1,13 +1,30 @@
 import { miniApp } from "@telegram-apps/sdk-react";
-import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
+import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
+import { type QueueMode, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
 import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
 import { haptic, notify } from "./telegram";
+
+const MODES: Array<{ id: QueueMode; label: string }> = [
+  { id: "all", label: "Всё" },
+  { id: "reviews", label: "Повторы" },
+  { id: "fresh", label: "Новые" },
+  { id: "hard", label: "Трудные" },
+];
+
+/** Выбранный режим помним на этом устройстве (если хранилище недоступно — просто «Всё»). */
+function savedMode(): QueueMode {
+  try {
+    const m = localStorage.getItem("wordboss-mode");
+    return MODES.some((x) => x.id === m) ? (m as QueueMode) : "all";
+  } catch {
+    return "all";
+  }
+}
 
 /** Сколько последних свайпов можно отменить подряд. */
 const UNDO_DEPTH = 5;
@@ -16,6 +33,7 @@ const UNDO_DEPTH = 5;
 export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () => void }) {
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -25,7 +43,7 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [info, cards] = await Promise.all([getMe(), getQueue()]);
+      const [info, cards] = await Promise.all([getMe(), getQueue(mode)]);
       setMe(info);
       setQueue(cards);
       setError(undefined);
@@ -34,9 +52,24 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   useEffect(() => void load(), [load]);
+
+  const changeMode = useCallback((next: QueueMode) => {
+    if (next === mode) return;
+    haptic.select();
+    try {
+      localStorage.setItem("wordboss-mode", next);
+    } catch {
+      // хранилище недоступно — режим просто не запомнится
+    }
+    setMode(next);
+    setLoading(true);
+    setQueue([]);
+    setDone(0);
+    setHistory([]);
+  }, [mode]);
 
   // Картинки текущей и пары следующих карточек — заранее, пока человек вспоминает слово.
   useEffect(() => {
@@ -57,7 +90,8 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
   /** Оценка карточки уходит в фоне; её можно отменить ↩️. */
   const rate = useCallback((card: Card, value: Answer) => {
     const sent = sendAnswer(card, value).catch(() => {});
-    setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
+    // Вне зачёта отменять нечего — ответ и так не записан.
+    if (!card.practice) setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
   }, []);
 
   /** Свайп — сразу следующая карточка. */
@@ -124,10 +158,24 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
     </header>
   );
 
+  const count = (id: QueueMode) =>
+    !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
+  const modes = (
+    <div className="chips modes">
+      {MODES.map((m) => (
+        <Chip key={m.id} mode={mode === m.id ? "mono" : "outline"} onClick={() => changeMode(m.id)}>
+          {m.label}
+          {count(m.id) ? ` ${count(m.id)}` : ""}
+        </Chip>
+      ))}
+    </div>
+  );
+
   if (error || (loading && !card) || !card) {
     return (
       <div className="screen">
         {header}
+        {modes}
         {error ? (
           <Placeholder header="Не получилось загрузить" description={error} />
         ) : loading ? (
@@ -144,6 +192,8 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
   return (
     <div className="screen">
       {header}
+      {modes}
+      {mode === "hard" && <Text className="hint practice-note">🔁 Вне зачёта: ответы не сдвигают повторения</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
         <ChoiceCard
@@ -158,7 +208,7 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
           key={`${card.cardId}-${card.reps}`}
           card={card}
           // Оценил сервер при проверке — в историю для ↩️ (запрос уже прошёл).
-          onRated={() => setHistory((h) => [...h, { card, sent: Promise.resolve() }].slice(-UNDO_DEPTH))}
+          onRated={() => !card.practice && setHistory((h) => [...h, { card, sent: Promise.resolve() }].slice(-UNDO_DEPTH))}
           onRateSelf={(a) => rate(card, a)}
           onNext={advance}
         />

@@ -16,6 +16,7 @@ import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
+import { practiceQueue } from "../services/practice";
 import { getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
 import type { Answer } from "../srs/srs";
@@ -35,6 +36,8 @@ export interface AppQuiz {
 
 export interface AppCard {
   kind: "card";
+  /** Тренировка вне зачёта: ответ проверяется, но карточка не оценивается. */
+  practice?: boolean;
   cardId: number;
   reps: number;
   isNew: boolean;
@@ -97,8 +100,28 @@ function quizOf(q: { question: string; options: string[]; correct: number; expla
  * Очередь: тот же порядок, что в /learn. Вид — как там: новое и необязательное слово — EN → RU, остальное — случайно
  * из того, что умеет приложение (EN → RU, RU → EN, сочетания), и после каждых 5 карточек — вопрос по ошибкам, если готов.
  */
-export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
-  const items = await dueQueue(deps.db, user.id, deps.now(), QUEUE_SIZE);
+/**
+ * Режим тренировки: all — как /learn; reviews — только повторения; fresh — только новые слова;
+ * hard — самые слабые слова, даже если ещё рано, вне зачёта (как «🔁 Потренироваться»): ответы не оцениваются.
+ */
+export type QueueMode = "all" | "reviews" | "fresh" | "hard";
+export const QUEUE_MODES: QueueMode[] = ["all", "reviews", "fresh", "hard"];
+
+async function queueItems(deps: Deps, user: User, mode: QueueMode) {
+  if (mode === "hard") {
+    const ids = await practiceQueue(deps.db, user.id);
+    const items = await Promise.all(ids.slice(0, QUEUE_SIZE).map((id) => getDueItemByCard(deps.db, user.id, id)));
+    return items.filter((i) => i !== undefined);
+  }
+  if (mode === "all") return dueQueue(deps.db, user.id, deps.now(), QUEUE_SIZE);
+  // Отдельно повторения или новые: берём очередь с запасом и фильтруем, порядок — как в /learn.
+  const wide = await dueQueue(deps.db, user.id, deps.now(), 1000);
+  return wide.filter(({ card }) => (card.state === State.New) === (mode === "fresh")).slice(0, QUEUE_SIZE);
+}
+
+export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"): Promise<AppItem[]> {
+  const items = await queueItems(deps, user, mode);
+  const practice = mode === "hard";
   const modes = {
     en_ru: user.modeEnRu,
     ru_en: user.modeRuEn,
@@ -123,6 +146,7 @@ export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
     const cloze = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     cards.push({
       kind: "card",
+      ...(practice ? { practice: true } : {}),
       quiz: stage === "collocation" && collocations?.quiz ? { ...quizOf(collocations.quiz), items: collocations.items } : undefined,
       cloze: cloze ? { id: cloze.id, sentence: cloze.sentence, translation: cloze.translation } : undefined,
       cardId: card.id,
@@ -144,9 +168,9 @@ export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
       },
     });
   }
-  // Вопросы по ошибкам готовятся в фоне (как в /learn); готовые — между карточками.
+  // Вопросы по ошибкам готовятся в фоне (как в /learn); готовые — между карточками (во «Всё» и «Повторениях»).
   ensureDrillFor(deps, user);
-  const drills = user.modeDrill ? deps.drills.get(user.id) : undefined;
+  const drills = user.modeDrill && (mode === "all" || mode === "reviews") ? deps.drills.get(user.id) : undefined;
   const queue: AppItem[] = [];
   cards.forEach((card, i) => {
     queue.push(card);
@@ -173,13 +197,15 @@ export async function appDrillAnswer(deps: Deps, user: User, body: { category?: 
 
 const ANSWERS = new Set<Answer>(["again", "good", "easy"]);
 
-export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown; reps?: unknown; answer?: unknown; stage?: unknown }) {
+export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown; reps?: unknown; answer?: unknown; stage?: unknown; practice?: unknown }) {
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
   const answer = String(body.answer) as Answer;
   // Задания с ответом текстом оценивает /api/check; сюда — когда проверить не вышло и человек оценил себя сам.
   const stage = typeof body.stage === "string" && ["ru_en", "collocation", "cloze", "listen", "sentence"].includes(body.stage) ? body.stage : "en_ru";
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
+  // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
+  if (body.practice === true) return { status: 200, body: { ok: true, result: "practice" } };
   const result = await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
   return { status: 200, body: { ok: true, result } };
 }

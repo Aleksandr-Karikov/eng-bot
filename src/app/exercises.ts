@@ -20,7 +20,7 @@ const fail = (status: number, error: string): Result => ({ status, body: { ok: f
 export async function appCheck(
   deps: Deps,
   user: User,
-  body: { cardId?: unknown; reps?: unknown; stage?: unknown; answer?: unknown; clozeId?: unknown; dunno?: unknown },
+  body: { cardId?: unknown; reps?: unknown; stage?: unknown; answer?: unknown; clozeId?: unknown; dunno?: unknown; practice?: unknown },
 ): Promise<Result> {
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
@@ -31,7 +31,9 @@ export async function appCheck(
   const item = await getDueItemByCard(deps.db, user.id, cardId);
   if (!item) return fail(404, "Это слово уже удалили");
   const { word } = item;
+  // Вне зачёта (режим «Трудные») ответ проверяем, но карточку не оцениваем.
   const rate = async (good: boolean) =>
+    body.practice === true ||
     (await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` })) === "ok";
   const reveal = { term: word.term, translation: word.translation, transcriptionUk: word.transcriptionUk, transcriptionUs: word.transcriptionUs, example: word.example };
 

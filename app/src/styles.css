@@ -162,3 +162,10 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .draft-extra { display: block; padding: 6px 16px 10px; }
 
 .lesson-row { padding-top: 8px; }
+
+/* 🎛 Режимы тренировки */
+/* Четыре режима помещаются в одну строку и на узком экране. */
+.chips.modes { padding: 0; margin: 0 -2px; gap: 6px; }
+.chips.modes > * { padding: 4px 9px !important; min-height: 32px; }
+.chips.modes > * * { font-size: 14px !important; }
+.practice-note { font-size: 13px; text-align: center; }

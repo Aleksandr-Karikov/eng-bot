@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import type { AddressInfo } from "node:net";
 import { startCaptureServer } from "../src/capture/server";
 import { sign } from "@telegram-apps/init-data-node";
@@ -197,6 +198,31 @@ describe("📚 Mini App API", () => {
       expect(h.calls.some((c) => c.method === "sendMessage" && c.payload.chat_id === 200 && String(c.payload.text).includes("tooth"))).toBe(true);
       // Второй раз — уже есть.
       expect((await post("/api/words/prepare", { text: "tooth" })).status).toBe(409);
+    });
+  });
+
+  describe("🎛 training modes", () => {
+    it("reviews only, new only, and «трудные» outside the schedule", async () => {
+      const { h, app, auth } = await setup();
+      const room = (await h.db.select().from(words))[0].roomId;
+      await saveWord(h.db, { roomId: room, addedBy: 1, draft: { term: "river", translation: "река", explanation: "", example: "" }, now: T0 });
+      // bank — уже знакомое и пора повторять; river — новое.
+      const [bank] = await h.db.select().from(cards);
+      await h.db.update(cards).set({ state: 2, stability: 3, reps: 4, due: new Date(T0.getTime() - 86_400_000) }).where(eq(cards.id, bank.id));
+      const terms = async (mode: string) =>
+        (await (await app.request(`/api/queue?mode=${mode}`, { headers: auth })).json()).cards.map((c: { word: { term: string } }) => c.word.term);
+      expect(await terms("reviews")).toEqual(["bank"]);
+      expect(await terms("fresh")).toEqual(["river"]);
+
+      const { cards: hard } = await (await app.request("/api/queue?mode=hard", { headers: auth })).json();
+      expect(hard).toMatchObject([{ practice: true, word: { term: "bank" } }]);
+      const res = await app.request("/api/answer", {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify({ cardId: hard[0].cardId, reps: hard[0].reps, answer: "again", stage: "en_ru", practice: true }),
+      });
+      expect(await res.json()).toEqual({ ok: true, result: "practice" });
+      expect(await h.db.select().from(reviewLogs)).toEqual([]);
     });
   });
 });
