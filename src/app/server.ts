@@ -1,3 +1,5 @@
+import { isLangCode, withLang } from "../lang";
+import { getRoom } from "../services/rooms";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { isValid, parse } from "@telegram-apps/init-data-node";
@@ -33,7 +35,9 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const user = telegramId !== undefined ? await appUser(deps, telegramId) : undefined;
     if (!user) return c.json({ ok: false, error: "Открой приложение из бота" }, 401);
     c.set("user", user);
-    await next();
+    // Как в боте: язык запроса — язык текущей комнаты (lang.ts).
+    const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+    await withLang(isLangCode(room?.language) ? room.language : "en", () => next());
   });
 
   app.get("/api/me", async (c) => c.json({ ok: true, ...(await appMe(deps, c.get("user"))) }));

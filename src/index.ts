@@ -25,8 +25,9 @@ import { FluxSynth, ImageService } from "./images/images";
 import { BackgroundPainter, onAcPower } from "./images/painter";
 import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
-import { KokoroSynth, MacSaySynth } from "./speech/tts";
+import { KokoroSynth, LanguageAwareSynth, MacSaySynth } from "./speech/tts";
 import { LocalRecognizer } from "./speech/stt";
+import { wordLanguage } from "./services/words";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import type { Server } from "node:http";
@@ -60,7 +61,9 @@ const notifier = new Notifier(
 const now = () => new Date();
 
 // Озвучка: нейросетевые голоса Kokoro, если поставлены (tools/tts), иначе встроенный голос macOS.
-const speech = existsSync(config.ttsPython) ? new KokoroSynth(config.ttsPython, "tools/tts/kokoro_server.py", new MacSaySynth()) : new MacSaySynth();
+const englishSpeech = existsSync(config.ttsPython) ? new KokoroSynth(config.ttsPython, "tools/tts/kokoro_server.py", new MacSaySynth()) : new MacSaySynth();
+// Другие языки — голосом macOS языка (lang.ts).
+const speech = new LanguageAwareSynth(englishSpeech);
 // Голосовые: Whisper и модель фонем, если поставлены (tools/stt).
 const recognizer = existsSync(config.sttPython) ? new LocalRecognizer(config.sttPython, "tools/stt/stt_server.py") : undefined;
 const claude = new ClaudeCodeEnricher({
@@ -69,7 +72,7 @@ const claude = new ClaudeCodeEnricher({
   mnemonicModel: config.mnemonicModel,
   checkModel: config.checkModel,
 });
-const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle) : undefined;
+const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle, (wordId) => wordLanguage(db, wordId)) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, claude);
 
@@ -143,7 +146,7 @@ const stopPainter =
 const shutdown = () => {
   stopReminders();
   stopPainter();
-  if (speech instanceof KokoroSynth) speech.close();
+  if (englishSpeech instanceof KokoroSynth) englishSpeech.close();
   recognizer?.close();
   captureServer?.close();
   void bot.stop();

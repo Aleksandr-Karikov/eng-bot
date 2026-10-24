@@ -2,20 +2,25 @@ import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
+import { LANGUAGES, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { getUser, updateUser } from "./users";
 
 export async function createRoom(
   db: Db,
-  input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean },
+  input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean; language?: LangCode },
 ): Promise<Room> {
+  const language = input.language ?? "en";
   const [room] = await db
     .insert(rooms)
     .values({
       name: input.name,
       inviteCode: randomBytes(6).toString("base64url"),
       telegramChatId: input.telegramChatId ?? null,
+      language,
       personalOf: input.personal ? input.createdBy : null,
+      // Английский личный словарь отмечаем и по-старому — чтобы код до появления языков (при откате) его видел.
+      legacyPersonalOf: input.personal && language === "en" ? input.createdBy : null,
       createdBy: input.createdBy,
       createdAt: input.now,
     })
@@ -27,8 +32,13 @@ export async function createRoom(
 
 export const PERSONAL_ROOM_NAME = "Мои слова";
 
-export async function personalRoom(db: Db, userId: number): Promise<Room | undefined> {
-  const [room] = await db.select().from(rooms).where(eq(rooms.personalOf, userId));
+/** «Мои слова» — английский, как было; для других языков с флагом: «Мои слова 🇰🇷». */
+export function personalRoomName(language: LangCode = "en"): string {
+  return language === "en" ? PERSONAL_ROOM_NAME : `${PERSONAL_ROOM_NAME} ${LANGUAGES[language].flag}`;
+}
+
+export async function personalRoom(db: Db, userId: number, language: LangCode = "en"): Promise<Room | undefined> {
+  const [room] = await db.select().from(rooms).where(and(eq(rooms.personalOf, userId), eq(rooms.language, language)));
   return room;
 }
 
@@ -36,8 +46,11 @@ export async function personalRoom(db: Db, userId: number): Promise<Room | undef
  * Личный словарь «Мои слова»: есть у каждого, создаётся сам — одиночке не нужно разбираться с комнатами,
  * а слова из готовых наборов идут сюда, а не в общую комнату с друзьями.
  */
-export async function ensurePersonalRoom(db: Db, userId: number, now: Date): Promise<Room> {
-  return (await personalRoom(db, userId)) ?? createRoom(db, { name: PERSONAL_ROOM_NAME, createdBy: userId, now, personal: true });
+export async function ensurePersonalRoom(db: Db, userId: number, now: Date, language: LangCode = "en"): Promise<Room> {
+  return (
+    (await personalRoom(db, userId, language)) ??
+    createRoom(db, { name: personalRoomName(language), createdBy: userId, now, personal: true, language })
+  );
 }
 
 export async function isMember(db: Db, roomId: number, userId: number): Promise<boolean> {

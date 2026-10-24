@@ -48,11 +48,19 @@ export const rooms = sqliteTable("rooms", {
   weeklyGoal: integer("weekly_goal").notNull().default(0),
   /** Начало недели (дата дайджеста), за которую уже поздравили с выполненной целью. */
   goalReachedWeek: text("goal_reached_week"),
-  /** Личный словарь «Мои слова» этого человека: создаётся сам, друзей в него не зовут (для них — общие комнаты). */
-  personalOf: integer("personal_of").unique().references(() => users.id),
+  /** Какой язык учат в комнате (lang.ts): en — английский, ko — корейский. */
+  language: text("language").notNull().default("en"),
+  /**
+   * Личный словарь «Мои слова» этого человека — по одному на язык: создаётся сам, друзей в него не зовут
+   * (для них — общие комнаты). Отдельная колонка, а не personal_of: та уникальна на человека, и снять это в SQLite
+   * можно только пересозданием таблицы.
+   */
+  personalOf: integer("personal_owner").references(() => users.id),
+  /** Прежняя отметка личного словаря (один на человека) — заполняется для английского, чтобы старый код при откате видел его. */
+  legacyPersonalOf: integer("personal_of").unique().references(() => users.id),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
-});
+}, (t) => [uniqueIndex("rooms_personal_lang_idx").on(t.personalOf, t.language)]);
 
 export const roomMembers = sqliteTable(
   "room_members",
@@ -243,6 +251,8 @@ export const wordSets = sqliteTable("word_sets", {
   title: text("title").notNull(),
   /** level — уровень A1…C1; topic — тема. */
   kind: text("kind").notNull(),
+  /** Язык слов набора (lang.ts). */
+  language: text("language").notNull().default("en"),
   description: text("description").notNull().default(""),
   position: integer("position").notNull().default(0),
   createdAt: createdAt(),

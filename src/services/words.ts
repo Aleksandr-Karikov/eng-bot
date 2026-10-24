@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, clozeSentences, reviewLogs, words, type User, type Word, wordUses } from "../db/schema";
+import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
+import { isLangCode, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { getRoom, listMembers } from "./rooms";
 
@@ -57,6 +58,12 @@ export async function findWord(db: Db, roomId: number, term: string): Promise<Wo
     .from(words)
     .where(and(eq(words.roomId, roomId), eq(words.termNormalized, normalizeTerm(term))));
   return word;
+}
+
+/** На каком языке слово — по его комнате (для фоновых задач: подсказки к слову — на языке слова, а не того, кто их запустил). */
+export async function wordLanguage(db: Db, wordId: number): Promise<LangCode> {
+  const [row] = await db.select({ language: rooms.language }).from(words).innerJoin(rooms, eq(words.roomId, rooms.id)).where(eq(words.id, wordId));
+  return isLangCode(row?.language) ? row.language : "en";
 }
 
 export async function getWord(db: Db, id: number): Promise<Word | undefined> {

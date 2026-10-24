@@ -6,7 +6,8 @@ import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
-import { ensurePersonalRoom, isMember, listMembers } from "../services/rooms";
+import { ensurePersonalRoom, getRoom, isMember, listMembers } from "../services/rooms";
+import { isLangCode, withLang } from "../lang";
 
 /** Что прислало расширение: выделенное слово или фраза и реплика, где оно встретилось. */
 export interface CaptureInput {
@@ -49,6 +50,16 @@ export async function capture(deps: Deps, input: CaptureInput): Promise<CaptureR
   if (!user) return { ok: false, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
   // Без комнаты — в личный словарь.
   const roomId = user.currentRoomId ?? (await ensurePersonalRoom(deps.db, user.id, deps.now())).id;
+  // Перевод и подсказки — на языке комнаты, куда слово попадёт.
+  return withLang(await roomLanguage(deps, roomId), () => captureInto(deps, input, user, roomId));
+}
+
+async function roomLanguage(deps: Deps, roomId: number | null) {
+  const room = roomId != null ? await getRoom(deps.db, roomId) : undefined;
+  return isLangCode(room?.language) ? room.language : "en";
+}
+
+async function captureInto(deps: Deps, input: CaptureInput, user: User, roomId: number): Promise<CaptureResult> {
   const context = (input.context ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CONTEXT);
   const selection = cleanSelection(input.text ?? "");
   if (!selection && !context) return { ok: false, status: 400, error: "Нечего добавлять" };
@@ -138,7 +149,8 @@ export async function readImage(deps: Deps, input: { key: string; image: string 
   const data = Buffer.from(match[2], "base64");
   if (data.length === 0 || data.length > MAX_IMAGE_BYTES) return { ok: false, status: 400, error: "Слишком большая область — выдели поменьше" };
   try {
-    const text = await deps.enricher.readImage({ data, mediaType: match[1] as "image/jpeg" | "image/png" | "image/webp" });
+    const image = { data, mediaType: match[1] as "image/jpeg" | "image/png" | "image/webp" };
+    const text = await withLang(await roomLanguage(deps, user.currentRoomId), () => deps.enricher.readImage!(image));
     return { ok: true, text: text.slice(0, 2000) };
   } catch (err) {
     console.error("Read image failed", err);

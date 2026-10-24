@@ -6,34 +6,35 @@ import { LANGUAGES, type Language } from "../src/lang";
 
 /** Все промпты с фиксированными входными данными; lang не передан — как вызывал код до появления языков. */
 function prompts(L?: Language): Record<string, string> {
-  const a = <T extends unknown[]>(...xs: T) => (L ? [...xs, L] : xs) as never;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const call = (f: (...args: any[]) => string, ...xs: unknown[]) => f(...xs, ...(L ? [L] : []));
   const word = { term: "take for granted", translation: "принимать как должное", explanation: "не ценить", example: "Don't take me for granted.", mnemonic: "грант" };
   const talk = { topic: "cafe", words: [{ term: "keen", translation: "увлечённый" }], lines: [{ who: "bot" as const, text: "Hi!" }, { who: "user" as const, text: "I has coffee" }] };
   const task = { ru: "Я рад", en: "I'm glad", topic: "", word: "" };
   return {
     system: L ? e.systemPrompt(L) : e.SYSTEM_PROMPT,
-    enrich: e.buildPrompt(...a("bank", undefined, undefined)),
-    enrichHint: e.buildPrompt(...a("bank", "берег", "on the bank of the river")),
-    enrichRu: e.buildPrompt(...a("зуб", undefined, undefined)),
-    extract: e.buildExtractPrompt(...a("Some text here.")),
-    extractImage: e.buildExtractImagePrompt(...a("только идиомы")),
-    readImage: e.buildReadImagePrompt(...a()),
-    check: e.buildCheckPrompt(...a("I has a cat", [{ author: "Ann", text: "hi" }], "Bob", ["So"])),
-    checkPlain: e.buildCheckPrompt(...a("I has a cat", [], undefined, [])),
-    cloze: t.buildClozePrompt(...a("keen", "увлечённый")),
-    judge: t.buildJudgePrompt(...a({ sentence: "He is ___ on it.", expected: "keen", term: "keen", translation: "увлечённый", answer: "kean" })),
-    sentence: t.buildSentencePrompt(...a({ term: "keen", translation: "увлечённый", explanation: "", answer: "I am keen." })),
-    untangle: t.buildUntanglePrompt(...a(word)),
-    translationTask: t.buildTranslationTaskPrompt(...a({ topics: [{ category: "артикли", examples: [{ wrong: "a apple", right: "an apple" }] }], words: [{ term: "keen", translation: "увлечённый" }], avoid: ["Я рад"] })),
-    translationReview: t.buildTranslationReviewPrompt(...a({ task, answer: "I glad" })),
-    collocations: t.buildCollocationsPrompt(...a("keen", "увлечённый")),
-    say: t.buildSayPrompt(...a("я соскучился")),
-    talkReply: t.buildTalkReplyPrompt(...a(talk)),
-    talkReview: t.buildTalkReviewPrompt(...a(talk)),
-    story: t.buildStoryPrompt(...a([{ term: "keen", translation: "увлечённый" }])),
-    drill: t.buildDrillPrompt(...a("артикли ×3: a apple → an apple", 3, ["old q"])),
-    mnemonic: t.buildMnemonicPrompt(...a([{ term: "keen", translation: "увлечённый" }, { term: "bank", translation: "", instead: "банка" }])),
-    image: t.buildImagePromptPrompt(...a({ ...word, wish: "кот" })),
+    enrich: call(e.buildPrompt, "bank", undefined, undefined),
+    enrichHint: call(e.buildPrompt, "bank", "берег", "on the bank of the river"),
+    enrichRu: call(e.buildPrompt, "зуб", undefined, undefined),
+    extract: call(e.buildExtractPrompt, "Some text here."),
+    extractImage: call(e.buildExtractImagePrompt, "только идиомы"),
+    readImage: call(e.buildReadImagePrompt),
+    check: call(e.buildCheckPrompt, "I has a cat", [{ author: "Ann", text: "hi" }], "Bob", ["So"]),
+    checkPlain: call(e.buildCheckPrompt, "I has a cat", [], undefined, []),
+    cloze: call(t.buildClozePrompt, "keen", "увлечённый"),
+    judge: call(t.buildJudgePrompt, { sentence: "He is ___ on it.", expected: "keen", term: "keen", translation: "увлечённый", answer: "kean" }),
+    sentence: call(t.buildSentencePrompt, { term: "keen", translation: "увлечённый", explanation: "", answer: "I am keen." }),
+    untangle: call(t.buildUntanglePrompt, word),
+    translationTask: call(t.buildTranslationTaskPrompt, { topics: [{ category: "артикли", examples: [{ wrong: "a apple", right: "an apple" }] }], words: [{ term: "keen", translation: "увлечённый" }], avoid: ["Я рад"] }),
+    translationReview: call(t.buildTranslationReviewPrompt, { task, answer: "I glad" }),
+    collocations: call(t.buildCollocationsPrompt, "keen", "увлечённый"),
+    say: call(t.buildSayPrompt, "я соскучился"),
+    talkReply: call(t.buildTalkReplyPrompt, talk),
+    talkReview: call(t.buildTalkReviewPrompt, talk),
+    story: call(t.buildStoryPrompt, [{ term: "keen", translation: "увлечённый" }]),
+    drill: call(t.buildDrillPrompt, "артикли ×3: a apple → an apple", 3, ["old q"]),
+    mnemonic: call(t.buildMnemonicPrompt, [{ term: "keen", translation: "увлечённый" }, { term: "bank", translation: "", instead: "банка" }]),
+    image: call(t.buildImagePromptPrompt, { ...word, wish: "кот" }),
   };
 }
 

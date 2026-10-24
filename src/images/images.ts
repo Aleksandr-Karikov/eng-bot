@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { currentLang, withLang, type LangCode } from "../lang";
 import type { ExerciseTutor } from "../llm/tutor";
 import { compressPicture } from "./compress";
 
@@ -70,6 +71,8 @@ export class ImageService {
     private readonly tutor: ExerciseTutor,
     /** Стиль дописывается к сцене от Claude (IMAGE_STYLE в .env). */
     private readonly style = DEFAULT_IMAGE_STYLE,
+    /** Язык слова по его комнате: картинки рисуются и в фоне, вне контекста запроса. Нет — язык текущей операции. */
+    private readonly languageOf?: (wordId: number) => Promise<LangCode>,
   ) {}
 
   /** Сколько картинок сейчас рисуется или ждёт очереди. */
@@ -86,7 +89,8 @@ export class ImageService {
     const running = this.inFlight.get(key);
     if (running) return running;
     const task = (async () => {
-      const prompt = await this.tutor.imagePrompt({ ...word, ...(opts.wish ? { wish: opts.wish } : {}) });
+      const lang = this.languageOf ? await this.languageOf(word.id) : currentLang().code;
+      const prompt = await withLang(lang, () => this.tutor.imagePrompt({ ...word, ...(opts.wish ? { wish: opts.wish } : {}) }));
       const png = await this.enqueue(() => this.synth.draw(`${prompt}, ${opts.style ?? this.style}`));
       // Сразу сжимаем: дальше картинка и уходит в Telegram, и хранится, и отдаётся в Mini App уже лёгкой.
       return compressPicture(png);

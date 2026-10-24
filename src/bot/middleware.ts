@@ -1,5 +1,6 @@
 import type { MiddlewareFn } from "grammy";
-import { ensurePersonalRoom, findRoomByChat, isMember, joinRoom } from "../services/rooms";
+import { isLangCode, withLang, type LangCode } from "../lang";
+import { ensurePersonalRoom, findRoomByChat, getRoom, isMember, joinRoom } from "../services/rooms";
 import { getUser, updateUser, upsertUser } from "../services/users";
 import { HTML, type BotContext, type Deps } from "./context";
 import { esc } from "./texts";
@@ -34,6 +35,10 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
         ctx.user = await updateUser(deps.db, user.id, { groupHintSent: true });
       }
     }
-    await next();
+    // Язык апдейта — язык комнаты, о которой речь: в группе — её комнаты, в личке — текущей. Дальше его видят
+    // промпты, озвучка и распознавание (lang.ts), не протаскивая через каждый обработчик.
+    const room = ctx.chat?.type === "private" ? (user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined) : ctx.groupRoom;
+    const lang: LangCode = isLangCode(room?.language) ? room.language : "en";
+    await withLang(lang, () => next());
   };
 }

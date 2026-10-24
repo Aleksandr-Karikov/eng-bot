@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { currentLang } from "../lang";
 import { JsonLineWorker } from "./worker";
 
 const run = promisify(execFile);
@@ -54,6 +55,19 @@ export async function macSay(text: string, voice: string, format: "ogg" | "m4a" 
 async function encode(input: string, out: string, format: "ogg" | "m4a"): Promise<void> {
   const codec = format === "ogg" ? ["-c:a", "libopus", "-b:a", "32k"] : ["-c:a", "aac", "-b:a", "64k"];
   await run("ffmpeg", ["-y", "-loglevel", "error", "-i", input, ...codec, out], { timeout: 20_000 });
+}
+
+/**
+ * Озвучка на языке текущей операции (lang.ts): английский — основным синтезом (Kokoro или say),
+ * другие языки — голосом macOS этого языка (у Kokoro корейского нет).
+ */
+export class LanguageAwareSynth implements SpeechSynth {
+  constructor(readonly english: SpeechSynth) {}
+
+  synthesize(text: string, accent: Accent, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
+    const lang = currentLang();
+    return lang.code === "en" ? this.english.synthesize(text, accent, format) : macSay(text, lang.macVoice[accent], format);
+  }
 }
 
 /** Первый запуск грузит модель (а в самый первый раз — скачивает); фраза — доли секунды. */

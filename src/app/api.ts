@@ -22,6 +22,8 @@ import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../servic
 import { practiceQueue } from "../services/practice";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
+import { wordLanguage } from "../services/words";
+import { currentLang, withLang } from "../lang";
 import type { Answer } from "../srs/srs";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
@@ -81,6 +83,8 @@ export async function appMe(deps: Deps, user: User) {
     due: await countDueSplit(deps.db, user.id, deps.now()),
     view: cardView(user),
     triage: await triageCount(deps.db, user.id),
+    // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
+    language: { code: currentLang().code, flag: currentLang().flag, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
   };
 }
 
@@ -227,7 +231,9 @@ export async function ownWord(deps: Deps, user: User, cardId: number): Promise<W
 export async function appAudio(deps: Deps, word: { id: number | string; term: string }, accent: "uk" | "us"): Promise<Buffer> {
   const file = join(AUDIO_DIR, `${word.id}-${accent}-${Buffer.from(word.term).toString("hex").slice(0, 24)}.m4a`);
   if (existsSync(file)) return readFile(file);
-  const audio = await deps.speech.synthesize(word.term, accent, "m4a");
+  // Слово словаря — на языке своей комнаты; слово из набора — на языке текущей операции.
+  const lang = typeof word.id === "number" ? await wordLanguage(deps.db, word.id) : currentLang().code;
+  const audio = await withLang(lang, () => deps.speech.synthesize(word.term, accent, "m4a"));
   await mkdir(AUDIO_DIR, { recursive: true });
   await writeFile(file, audio);
   return audio;

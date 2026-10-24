@@ -1,3 +1,4 @@
+import { isLangCode, withLang } from "../../lang";
 import { InputFile, type Api, type Bot } from "grammy";
 import type { Room } from "../../db/schema";
 import { findRoomByChat, getRoom } from "../../services/rooms";
@@ -19,7 +20,8 @@ type StoryDeps = Pick<Deps, "db" | "tutor" | "random" | "now">;
 export async function publishStory(api: Api, deps: StoryDeps, chatId: number, room: Room, userId?: number): Promise<boolean> {
   const glossary = await storyWords(deps.db, room.id, deps.random, userId);
   if (glossary.length < MIN_WORDS) return false;
-  const draft = await deps.tutor.story(glossary);
+  // Истории выходят и по расписанию, вне апдейта, — язык берём у комнаты.
+  const draft = await withLang(isLangCode(room.language) ? room.language : "en", () => deps.tutor.story(glossary));
   const story = await saveStory(deps.db, room.id, draft, glossary, deps.now());
   await api.sendMessage(chatId, storyText(story, glossary), { ...HTML, reply_markup: storyKeyboard(story.id) });
   for (const [i, q] of draft.questions.entries()) {
