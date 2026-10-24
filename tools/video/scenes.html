@@ -78,6 +78,27 @@
   .photo { width: 230px; height: 150px; border-radius: 12px; background: #e9e4d8; padding: 14px; display: grid; gap: 7px; align-content: start; }
   .photo i { height: 8px; border-radius: 4px; background: #b9b2a2; display: block; }
   .photo i.hl { background: #f2c94c; }
+  /* extension */
+  .browser { position: absolute; top: 150px; left: 26px; right: 26px; height: 620px; background: #202124; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06); }
+  .browser .top { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 12px; background: #2b2c2f; }
+  .browser .top i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .browser .url { flex: 1; margin-left: 8px; background: #1c1d1f; border-radius: 14px; padding: 5px 12px; font-size: 12.5px; color: #aab; }
+  .video { height: 230px; position: relative; background: radial-gradient(80% 90% at 70% 30%, #6b4d2e, #1d2a2f 60%, #0c1114); }
+  .video .moon { position: absolute; top: 30px; right: 70px; width: 46px; height: 46px; border-radius: 50%; background: #f3e3b5; box-shadow: 0 0 40px #f3e3b5; }
+  .video .trees { position: absolute; bottom: 0; left: 0; right: 0; height: 120px; background: linear-gradient(180deg, transparent, #070b0c 80%); }
+  .video .sub { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 17px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 2px #000; }
+  .xpanel { margin: 12px; background: #1b1b1f; border: 1px solid #34343c; border-radius: 14px; padding: 12px; }
+  .xpanel .h { font-size: 13px; color: var(--hint); margin-bottom: 8px; }
+  .xpanel .line { font-size: 17px; line-height: 1.7; }
+  .xpanel .line span { padding: 1px 3px; border-radius: 5px; }
+  .xpanel .q { margin-top: 10px; display: grid; gap: 4px; font-size: 14px; }
+  .xpanel .q div { background: #24242a; border-radius: 8px; padding: 6px 10px; }
+  .page { position: relative; margin: 0 12px; height: 150px; background: #f4f1ea; border-radius: 10px; padding: 14px; display: grid; gap: 8px; align-content: start; }
+  .page i { height: 9px; border-radius: 4px; background: #c9c3b6; display: block; }
+  .frame { position: absolute; left: 30px; top: 34px; width: 300px; height: 64px; border: 2px dashed var(--accent); border-radius: 6px; background: rgba(135,116,225,.12); transform-origin: top left; }
+  .frame b { position: absolute; top: -26px; left: -2px; background: var(--accent); color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+  .cursor { position: absolute; width: 22px; height: 22px; z-index: 5; }
 </style>
 </head>
 <body>
@@ -132,6 +153,26 @@
       <div style="margin-top:6px"><span class="chip">A1</span><span class="chip">A2</span><span class="chip">B1</span><span class="chip">B2</span><span class="chip">C1</span><span class="chip">Фразовые глаголы</span><span class="chip">Путешествия</span><span class="chip">IT</span></div>
     </div>
   </div>
+</section>
+
+<section class="scene" data-scene="extension">
+  <div class="title" data-in="0">🧩 Расширение для Chrome<small>/extension</small></div>
+  <div class="browser">
+    <div class="top"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="url">inoriginal.cc/series/stranger-things/s01e03</div></div>
+    <div class="video"><div class="moon"></div><div class="trees"></div><div class="sub">I can't believe how eerie this place is.</div></div>
+    <div class="xpanel" data-in="0.12">
+      <div class="h">🧩 WordBoss · кликни слово или протяни по фразе</div>
+      <div class="line">I can't believe how <span data-mark="0.4">eerie</span> this place is.</div>
+      <div class="q">
+        <div data-in="0.42" data-out="0.56">⏳ eerie</div>
+        <div data-in="0.56">✅ <b>eerie</b> — жуткий · в боте</div>
+      </div>
+    </div>
+    <div class="page" data-in="0.66"><i style="width:92%"></i><i style="width:80%"></i><i style="width:86%"></i><i style="width:60%"></i><i style="width:88%"></i><i style="width:70%"></i>
+      <div class="frame" data-grow="0.74,0.86"><b>Alt+Shift+S — обведи текст</b></div>
+    </div>
+  </div>
+  <svg class="cursor" data-path="0.16,0.36,430,330,215,483;0.62,0.72,215,483,66,597;0.74,0.86,66,597,366,661" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.5 13.8 L10.5 20 L13 19 L10 12.8 L16 12.8 Z" fill="#fff" stroke="#000" stroke-width="1.3"/></svg>
 </section>
 
 <section class="scene" data-scene="learn">
@@ -209,7 +250,7 @@
     <div class="mark">📚</div>
     <h1>WordBoss</h1>
     <p style="font-size:24px;color:#fff;font-weight:700;margin-top:26px">Напиши первое слово 👇</p>
-    <div style="margin-top:26px" data-in="0.35"><span class="chip">/learn</span><span class="chip">/app</span><span class="chip">/sets</span><span class="chip">/talk</span><span class="chip">/pron</span><span class="chip">/help</span></div>
+    <div style="margin-top:26px" data-in="0.35"><span class="chip">/learn</span><span class="chip">/app</span><span class="chip">/sets</span><span class="chip">/talk</span><span class="chip">/pron</span><span class="chip">/extension</span><span class="chip">/help</span></div>
   </div>
 </section>
 
@@ -241,7 +282,7 @@ function chunks(text) {
   return out;
 }
 for (const s of scenes) {
-  const list = chunks(s.say.replace("Ворд Босс", "WordBoss").replace("Ворд Б+осс", "WordBoss").replace("команду лёрн", "/learn").replace("командой прон", "/pron"));
+  const list = chunks(s.say.replace("Ворд Босс", "WordBoss").replace("Ворд Б+осс", "WordBoss").replace("команду лёрн", "/learn").replace("командой прон", "/pron").replace("команда экстеншн", "/extension").replace("в хроме", "в Chrome"));
   const total = list.reduce((n, c) => n + c.length, 0);
   let t = LEAD; s.subs = list.map((c) => { const from = t; t += (c.length / total) * s.dur; return { from, to: t, text: c }; });
 }
@@ -280,6 +321,28 @@ window.render = function (t) {
     for (const n of el.querySelectorAll("[data-drift]")) {
       n.style.transform = `translate(${Math.sin(local * 0.6) * 14 * n.dataset.drift}px, ${local * 9 * n.dataset.drift}px)`;
       n.style.opacity = clamp(local / 0.8) * 0.9;
+    }
+    for (const n of el.querySelectorAll("[data-mark]")) {
+      const p = ease((local - f(+n.dataset.mark)) / 0.25);
+      n.style.background = `rgba(135,116,225,${(0.55 * p).toFixed(3)})`;
+    }
+    for (const n of el.querySelectorAll("[data-grow]")) {
+      const [a, b] = n.dataset.grow.split(",").map(Number);
+      const p = ease((local - f(a)) / (f(b) - f(a))); // как у курсора — рамка тянется за ним
+      n.style.opacity = p > 0 ? 1 : 0;
+      n.style.transform = `scale(${Math.max(p, 0.001)})`;
+    }
+    for (const n of el.querySelectorAll("[data-path]")) {
+      // Отрезки «с, по, x1, y1, x2, y2» (доли реплики и пиксели): курсор едет от точки к точке, между отрезками стоит.
+      const segs = n.dataset.path.split(";").map((x) => x.split(",").map(Number));
+      let [x, y] = [segs[0][2], segs[0][3]];
+      for (const [a, b, x1, y1, x2, y2] of segs) {
+        if (local < f(a)) break;
+        const p = ease((local - f(a)) / (f(b) - f(a)));
+        x = x1 + (x2 - x1) * p; y = y1 + (y2 - y1) * p;
+      }
+      n.style.left = `${x}px`; n.style.top = `${y}px`;
+      n.style.opacity = clamp((local - f(segs[0][0]) + 0.3) / 0.3);
     }
     const cur = s.subs.find((c) => local >= c.from && local < c.to + 0.15);
     if (cur) { sub.textContent = cur.text; sub.parentElement.style.opacity = 1; }
