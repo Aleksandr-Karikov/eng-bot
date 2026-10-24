@@ -62,11 +62,25 @@ describe("/text batches", () => {
     await h.bot.handleUpdate(h.callback(100, button(h.calls, "🔍 По одному")));
     expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("1/2");
     await h.bot.handleUpdate(h.callback(100, button(h.calls, "⏭ Пропустить")));
-    expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("2/2");
+    await vi.waitFor(() => expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("2/2"));
     await h.bot.handleUpdate(h.callback(100, button(h.calls, "➕ Добавить")));
 
     await vi.waitFor(async () => expect((await h.db.select().from(words)).map((w) => w.term)).toEqual(["hangar"]));
     await vi.waitFor(() => expect(String(sentTo(h.calls, 200).at(-1)?.payload.text)).toContain("hangar"));
+  });
+
+  it("one by one: when Telegram refuses to mark the old card (429 in a busy group), the next card still comes", async () => {
+    // Баг #5: пометка «⏭ слово» падала на лимите Telegram — и шаг обрывался, следующая карточка не приходила.
+    const h = botHarness({
+      enricher: enricher([item("serendipity"), item("hangar")]),
+      fail: (call) => (call.method === "editMessageText" && String(call.payload.text).startsWith("⏭") ? "Too Many Requests: retry after 27" : undefined),
+    });
+    await room(h);
+    await h.bot.handleUpdate(h.message(100, "/text serendipity, hangar"));
+    await vi.waitFor(() => expect(lastKeyboard(h.calls).some((b) => b.text === "🔍 По одному")).toBe(true));
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "🔍 По одному")));
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "⏭ Пропустить")));
+    await vi.waitFor(() => expect(String(sentTo(h.calls, 100).at(-1)!.payload.text)).toContain("2/2"));
   });
 
   it("pages through a long list and keeps ticks across pages", async () => {

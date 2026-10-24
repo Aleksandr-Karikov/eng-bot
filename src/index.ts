@@ -1,3 +1,4 @@
+import { autoRetry } from "@grammyjs/auto-retry";
 import { API_CONSTANTS, Bot } from "grammy";
 import { redactLogs } from "./log-redact";
 import { captureRecentLogs } from "./log-buffer";
@@ -54,6 +55,9 @@ redactLogs(config.botToken);
 captureRecentLogs();
 const db = createDb(config.dbPath);
 const bot = new Bot<BotContext>(config.botToken);
+// Telegram ограничивает частоту (в группе — около 20 сообщений и правок в минуту) и отвечает 429 «подожди N секунд»:
+// ждём и повторяем, иначе шаг (например, разбор слов по одному) обрывался на полпути.
+bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }));
 const notifier = new Notifier(
   { sendMessage: (chatId, text, other) => bot.api.sendMessage(chatId, text, other as Parameters<typeof bot.api.sendMessage>[2]) },
   db,

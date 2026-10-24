@@ -118,15 +118,34 @@ export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, ac
   deps.drafts.delete(draft.id);
   if (!batch || batch.finished) return void (await ctx.editMessageText("Эта пачка уже неактуальна"));
 
-  if (action === "ok") {
-    await saveItems(deps, batch, [toWordDraft(draft)]);
-    await ctx.editMessageText(`✅ <b>${esc(draft.term)}</b>`, HTML);
-  } else {
-    await ctx.editMessageText(`⏭ <b>${esc(draft.term)}</b>`, HTML);
-  }
+  if (action === "ok") await saveItems(deps, batch, [toWordDraft(draft)]);
+  // Пометка на прошлой карточке — косметика: не вышло (лимит Telegram) — следующую карточку всё равно показываем.
+  await ctx.editMessageText(`${action === "ok" ? "✅" : "⏭"} <b>${esc(draft.term)}</b>`, HTML).catch((err) => console.error("Batch card mark failed", err));
   if (action === "stop") return finish(ctx, deps, batch);
   batch.position++;
   await showCurrent(ctx, deps, batch);
+}
+
+/** Идёт ли правка клавиатуры пачки и изменилась ли пачка с её начала. */
+const keyboardSync = new WeakMap<Batch, { running: boolean; dirty: boolean }>();
+
+/**
+ * Галочки и страницы пачки: одна правка клавиатуры за раз и всегда с последним состоянием. Частые нажатия
+ * (особенно в группе, где у Telegram лимит ~20 правок в минуту) схлопываются, а не копятся в очередь из устаревших правок.
+ */
+function syncKeyboard(ctx: BotContext, batch: Batch): void {
+  const sync = keyboardSync.get(batch) ?? { running: false, dirty: false };
+  keyboardSync.set(batch, sync);
+  sync.dirty = true;
+  if (sync.running) return;
+  sync.running = true;
+  void (async () => {
+    while (sync.dirty && !batch.finished) {
+      sync.dirty = false;
+      await ctx.editMessageReplyMarkup({ reply_markup: batchKeyboard(batch) }).catch((err) => console.error("Batch keyboard failed", err));
+    }
+    sync.running = false;
+  })();
 }
 
 export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
@@ -164,7 +183,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
     }
     batch.toggle(cb.index);
     await ctx.answerCallbackQuery();
-    await ctx.editMessageReplyMarkup({ reply_markup: batchKeyboard(batch) });
+    syncKeyboard(ctx, batch);
   });
 
   bot.callbackQuery(/^bp:/, async (ctx) => {
@@ -176,7 +195,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.answerCallbackQuery();
     if (cb.page === batch.page || cb.page < 0 || cb.page >= batchPageCount(batch)) return;
     batch.page = cb.page;
-    await ctx.editMessageReplyMarkup({ reply_markup: batchKeyboard(batch) });
+    syncKeyboard(ctx, batch);
   });
 
   bot.callbackQuery(/^b:/, async (ctx) => {

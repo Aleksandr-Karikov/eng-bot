@@ -74,7 +74,9 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     }
     if (draft.batchId !== undefined && cb.action !== "cancel") {
       await ctx.answerCallbackQuery();
-      return onBatchDraft(ctx, deps, draft, cb.action);
+      // В фоне: при лимите Telegram шаг ждёт и повторяет — апдейты остальных при этом не стоят.
+      const action = cb.action;
+      return background(ctx, () => onBatchDraft(ctx, deps, draft, action));
     }
     if (cb.action === "cancel") {
       deps.drafts.delete(draft.id);
