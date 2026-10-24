@@ -31,8 +31,11 @@ export interface Pronunciation {
 export interface SpeechRecognizer {
   /** Текст речи, по-английски. */
   transcribe(audio: Buffer): Promise<string>;
-  /** Какими звуками произнесено и чем отличается от эталона для text; any — ближайший из UK и US. */
-  pronunciation(audio: Buffer, text: string, accent: Accent | "any"): Promise<Pronunciation>;
+  /**
+   * Какими звуками произнесено и чем отличается от эталона для text; any — ближайший из UK и US.
+   * refs — то же, сказанное диктором: эталоном служит и то, что модель слышит у него.
+   */
+  pronunciation(audio: Buffer, text: string, accent: Accent | "any", refs?: Array<{ accent: Accent; audio: Buffer }>): Promise<Pronunciation>;
 }
 
 /** Модели грузятся при первом запросе (а в самый первый раз — скачиваются, ~2 ГБ). */
@@ -48,11 +51,14 @@ export class LocalRecognizer implements SpeechRecognizer {
   }
 
   async transcribe(audio: Buffer): Promise<string> {
-    return this.withWav(audio, async (wav) => String((await this.worker.request({ op: "transcribe", wav }, REQUEST_TIMEOUT_MS)).text ?? ""));
+    return this.withWavs([audio], async ([wav]) => String((await this.worker.request({ op: "transcribe", wav }, REQUEST_TIMEOUT_MS)).text ?? ""));
   }
 
-  async pronunciation(audio: Buffer, text: string, accent: Accent | "any"): Promise<Pronunciation> {
-    return this.withWav(audio, async (wav) => (await this.worker.request({ op: "phonemes", wav, text, accent }, REQUEST_TIMEOUT_MS)) as unknown as Pronunciation);
+  async pronunciation(audio: Buffer, text: string, accent: Accent | "any", refs: Array<{ accent: Accent; audio: Buffer }> = []): Promise<Pronunciation> {
+    return this.withWavs([audio, ...refs.map((r) => r.audio)], async ([wav, ...refWavs]) => {
+      const body = { op: "phonemes", wav, text, accent, refs: refs.map((r, i) => ({ accent: r.accent, wav: refWavs[i] })) };
+      return (await this.worker.request(body, REQUEST_TIMEOUT_MS)) as unknown as Pronunciation;
+    });
   }
 
   close(): void {
@@ -60,14 +66,19 @@ export class LocalRecognizer implements SpeechRecognizer {
   }
 
   /** Модели ждут 16 кГц моно. */
-  private async withWav<T>(audio: Buffer, use: (wav: string) => Promise<T>): Promise<T> {
+  private async withWavs<T>(audios: Buffer[], use: (wavs: string[]) => Promise<T>): Promise<T> {
     const dir = await mkdtemp(join(tmpdir(), "eng-bot-stt-"));
     try {
-      const input = join(dir, "voice.ogg");
-      const wav = join(dir, "voice.wav");
-      await writeFile(input, audio);
-      await run("ffmpeg", ["-y", "-loglevel", "error", "-i", input, "-ar", "16000", "-ac", "1", wav], { timeout: 20_000 });
-      return await use(wav);
+      const wavs = await Promise.all(
+        audios.map(async (audio, i) => {
+          const input = join(dir, `voice-${i}.ogg`);
+          const wav = join(dir, `voice-${i}.wav`);
+          await writeFile(input, audio);
+          await run("ffmpeg", ["-y", "-loglevel", "error", "-i", input, "-ar", "16000", "-ac", "1", wav], { timeout: 20_000 });
+          return wav;
+        }),
+      );
+      return await use(wavs);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

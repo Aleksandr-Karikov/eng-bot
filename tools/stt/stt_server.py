@@ -2,13 +2,15 @@
 Распознавание речи для бота: постоянный процесс, чтобы модели грузились один раз.
 Читает со stdin строки JSON, пишет на stdout по строке на запрос:
   {"id", "op": "transcribe", "wav"}                    → {"id", "ok": true, "text"}
-  {"id", "op": "phonemes", "wav", "text", "accent"}    → {"id", "ok": true, "heard", "expected", "score", "diff", "accent"}
+  {"id", "op": "phonemes", "wav", "text", "accent", "refs"} → {"id", "ok": true, "heard", "expected", "score", "diff", "accent"}
 wav — 16 кГц моно. Whisper — что услышал «слушатель» (он додумывает слова, поэтому для произношения
-отдельно модель фонем: она пишет звуки, какие были, а эталон — из espeak, тем же алфавитом).
+отдельно модель фонем: она пишет звуки, какие были). Эталоны — из espeak тем же алфавитом и то, что та же
+модель слышит у диктора (refs: [{"accent", "wav"}]): так её собственные привычки не засчитываются как ошибка.
 """
 import difflib
 import json
 import os
+import re
 import sys
 
 import espeakng_loader
@@ -65,6 +67,33 @@ def expected_phonemes(text, accent):
     return [p for p in ipa.split() if p != "|"]
 
 
+# Модель многоязычная: пишет одно и то же разными значками (придыхание, тоны, длина, тёмное l) — сводим к одному.
+VOWELS = {
+    **dict.fromkeys("ɑ ɒ ɔ a ä".split(), "ɑ"),
+    **dict.fromkeys("ə ɐ ɚ ɜ ʌ ᵻ ɘ".split(), "ə"),
+    **dict.fromkeys("e ɛ e̞".split(), "ɛ"),
+    **dict.fromkeys("oʊ əʊ o".split(), "oʊ"),
+    **dict.fromkeys("ɪə iə ɪɹ".split(), "ɪə"),
+    **dict.fromkeys("eə ɛə ɛɹ".split(), "eə"),
+    **dict.fromkeys("ʊə ʊɹ".split(), "ʊə"),
+}
+CONSONANTS = {"ph": "p", "th": "t", "kh": "k", "ɫ": "l", "l̩": "l", "əl": "ə l", "n̩": "n", "ɾ": "t", "r": "ɹ", "ɻ": "ɹ", "ʔ": "", "dZ": "dʒ", "tS": "tʃ"}
+
+
+def normalize(phones):
+    out = []
+    for p in phones:
+        p = re.sub(r"[0-9ʰʲː:.^\[]", "", p)
+        if len(p) > 1:
+            p = p.rstrip("ɜ")  # тон 3 в словаре модели
+        p = VOWELS.get(CONSONANTS.get(p, p), CONSONANTS.get(p, p))
+        for q in p.split():
+            # Придыхание отдельным значком после p / t / k.
+            if not (q == "h" and out and out[-1] in ("p", "t", "k")):
+                out.append(q)
+    return out
+
+
 def compare(expected, heard):
     matcher = difflib.SequenceMatcher(a=expected, b=heard, autojunk=False)
     diff = [{"op": op, "expected": expected[i1:i2], "heard": heard[j1:j2]} for op, i1, i2, j1, j2 in matcher.get_opcodes()]
@@ -72,10 +101,12 @@ def compare(expected, heard):
 
 
 def phonemes(req):
-    """accent uk / us — эталон этого акцента; any — оба, засчитывается ближайший (не придираемся к UK/US)."""
-    heard = heard_phonemes(load(req["wav"]))
+    """accent uk / us — эталоны этого акцента; any — оба, засчитывается ближайший (не придираемся к UK/US)."""
+    heard = normalize(heard_phonemes(load(req["wav"])))
     accents = ["uk", "us"] if req.get("accent") == "any" else [req.get("accent", "us")]
-    results = [{**compare(expected_phonemes(req["text"], a), heard), "accent": a} for a in accents]
+    refs = [(a, normalize(expected_phonemes(req["text"], a))) for a in accents]
+    refs += [(r["accent"], normalize(heard_phonemes(load(r["wav"])))) for r in req.get("refs", []) if r["accent"] in accents]
+    results = [{**compare(expected, heard), "accent": a} for a, expected in refs if expected]
     return max(results, key=lambda r: r["score"])
 
 

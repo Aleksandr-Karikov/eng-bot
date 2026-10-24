@@ -43,6 +43,7 @@ export type Cb =
   | { k: "talkTopic"; index: number }
   | { k: "talkEnd" }
   | { k: "pronListen"; accent: "uk" | "us" }
+  | { k: "pronNext" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
   | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" }
@@ -117,6 +118,7 @@ export function encodeCb(cb: Cb): string {
     case "talkTopic": return `tt:${cb.index}`;
     case "talkEnd": return "te";
     case "pronListen": return `pl:${cb.accent}`;
+    case "pronNext": return "pn";
     case "captureUndo": return `cu:${cb.wordId}`;
     case "promote": return `uf:${cb.wordId}`;
     case "settingsScreen": return `ss:${cb.screen}`;
@@ -233,6 +235,7 @@ export function decodeCb(data: string): Cb | null {
       return index !== null ? { k: "talkTopic", index } : null;
     }
     case "te": return { k: "talkEnd" };
+    case "pn": return { k: "pronNext" };
     case "pl": return a === "uk" || a === "us" ? { k: "pronListen", accent: a } : null;
     case "ek": return { k: "extensionKey" };
     case "ez": return { k: "extensionZip" };
