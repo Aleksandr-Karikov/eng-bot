@@ -45,7 +45,7 @@ describe("/room management", () => {
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🗑 Удалить комнату")));
     expect(h.calls.some((c) => String(c.payload.text).includes("«Test»"))).toBe(true);
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🗑 Да, удалить")));
-    expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["Keep"]);
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name)).toEqual(["Keep"]);
   });
 
   it("does not offer or allow deletion to non-creators", async () => {
@@ -57,7 +57,7 @@ describe("/room management", () => {
     await h.bot.handleUpdate(h.message(200, "/room"));
     expect(lastButtons(h.calls).map((b) => b.text)).not.toContain("🗑 Удалить комнату");
     await h.bot.handleUpdate(h.callback(200, `rxo:${room.id}`));
-    expect(await h.db.select().from(rooms)).toHaveLength(1);
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null)).toHaveLength(1);
   });
 
   it("asks for a name when creating a room, and the reply does not become a word", async () => {
@@ -68,13 +68,13 @@ describe("/room management", () => {
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Комната для друзей")));
     expect(h.calls.some((c) => String(c.payload.text).includes("Как назвать"))).toBe(true);
     await h.bot.handleUpdate(h.message(100, "English club"));
-    await vi.waitFor(async () => expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["Мои слова", "English club"]));
+    await vi.waitFor(async () => expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name)).toEqual(["English club"]));
     expect(enrich).not.toHaveBeenCalled();
 
     await h.bot.handleUpdate(h.message(100, "/newroom"));
     expect(h.calls.filter((c) => String(c.payload.text).includes("Как назвать"))).toHaveLength(2);
     await h.bot.handleUpdate(h.message(100, "/newroom Друзья"));
-    expect((await h.db.select().from(rooms)).map((r) => r.name)).toContain("Друзья");
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name)).toContain("Друзья");
   });
 
   it("lets the creator rename the current room", async () => {
@@ -92,7 +92,7 @@ describe("/room management", () => {
     await h.bot.handleUpdate(h.message(100, "/room"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✏️ Переименовать")));
     await h.bot.handleUpdate(h.message(100, "English club"));
-    expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["English club"]);
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name)).toEqual(["English club"]);
     expect(h.calls.some((c) => String(c.payload.text).includes("«English club»"))).toBe(true);
   });
 });

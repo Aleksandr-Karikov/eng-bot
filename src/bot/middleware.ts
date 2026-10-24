@@ -10,10 +10,12 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
     if (!ctx.from || ctx.from.is_bot) return;
     let user = await upsertUser(deps.db, ctx.from, deps.now());
     if (ctx.chat?.type === "private" && !user.canDm) user = await updateUser(deps.db, user.id, { canDm: true });
-    // Пришёл в личку без комнаты — сразу личный словарь: со словами можно работать без «создай комнату».
-    if (ctx.chat?.type === "private" && user.currentRoomId == null) {
+    // Личный словарь «Мои слова» — у каждого, кто пишет в личку: на него можно переключиться в любой момент,
+    // а без комнаты он сразу становится текущим — со словами можно работать без «создай комнату».
+    if (ctx.chat?.type === "private") {
+      const hadRoom = user.currentRoomId != null;
       await ensurePersonalRoom(deps.db, user.id, deps.now());
-      user = (await getUser(deps.db, user.id)) ?? user;
+      if (!hadRoom) user = (await getUser(deps.db, user.id)) ?? user;
     }
     ctx.user = user;
 

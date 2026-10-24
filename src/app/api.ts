@@ -67,10 +67,10 @@ export interface AppCard {
 
 export async function appUser(deps: Pick<Deps, "db" | "now">, telegramId: number): Promise<User | undefined> {
   const user = await getUserByTelegramId(deps.db, telegramId);
-  if (!user || user.currentRoomId != null) return user;
-  // Как в боте: без комнаты — личный словарь, а не «сначала выбери комнату».
+  if (!user) return user;
+  // Как в боте: личный словарь есть у каждого; без комнаты он и становится текущим.
   await ensurePersonalRoom(deps.db, user.id, deps.now());
-  return getUserByTelegramId(deps.db, telegramId);
+  return user.currentRoomId != null ? user : getUserByTelegramId(deps.db, telegramId);
 }
 
 export async function appMe(deps: Deps, user: User) {

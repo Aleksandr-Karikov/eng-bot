@@ -36,7 +36,7 @@ describe("abandoned «type your answer» prompts", () => {
     await h.bot.handleUpdate(h.message(100, "/stats"));
     await h.bot.handleUpdate(h.message(100, "serendipity"));
     await vi.waitFor(() => expect(enrich).toHaveBeenCalledWith("serendipity", undefined));
-    expect((await h.db.select().from(rooms)).map((r) => r.name)).toEqual(["R"]);
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name)).toEqual(["R"]);
   });
 
   it("a pending edit expires after 15 minutes instead of overwriting the word", async () => {
@@ -70,7 +70,7 @@ describe("abandoned «type your answer» prompts", () => {
     await h.bot.handleUpdate(h.message(100, "/room"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Новая комната")));
     await h.bot.handleUpdate(h.message(100, "Club"));
-    expect((await h.db.select().from(rooms)).map((r) => r.name).sort()).toEqual(["Club", "R"]);
+    expect((await h.db.select().from(rooms)).filter((r) => r.personalOf == null).map((r) => r.name).sort()).toEqual(["Club", "R"]);
     await h.bot.handleUpdate(h.message(100, "ubiquitous"));
     await vi.waitFor(() => expect(enrich).toHaveBeenCalledWith("ubiquitous", undefined));
     expect((await getWord(h.db, word.id))?.translation).toBe("берег");

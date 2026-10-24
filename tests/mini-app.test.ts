@@ -130,7 +130,9 @@ describe("📚 Mini App API", () => {
     it("changes settings one at a time, with the bot's rules", async () => {
       const { h, app, auth } = await setup();
       const { settings } = await (await app.request("/api/settings", { headers: auth })).json();
-      expect(settings).toMatchObject({ rooms: [{ name: "R", current: true }], reminderHour: 20, notifyDue: true, drill: true });
+      expect(settings).toMatchObject({ reminderHour: 20, notifyDue: true, drill: true });
+      // Общая комната — текущая; личный словарь «Мои слова» есть всегда, на него можно переключиться.
+      expect(settings.rooms).toEqual(expect.arrayContaining([expect.objectContaining({ name: "R", current: true }), expect.objectContaining({ name: "Мои слова", current: false })]));
       expect(settings.modes.map((m: { key: string }) => m.key)).toContain("cloze");
       await post(app, auth, "/api/settings", { reminderHour: 9 });
       await post(app, auth, "/api/settings", { cardPart: "mnemonic", on: false });
