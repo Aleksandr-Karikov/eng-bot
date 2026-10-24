@@ -7,7 +7,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
-import { appAnswer, appAudio, appDrillAnswer, appMe, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
@@ -56,6 +56,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const r = await appSaveMistakes(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 404);
   });
+  app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
   // 🧠 Ответ на вопрос по ошибкам из очереди.
   app.post("/api/drill", async (c) => {
     const r = await appDrillAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));

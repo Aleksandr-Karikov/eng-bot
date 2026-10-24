@@ -7,6 +7,7 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
+import { progressReport } from "../services/progress";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
@@ -253,4 +254,10 @@ export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown
     ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
     : await triage(deps.db, { userId: user.id, cardId, action, now });
   return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
+}
+
+/** 📊 Прогресс: серия, выучено, календарь занятий, прогноз повторений, цель комнаты, темы ошибок. */
+export async function appProgress(deps: Deps, user: User) {
+  const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+  return progressReport(deps.db, user, room, deps.now());
 }

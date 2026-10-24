@@ -66,8 +66,8 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .top-right { display: flex; align-items: center; gap: 8px; flex: none; }
 .corner { display: flex; gap: 4px; }
 .corner-button {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 50%;
   background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
@@ -129,3 +129,30 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .type-input textarea { min-height: 72px; font-size: 17px; }
 .checking { flex-direction: column; gap: 8px; padding: 12px 0; display: flex; align-items: center; }
 .gap-answer { color: var(--tg-theme-accent-text-color, #2481cc); }
+
+/* 📊 Прогресс */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px 4px; }
+.tile { padding: 12px 14px; border-radius: 14px; background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff)); }
+.tile-value { font: 700 24px/1.2 -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: var(--tg-theme-text-color, #000); }
+.week-line { display: block; padding: 4px 16px 0; font-size: 14px; }
+.calendar-wrap { padding: 12px 16px; }
+.calendar { display: grid; grid-template-rows: repeat(7, auto); gap: 3px; }
+.cal-label { font: 11px/1 -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: var(--tg-theme-hint-color, #8e8e93); align-self: center; }
+.cal-cell { aspect-ratio: 1; border: 0; padding: 0; border-radius: 3px; cursor: pointer; background: var(--tg-theme-secondary-bg-color, rgba(127, 127, 127, 0.15)); }
+/* Одна шкала одного цвета: светлее — меньше ответов, насыщеннее — больше. */
+.cal-cell.l1 { background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 30%, transparent); }
+.cal-cell.l2 { background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 55%, transparent); }
+.cal-cell.l3 { background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 80%, transparent); }
+.cal-cell.l4 { background: var(--tg-theme-button-color, #2481cc); }
+.cal-cell.picked { outline: 2px solid var(--tg-theme-text-color, #000); outline-offset: 1px; }
+.cal-caption { display: block; margin-top: 10px; font-size: 13px; }
+.forecast { display: flex; gap: 6px; align-items: flex-end; padding: 12px 16px; height: 150px; }
+.fc-day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+.fc-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.fc-bar { width: 100%; border-radius: 4px 4px 0 0; background: var(--tg-theme-button-color, #2481cc); }
+.fc-value, .fc-label { font: 12px/1.2 -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: var(--tg-theme-hint-color, #8e8e93); }
+.fc-value { color: var(--tg-theme-text-color, #000); font-weight: 600; }
+.goal { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
+.dots { display: inline-flex; gap: 4px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tg-theme-secondary-bg-color, rgba(127, 127, 127, 0.25)); box-shadow: inset 0 0 0 1px var(--tg-theme-hint-color, #8e8e93); }
+.dot.on { background: #22c55e; box-shadow: none; }

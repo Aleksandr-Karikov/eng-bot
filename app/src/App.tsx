@@ -1,17 +1,18 @@
 import { settingsButton } from "@telegram-apps/sdk-react";
 import { useCallback, useEffect, useState } from "react";
 import { Learn } from "./Learn";
+import { ProgressScreen } from "./Progress";
 import { SettingsScreen } from "./Settings";
 import { Triage } from "./Triage";
 import { Words } from "./Words";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "triage";
+type Page = "learn" | "words" | "settings" | "triage" | "progress";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  return asked === "words" || asked === "settings" || asked === "triage" ? asked : "learn";
+  return asked === "words" || asked === "settings" || asked === "triage" || asked === "progress" ? asked : "learn";
 }
 
 /**
@@ -41,11 +42,15 @@ export function App() {
   if (page === "words") return <Words onExit={back} />;
   if (page === "settings") return <SettingsScreen onExit={back} />;
   if (page === "triage") return <Triage onExit={back} />;
+  if (page === "progress") return <ProgressScreen onExit={back} />;
   return (
     <Learn
       onTriage={() => open("triage")}
       corner={
         <div className="corner">
+          <button className="corner-button" aria-label="Прогресс" onClick={() => open("progress")}>
+            📊
+          </button>
           <button className="corner-button" aria-label="Слова" onClick={() => open("words")}>
             📖
           </button>

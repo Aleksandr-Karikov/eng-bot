@@ -216,3 +216,16 @@ export interface CheckResult {
 export const checkAnswer = (card: Card, answer: string, dunno = false) =>
   post<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno });
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
+
+export interface Progress {
+  stats: { total: number; learned: number; learning: number; fresh: number; reviews7d: number; streak: number };
+  started7d: number;
+  calendar: Array<{ date: string; count: number }>;
+  forecast: Array<{ date: string; count: number }>;
+  goal?: { room: string; target: number; done: number; auto: boolean; byUser: Array<{ name: string; count: number }> };
+  topics: Array<{ category: string; count: number; streak: number }>;
+  resolveStreak: number;
+  resolved: string[];
+}
+
+export const getProgress = () => call<Progress & { ok: true }>("/api/progress");
