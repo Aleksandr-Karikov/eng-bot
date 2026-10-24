@@ -160,3 +160,5 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 /* ➕ Новое слово */
 .add-word { padding-top: 12px; }
 .draft-extra { display: block; padding: 6px 16px 10px; }
+
+.lesson-row { padding-top: 8px; }

@@ -9,6 +9,7 @@ import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
 import { appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
+import { sendLesson } from "../bot/handlers/lesson";
 import { appAddWord, appChangeSetting, appEditWord, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
@@ -55,6 +56,11 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/mistakes", async (c) => {
     const r = await appSaveMistakes(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 404);
+  });
+  // 🎧 Аудиоурок — в личку от бота (Telegram играет его в фоне, приложение так не умеет).
+  app.post("/api/lesson", async (c) => {
+    if (!ctx.api) return c.json({ ok: false, error: "Бот недоступен" }, 503);
+    return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user")) });
   });
   app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
   // 🧠 Ответ на вопрос по ошибкам из очереди.

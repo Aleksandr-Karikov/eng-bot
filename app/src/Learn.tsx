@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
+import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
 import { haptic, notify } from "./telegram";
@@ -197,13 +198,16 @@ function Done({ done }: { done: number }) {
   return (
     <Placeholder
       header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
-      description="Новые слова и повторения появятся сами — бот напомнит."
+      description="Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
       action={
-        native ? undefined : (
-          <Button size="l" stretched onClick={() => miniApp.close()}>
-            Закрыть
-          </Button>
-        )
+        <div className="actions">
+          <LessonButton />
+          {!native && (
+            <Button size="l" stretched onClick={() => miniApp.close()}>
+              Закрыть
+            </Button>
+          )}
+        </div>
       }
     />
   );

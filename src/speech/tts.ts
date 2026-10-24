@@ -16,6 +16,8 @@ export interface SpeechSynth {
 }
 
 const VOICES: Record<Accent, string> = { uk: "Daniel", us: "Samantha" };
+/** Русский голос macOS — для переводов в аудиоуроке (в Kokoro русского нет). */
+export const RUSSIAN_VOICE = "Milena";
 
 /** `say` понимает встроенные команды [[...]] (паузы, голос) — из слова пользователя их убираем. */
 export function speakableText(text: string): string {
@@ -28,18 +30,23 @@ export function speakableText(text: string): string {
  */
 export class MacSaySynth implements SpeechSynth {
   async synthesize(text: string, accent: Accent, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
-    const dir = await mkdtemp(join(tmpdir(), "eng-bot-tts-"));
-    try {
-      const input = join(dir, "text.txt");
-      const aiff = join(dir, "speech.aiff");
-      const out = join(dir, `speech.${format}`);
-      await writeFile(input, speakableText(text), "utf8");
-      await run("say", ["-v", VOICES[accent], "-f", input, "-o", aiff], { timeout: 20_000 });
-      await encode(aiff, out, format);
-      return await readFile(out);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    return macSay(text, VOICES[accent], format);
+  }
+}
+
+/** Фраза голосом macOS (`voice` — имя голоса из `say -v '?'`). */
+export async function macSay(text: string, voice: string, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), "eng-bot-tts-"));
+  try {
+    const input = join(dir, "text.txt");
+    const aiff = join(dir, "speech.aiff");
+    const out = join(dir, `speech.${format}`);
+    await writeFile(input, speakableText(text), "utf8");
+    await run("say", ["-v", voice, "-f", input, "-o", aiff], { timeout: 20_000 });
+    await encode(aiff, out, format);
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 }
 

@@ -245,3 +245,6 @@ export interface WordDraft {
 
 export const prepareWord = (text: string) => post<{ draft: WordDraft }>("/api/words/prepare", { text }).then((r) => r.draft);
 export const addWord = (draft: WordDraft) => post<{ id: number }>("/api/words", draft);
+
+/** 🎧 Аудиоурок придёт в чат с ботом: started — собирается, busy — уже собирается, empty — слушать пока нечего. */
+export const requestLesson = () => post<{ status: "started" | "busy" | "empty" }>("/api/lesson").then((r) => r.status);

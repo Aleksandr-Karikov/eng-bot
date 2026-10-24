@@ -2,6 +2,7 @@ import { Cell, List, Placeholder, Progress as Bar, Section, Spinner, Text } from
 import { useEffect, useState } from "react";
 import { getProgress, type Progress } from "./api";
 import { useBackButton } from "./telegram";
+import { LessonButton } from "./LessonButton";
 
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -47,6 +48,9 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
         <Tile value={stats.learned} label="выучено" icon="✅" />
         <Tile value={stats.learning} label="учу" icon="📚" />
         <Tile value={stats.fresh} label="ещё не начато" icon="🆕" />
+      </div>
+      <div className="form-buttons lesson-row">
+        <LessonButton />
       </div>
       <Text className="hint week-line">
         За неделю: {stats.reviews7d} {plural(stats.reviews7d, "ответ", "ответа", "ответов")}, начато {data.started7d}{" "}
