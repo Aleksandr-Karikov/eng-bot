@@ -1,4 +1,4 @@
-import type { Bot } from "grammy";
+import { InputFile, type Bot } from "grammy";
 import type { User } from "../../db/schema";
 import {
   createRoom, deleteRoom, findRoomByChat, renameRoom, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
@@ -6,7 +6,7 @@ import {
 import { getUser, updateUser } from "../../services/users";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
-import { HTML, inviteLink, type BotContext, type Deps } from "../context";
+import { background, HTML, inviteLink, type BotContext, type Deps } from "../context";
 import { confirmRoomDeleteKeyboard, roomKeyboard } from "../keyboards";
 import { clearPendingInputs } from "../pending";
 import { esc, plural, welcomeText } from "../texts";
@@ -55,6 +55,25 @@ async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
 }
 
 export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
+  // Видео загружается в Telegram один раз, дальше — по file_id.
+  let welcomeVideoId: string | undefined;
+
+  /** 🎬 Минутное видео «как пользоваться» — в личке перед приветствием. Не отправилось — просто без него. */
+  async function sendWelcomeVideo(ctx: BotContext): Promise<void> {
+    if (!deps.welcomeVideo || ctx.chat?.type !== "private") return;
+    try {
+      const sent = await ctx.replyWithVideo(welcomeVideoId ?? new InputFile(deps.welcomeVideo), {
+        width: 1080,
+        height: 1920,
+        supports_streaming: true,
+        caption: "🎬 Минута о том, как пользоваться ботом",
+      });
+      welcomeVideoId ??= sent.video?.file_id;
+    } catch (err) {
+      console.error("Welcome video failed", err);
+    }
+  }
+
   bot.command("start", async (ctx) => {
     const payload = ctx.match.trim();
     if (payload.startsWith("join_")) {
@@ -67,9 +86,15 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
           : `Ты уже в комнате «${esc(room.name)}», она выбрана текущей.`,
         HTML,
       );
+      // Новичок по приглашению тоже не знает, как всё устроено.
+      if (joined) background(ctx, () => sendWelcomeVideo(ctx));
       return;
     }
-    await ctx.reply(welcomeText(), HTML);
+    // Видео грузится несколько секунд — в фоне, а текст после него, чтобы шли по порядку.
+    background(ctx, async () => {
+      await sendWelcomeVideo(ctx);
+      await ctx.reply(welcomeText(), HTML);
+    });
   });
 
   bot.command("help", (ctx) => ctx.reply(welcomeText(), HTML));

@@ -56,6 +56,8 @@ export interface Deps {
   speech: SpeechSynth;
   /** Распознавание голосовых; undefined — не установлено (tools/stt). */
   recognizer?: SpeechRecognizer;
+  /** Приветственное видео для /start (assets/welcome.mp4, собирается tools/video/build.sh); undefined — без видео. */
+  welcomeVideo?: string;
   /** Куда складывать голосовые из /pron с результатами — для оценки, можно ли верить проверке. */
   voiceSamplesDir?: string;
   voices: VoiceStore;

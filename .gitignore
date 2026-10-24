@@ -11,3 +11,5 @@ tools/stt/.venv/
 app/node_modules/
 app/dist/
 data/audio/
+tools/video/out/
+tools/video/v4_ru.pt

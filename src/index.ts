@@ -95,6 +95,7 @@ const deps: Deps = {
   speech,
   recognizer,
   voiceSamplesDir: "data/voice-samples",
+  welcomeVideo: existsSync("assets/welcome.mp4") ? "assets/welcome.mp4" : undefined,
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),

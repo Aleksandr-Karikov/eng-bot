@@ -68,6 +68,7 @@ export function botHarness(opts: {
   youtube?: SubtitleSource;
   recognizer?: SpeechRecognizer;
   voiceSamplesDir?: string;
+  welcomeVideo?: string;
 } = {}) {
   const db = testDb();
   const calls: ApiCall[] = [];
@@ -83,6 +84,8 @@ export function botHarness(opts: {
         ? { ...message, text: call.payload.text }
         : method === "sendVoice"
           ? { ...message, voice: { file_id: `voice-file-${calls.length}`, file_unique_id: "u", duration: 1 } }
+          : method === "sendVideo"
+          ? { ...message, video: { file_id: `video-file-${calls.length}`, file_unique_id: "u", width: 1080, height: 1920, duration: 65 } }
           : method === "getFile"
             ? { file_id: call.payload.file_id, file_unique_id: "u", file_path: "photos/file_1.jpg" }
             : method === "sendPhoto"
@@ -107,7 +110,7 @@ export function botHarness(opts: {
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, recognizer: opts.recognizer, voiceSamplesDir: opts.voiceSamplesDir, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
+  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, recognizer: opts.recognizer, voiceSamplesDir: opts.voiceSamplesDir, welcomeVideo: opts.welcomeVideo, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
   setupBot(bot, deps);
 
   let seq = 0;

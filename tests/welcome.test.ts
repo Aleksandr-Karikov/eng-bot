@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { welcomeText } from "../src/bot/texts";
 import { COMMANDS } from "../src/bot/setup";
 import { botHarness } from "./bot-harness";
@@ -22,6 +25,35 @@ describe("/start and /help", () => {
     const h = botHarness();
     await h.bot.handleUpdate(h.message(100, "/help"));
     expect(h.calls.at(-1)?.payload.text).toBe(welcomeText());
+  });
+});
+
+describe("🎬 welcome video", () => {
+  const video = () => {
+    const path = join(mkdtempSync(join(tmpdir(), "welcome-")), "welcome.mp4");
+    writeFileSync(path, "mp4");
+    return path;
+  };
+  const methods = (h: ReturnType<typeof botHarness>) => h.calls.map((c) => c.method).filter((m) => m === "sendVideo" || m === "sendMessage");
+
+  it("/start in DM: the video first, then the welcome text; the second time by file_id", async () => {
+    const h = botHarness({ welcomeVideo: video() });
+    await h.bot.handleUpdate(h.message(100, "/start"));
+    await vi.waitFor(() => expect(methods(h)).toEqual(["sendVideo", "sendMessage"]));
+    expect(h.calls.at(-1)?.payload.text).toBe(welcomeText());
+    await h.bot.handleUpdate(h.message(101, "/start"));
+    await vi.waitFor(() => expect(methods(h)).toHaveLength(4));
+    const second = h.calls.filter((c) => c.method === "sendVideo")[1];
+    expect(second.payload.video).toMatch(/^video-file-/);
+  });
+
+  it("no video file — only the text; a failed upload does not block the text", async () => {
+    const plain = botHarness();
+    await plain.bot.handleUpdate(plain.message(100, "/start"));
+    await vi.waitFor(() => expect(methods(plain)).toEqual(["sendMessage"]));
+    const broken = botHarness({ welcomeVideo: video(), fail: (call) => (call.method === "sendVideo" ? "Bad Request: file too big" : undefined) });
+    await broken.bot.handleUpdate(broken.message(100, "/start"));
+    await vi.waitFor(() => expect(broken.calls.at(-1)?.payload.text).toBe(welcomeText()));
   });
 });
 
