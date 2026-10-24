@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AddressInfo } from "node:net";
 import { startCaptureServer } from "../src/capture/server";
 import { sign } from "@telegram-apps/init-data-node";
-import { cards, reviewLogs } from "../src/db/schema";
+import { cards, reviewLogs, words } from "../src/db/schema";
 import { createApp } from "../src/app/server";
 import { createRoom } from "../src/services/rooms";
 import { getUser } from "../src/services/users";
@@ -136,6 +136,37 @@ describe("📚 Mini App API", () => {
       for (const key of ["ru_en", "cloze", "sentence", "listen", "collocation"]) await post(app, auth, "/api/settings", { mode: key, on: false });
       const last = await post(app, auth, "/api/settings", { mode: "en_ru", on: false });
       expect(await last.json()).toEqual({ ok: false, error: "Хотя бы один режим должен остаться включённым" });
+    });
+  });
+
+  describe("🔗 and 🧠 — questions with options in the queue", () => {
+    const quiz = { question: "We need to ___ a decision.", options: ["do", "make"], correct: 1, explanation: "make a decision" };
+
+    it("a seen word with a ready quiz can come as «сочетания», with the right answer filled in", async () => {
+      const h = botHarness({ random: () => 0.99 });
+      const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+      const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+      const saved = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "decision", translation: "решение", explanation: "", example: "", usefulness: 3 }, now: T0 });
+      if (saved.status !== "saved") throw new Error("dup");
+      await h.db.update(words).set({ collocations: JSON.stringify({ items: [{ phrase: "make a decision", translation: "принять решение" }], quiz }) });
+      await h.db.update(cards).set({ state: 2, stability: 5, reps: 3, due: new Date(T0.getTime() - 86_400_000) });
+      const app = createApp({ deps: h.deps, botToken: TOKEN });
+      const auth = { authorization: `tma ${sign({ user: { id: 100, first_name: "User100" } }, TOKEN, new Date())}` };
+      const { cards: queue } = await (await app.request("/api/queue", { headers: auth })).json();
+      expect(queue[0]).toMatchObject({ kind: "card", stage: "collocation", quiz: { options: ["do", "make"], correct: 1, filled: { before: "We need to ", answer: "make", after: " a decision." } } });
+      expect(queue[0].quiz.items).toEqual([{ phrase: "make a decision", translation: "принять решение" }]);
+    });
+
+    it("mixes a ready mistakes question in after every 5 cards and counts the answer to the topic", async () => {
+      const { h, app, auth } = await setup();
+      const room = (await h.db.select().from(words))[0].roomId;
+      for (const term of ["a1", "a2", "a3", "a4", "a5"]) await saveWord(h.db, { roomId: room, addedBy: 1, draft: { term, translation: term, explanation: "", example: "" }, now: T0 });
+      h.deps.drills.set(1, { questions: [{ ...quiz, category: "артикли" }], standalone: false, lastAtCount: 0, retryAfter: Date.now() + 60_000 });
+      const { cards: queue } = await (await app.request("/api/queue", { headers: auth })).json();
+      expect(queue.map((i: { kind: string }) => i.kind)).toEqual(["card", "card", "card", "card", "card", "drill", "card"]);
+      expect(queue[5]).toMatchObject({ category: "артикли", options: ["do", "make"] });
+      const res = await app.request("/api/drill", { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ category: "артикли", correct: true }) });
+      expect(res.status).toBe(200);
     });
   });
 });

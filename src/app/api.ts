@@ -7,6 +7,11 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
+import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
+import { gapParts } from "../bot/texts";
+import { storedCollocations } from "../services/collocations";
+import { pickStage } from "../services/exercises";
+import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { getRoom } from "../services/rooms";
@@ -17,12 +22,24 @@ import type { Answer } from "../srs/srs";
 const QUEUE_SIZE = 20;
 const AUDIO_DIR = resolve("data/audio");
 
+/** Вопрос с вариантами и разбор: пропуск в предложении, верный ответ уже подставлен (filled) — без повтора на стыке. */
+export interface AppQuiz {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation: string;
+  filled: { before: string; answer: string; after: string };
+}
+
 export interface AppCard {
+  kind: "card";
   cardId: number;
   reps: number;
   isNew: boolean;
-  /** EN → RU (видно слово) или RU → EN (видно перевод). */
-  stage: "en_ru" | "ru_en";
+  /** EN → RU (видно слово), RU → EN (видно перевод) или 🔗 сочетания (вопрос с вариантами). */
+  stage: "en_ru" | "ru_en" | "collocation";
+  /** Для сочетаний: вопрос и все частые сочетания слова для разбора. */
+  quiz?: AppQuiz & { items: Array<{ phrase: string; translation: string }> };
   word: {
     id: number;
     term: string;
@@ -57,14 +74,37 @@ function hasPicture(deps: Deps, word: Word): boolean {
   return Boolean(word.imageFileId || deps.pictures?.find(word));
 }
 
-/** Очередь карточек: тот же порядок, что в /learn. Вид — как там: новое и необязательное слово — EN → RU, остальное — случайно. */
-export async function appQueue(deps: Deps, user: User): Promise<AppCard[]> {
+/** 🧠 Вопрос по ошибкам, подмешанный в очередь (как в /learn — после каждых DRILL_EVERY карточек). */
+export interface AppDrill extends AppQuiz {
+  kind: "drill";
+  id: string;
+  category: string;
+}
+
+export type AppItem = AppCard | AppDrill;
+
+const DRILL_EVERY = 5;
+
+function quizOf(q: { question: string; options: string[]; correct: number; explanation: string }): AppQuiz {
+  return { question: q.question, options: q.options, correct: q.correct, explanation: q.explanation, filled: gapParts(q.question, q.options[q.correct] ?? "") };
+}
+
+/**
+ * Очередь: тот же порядок, что в /learn. Вид — как там: новое и необязательное слово — EN → RU, остальное — случайно
+ * из того, что умеет приложение (EN → RU, RU → EN, сочетания), и после каждых 5 карточек — вопрос по ошибкам, если готов.
+ */
+export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
   const items = await dueQueue(deps.db, user.id, deps.now(), QUEUE_SIZE);
-  return items.map(({ card, word }) => {
+  const modes = { en_ru: user.modeEnRu, ru_en: user.modeRuEn, collocation: user.modeCollocation, cloze: false, sentence: false, listen: false };
+  const cards: AppCard[] = items.map(({ card, word }) => {
     const isNew = card.state === State.New;
-    const both = user.modeEnRu && user.modeRuEn;
-    const stage = isNew || word.usefulness === 1 || !both ? (user.modeEnRu || isNew ? "en_ru" : "ru_en") : deps.random() < 0.5 ? "en_ru" : "ru_en";
+    const collocations = storedCollocations(word);
+    const picked = isNew || word.usefulness === 1 ? (user.modeEnRu || isNew ? "en_ru" : "ru_en") : pickStage(card, modes, false, deps.random, Boolean(collocations?.quiz));
+    const stage = picked === "ru_en" || picked === "collocation" ? picked : "en_ru";
+    if (!isNew && word.usefulness !== 1 && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
     return {
+      kind: "card",
+      quiz: stage === "collocation" && collocations?.quiz ? { ...quizOf(collocations.quiz), items: collocations.items } : undefined,
       cardId: card.id,
       reps: card.reps,
       isNew,
@@ -84,6 +124,31 @@ export async function appQueue(deps: Deps, user: User): Promise<AppCard[]> {
       },
     };
   });
+  // Вопросы по ошибкам готовятся в фоне (как в /learn); готовые — между карточками.
+  ensureDrillFor(deps, user);
+  const drills = user.modeDrill ? deps.drills.get(user.id) : undefined;
+  const queue: AppItem[] = [];
+  cards.forEach((card, i) => {
+    queue.push(card);
+    const q = (i + 1) % DRILL_EVERY === 0 && drills && !drills.standalone ? drills.questions.shift() : undefined;
+    if (q) {
+      rememberAsked(user.id, q.question);
+      queue.push({ kind: "drill", id: `${Date.now()}-${i}`, category: q.category, ...quizOf(q) });
+    }
+  });
+  return queue;
+}
+
+/** Ответ на вопрос по ошибкам: счёт темы; отработанная тема — её оставшиеся вопросы больше не показываем. */
+export async function appDrillAnswer(deps: Deps, user: User, body: { category?: unknown; correct?: unknown }) {
+  if (typeof body.category !== "string" || typeof body.correct !== "boolean") return { status: 400, body: { ok: false, error: "bad answer" } };
+  const progress = await recordDrillAnswer(deps.db, user.id, body.category, body.correct, deps.now());
+  const state = deps.drills.get(user.id);
+  if (progress?.resolved && state) {
+    const topic = progress.category.trim().toLowerCase();
+    state.questions = state.questions.filter((q) => q.category.trim().toLowerCase() !== topic);
+  }
+  return { status: 200, body: { ok: true, progress: progress ?? null } };
 }
 
 const ANSWERS = new Set<Answer>(["again", "good", "easy"]);
@@ -92,7 +157,7 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
   const answer = String(body.answer) as Answer;
-  const stage = body.stage === "ru_en" ? "ru_en" : "en_ru";
+  const stage = body.stage === "ru_en" || body.stage === "collocation" ? body.stage : "en_ru";
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
   const result = await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
   return { status: 200, body: { ok: true, result } };

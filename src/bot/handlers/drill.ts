@@ -33,15 +33,20 @@ const RETRY_AFTER_MS = 10 * 60_000;
  * чтобы сессия, продолженная без /learn (например после перезапуска бота), тоже получила вопросы.
  */
 export function ensureDrill(ctx: BotContext, deps: Deps): void {
-  if (!ctx.user.modeDrill) return;
-  let state = deps.drills.get(ctx.user.id);
+  ensureDrillFor(deps, ctx.user);
+}
+
+/** То же для приложения: там нет контекста Telegram, только пользователь. */
+export function ensureDrillFor(deps: Deps, user: User): void {
+  if (!user.modeDrill) return;
+  let state = deps.drills.get(user.id);
   if (!state || state.standalone) {
     state = { questions: state?.questions ?? [], standalone: false, lastAtCount: 0 };
-    deps.drills.set(ctx.user.id, state);
+    deps.drills.set(user.id, state);
   }
   if (state.questions.length || state.loading || (state.retryAfter ?? 0) > Date.now()) return;
   const target = state;
-  target.loading = prepareDrill(deps, ctx.user)
+  target.loading = prepareDrill(deps, user)
     .then((qs) => {
       target.questions.push(...qs);
       target.retryAfter = qs.length ? undefined : Date.now() + RETRY_AFTER_MS;

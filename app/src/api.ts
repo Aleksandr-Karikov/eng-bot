@@ -1,10 +1,22 @@
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 
+/** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
+export interface Quiz {
+  question: string;
+  options: string[];
+  correct: number;
+  explanation: string;
+  filled: { before: string; answer: string; after: string };
+}
+
 export interface Card {
+  kind: "card";
   cardId: number;
   reps: number;
   isNew: boolean;
-  stage: "en_ru" | "ru_en";
+  stage: "en_ru" | "ru_en" | "collocation";
+  /** Для сочетаний: вопрос и частые сочетания слова. */
+  quiz?: Quiz & { items: Array<{ phrase: string; translation: string }> };
   word: {
     id: number;
     term: string;
@@ -61,7 +73,25 @@ const post = <T>(path: string, body: object = {}) =>
   call<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const getMe = () => call<Me & { ok: true }>("/api/me");
-export const getQueue = () => call<{ cards: Card[] }>("/api/queue").then((r) => r.cards);
+/** 🧠 Вопрос по ошибкам между карточками. */
+export interface DrillItem extends Quiz {
+  kind: "drill";
+  id: string;
+  category: string;
+}
+
+export type QueueItem = Card | DrillItem;
+
+/** Счёт темы ошибок после ответа: resolved — тема отработана. */
+export interface DrillProgress {
+  category: string;
+  streak: number;
+  resolved: boolean;
+}
+
+export const getQueue = () => call<{ cards: QueueItem[] }>("/api/queue").then((r) => r.cards);
+export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
+  post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: Answer) => post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage });
 export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
 

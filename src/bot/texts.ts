@@ -267,6 +267,12 @@ export function reverseCardText(word: WordDraft & { collocations?: string; moreC
  * («We need ___ gold» + «the gold»): повторяющиеся на стыке слова убираем, иначе выходит «the gold gold».
  */
 export function fillGap(sentence: string, answer: string): string {
+  const { before, after } = gapParts(sentence, answer);
+  return `${esc(before)}<b>${esc(answer)}</b>${esc(after)}`;
+}
+
+/** То же без разметки: что до пропуска и что после (повтор на стыке уже убран) — приложение рисует ответ само. */
+export function gapParts(sentence: string, answer: string): { before: string; answer: string; after: string } {
   const [before = "", ...rest] = sentence.split("___");
   const words = answer.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const WORD = /^[\p{L}\p{N}'’]+/u;
@@ -308,7 +314,7 @@ export function fillGap(sentence: string, answer: string): string {
       break;
     }
   }
-  return `${esc(head)}<b>${esc(answer)}</b>${esc(after)}`;
+  return { before: head, answer, after };
 }
 
 /** Предложение с ответом на месте пропуска, ответ — жирным. */

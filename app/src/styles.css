@@ -112,3 +112,14 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
   font: 600 11px/16px -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   box-sizing: border-box;
 }
+
+/* 🔗 🧠 Вопросы с вариантами */
+.choice-card { cursor: default; touch-action: auto; }
+.choice-title { text-align: center; }
+.choice-question { text-align: center; line-height: 1.35; padding: 8px 0 4px; }
+.gap { color: var(--tg-theme-hint-color, #8e8e93); letter-spacing: 2px; }
+.gap-right { color: #22c55e; }
+.choice-options { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.option-wrong { color: #ef4444 !important; }
+.choice-review { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, rgba(127, 127, 127, 0.25)); padding-top: 12px; }
+.collocation-list { margin: 0; padding-left: 18px; line-height: 1.5; font: 15px/1.5 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-text-color, inherit); }
