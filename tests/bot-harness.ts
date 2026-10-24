@@ -1,3 +1,4 @@
+import type { SpeechRecognizer } from "../src/speech/stt";
 import { ChatTranscript } from "../src/bot/transcript";
 import { TranslateStore } from "../src/bot/translations";
 import type { Deps } from "../src/bot/context";
@@ -65,6 +66,8 @@ export function botHarness(opts: {
   /** Вернуть описание ошибки, чтобы Telegram ответил на вызов `ok: false` (error_code 400). */
   fail?: (call: ApiCall) => string | undefined;
   youtube?: SubtitleSource;
+  recognizer?: SpeechRecognizer;
+  voiceSamplesDir?: string;
 } = {}) {
   const db = testDb();
   const calls: ApiCall[] = [];
@@ -104,7 +107,7 @@ export function botHarness(opts: {
   const clozeGen = new ClozeGenerator(db, tutor, () => T0);
   const pictures = opts.pictures ?? (opts.images ? new PictureStore(mkdtempSync(join(tmpdir(), "pictures-"))) : undefined);
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
-  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
+  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, recognizer: opts.recognizer, voiceSamplesDir: opts.voiceSamplesDir, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => T0, botUsername: BOT_INFO.username };
   setupBot(bot, deps);
 
   let seq = 0;
@@ -131,6 +134,14 @@ export function botHarness(opts: {
           text,
           entities: command ? [{ type: "bot_command", offset: 0, length: command.length }] : undefined,
         },
+      } as Update;
+    },
+    /** Голосовое в личке. */
+    voiceMessage(userId: number, duration = 3): Update {
+      seq++;
+      return {
+        update_id: seq,
+        message: { message_id: seq, date: 0, chat: chat(userId), from: from(userId), voice: { file_id: `voice-${seq}`, file_unique_id: "v", duration } },
       } as Update;
     },
     /** Сообщение в группе chatId; replyToBot — ответ на сообщение бота. */

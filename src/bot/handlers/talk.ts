@@ -1,5 +1,5 @@
 import { clearPendingInputs, endLongModes } from "../pending";
-import type { Bot } from "grammy";
+import { InputFile, type Bot } from "grammy";
 import type { TalkReview } from "../../llm/tutor";
 import { getRoom } from "../../services/rooms";
 import { storyWords } from "../../services/stories";
@@ -8,6 +8,7 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import { mistakesAskKeyboard, talkEndKeyboard, talkTopicsKeyboard } from "../keyboards";
 import { MAX_TALK_TURNS, type Talk } from "../talks";
 import { esc, mistakesAskText, talkReviewText } from "../texts";
+import { hearVoice } from "../voice-input";
 
 /** Готовые ситуации: label — на кнопке, topic — для Claude. */
 export const TALK_TOPICS = [
@@ -28,10 +29,10 @@ async function startTalk(ctx: BotContext, deps: Deps, topic: string, label: stri
   const words = room ? (await storyWords(deps.db, room.id, deps.random, ctx.user.id)).slice(0, TALK_WORDS) : [];
   endLongModes(deps, ctx.user.id, "talk");
   clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
-  const talk = deps.talks.start(ctx.user.id, { topic, words, lines: [], chatId: ctx.chat.id });
+  const talk = deps.talks.start(ctx.user.id, { topic, words, lines: [], chatId: ctx.chat.id, accent: deps.random() < 0.5 ? "uk" : "us" });
   const hint = words.length ? `\n\nПопробуй употребить: ${words.map((w) => `<b>${esc(w.term)}</b>`).join(", ")}` : "";
   await ctx.reply(
-    `🗣 ${esc(label)}\n\nПиши по-английски, как в обычном чате. По ходу не поправляю — разбор в конце по кнопке «🏁 Закончить».${hint}`,
+    `🗣 ${esc(label)}\n\nПиши по-английски, как в обычном чате${deps.recognizer ? ", или отвечай голосовыми" : ""}. По ходу не поправляю — разбор в конце по кнопке «🏁 Закончить».${hint}`,
     HTML,
   );
   await reply(ctx, deps, talk);
@@ -49,7 +50,27 @@ async function reply(ctx: BotContext, deps: Deps, talk: Talk): Promise<void> {
   }
   talk.lines.push({ who: "bot", text: line });
   deps.talks.touch(talk);
+  if (talk.voice) {
+    // Голосом, текст — подписью: можно и послушать, и подсмотреть.
+    try {
+      const audio = await deps.speech.synthesize(line, talk.accent);
+      return void (await ctx.replyWithVoice(new InputFile(audio, "reply.ogg"), { caption: line, reply_markup: talkEndKeyboard() }));
+    } catch (err) {
+      console.error("Talk voice failed", err);
+    }
+  }
   await ctx.reply(line, { reply_markup: talkEndKeyboard() });
+}
+
+/** Реплика ученика — текстом или распознанным голосовым. */
+async function userLine(ctx: BotContext, deps: Deps, talk: Talk, text: string): Promise<void> {
+  talk.lines.push({ who: "user", text });
+  deps.talks.touch(talk);
+  if (talk.lines.filter((l) => l.who === "user").length >= MAX_TALK_TURNS) {
+    await ctx.reply("Отличный длинный разговор! Пора подвести итог 🙂");
+    return finishTalk(ctx, deps);
+  }
+  await reply(ctx, deps, talk);
 }
 
 async function finishTalk(ctx: BotContext, deps: Deps): Promise<void> {
@@ -102,14 +123,19 @@ export function registerTalk(bot: Bot<BotContext>, deps: Deps): void {
     const text = ctx.message.text;
     const talk = deps.talks.get(ctx.user.id);
     if (!talk || text.startsWith("/") || talk.chatId !== ctx.chat.id) return next();
-    talk.lines.push({ who: "user", text });
-    deps.talks.touch(talk);
-    if (talk.lines.filter((l) => l.who === "user").length >= MAX_TALK_TURNS) {
-      return background(ctx, async () => {
-        await ctx.reply("Отличный длинный разговор! Пора подвести итог 🙂");
-        await finishTalk(ctx, deps);
-      });
-    }
-    background(ctx, () => reply(ctx, deps, talk));
+    background(ctx, () => userLine(ctx, deps, talk, text));
+  });
+
+  bot.on("message:voice", async (ctx, next) => {
+    const talk = deps.talks.get(ctx.user.id);
+    if (!talk || talk.chatId !== ctx.chat.id) return next();
+    background(ctx, async () => {
+      const text = await hearVoice(ctx, deps, ctx.message.voice);
+      if (!text) return;
+      // Показать, что услышано: распознавание ошибается, и ученик должен это видеть до ответа.
+      await ctx.reply(`🗣 <i>${esc(text)}</i>`, HTML);
+      talk.voice = true;
+      await userLine(ctx, deps, talk, text);
+    });
   });
 }

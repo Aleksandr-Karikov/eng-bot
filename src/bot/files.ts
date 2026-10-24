@@ -25,11 +25,16 @@ export class ImageTooBigError extends Error {}
 
 export async function downloadImage(api: Api, ref: ImageRef): Promise<ImageInput> {
   if ((ref.size ?? 0) > MAX_IMAGE_BYTES) throw new ImageTooBigError();
-  const file = await api.getFile(ref.fileId);
-  if (!file.file_path) throw new Error(`No file_path for ${ref.fileId}`);
-  const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
-  if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
-  const data = Buffer.from(await response.arrayBuffer());
+  const data = await downloadFile(api, ref.fileId);
   if (data.length > MAX_IMAGE_BYTES) throw new ImageTooBigError();
   return { data, mediaType: ref.mediaType };
+}
+
+/** Файл из сообщения (картинка, голосовое) по file_id. */
+export async function downloadFile(api: Api, fileId: string): Promise<Buffer> {
+  const file = await api.getFile(fileId);
+  if (!file.file_path) throw new Error(`No file_path for ${fileId}`);
+  const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
+  if (!response.ok) throw new Error(`Telegram file download failed: ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
 }

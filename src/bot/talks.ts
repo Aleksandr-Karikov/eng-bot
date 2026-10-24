@@ -1,3 +1,5 @@
+import type { Accent } from "../speech/tts";
+
 /** Разговор /talk: тема, слова комнаты, которые стоит вплести, и реплики. В памяти, один на пользователя. */
 export interface TalkLine {
   who: "user" | "bot";
@@ -9,6 +11,10 @@ export interface Talk {
   words: Array<{ term: string; translation: string }>;
   lines: TalkLine[];
   chatId: number;
+  /** Каким акцентом собеседник отвечает голосом. */
+  accent: Accent;
+  /** Ученик хоть раз ответил голосовым — дальше собеседник тоже отвечает голосом. */
+  voice?: boolean;
   lastAt: number;
 }
 

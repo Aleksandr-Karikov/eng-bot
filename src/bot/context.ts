@@ -9,6 +9,7 @@ import type { ClozeGenerator } from "../services/cloze-generator";
 import type { CollocationGenerator } from "../services/collocations";
 import type { MnemonicGenerator } from "../services/hard-words";
 import type { SpeechSynth } from "../speech/tts";
+import type { SpeechRecognizer } from "../speech/stt";
 import type { VoiceStore } from "./voices";
 import type { Notifier } from "../notifier";
 import type { BatchStore } from "./batches";
@@ -53,6 +54,10 @@ export interface Deps {
   exercises: ExerciseStore;
   drills: DrillStore;
   speech: SpeechSynth;
+  /** Распознавание голосовых; undefined — не установлено (tools/stt). */
+  recognizer?: SpeechRecognizer;
+  /** Куда складывать голосовые из /pron с результатами — для оценки, можно ли верить проверке. */
+  voiceSamplesDir?: string;
   voices: VoiceStore;
   roomNames: RoomNameStore;
   duels: DuelStore;

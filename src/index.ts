@@ -26,6 +26,7 @@ import { BackgroundPainter, onAcPower } from "./images/painter";
 import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
 import { KokoroSynth, MacSaySynth } from "./speech/tts";
+import { LocalRecognizer } from "./speech/stt";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import type { Server } from "node:http";
@@ -60,6 +61,8 @@ const now = () => new Date();
 
 // Озвучка: нейросетевые голоса Kokoro, если поставлены (tools/tts), иначе встроенный голос macOS.
 const speech = existsSync(config.ttsPython) ? new KokoroSynth(config.ttsPython, "tools/tts/kokoro_server.py", new MacSaySynth()) : new MacSaySynth();
+// Голосовые: Whisper и модель фонем, если поставлены (tools/stt).
+const recognizer = existsSync(config.sttPython) ? new LocalRecognizer(config.sttPython, "tools/stt/stt_server.py") : undefined;
 const claude = new ClaudeCodeEnricher({
   model: config.enrichModel,
   timeoutMs: config.enrichTimeoutMs,
@@ -90,6 +93,8 @@ const deps: Deps = {
   exercises,
   drills: new DrillStore(),
   speech,
+  recognizer,
+  voiceSamplesDir: "data/voice-samples",
   voices: new VoiceStore(),
   roomNames: new RoomNameStore(),
   duels: new DuelStore(),
@@ -138,6 +143,7 @@ const shutdown = () => {
   stopReminders();
   stopPainter();
   if (speech instanceof KokoroSynth) speech.close();
+  recognizer?.close();
   captureServer?.close();
   void bot.stop();
 };

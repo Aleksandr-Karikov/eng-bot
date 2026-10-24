@@ -19,6 +19,7 @@ describe("loadConfig", () => {
       capturePort: 8787,
       wordfreqPython: "tools/wordfreq/.venv/bin/python",
       ttsPython: "tools/tts/.venv/bin/python",
+      sttPython: "tools/stt/.venv/bin/python",
       appPort: 8788,
     });
   });

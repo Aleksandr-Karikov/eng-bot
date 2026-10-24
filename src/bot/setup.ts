@@ -16,6 +16,7 @@ import { registerStats } from "./handlers/stats";
 import { registerStory } from "./handlers/story";
 import { registerSpotted } from "./handlers/spotted";
 import { registerTalk } from "./handlers/talk";
+import { registerPronounce } from "./handlers/pronounce";
 import { registerTranslate } from "./handlers/translate";
 import { registerSay } from "./handlers/say";
 import { registerExtension } from "./handlers/extension";
@@ -109,6 +110,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerEdit(bot, deps);
   registerTranslate(bot, deps);
   registerTalk(bot, deps);
+  registerPronounce(bot, deps);
   registerSay(bot, deps);
   registerBug(bot, deps);
   registerLesson(bot, deps);

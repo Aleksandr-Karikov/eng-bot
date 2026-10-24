@@ -23,6 +23,8 @@ export interface Config {
   wordfreqPython: string;
   /** Python с Kokoro (tools/tts); нет такого файла — озвучка встроенным голосом macOS. */
   ttsPython: string;
+  /** Python с распознаванием речи (tools/stt); нет такого файла — голосовые не распознаются. */
+  sttPython: string;
   /** Порт локального приёма слов из расширения браузера; CAPTURE_PORT=0 — выключить. */
   capturePort: number;
 }
@@ -55,6 +57,7 @@ export function loadConfig(
     capturePort: Number(env.CAPTURE_PORT ?? 8787),
     wordfreqPython: env.WORDFREQ_PYTHON || "tools/wordfreq/.venv/bin/python",
     ttsPython: env.TTS_PYTHON || "tools/tts/.venv/bin/python",
+    sttPython: env.STT_PYTHON || "tools/stt/.venv/bin/python",
     appPort: Number(env.APP_PORT ?? 8788),
     ...(env.APP_URL ? { appUrl: env.APP_URL } : {}),
   };
