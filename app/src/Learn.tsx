@@ -3,6 +3,7 @@ import { Button, Placeholder, Progress, Spinner, Text } from "@telegram-apps/tel
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
+import { TypeCard } from "./TypeCard";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
 import { haptic, notify } from "./telegram";
@@ -149,6 +150,15 @@ export function Learn({ corner, onTriage }: { corner: ReactNode; onTriage: () =>
           title={`🧠 Работа над ошибками · ${card.category}`}
           quiz={card}
           onAnswer={(correct) => answerDrill(card, correct)}
+          onNext={advance}
+        />
+      ) : card.stage === "cloze" || card.stage === "listen" || card.stage === "sentence" ? (
+        <TypeCard
+          key={`${card.cardId}-${card.reps}`}
+          card={card}
+          // Оценил сервер при проверке — в историю для ↩️ (запрос уже прошёл).
+          onRated={() => setHistory((h) => [...h, { card, sent: Promise.resolve() }].slice(-UNDO_DEPTH))}
+          onRateSelf={(a) => rate(card, a)}
           onNext={advance}
         />
       ) : card.stage === "collocation" && card.quiz ? (

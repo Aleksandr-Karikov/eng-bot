@@ -11,6 +11,7 @@ import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
 import { pickStage } from "../services/exercises";
+import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
@@ -36,8 +37,10 @@ export interface AppCard {
   cardId: number;
   reps: number;
   isNew: boolean;
-  /** EN → RU (видно слово), RU → EN (видно перевод) или 🔗 сочетания (вопрос с вариантами). */
-  stage: "en_ru" | "ru_en" | "collocation";
+  /** EN → RU, RU → EN, 🔗 сочетания (варианты) или задание с ответом текстом: вставь по смыслу, диктант, своё предложение. */
+  stage: "en_ru" | "ru_en" | "collocation" | "cloze" | "listen" | "sentence";
+  /** Для «вставь по смыслу»: предложение с пропуском и перевод (ответ — только после проверки). */
+  cloze?: { id: number; sentence: string; translation: string };
   /** Для сочетаний: вопрос и все частые сочетания слова для разбора. */
   quiz?: AppQuiz & { items: Array<{ phrase: string; translation: string }> };
   word: {
@@ -95,20 +98,36 @@ function quizOf(q: { question: string; options: string[]; correct: number; expla
  */
 export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
   const items = await dueQueue(deps.db, user.id, deps.now(), QUEUE_SIZE);
-  const modes = { en_ru: user.modeEnRu, ru_en: user.modeRuEn, collocation: user.modeCollocation, cloze: false, sentence: false, listen: false };
-  const cards: AppCard[] = items.map(({ card, word }) => {
+  const modes = {
+    en_ru: user.modeEnRu,
+    ru_en: user.modeRuEn,
+    collocation: user.modeCollocation,
+    cloze: user.modeCloze,
+    sentence: user.modeSentence,
+    listen: user.modeListen,
+  };
+  const cards: AppCard[] = [];
+  for (const { card, word } of items) {
     const isNew = card.state === State.New;
+    const optional = word.usefulness === 1;
     const collocations = storedCollocations(word);
-    const picked = isNew || word.usefulness === 1 ? (user.modeEnRu || isNew ? "en_ru" : "ru_en") : pickStage(card, modes, false, deps.random, Boolean(collocations?.quiz));
-    const stage = picked === "ru_en" || picked === "collocation" ? picked : "en_ru";
-    if (!isNew && word.usefulness !== 1 && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
-    return {
+    const sentences = modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];
+    // Как в /learn: упражнения на употребление готовятся в фоне, пока их нет.
+    if (!isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
+    if (!isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
+    // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
+    const stage = optional
+      ? "en_ru"
+      : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(collocations?.quiz));
+    const cloze = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
+    cards.push({
       kind: "card",
       quiz: stage === "collocation" && collocations?.quiz ? { ...quizOf(collocations.quiz), items: collocations.items } : undefined,
+      cloze: cloze ? { id: cloze.id, sentence: cloze.sentence, translation: cloze.translation } : undefined,
       cardId: card.id,
       reps: card.reps,
       isNew,
-      stage,
+      stage: stage === "cloze" && !cloze ? "en_ru" : stage,
       word: {
         id: word.id,
         term: word.term,
@@ -122,8 +141,8 @@ export async function appQueue(deps: Deps, user: User): Promise<AppItem[]> {
         usefulness: word.usefulness,
         hasPicture: hasPicture(deps, word),
       },
-    };
-  });
+    });
+  }
   // Вопросы по ошибкам готовятся в фоне (как в /learn); готовые — между карточками.
   ensureDrillFor(deps, user);
   const drills = user.modeDrill ? deps.drills.get(user.id) : undefined;
@@ -157,7 +176,8 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
   const answer = String(body.answer) as Answer;
-  const stage = body.stage === "ru_en" || body.stage === "collocation" ? body.stage : "en_ru";
+  // Задания с ответом текстом оценивает /api/check; сюда — когда проверить не вышло и человек оценил себя сам.
+  const stage = typeof body.stage === "string" && ["ru_en", "collocation", "cloze", "listen", "sentence"].includes(body.stage) ? body.stage : "en_ru";
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
   const result = await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
   return { status: 200, body: { ok: true, result } };

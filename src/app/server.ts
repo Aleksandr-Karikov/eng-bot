@@ -8,6 +8,7 @@ import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
 import { appAnswer, appAudio, appDrillAnswer, appMe, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { appCheck, appSaveMistakes } from "./exercises";
 import { appChangeSetting, appEditWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
@@ -45,6 +46,15 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/triage", async (c) => {
     const r = await appTriage(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400 | 409);
+  });
+  // ✍️ 🎧 Ответ текстом: проверка и оценка карточки; «Сохранить ошибки» после разбора своего предложения.
+  app.post("/api/check", async (c) => {
+    const r = await appCheck(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 404 | 409);
+  });
+  app.post("/api/mistakes", async (c) => {
+    const r = await appSaveMistakes(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 404);
   });
   // 🧠 Ответ на вопрос по ошибкам из очереди.
   app.post("/api/drill", async (c) => {

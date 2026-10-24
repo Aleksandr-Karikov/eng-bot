@@ -14,7 +14,9 @@ export interface Card {
   cardId: number;
   reps: number;
   isNew: boolean;
-  stage: "en_ru" | "ru_en" | "collocation";
+  stage: "en_ru" | "ru_en" | "collocation" | "cloze" | "listen" | "sentence";
+  /** Для «вставь по смыслу»: предложение с пропуском и перевод. */
+  cloze?: { id: number; sentence: string; translation: string };
   /** Для сочетаний: вопрос и частые сочетания слова. */
   quiz?: Quiz & { items: Array<{ phrase: string; translation: string }> };
   word: {
@@ -187,3 +189,30 @@ function cachedPicture(query: string): Promise<string | undefined> {
 
 export const pictureUrl = (cardId: number) => cachedPicture(`card=${cardId}`);
 export const wordPictureUrl = (wordId: number) => cachedPicture(`word=${wordId}`);
+
+/** Итог проверки ответа текстом. unchecked — проверить не вышло: человек оценивает себя сам. */
+export interface CheckResult {
+  correct?: boolean;
+  unchecked?: boolean;
+  /** Диктант: exact — верно, close — с опечаткой (засчитано), wrong — нет. */
+  grade?: "exact" | "close" | "wrong";
+  term: string;
+  translation: string;
+  transcriptionUk: string;
+  transcriptionUs: string;
+  example: string;
+  /** Вставь по смыслу: предложение с ответом и перевод предложения. */
+  filled?: { before: string; answer: string; after: string };
+  explanation?: string;
+  tip?: string;
+  /** Своё предложение: разбор как в /check. */
+  verdict?: string;
+  corrected?: string;
+  fixes?: Array<{ wrong: string; right: string; why: string; slip?: boolean }>;
+  natural?: string;
+  mistakesId?: number;
+}
+
+export const checkAnswer = (card: Card, answer: string, dunno = false) =>
+  post<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno });
+export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
