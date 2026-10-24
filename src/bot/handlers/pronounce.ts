@@ -1,3 +1,4 @@
+import { currentLang } from "../../lang";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
@@ -138,6 +139,7 @@ export function registerPronounce(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("pron", async (ctx) => {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Произношение — в личке: https://t.me/${deps.botUsername}`));
     if (!deps.recognizer) return void (await ctx.reply("Проверка произношения сейчас недоступна 😔"));
+    if (currentLang().code !== "en") return void (await ctx.reply("🎤 Проверка произношения пока только для английского — для корейского скоро будет."));
     const [first, ...rest] = ctx.match.trim().split(/\s+/).filter(Boolean);
     const accent: Accent | "any" = first === "uk" || first === "us" ? first : "any";
     const own = (accent === "any" ? [first, ...rest] : rest).filter(Boolean).join(" ");

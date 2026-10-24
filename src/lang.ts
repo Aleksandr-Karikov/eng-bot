@@ -82,3 +82,24 @@ export function currentLang(): Language {
 export function withLang<T>(code: LangCode, fn: () => T): T {
   return current.run(code, fn);
 }
+
+/** Название языка в нужной форме — для текстов бота: для английского строки остаются прежними. */
+export const langForms = (lang: Language = currentLang()) => ({
+  /** по-английски */
+  adv: `по-${lang.stem}и`,
+  /** на английском */
+  prep: `на ${lang.stem}ом`,
+  /** английский (что? на что?) */
+  acc: `${lang.stem}ий`,
+  /** английское (слово) */
+  neut: `${lang.stem}ое`,
+  /** английского */
+  gen: `${lang.stem}ого`,
+  /** английских (субтитров) */
+  genPl: `${lang.stem}их`,
+});
+
+/** Случайный вариант произношения языка (у корейского он один). */
+export function pickAccent(random: () => number, lang: Language = currentLang()): "uk" | "us" {
+  return lang.accents.length === 1 ? lang.accents[0] : random() < 0.5 ? "uk" : "us";
+}

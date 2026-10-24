@@ -1,3 +1,4 @@
+import { currentLang } from "../../lang";
 import { InlineKeyboard, InputFile, type Api, type Bot } from "grammy";
 import type { User } from "../../db/schema";
 import { buildLesson, lessonWords, type LessonAccent } from "../../speech/lesson";
@@ -27,7 +28,7 @@ export async function sendLesson(deps: Deps, api: Api, user: User, accent: Lesso
     try {
       const audio = await buildLesson(deps.speech, list, accent);
       const now = deps.now();
-      const title = `Аудиоурок ${now.getDate()} ${MONTHS[now.getMonth()]} · ${list.length} слов · ${ACCENT_TITLES[accent]}`;
+      const title = `Аудиоурок ${now.getDate()} ${MONTHS[now.getMonth()]} · ${list.length} слов · ${currentLang().code === "en" ? ACCENT_TITLES[accent] : currentLang().flag}`;
       const names = list.map((w) => w.term).join(", ");
       await api.sendAudio(user.telegramId, new InputFile(audio, "wordboss-lesson.mp3"), {
         title,
@@ -64,6 +65,9 @@ export function registerLesson(bot: Bot<BotContext>, deps: Deps): void {
     if (ctx.chat.type !== "private") return void (await ctx.reply(`Аудиоурок приходит в личку: https://t.me/${deps.botUsername}`));
     const asked = ctx.match.trim().toLowerCase();
     if (asked === "uk" || asked === "us" || asked === "mix") return background(ctx, () => start(ctx, deps, asked));
+    // У языка с одним произношением выбирать нечего.
+    const lang = currentLang();
+    if (lang.accents.length === 1) return background(ctx, () => start(ctx, deps, lang.accents[0]));
     await ctx.reply("🎧 Аудиоурок: каким акцентом читать английский?", { reply_markup: lessonKeyboard() });
   });
 

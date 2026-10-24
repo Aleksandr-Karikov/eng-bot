@@ -1,3 +1,4 @@
+import { inCurrentLanguage } from "./language";
 import { and, asc, count, desc, eq, lte, ne } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -26,7 +27,7 @@ async function dueItems(db: Db, userId: number, until: Date): Promise<DueItem[]>
     .from(cards)
     .innerJoin(words, eq(cards.wordId, words.id))
     .where(and(eq(cards.userId, userId), lte(cards.due, until)));
-  return rows.sort(compareQueue);
+  return (await inCurrentLanguage(db, rows)).sort(compareQueue);
 }
 
 export async function nextDue(db: Db, userId: number, now: Date): Promise<DueItem | undefined> {

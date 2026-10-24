@@ -1,3 +1,4 @@
+import { inCurrentLanguage } from "../services/language";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,9 +26,8 @@ export async function lessonWords(db: Db, userId: number, limit = LESSON_WORDS):
     .from(cards)
     .innerJoin(words, eq(cards.wordId, words.id))
     .where(and(eq(cards.userId, userId), ne(cards.state, State.New)))
-    .orderBy(asc(cards.stability))
-    .limit(limit);
-  return rows.map((r) => r.word);
+    .orderBy(asc(cards.stability));
+  return (await inCurrentLanguage(db, rows)).slice(0, limit).map((r) => r.word);
 }
 
 /** «сдерживать (кого-то), мешать проявлять себя; испортить…» → «сдерживать, мешать проявлять себя»: на слух — коротко. */

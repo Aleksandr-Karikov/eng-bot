@@ -1,7 +1,8 @@
+import { currentLang } from "../lang";
 import type { Deps } from "../bot/context";
 import { isRussian, type Enrichment } from "../llm/enricher";
 import { rateUsefulness } from "./usefulness";
-import { findWord, type WordDraft } from "./words";
+import { findWord, normalizeTerm, type WordDraft } from "./words";
 
 export type PreparedWord =
   /** Уже есть в комнате (для русского ввода — его английский вариант). */
@@ -21,8 +22,9 @@ export async function prepareWord(
   input: { term: string; translation?: string },
 ): Promise<PreparedWord> {
   let { term, translation } = input;
-  if (translation && isRussian(term) && !isRussian(translation)) [term, translation] = [translation, term];
-  const fromRussian = isRussian(term);
+  const lang = currentLang();
+  if (translation && isRussian(term, lang) && !isRussian(translation, lang)) [term, translation] = [translation, term];
+  const fromRussian = isRussian(term, lang);
   if (!fromRussian && (await findWord(deps.db, roomId, term))) return { status: "exists", term };
 
   const enrich = deps.enricher
@@ -53,6 +55,11 @@ export async function prepareWord(
   } else {
     // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
     [enrichment, mnemonic] = await Promise.all([enrich, mnemonicFor(term, translation ?? "")]);
+    // Корейское слово могли прислать с частицей или в спряжении (책을, 갔어요) — сохраняем словарную форму от модели.
+    if (lang.code !== "en" && enrichment?.term && normalizeTerm(enrichment.term) !== normalizeTerm(term)) {
+      term = enrichment.term;
+      if (await findWord(deps.db, roomId, term)) return { status: "exists", term };
+    }
   }
   return {
     status: "ok",

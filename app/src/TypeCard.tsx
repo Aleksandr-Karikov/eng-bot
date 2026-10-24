@@ -1,3 +1,5 @@
+import { AudioButtons } from "./AudioButtons";
+import { studyLanguage } from "./language";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { checkAnswer, mediaUrl, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
@@ -91,12 +93,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
       <>
         <Text className="hint choice-title">🎧 Напиши, что услышал</Text>
         <div className="row">
-          <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
-            🔊 UK
-          </Button>
-          <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
-            🔊 US
-          </Button>
+          <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />
         </div>
       </>
     ) : (
@@ -119,7 +116,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
           <Textarea
             ref={input}
             className="type-input"
-            placeholder={card.stage === "sentence" ? "Твоё предложение по-английски" : "Ответ"}
+            placeholder={card.stage === "sentence" ? `Твоё предложение ${studyLanguage().adv}` : "Ответ"}
             value={answer}
             disabled={checking}
             onChange={(e) => setAnswer(e.target.value)}

@@ -1,7 +1,7 @@
 """
 Распознавание речи для бота: постоянный процесс, чтобы модели грузились один раз.
 Читает со stdin строки JSON, пишет на stdout по строке на запрос:
-  {"id", "op": "transcribe", "wav"}                    → {"id", "ok": true, "text"}
+  {"id", "op": "transcribe", "wav", "language"}        → {"id", "ok": true, "text"}   (language — код Whisper, по умолчанию en)
   {"id", "op": "phonemes", "wav", "text", "accent", "refs"} → {"id", "ok": true, "heard", "expected", "score", "diff", "accent"}
 wav — 16 кГц моно. Whisper — что услышал «слушатель» (он додумывает слова, поэтому для произношения
 отдельно модель фонем: она пишет звуки, какие были). Эталоны — из espeak тем же алфавитом и то, что та же
@@ -49,7 +49,7 @@ def load(path):
 
 
 def transcribe(req):
-    result = mlx_whisper.transcribe(load(req["wav"]), path_or_hf_repo=WHISPER, language="en", condition_on_previous_text=False)
+    result = mlx_whisper.transcribe(load(req["wav"]), path_or_hf_repo=WHISPER, language=req.get("language", "en"), condition_on_previous_text=False)
     return {"text": result["text"].strip()}
 
 

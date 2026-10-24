@@ -23,7 +23,7 @@ import { practiceQueue } from "../services/practice";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
 import { wordLanguage } from "../services/words";
-import { currentLang, withLang } from "../lang";
+import { currentLang, langForms, withLang } from "../lang";
 import type { Answer } from "../srs/srs";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
@@ -84,7 +84,13 @@ export async function appMe(deps: Deps, user: User) {
     view: cardView(user),
     triage: await triageCount(deps.db, user.id),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
-    language: { code: currentLang().code, flag: currentLang().flag, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
+    language: {
+      code: currentLang().code,
+      flag: currentLang().flag,
+      accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })),
+      adv: langForms().adv,
+      neut: langForms().neut,
+    },
   };
 }
 

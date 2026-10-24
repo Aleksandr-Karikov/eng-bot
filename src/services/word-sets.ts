@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, setDecisions, setItems, wordSets, words, type SetItem, type WordSet } from "../db/schema";
+import { currentLang, isLangCode } from "../lang";
 import { ensurePersonalRoom } from "./rooms";
 import { deleteWord, findWord, getWord, normalizeTerm, saveWord } from "./words";
 
@@ -29,7 +30,8 @@ async function decided(db: Db, userId: number): Promise<Set<number>> {
 }
 
 export async function listSets(db: Db, userId: number): Promise<SetSummary[]> {
-  const sets = await db.select().from(wordSets).orderBy(asc(wordSets.position), asc(wordSets.id));
+  // Наборы — на языке текущей комнаты.
+  const sets = await db.select().from(wordSets).where(eq(wordSets.language, currentLang().code)).orderBy(asc(wordSets.position), asc(wordSets.id));
   const items = await db.select({ id: setItems.id, setId: setItems.setId, term: setItems.term }).from(setItems);
   const [mine, done] = await Promise.all([knownTerms(db, userId), decided(db, userId)]);
   return sets.map((set) => {
@@ -53,7 +55,9 @@ export async function decide(db: Db, input: { userId: number; itemId: number; de
   if (already) return false;
   let wordId: number | null = null;
   if (input.decision === "learn") {
-    const room = await ensurePersonalRoom(db, input.userId, input.now);
+    const [set] = await db.select({ language: wordSets.language }).from(wordSets).where(eq(wordSets.id, item.setId));
+    // В личный словарь на языке набора.
+    const room = await ensurePersonalRoom(db, input.userId, input.now, isLangCode(set?.language) ? set.language : "en");
     const saved = await saveWord(db, {
       roomId: room.id,
       addedBy: input.userId,
@@ -91,7 +95,7 @@ export async function undoDecision(db: Db, input: { userId: number; itemId: numb
 /** Заменить содержимое набора (скрипт сборки наборов). Решения людей по старым словам удаляются вместе с ними. */
 export async function replaceSet(
   db: Db,
-  set: { slug: string; title: string; kind: "level" | "topic"; description: string; position: number },
+  set: { slug: string; title: string; kind: "level" | "topic"; description: string; position: number; language?: "en" | "ko" },
   items: Array<Omit<SetItem, "id" | "setId" | "position">>,
   now: Date,
 ): Promise<number> {

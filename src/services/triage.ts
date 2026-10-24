@@ -1,3 +1,4 @@
+import { inCurrentLanguage } from "./language";
 import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -24,9 +25,8 @@ export async function triageQueue(db: Db, userId: number, limit = 50): Promise<T
     .innerJoin(words, eq(cards.wordId, words.id))
     .innerJoin(users, eq(words.addedBy, users.id))
     .where(and(eq(cards.userId, userId), eq(cards.state, State.New), eq(cards.reps, 0), isNull(cards.triagedAt), ne(words.addedBy, userId)))
-    .orderBy(asc(words.createdAt), asc(words.id))
-    .limit(limit);
-  return rows;
+    .orderBy(asc(words.createdAt), asc(words.id));
+  return (await inCurrentLanguage(db, rows)).slice(0, limit);
 }
 
 export async function triageCount(db: Db, userId: number): Promise<number> {

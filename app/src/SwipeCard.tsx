@@ -1,3 +1,5 @@
+import { AudioButtons } from "./AudioButtons";
+import { studyLanguage } from "./language";
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
@@ -106,21 +108,14 @@ export function SwipeCard({ card, view = ALL, onAnswer }: { card: Card; view?: C
             {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
         ) : (
-          <Text className="hint tap">Вспомни {enRu ? "перевод" : "по-английски"} и нажми, чтобы проверить</Text>
+          <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
         )}
       </motion.div>
 
       {flipped && (
         <div className="row">
           {view.audio && (
-            <>
-              <Button mode="bezeled" size="m" onClick={() => void play(card, "uk")}>
-                🔊 UK
-              </Button>
-              <Button mode="bezeled" size="m" onClick={() => void play(card, "us")}>
-                🔊 US
-              </Button>
-            </>
+            <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />
           )}
           {card.isNew && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>

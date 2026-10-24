@@ -1,13 +1,14 @@
+import { currentLang, LANG_CODES, LANGUAGES, langForms, type LangCode } from "../../lang";
 import { InputFile, type Bot } from "grammy";
 import type { User } from "../../db/schema";
 import {
-  createRoom, deleteRoom, findRoomByChat, renameRoom, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
+  createRoom, deleteRoom, ensurePersonalRoom, findRoomByChat, renameRoom, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
 } from "../../services/rooms";
 import { getUser, updateUser } from "../../services/users";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, inviteLink, type BotContext, type Deps } from "../context";
-import { confirmRoomDeleteKeyboard, roomKeyboard } from "../keyboards";
+import { confirmRoomDeleteKeyboard, learnLangKeyboard, roomKeyboard, roomTitle } from "../keyboards";
 import { clearPendingInputs } from "../pending";
 import { esc, plural, welcomeText } from "../texts";
 
@@ -21,19 +22,22 @@ async function roomMenu(deps: Deps, user: User) {
   }
   const current = rooms.find((r) => r.id === user.currentRoomId) ?? rooms[0];
   const members = await listMembers(deps.db, current.id);
+  // Языки, словаря которых ещё нет (английский личный словарь есть у всех): «🇰🇷 Учить корейский».
+  const missing: LangCode[] = [];
+  for (const code of LANG_CODES) if (!rooms.some((r) => r.language === code)) missing.push(code);
   if (current.personalOf === user.id) {
     const text = [
-      `📒 Сейчас: <b>${esc(current.name)}</b> — твой личный словарь.`,
+      `📒 Сейчас: <b>${esc(roomTitle(current))}</b> — твой личный словарь.`,
       "Учить вместе с друзьями — в общей комнате: создай её (➕) и позови их ссылкой, или вступи по ссылке друга.",
     ].join("\n");
-    return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
+    return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id, missing) };
   }
   const text = [
-    `🏠 Текущая комната: <b>${esc(current.name)}</b>`,
+    `🏠 Текущая комната: <b>${esc(roomTitle(current))}</b>`,
     `Участники: ${members.map((m) => esc(m.firstName)).join(", ")}`,
     current.telegramChatId != null ? "🔗 Привязана к группе" : "",
   ].filter(Boolean).join("\n");
-  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
+  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id, missing) };
 }
 
 const MAX_ROOM_NAME = 64;
@@ -47,7 +51,8 @@ async function askRoomName(ctx: BotContext, deps: Deps, renameRoomId?: number): 
 }
 
 async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
-  const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now() });
+  // Комната для друзей — на языке, который человек сейчас учит.
+  const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now(), language: currentLang().code });
   await ctx.reply(
     `🎉 Комната «${esc(room.name)}» создана и выбрана текущей.\nПришли друзьям ссылку: ${inviteLink(deps.botUsername, room)}`,
     HTML,
@@ -93,8 +98,33 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     // Видео грузится несколько секунд — в фоне, а текст после него, чтобы шли по порядку.
     background(ctx, async () => {
       await sendWelcomeVideo(ctx);
-      await ctx.reply(welcomeText(), HTML);
+      // Под приветствием — что учим: английский или корейский.
+      await ctx.reply(welcomeText(), ctx.chat.type === "private" ? { ...HTML, reply_markup: learnLangKeyboard() } : HTML);
     });
+  });
+
+  // 🇰🇷 Учить корейский (и обратно): личный словарь этого языка становится текущей комнатой.
+  bot.callbackQuery(/^ll:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    await ctx.answerCallbackQuery();
+    if (cb?.k !== "learnLang" || ctx.chat?.type !== "private") return;
+    const lang = LANGUAGES[cb.lang];
+    const forms = langForms(lang);
+    const current = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
+    if (current?.language === cb.lang) {
+      return void (await ctx.reply(`${lang.flag} Ты и так учишь ${lang.name} — сейчас в «${esc(roomTitle(current))}». Пришли слово, и начнём 🙂`, HTML));
+    }
+    const room = await ensurePersonalRoom(deps.db, ctx.user.id, deps.now(), cb.lang);
+    await updateUser(deps.db, ctx.user.id, { currentRoomId: room.id });
+    await ctx.reply(
+      [
+        `${lang.flag} Учим ${lang.name}! Текущая комната — «${esc(roomTitle(room))}», твой личный словарь.`,
+        "",
+        `Пришли слово ${forms.adv} или по-русски — подберу перевод, транскрипцию, пример и озвучку. Потом повторяй в /learn или /app.`,
+        "Вернуться к другому языку — /room.",
+      ].join("\n"),
+      HTML,
+    );
   });
 
   bot.command("help", (ctx) => ctx.reply(welcomeText(), HTML));

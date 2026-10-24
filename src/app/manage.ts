@@ -1,3 +1,4 @@
+import { langForms } from "../lang";
 import { and, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
@@ -153,7 +154,7 @@ export async function appPrepareWord(deps: Deps, user: User, body: { text?: unkn
   if (user.currentRoomId == null) return { status: 400, body: { ok: false, error: "Сначала выбери комнату в настройках" } };
   const prepared = await prepareWord(deps, user.currentRoomId, parsed);
   if (prepared.status === "exists") return { status: 409, body: { ok: false, error: `«${prepared.term}» уже есть в комнате` } };
-  if (prepared.status === "no-english") return { status: 422, body: { ok: false, error: `Не получилось подобрать английское слово для «${prepared.term}» — напиши по-английски` } };
+  if (prepared.status === "no-english") return { status: 422, body: { ok: false, error: `Не получилось подобрать ${langForms().neut} слово для «${prepared.term}» — напиши ${langForms().adv}` } };
   return { status: 200, body: { ok: true, draft: prepared.draft } };
 }
 

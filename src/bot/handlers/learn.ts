@@ -1,3 +1,4 @@
+import { langForms, pickAccent } from "../../lang";
 import { startTranslate } from "./translate";
 import { dropCard, restoreCard } from "../../services/cards";
 import { markTriaged } from "../../services/triage";
@@ -92,7 +93,7 @@ async function presentSpecial(
     return true;
   }
   if (!ctx.chat || (stage !== "sentence" && stage !== "listen")) return false;
-  const accent = deps.random() < 0.5 ? "uk" : "us";
+  const accent = pickAccent(deps.random);
   const voice = stage === "listen" ? await wordVoice(deps, word, accent) : undefined;
   if (stage === "listen" && !voice) return false;
   const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };
@@ -350,7 +351,7 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   }
   const [first, ...rest] = questions;
   if (!first) {
-    return void (await ctx.reply("🧠 Пока не записано ни одной ошибки. Их собирает /check — ответом на сообщение на английском."));
+    return void (await ctx.reply(`🧠 Пока не записано ни одной ошибки. Их собирает /check — ответом на сообщение ${langForms().prep}.`));
   }
   const state = { questions: rest, standalone: true, lastAtCount: 0 };
   deps.drills.set(ctx.user.id, state);

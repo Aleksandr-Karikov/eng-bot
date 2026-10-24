@@ -1,3 +1,4 @@
+import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
 import { editWord, getWord, mediaUrl, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
@@ -84,12 +85,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
           {word.translation}
         </Title>
         <div className="row">
-          <Button mode="bezeled" size="s" onClick={() => void play(word.id, "uk")}>
-            🔊 UK
-          </Button>
-          <Button mode="bezeled" size="s" onClick={() => void play(word.id, "us")}>
-            🔊 US
-          </Button>
+          <AudioButtons size="s" onPlay={(accent) => void play(word.id, accent)} />
         </div>
       </div>
 

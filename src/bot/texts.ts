@@ -1,3 +1,4 @@
+import { currentLang, langForms } from "../lang";
 import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
@@ -30,6 +31,8 @@ const ipa = (s: string) => `/${s.trim().replace(/^[/[\]\s]+|[/[\]\s]+$/g, "")}/`
 
 /** «🇬🇧 /…/ · 🇺🇸 /…/», одна запись с двумя флагами, если они совпадают, или "" если транскрипции нет. */
 export function transcriptionLine(d: { transcriptionUk?: string; transcriptionUs?: string }): string {
+  // Не английский: в слоте uk — романизация (사랑 → [sa-rang]), без флагов и слешей IPA.
+  if (currentLang().code !== "en") return d.transcriptionUk?.trim() ? `[${esc(d.transcriptionUk.trim().replace(/^[/[\]\s]+|[/[\]\s]+$/g, ""))}]` : "";
   const uk = d.transcriptionUk?.trim() ? ipa(d.transcriptionUk) : "";
   const us = d.transcriptionUs?.trim() ? ipa(d.transcriptionUs) : "";
   if (uk && uk === us) return `🇬🇧🇺🇸 ${esc(uk)}`;
@@ -259,7 +262,7 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
   const answer = `<tg-spoiler><b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}</tg-spoiler>`;
-  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни по-английски и проверь себя тапом:`;
+  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни ${langForms().adv} и проверь себя тапом:`;
 }
 
 /**
@@ -409,7 +412,7 @@ export function mistakesNotSavedText(name: string, botUsername: string): string 
 export function mistakesText(p: MistakeProfile, resolved: Map<string, number> = new Map()): string {
   const done = resolved.size ? `✅ Отработано: ${[...resolved.keys()].map(esc).join(", ")}` : "";
   if (p.total === 0) {
-    return done ? `🎉 Все темы отработаны!\n\n${done}` : "🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение на английском.";
+    return done ? `🎉 Все темы отработаны!\n\n${done}` : `🧠 Пока ошибок не записано. Их собирает /check — ответом на сообщение ${langForms().prep}.`;
   }
   const lines = p.categories.map((c) => {
     const example = c.examples[0] ? ` — <s>${esc(c.examples[0].wrong)}</s> → ${esc(c.examples[0].right)}` : "";
@@ -514,7 +517,7 @@ export function extensionText(key: string, server: string): string {
 }
 
 export function translateTaskText(ru: string): string {
-  return `🇷🇺 <b>${esc(ru)}</b>\n\nПереведи на английский:`;
+  return `🇷🇺 <b>${esc(ru)}</b>\n\nПереведи на ${langForms().acc}:`;
 }
 
 export function translateResultText(task: { en: string; word: string }, r: TranslationReview, progress: DrillProgress | undefined, saved: boolean): string {
@@ -541,7 +544,7 @@ export function sayText(phrase: string, answer: SayAnswer): string {
   const learn = answer.learn.length
     ? `\n\n📚 Стоит запомнить:\n${answer.learn.map((l) => `• ${esc(l.term)} — ${esc(l.translation)}`).join("\n")}`
     : "";
-  return `🇬🇧 Как сказать «${esc(phrase)}»:\n\n${variants.join("\n")}${learn}`;
+  return `${currentLang().flag} Как сказать «${esc(phrase)}»:\n\n${variants.join("\n")}${learn}`;
 }
 
 export function talkReviewText(r: TalkReview, words: Array<{ term: string }>): string {

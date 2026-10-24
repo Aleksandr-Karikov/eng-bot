@@ -1,3 +1,4 @@
+import { currentLang, langForms } from "../../lang";
 import { InlineKeyboard, type Bot } from "grammy";
 import type { CheckResult } from "../../llm/enricher";
 import { background, HTML, type BotContext, type Deps } from "../context";
@@ -7,7 +8,10 @@ import { decodeCb } from "../callbacks";
 import { mistakesAskKeyboard } from "../keyboards";
 import { checkText, mistakesAskText, mistakesNotSavedText, mistakesSavedText } from "../texts";
 
-const USAGE = "Ответь командой /check на сообщение на английском — проверю ошибки.\nИли пришли текст сразу: /check he go to work";
+const usage = () =>
+  currentLang().code === "en"
+    ? "Ответь командой /check на сообщение на английском — проверю ошибки.\nИли пришли текст сразу: /check he go to work"
+    : `Ответь командой /check на сообщение ${langForms().prep} — проверю ошибки.\nИли пришли текст сразу: /check текст`;
 /** Сколько предыдущих сообщений отдавать Claude как контекст и насколько они могут быть старше проверяемого. */
 const CONTEXT_MESSAGES = 6;
 /** Сообщения автора подряд с такими паузами считаются одной репликой. */
@@ -17,7 +21,7 @@ const MAX_CHECK_CHARS = 1500;
 const CONTEXT_MAX_AGE_SEC = 15 * 60;
 
 const GROUP_USAGE = [
-  "Ответь командой /check на сообщение на английском — проверю ошибки.",
+  `Ответь командой /check на сообщение ${langForms().prep} — проверю ошибки.`,
   "Если ты уже ответил, значит, это сообщение я не вижу: оно отправлено до того, как меня добавили в группу",
   "(или пока у меня был включён режим конфиденциальности). Такие можно проверить так: /check текст",
 ].join("\n");
@@ -86,7 +90,7 @@ async function runCheck(ctx: BotContext, deps: Deps): Promise<void> {
   const own = typeof ctx.match === "string" ? ctx.match.trim() : "";
   const quoted = (original?.text ?? original?.caption ?? "").trim();
   const text = quoted || own;
-  if (!text) return void (await ctx.reply(message.chat.type === "private" ? USAGE : GROUP_USAGE));
+  if (!text) return void (await ctx.reply(message.chat.type === "private" ? usage() : GROUP_USAGE));
   // Автор проверяемого текста: автор сообщения, а если текст пришёл в самой команде
   // (/check текст, в том числе ответом на фото) — её отправитель.
   const authorTg = quoted && original?.from ? original.from : message.from;

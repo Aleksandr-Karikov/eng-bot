@@ -1,4 +1,4 @@
-"""Английская расшифровка видео YouTube: python transcript.py <video_id> → JSON {"text": "..."} или {"error": "..."}."""
+"""Расшифровка видео YouTube: python transcript.py <video_id> [язык: en | ko] → JSON {"text": "..."} или {"error": "..."}."""
 import json
 import sys
 
@@ -14,9 +14,11 @@ from youtube_transcript_api._errors import (
 
 def main() -> None:
     video_id = sys.argv[1]
+    lang = sys.argv[2] if len(sys.argv) > 2 else "en"
+    languages = ["en", "en-US", "en-GB"] if lang == "en" else [lang]
     try:
         # Ручные субтитры важнее автоматических — библиотека выбирает их первыми.
-        parts = YouTubeTranscriptApi().fetch(video_id, languages=["en", "en-US", "en-GB"])
+        parts = YouTubeTranscriptApi().fetch(video_id, languages=languages)
         print(json.dumps({"text": " ".join(p.text for p in parts)}, ensure_ascii=False))
     except (NoTranscriptFound, TranscriptsDisabled):
         print(json.dumps({"error": "no_transcript"}))

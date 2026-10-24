@@ -1,3 +1,6 @@
+import { getMe } from "./api";
+import { setStudyLanguage } from "./language";
+
 import { settingsButton } from "@telegram-apps/sdk-react";
 import { useCallback, useEffect, useState } from "react";
 import { Learn } from "./Learn";
@@ -28,6 +31,16 @@ export function App() {
     setPage(next);
   }, []);
   const back = useCallback(() => setPage("learn"), []);
+  // Изучаемый язык нужен и страницам, открытым сразу по ссылке (?tab=), не только карточкам.
+  const [, setLanguageLoaded] = useState(false);
+  useEffect(() => {
+    getMe()
+      .then((me) => {
+        setStudyLanguage(me.language);
+        setLanguageLoaded(true);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let off: (() => void) | undefined;

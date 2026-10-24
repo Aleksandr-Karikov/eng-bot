@@ -1,3 +1,4 @@
+import { isLangCode, type LangCode } from "../lang";
 import { CARD_PARTS, type CardPart } from "../services/card-view";
 import { STAGES, type Stage } from "../services/exercises";
 import type { Answer } from "../srs/srs";
@@ -68,6 +69,7 @@ export type Cb =
   | { k: "delPage"; id: number; page: number }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
+  | { k: "learnLang"; lang: LangCode }
   | { k: "roomRename"; roomId: number }
   | { k: "roomDel"; roomId: number }
   | { k: "roomDelOk"; roomId: number }
@@ -144,6 +146,7 @@ export function encodeCb(cb: Cb): string {
     case "delPage": return `xp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "roomsw": return `rs:${cb.roomId}`;
+    case "learnLang": return `ll:${cb.lang}`;
     case "roomRename": return `rn:${cb.roomId}`;
     case "roomDel": return `rx:${cb.roomId}`;
     case "roomDelOk": return `rxo:${cb.roomId}`;
@@ -236,6 +239,7 @@ export function decodeCb(data: string): Cb | null {
     }
     case "te": return { k: "talkEnd" };
     case "pn": return { k: "pronNext" };
+    case "ll": return isLangCode(a) ? { k: "learnLang", lang: a } : null;
     case "pl": return a === "uk" || a === "us" ? { k: "pronListen", accent: a } : null;
     case "ek": return { k: "extensionKey" };
     case "ez": return { k: "extensionZip" };

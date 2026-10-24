@@ -1,3 +1,5 @@
+import { setStudyLanguage } from "./language";
+
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -44,6 +46,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     setLoading(true);
     try {
       const [info, cards] = await Promise.all([getMe(), getQueue(mode)]);
+      setStudyLanguage(info.language);
       setMe(info);
       setQueue(cards);
       setError(undefined);

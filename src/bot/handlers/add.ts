@@ -1,3 +1,4 @@
+import { currentLang, langForms } from "../../lang";
 import type { Bot } from "grammy";
 import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { prepareWord } from "../../services/prepare-word";
@@ -22,7 +23,7 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   const prepared = await prepareWord(deps, room.id, parsed);
   if (prepared.status === "exists") return void (await ctx.reply(`«${esc(prepared.term)}» уже есть в комнате`, HTML));
   if (prepared.status === "no-english") {
-    return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(prepared.term)}». Напиши сразу по-английски: /add tooth`, HTML));
+    return void (await ctx.reply(`Не получилось подобрать ${langForms().neut} слово для «${esc(prepared.term)}». Напиши сразу ${langForms().adv}: /add ${currentLang().code === "en" ? "tooth" : "이"}`, HTML));
   }
   const word = prepared.draft;
 

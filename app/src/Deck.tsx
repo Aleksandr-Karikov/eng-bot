@@ -1,3 +1,4 @@
+import { AudioButtons } from "./AudioButtons";
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useState } from "react";
@@ -101,12 +102,7 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
       </motion.div>
 
       <div className="row">
-        <Button mode="bezeled" size="m" onClick={() => void play(w, "uk")}>
-          🔊 UK
-        </Button>
-        <Button mode="bezeled" size="m" onClick={() => void play(w, "us")}>
-          🔊 US
-        </Button>
+        <AudioButtons size="m" onPlay={(accent) => void play(w, accent)} />
         <Button mode="plain" size="m" onClick={() => fling("drop")}>
           🙈 Не для меня
         </Button>

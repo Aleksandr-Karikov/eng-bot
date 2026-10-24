@@ -1,3 +1,4 @@
+import { currentLang } from "../lang";
 import { execFile } from "node:child_process";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -48,7 +49,7 @@ export class TranscriptSubtitles implements SubtitleSource {
     if (!id) return undefined;
     // id проверен регуляркой (11 символов [\w-]) и передаётся отдельным аргументом без shell.
     const [{ stdout }, title] = await Promise.all([
-      run(this.python, ["-I", this.script, id], { timeout: 60_000, maxBuffer: 20 * 1024 * 1024 }),
+      run(this.python, ["-I", this.script, id, currentLang().code], { timeout: 60_000, maxBuffer: 20 * 1024 * 1024 }),
       this.title(id),
     ]);
     const result = JSON.parse(stdout) as { text?: string; error?: string };

@@ -1,3 +1,4 @@
+import type { StudyLanguage } from "./language";
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
@@ -44,6 +45,8 @@ export interface Me {
   view: CardView;
   /** Сколько новых слов от друзей ждут разбора. */
   triage: number;
+  /** Изучаемый язык текущей комнаты. */
+  language?: StudyLanguage;
 }
 
 export type CardView = Record<"transcription" | "explanation" | "example" | "context" | "collocations" | "mnemonic" | "audio" | "picture", boolean>;

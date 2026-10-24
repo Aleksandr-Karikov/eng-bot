@@ -1,3 +1,4 @@
+import { currentLang, langForms } from "../../lang";
 import { clearPendingInputs, endLongModes } from "../pending";
 import type { Bot } from "grammy";
 import type { TranslationReview } from "../../llm/tutor";
@@ -90,7 +91,7 @@ export async function startTranslate(ctx: BotContext, deps: Deps): Promise<void>
   clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
   const session = deps.translations.start(ctx.user.id, ctx.chat.id);
   await ctx.reply(
-    "🇷🇺 → 🇬🇧 <b>Тренажёр перевода</b>\n\nПереводи предложения на английский и пиши ответ сообщением. Предложения — под твои частые ошибки и слова, которые ты сейчас учишь. ⏹ — закончить.",
+    `🇷🇺 → ${currentLang().flag} <b>Тренажёр перевода</b>\n\nПереводи предложения на ${langForms().acc} и пиши ответ сообщением. Предложения — под твои частые ошибки и слова, которые ты сейчас учишь. ⏹ — закончить.`,
     HTML,
   );
   background(ctx, () => sendNext(ctx, deps, session));

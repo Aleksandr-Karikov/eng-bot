@@ -1,3 +1,4 @@
+import { langForms } from "../../lang";
 import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { ExtractedItem } from "../../llm/enricher";
@@ -31,7 +32,7 @@ async function startYoutube(ctx: BotContext, deps: Deps, url: string): Promise<v
     console.error("Subtitles failed", url, err);
     return void (await ctx.reply("Не получилось достать субтитры 😔 Проверь ссылку или попробуй позже"));
   }
-  if (!subs) return void (await ctx.reply("У этого видео нет английских субтитров 🤷"));
+  if (!subs) return void (await ctx.reply(`У этого видео нет ${langForms().genPl} субтитров 🤷`));
   const cut = subs.text.length > MAX_SUBTITLE_CHARS;
   const text = subs.text.slice(0, MAX_SUBTITLE_CHARS);
   await ctx.reply(`🎬 ${subs.title ? `«${esc(subs.title)}» — ` : ""}ищу слова${cut ? " (в первой четверти часа)" : ""}…`, HTML);
@@ -71,7 +72,7 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
     return void (await ctx.reply(failText));
   }
   if (items.length === 0) {
-    return void (await ctx.reply("Не нашёл, что стоит выучить: тут либо нет английского, либо только самые простые слова 🤔\nНужна именно эта фраза — добавь её: /add фраза"));
+    return void (await ctx.reply(`Не нашёл, что стоит выучить: тут либо нет ${langForms().gen}, либо только самые простые слова 🤔\nНужна именно эта фраза — добавь её: /add фраза`));
   }
   // Самые полезные — в начале списка; необязательные — в конце, но тоже отмечены: решает человек.
   const rated = await rateUsefulness(await filterNewItems(deps.db, room.id, items), deps.frequency);

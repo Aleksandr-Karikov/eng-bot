@@ -1,3 +1,5 @@
+import { studyLanguage } from "./language";
+
 import { Button, Input, List, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addWord, prepareWord, type WordDraft } from "./api";
@@ -60,7 +62,7 @@ export function AddWord({ onExit }: { onExit: () => void }) {
   return (
     <List>
       {!draft ? (
-        <Section header="➕ Новое слово" footer="Слово или фразу, можно с переводом через тире: bank — берег. Можно по-русски — подберу английское.">
+        <Section header="➕ Новое слово" footer={studyLanguage().code === "en" ? "Слово или фразу, можно с переводом через тире: bank — берег. Можно по-русски — подберу английское." : `Слово или фразу, можно с переводом через тире. Можно по-русски — подберу ${studyLanguage().neut}.`}>
           <Input
             ref={input}
             placeholder="Например: cut to the chase"
