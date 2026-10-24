@@ -10,7 +10,7 @@ import { HARD_AFTER_LAPSES } from "../services/hard-words";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
-import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setUsefulness, updateWord } from "../services/words";
+import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord } from "../services/words";
 import { prepareWord } from "../services/prepare-word";
 import { broadcastWord } from "../bot/word-flow";
 
@@ -186,4 +186,17 @@ export async function appAddWord(deps: Deps, user: User, body: Record<string, un
   if (result.status === "no-room") return { status: 400, body: { ok: false, error: "Комнату уже удалили" } };
   void broadcastWord(deps, result.word, result.members, user).catch((err) => console.error("App word broadcast failed", err));
   return { status: 200, body: { ok: true, id: result.word.id } };
+}
+
+/** 💡 Другая запоминалка для слова — для всей комнаты, как и прежняя. */
+export async function appNewMnemonic(deps: Deps, word: Word) {
+  try {
+    const [mnemonic] = await deps.tutor.mnemonics([{ term: word.term, translation: word.translation, instead: word.mnemonic || undefined }]);
+    if (!mnemonic) return { status: 502, body: { ok: false, error: "Не получилось придумать — попробуй ещё раз" } };
+    await setMnemonic(deps.db, word.id, mnemonic);
+    return { status: 200, body: { ok: true, mnemonic } };
+  } catch (err) {
+    console.error("App mnemonic failed", err);
+    return { status: 502, body: { ok: false, error: "Не получилось придумать — попробуй ещё раз" } };
+  }
 }

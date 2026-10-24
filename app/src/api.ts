@@ -254,3 +254,6 @@ export const addWord = (draft: WordDraft) => post<{ id: number }>("/api/words", 
 
 /** 🎧 Аудиоурок придёт в чат с ботом: started — собирается, busy — уже собирается, empty — слушать пока нечего. */
 export const requestLesson = () => post<{ status: "started" | "busy" | "empty" }>("/api/lesson").then((r) => r.status);
+
+/** 💡 Другая запоминалка (для всей комнаты). */
+export const newMnemonic = (id: number) => post<{ mnemonic: string }>(`/api/words/${id}/mnemonic`).then((r) => r.mnemonic);

@@ -10,7 +10,7 @@ import { undoAnswer } from "../services/review";
 import { QUEUE_MODES, appAnswer, appAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
-import { appAddWord, appChangeSetting, appEditWord, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
+import { appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
   deps: Deps;
@@ -112,6 +112,12 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
     const r = await appEditWord(deps, word, await c.req.json().catch(() => ({})));
     return c.json(r, r.ok ? 200 : 400);
+  });
+  app.post("/api/words/:id/mnemonic", async (c) => {
+    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+    const r = await appNewMnemonic(deps, word);
+    return c.json(r.body, r.status as 200 | 502);
   });
   const ACTIONS = new Set<WordAction>(["drop", "restore", "promote", "delete"]);
   app.post("/api/words/:id/:action", async (c) => {

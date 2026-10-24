@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { AddressInfo } from "node:net";
 import { startCaptureServer } from "../src/capture/server";
@@ -224,5 +224,17 @@ describe("📚 Mini App API", () => {
       expect(await res.json()).toEqual({ ok: true, result: "practice" });
       expect(await h.db.select().from(reviewLogs)).toEqual([]);
     });
+  });
+
+  it("💡 a different mnemonic replaces the old one for the whole room", async () => {
+    const { h, app, auth } = await setup();
+    const id = (await h.db.select().from(words))[0].id;
+    await h.db.update(words).set({ mnemonic: "старая" });
+    const mnemonics = vi.fn(async () => ["новая"]);
+    h.deps.tutor.mnemonics = mnemonics;
+    const res = await app.request(`/api/words/${id}/mnemonic`, { method: "POST", headers: auth });
+    expect(await res.json()).toEqual({ ok: true, mnemonic: "новая" });
+    expect(mnemonics).toHaveBeenCalledWith([{ term: "bank", translation: "берег", instead: "старая" }]);
+    expect((await h.db.select().from(words))[0].mnemonic).toBe("новая");
   });
 });

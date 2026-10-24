@@ -1,6 +1,6 @@
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { editWord, getWord, mediaUrl, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
+import { editWord, getWord, mediaUrl, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
 import { transcription, USEFULNESS } from "./format";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
 
@@ -16,6 +16,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
   const [picture, setPicture] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [thinking, setThinking] = useState(false);
   // Одна кнопка «Назад» на экран: из правки — к слову, со слова — к списку.
   const back = useCallback(() => (editing ? setEditing(false) : onClose()), [editing, onClose]);
   useBackButton(back);
@@ -122,11 +123,27 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
           ))}
         </Section>
       )}
-      {word.mnemonic && (
-        <Section header="Как запомнить">
-          <Cell multiline>{word.mnemonic}</Cell>
-        </Section>
-      )}
+      <Section header="Как запомнить" footer={word.mnemonic ? "Новая запоминалка заменит эту у всех в комнате." : undefined}>
+        {word.mnemonic && <Cell multiline>{word.mnemonic}</Cell>}
+        <Cell
+          onClick={async () => {
+            if (thinking) return;
+            setThinking(true);
+            try {
+              const mnemonic = await newMnemonic(word.id);
+              setWord({ ...word, mnemonic });
+              haptic.done(true);
+            } catch (err) {
+              haptic.done(false);
+              notify(err instanceof Error ? err.message : String(err));
+            } finally {
+              setThinking(false);
+            }
+          }}
+        >
+          {thinking ? "💡 Придумываю… секунд 10" : word.mnemonic ? "💡 Придумать другую" : "💡 Придумать запоминалку"}
+        </Cell>
+      </Section>
       {word.hasPicture && <div className="picture word-picture">{picture && <img src={picture} alt="" />}</div>}
 
       <Section header="Управление словом">

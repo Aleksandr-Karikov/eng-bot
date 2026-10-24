@@ -9,6 +9,8 @@ export interface MnemonicItem {
   term: string;
   /** "" — перевод ещё неизвестен (запоминалка пишется параллельно с переводом). */
   translation: string;
+  /** Прежняя запоминалка, которая не зашла: нужна другая, на другом приёме. */
+  instead?: string;
 }
 
 export interface ImageSubject {
@@ -602,7 +604,11 @@ export function buildMnemonicPrompt(items: MnemonicItem[]): string {
     "и дополняют друг друга (например, образ + происхождение). По-русски, 1–3 предложения, понятно с первого прочтения, без натяжек.",
     'Верни JSON-массив: [{"i": 1, "candidates": [{"technique": "image", "text": "...", "score": 8}, ...], "final": "...", "used": ["image", "parts"]}]',
     "",
-    ...items.map((w, i) => `${i + 1}. ${w.term}${w.translation ? ` — ${w.translation}` : ""}`),
+    ...items.map(
+      (w, i) =>
+        `${i + 1}. ${w.term}${w.translation ? ` — ${w.translation}` : ""}` +
+        (w.instead ? ` (прежняя запоминалка не помогла, придумай другую, на другом приёме: «${w.instead}»)` : ""),
+    ),
   ].join("\n");
 }
 
