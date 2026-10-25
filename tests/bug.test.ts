@@ -24,7 +24,7 @@ describe("🐞 /bug", () => {
     const h = botHarness();
     await makeUser(h.db, 100);
     await h.bot.handleUpdate(h.message(100, "/bug"));
-    expect(String(h.calls.at(-1)?.payload.text)).toContain("Опиши, что пошло не так");
+    expect(String(h.calls.at(-1)?.payload.text)).toContain("Напиши после команды, что пошло не так");
     await h.bot.handleUpdate(h.replyTo(100, "/bug", { messageId: 9, fromId: 1, text: "❌ Our plans on the weather" }));
     const [bug] = await listBugs(h.db);
     expect(bug.context.replied).toBe("❌ Our plans on the weather");
