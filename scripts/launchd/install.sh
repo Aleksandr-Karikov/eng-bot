@@ -54,8 +54,13 @@ LABELS=(com.engbot.bot com.engbot.backup)
 NGROK=$(command -v ngrok || true)
 # Постоянный адрес туннеля — из APP_URL в .env (бесплатный домен ngrok), иначе ngrok выдаст случайный.
 NGROK_URL=$(grep -E '^APP_URL=https://[^/]*ngrok' "$REPO/.env" 2>/dev/null | sed -E 's|^APP_URL=(https://[^/]+).*|\1|' || true)
-NGROK_ARGS=""
-[ -n "$NGROK_URL" ] && NGROK_ARGS="<string>--url</string><string>$NGROK_URL</string>"
+NGROK_ARGS="<string>http</string><string>8788</string>"
+[ -n "$NGROK_URL" ] && NGROK_ARGS="$NGROK_ARGS<string>--url</string><string>$NGROK_URL</string>"
+# Общий домен с другими приложениями (например, /money/ → money-bot): эндпоинты и правила — в data/ngrok-endpoints.yml.
+NGROK_ENDPOINTS="$REPO/data/ngrok-endpoints.yml"
+if [ -f "$NGROK_ENDPOINTS" ]; then
+  NGROK_ARGS="<string>start</string><string>--all</string><string>--config</string><string>$HOME/Library/Application Support/ngrok/ngrok.yml</string><string>--config</string><string>$NGROK_ENDPOINTS</string>"
+fi
 if [ -n "$NGROK" ]; then
   LABELS+=(com.engbot.ngrok)
   cat > "$AGENTS/com.engbot.ngrok.plist" <<PLIST
@@ -65,7 +70,7 @@ if [ -n "$NGROK" ]; then
 <dict>
   <key>Label</key><string>com.engbot.ngrok</string>
   <key>ProgramArguments</key>
-  <array><string>$NGROK</string><string>http</string><string>8788</string>$NGROK_ARGS<string>--log</string><string>stdout</string></array>
+  <array><string>$NGROK</string>$NGROK_ARGS<string>--log</string><string>stdout</string></array>
   <key>EnvironmentVariables</key>
   <dict><key>HOME</key><string>$HOME</string></dict>
   <key>RunAtLoad</key><true/>
