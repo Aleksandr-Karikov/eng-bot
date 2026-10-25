@@ -27,6 +27,8 @@ export interface Card {
     term: string;
     translation: string;
     explanation: string;
+    /** Для RU → EN: смысл под переводом; пусто — не показывать. */
+    meaningHint?: string;
     example: string;
     context: string;
     mnemonic: string;

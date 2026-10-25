@@ -12,7 +12,7 @@ import { setItems, wordSets } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
-import { gapParts } from "../bot/texts";
+import { gapParts, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
 import { pickStage } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
@@ -57,6 +57,8 @@ export interface AppCard {
     term: string;
     translation: string;
     explanation: string;
+    /** Для RU → EN: смысл под переводом (объяснение, если не выдаёт слово), иначе пусто. */
+    meaningHint: string;
     example: string;
     context: string;
     mnemonic: string;
@@ -175,6 +177,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
         term: word.term,
         translation: word.translation,
         explanation: word.explanation,
+        meaningHint: reverseHint(word),
         example: word.example,
         context: word.context,
         mnemonic: word.mnemonic,

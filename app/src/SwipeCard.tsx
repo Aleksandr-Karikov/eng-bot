@@ -80,6 +80,8 @@ export function SwipeCard({ card, view = ALL, onAnswer }: { card: Card; view?: C
             {enRu ? w.term : w.translation} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
           </Title>
           {enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
+          {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
+          {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
         </div>
 
         {flipped ? (
@@ -88,7 +90,7 @@ export function SwipeCard({ card, view = ALL, onAnswer }: { card: Card; view?: C
               {enRu ? w.translation : w.term}
             </Title>
             {!enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
-            {w.explanation && <Text className="block">{w.explanation}</Text>}
+            {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
             {view.example && w.example && (
               <Text className="block">
                 <b>Пример:</b> <i>{w.example}</i>

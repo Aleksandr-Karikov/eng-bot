@@ -260,9 +260,30 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
+const HINT_STOPWORDS = new Set(["the", "and", "for", "you", "your", "his", "her", "its", "our", "their", "with", "from", "into", "out", "off", "not", "are", "was", "has", "have", "one", "someone", "something", "smth", "sb", "sth"]);
+
+/**
+ * Подсказка смысла для карточки RU → EN: русское объяснение слова, чтобы среди синонимов с одинаковым переводом
+ * было понятно, какое имеется в виду (баг #10: «благоразумие» — prudence или discretion?). Пусто, если
+ * объяснение выдаёт само слово (встречается его основа).
+ */
+export function reverseHint(word: Pick<WordDraft, "term" | "explanation">): string {
+  const explanation = word.explanation?.trim();
+  if (!explanation) return "";
+  const text = explanation.toLowerCase();
+  const stems = word.term
+    .toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .filter((w) => w.length >= 3 && !HINT_STOPWORDS.has(w))
+    // Основа без окончания: discretion → discreti, prudent → prude.
+    .map((w) => (w.length > 5 ? w.slice(0, -2) : w));
+  return stems.some((s) => text.includes(s)) ? "" : explanation;
+}
+
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
   const answer = `<tg-spoiler><b>${esc(word.term)}</b>${withTranscription(word, view.transcription)}</tg-spoiler>`;
-  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни ${langForms().adv} и проверь себя тапом:`;
+  const hint = view.explanation ? reverseHint(word) : "";
+  return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}${hint ? `\n<i>${esc(hint)}</i>` : ""}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни ${langForms().adv} и проверь себя тапом:`;
 }
 
 /**
