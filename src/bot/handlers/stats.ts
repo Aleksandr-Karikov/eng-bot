@@ -25,7 +25,13 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("stats", async (ctx) => {
     const now = deps.now();
     const stats = await personalStats(deps.db, ctx.user, now);
-    const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
+    // В группе — её комната (как /goal), в личке — текущая.
+    const room =
+      ctx.chat.type !== "private"
+        ? (ctx.groupRoom ?? undefined)
+        : ctx.user.currentRoomId != null
+          ? await getRoom(deps.db, ctx.user.currentRoomId)
+          : undefined;
     const board = room ? await roomLeaderboard(deps.db, room.id, now) : undefined;
     const goal = room ? await goalProgress(deps.db, room, now) : undefined;
     await ctx.reply(statsText(stats, room?.name, board, goal), HTML);

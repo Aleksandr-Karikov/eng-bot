@@ -67,12 +67,22 @@ function initData(): string {
  */
 const headers = () => ({ authorization: `tma ${initData()}`, "ngrok-skip-browser-warning": "1" });
 
+/** Ошибка сервера с кодом: 409 — «уже учтено» (карточку уже оценили). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { ...init?.headers, ...headers() } });
   if (res.status === 401) throw new Error("Открой приложение из бота");
   // Ошибки действий («Хотя бы один режим должен остаться…») сервер присылает текстом для человека.
   const body = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(body.error ?? `Ошибка ${res.status}`);
+  if (!res.ok) throw new ApiError(body.error ?? `Ошибка ${res.status}`, res.status);
   return body as T;
 }
 

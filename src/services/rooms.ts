@@ -26,7 +26,8 @@ export async function createRoom(
     })
     .returning();
   // Личный словарь становится текущим, только если другой комнаты ещё нет — общую с друзьями он не вытесняет.
-  await joinRoom(db, { roomId: room.id, userId: input.createdBy, now: input.now, makeCurrent: !input.personal });
+  // Комната группы (создана из группы через /link) — тоже: в личке человек остаётся там, где был.
+  await joinRoom(db, { roomId: room.id, userId: input.createdBy, now: input.now, makeCurrent: !input.personal && input.telegramChatId == null });
   return room;
 }
 

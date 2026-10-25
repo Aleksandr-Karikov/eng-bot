@@ -2,7 +2,7 @@ import { setStudyLanguage } from "./language";
 
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { type QueueMode, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
@@ -42,9 +42,15 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
   const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<unknown> }>>([]);
 
+  /** Оценки, которые ещё летят на сервер. */
+  const pending = useRef(new Set<Promise<unknown>>());
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Сначала дождаться отправленных оценок: иначе сервер вернёт только что пройденную карточку
+      // ещё раз, со старым состоянием, — и ответ на неё получит «Уже учтено».
+      await Promise.allSettled([...pending.current]);
       const [info, cards] = await Promise.all([getMe(), getQueue(mode)]);
       setStudyLanguage(info.language);
       setMe(info);
@@ -93,6 +99,8 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   /** Оценка карточки уходит в фоне; её можно отменить ↩️. */
   const rate = useCallback((card: Card, value: Answer) => {
     const sent = sendAnswer(card, value).catch(() => {});
+    pending.current.add(sent);
+    void sent.finally(() => pending.current.delete(sent));
     // Вне зачёта отменять нечего — ответ и так не записан.
     if (!card.practice) setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
   }, []);

@@ -2,7 +2,7 @@ import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { checkAnswer, mediaUrl, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
+import { ApiError, checkAnswer, mediaUrl, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { transcription } from "./format";
 import { haptic, notify } from "./telegram";
@@ -51,12 +51,17 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
         if (!r.unchecked) onRated();
       } catch (err) {
         haptic.done(false);
+        // Карточку уже оценили (например, в боте) — не застревать на ней.
+        if (err instanceof ApiError && err.status === 409) {
+          notify("Эта карточка уже засчитана — дальше");
+          return onNext();
+        }
         notify(err instanceof Error ? err.message : String(err));
       } finally {
         setChecking(false);
       }
     },
-    [answer, card, checking, result, onRated],
+    [answer, card, checking, result, onRated, onNext],
   );
 
   const native = useBottomButtons(

@@ -201,3 +201,21 @@ describe("/lang and the group's room", () => {
     expect(linked.map((r) => r.id)).toEqual([room.id]);
   });
 });
+
+describe("group room vs your current room (bug #3)", () => {
+  it("/stats in a group shows the group's room; creating a room for a group does not switch your current room", async () => {
+    const h = botHarness();
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const mine = await createRoom(h.db, { name: "Моя", createdBy: user.id, now: T0 });
+    await updateUser(h.db, user.id, { currentRoomId: mine.id });
+    await h.bot.handleUpdate(h.groupMessage(100, -700, "/link"));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Новая 🇬🇧")).not.toThrow());
+    await h.bot.handleUpdate(h.groupCallback(100, -700, buttonData(h.calls, "➕ Новая 🇬🇧")));
+    await vi.waitFor(async () => expect(await h.db.select().from(rooms).where(eq(rooms.telegramChatId, -700))).toHaveLength(1));
+    expect((await makeUser(h.db, 100)).currentRoomId).toBe(mine.id);
+    await h.bot.handleUpdate(h.groupMessage(100, -700, "/stats"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("🏠 <b>Group</b>"));
+    await h.bot.handleUpdate(h.message(100, "/stats"));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("🏠 <b>Моя</b>"));
+  });
+});
