@@ -3,7 +3,7 @@ import { saveBug } from "../../services/bugs";
 import { recentLogs } from "../../log-buffer";
 import { HTML, type BotContext, type Deps } from "../context";
 
-const USAGE = "Опиши, что пошло не так: /bug вопрос был без глагола\nМожно ответом на сообщение бота — оно сохранится как главное.";
+const USAGE = "Напиши после команды, что пошло не так. Например: /bug кнопка «Дальше» не нажимается\nМожно ответом на сообщение бота — оно сохранится как главное.";
 const MAX_DESCRIPTION = 2000;
 
 export function registerBug(bot: Bot<BotContext>, deps: Deps): void {
