@@ -1,13 +1,13 @@
+import { playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { editWord, getWord, mediaUrl, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
+import { editWord, getWord, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
 import { transcription, USEFULNESS } from "./format";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
 
-async function play(id: number, accent: "uk" | "us") {
-  const url = await mediaUrl(`/api/audio?word=${id}&accent=${accent}`);
-  if (url) void new Audio(url).play().catch(() => {});
+function play(id: number, accent: "uk" | "us") {
+  playAudio(`/api/audio?word=${id}&accent=${accent}`);
 }
 
 /** Страница слова: всё, что есть на карточке, и действия «⚙️ Управление словом» из бота. */

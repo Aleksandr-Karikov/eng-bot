@@ -1,8 +1,9 @@
+import { studyLanguage } from "./language";
+import { playAudio, preloadAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
-import { useCallback, useState } from "react";
-import { mediaUrl } from "./api";
+import { useCallback, useEffect, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
 import { transcription, USEFULNESS } from "./format";
 
@@ -23,9 +24,8 @@ export interface DeckWord {
   audio: string;
 }
 
-async function play(word: DeckWord, accent: "uk" | "us") {
-  const url = await mediaUrl(`${word.audio}&accent=${accent}`);
-  if (url) void new Audio(url).play().catch(() => {});
+function play(word: DeckWord, accent: "uk" | "us") {
+  playAudio(`${word.audio}&accent=${accent}`);
 }
 
 /**
@@ -34,6 +34,10 @@ async function play(word: DeckWord, accent: "uk" | "us") {
  */
 export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer?: string; onDecide: (a: DeckAction) => void }) {
   const [revealed, setRevealed] = useState(false);
+  // Озвучку — заранее, пока человек решает.
+  useEffect(() => {
+    for (const a of studyLanguage().accents) preloadAudio(`${w.audio}&accent=${a.key}`);
+  }, [w.audio]);
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);

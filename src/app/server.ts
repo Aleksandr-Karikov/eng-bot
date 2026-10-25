@@ -41,6 +41,13 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
 
   app.get("/api/me", async (c) => c.json({ ok: true, ...(await appMe(deps, c.get("user"))) }));
+  // Ошибки с телефона (кнопки Telegram, плеер…) — в лог бота, коротко.
+  app.post("/api/client-error", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const field = (k: string, max: number) => (typeof body[k] === "string" ? (body[k] as string).slice(0, max) : "");
+    console.error(`App client error (${c.get("user").firstName}): ${field("where", 100)}: ${field("message", 500)} — ${field("ua", 200)}`);
+    return c.json({ ok: true });
+  });
   app.get("/api/queue", async (c) => {
     const mode = QUEUE_MODES.find((m) => m === c.req.query("mode")) ?? "all";
     return c.json({ ok: true, cards: await appQueue(deps, c.get("user"), mode) });

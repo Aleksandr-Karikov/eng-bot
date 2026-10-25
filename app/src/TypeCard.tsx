@@ -1,15 +1,15 @@
+import { cardAudioPath, playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, checkAnswer, mediaUrl, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
+import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { transcription } from "./format";
 import { haptic, notify } from "./telegram";
 
-async function play(card: Card, accent: "uk" | "us") {
-  const url = await mediaUrl(`/api/audio?card=${card.cardId}&accent=${accent}`);
-  if (url) void new Audio(url).play().catch(() => {});
+function play(card: Card, accent: "uk" | "us") {
+  playAudio(cardAudioPath(card.cardId, accent));
 }
 
 /** «**слово**» из разбора /check — жирным. */

@@ -90,6 +90,12 @@ const post = <T>(path: string, body: object = {}) =>
   call<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const getMe = () => call<Me & { ok: true }>("/api/me");
+
+/** Ошибка на телефоне — в лог бота: иначе о ней знает только тот, у кого она случилась. */
+export function reportClientError(where: string, err: unknown): void {
+  const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  void post("/api/client-error", { where, message, ua: navigator.userAgent }).catch(() => {});
+}
 /** 🧠 Вопрос по ошибкам между карточками. */
 export interface DrillItem extends Quiz {
   kind: "drill";

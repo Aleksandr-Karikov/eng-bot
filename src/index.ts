@@ -68,6 +68,8 @@ const now = () => new Date();
 const englishSpeech = existsSync(config.ttsPython) ? new KokoroSynth(config.ttsPython, "tools/tts/kokoro_server.py", new MacSaySynth()) : new MacSaySynth();
 // Другие языки — голосом macOS языка (lang.ts).
 const speech = new LanguageAwareSynth(englishSpeech);
+// Прогрев: модель Kokoro грузится секунды — пусть это случится при старте, а не на первом 🔊.
+void englishSpeech.synthesize("hello", "uk").catch(() => {});
 // Голосовые: Whisper и модель фонем, если поставлены (tools/stt).
 const recognizer = existsSync(config.sttPython) ? new LocalRecognizer(config.sttPython, "tools/stt/stt_server.py") : undefined;
 const claude = new ClaudeCodeEnricher({

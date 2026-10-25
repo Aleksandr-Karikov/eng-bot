@@ -1,4 +1,5 @@
-import { setStudyLanguage } from "./language";
+import { cardAudioPath, preloadAudio } from "./sound";
+import { setStudyLanguage, studyLanguage } from "./language";
 
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
@@ -84,6 +85,14 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   useEffect(() => {
     if (me?.view.picture === false) return;
     for (const next of queue.slice(0, 3)) if (next.kind === "card" && next.word.hasPicture) void pictureUrl(next.cardId);
+  }, [queue, me]);
+
+  // Озвучка текущей и пары следующих — тоже заранее: тап по 🔊 (и диктант) играют сразу.
+  useEffect(() => {
+    if (me?.view.audio === false) return;
+    for (const next of queue.slice(0, 3)) {
+      if (next.kind === "card") for (const a of studyLanguage().accents) preloadAudio(cardAudioPath(next.cardId, a.key));
+    }
   }, [queue, me]);
 
   /** Следующее задание; очередь кончилась — догружаем. */

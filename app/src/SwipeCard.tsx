@@ -1,17 +1,17 @@
+import { cardAudioPath, playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
 import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { mediaUrl, pictureUrl, type Answer, type Card, type CardView } from "./api";
+import { pictureUrl, type Answer, type Card, type CardView } from "./api";
 import { transcription, USEFULNESS } from "./format";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
 
-async function play(card: Card, accent: "uk" | "us") {
-  const url = await mediaUrl(`/api/audio?card=${card.cardId}&accent=${accent}`);
-  if (url) void new Audio(url).play().catch(() => {});
+function play(card: Card, accent: "uk" | "us") {
+  playAudio(cardAudioPath(card.cardId, accent));
 }
 
 /** Карточка: тап — перевернуть, свайп вправо — «помню», влево — «забыл». Кнопки — то же самое. */

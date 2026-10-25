@@ -1,3 +1,4 @@
+import { reportClientError } from "./api";
 import { mainButton, secondaryButton } from "@telegram-apps/sdk-react";
 import { useEffect, useState } from "react";
 
@@ -30,13 +31,28 @@ export function useBottomButtons(main?: BottomButton, secondary?: BottomButton):
   useEffect(() => {
     if (!isNative) return;
     const offs: Array<() => void> = [];
-    try {
-      mainButton.setParams({ text: main?.text ?? "", isVisible: Boolean(main), isEnabled: true });
-      if (main) offs.push(mainButton.onClick(main.onClick));
-      secondaryButton.setParams({ text: secondary?.text ?? "", isVisible: Boolean(secondary), isEnabled: true, position: "left" });
-      if (secondary) offs.push(secondaryButton.onClick(secondary.onClick));
-    } catch {
-      // Кнопки «есть», но не работают (браузер с параметрами Telegram) — рисуем свою панель.
+    // Каждая кнопка — отдельно: сбой второй не должен оставить первую со старым текстом.
+    const setup = (where: string, apply: () => void): boolean => {
+      try {
+        apply();
+        return true;
+      } catch (err) {
+        reportClientError(`bottom buttons: ${where}`, err);
+        return false;
+      }
+    };
+    const ok =
+      setup("main", () => {
+        mainButton.setParams({ text: main?.text ?? "", isVisible: Boolean(main), isEnabled: true });
+        if (main) offs.push(mainButton.onClick(main.onClick));
+      }) &&
+      setup("secondary", () => {
+        secondaryButton.setParams({ text: secondary?.text ?? "", isVisible: Boolean(secondary), isEnabled: true, position: "left" });
+        if (secondary) offs.push(secondaryButton.onClick(secondary.onClick));
+      });
+    if (!ok) {
+      // Нативные кнопки не слушаются — прячем их (иначе висели бы со старым «Показать ответ») и рисуем свою панель.
+      hideNative();
       native = false;
       setNative(false);
     }
@@ -45,15 +61,20 @@ export function useBottomButtons(main?: BottomButton, secondary?: BottomButton):
   // Экран ушёл (загрузка, ошибка) — кнопки не должны остаться висеть со старым текстом.
   useEffect(
     () => () => {
-      if (!native) return;
-      try {
-        mainButton.setParams({ isVisible: false });
-        secondaryButton.setParams({ isVisible: false });
-      } catch {
-        // уже не работают — прятать нечего
-      }
+      if (native) hideNative();
     },
     [isNative],
   );
   return isNative;
+}
+
+/** Спрятать обе нативные кнопки — каждую отдельно: если одна не слушается, вторая всё равно спрячется. */
+function hideNative(): void {
+  for (const button of [mainButton, secondaryButton]) {
+    try {
+      button.setParams({ isVisible: false });
+    } catch {
+      // эта не работает — прятать нечего
+    }
+  }
 }
