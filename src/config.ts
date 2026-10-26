@@ -19,6 +19,8 @@ export interface Config {
   appPort: number;
   /** Публичный HTTPS-адрес Mini App (например, https://xxx.ngrok-free.app/app/) — для кнопки «Учить» в боте. */
   appUrl?: string;
+  /** Telegram id того, кто чинит бота: ему приходят новые /bug. */
+  adminTelegramId?: number;
   /** Python с wordfreq — частотность слов для оценки полезности. */
   wordfreqPython: string;
   /** Python с Kokoro (tools/tts); нет такого файла — озвучка встроенным голосом macOS. */
@@ -60,5 +62,6 @@ export function loadConfig(
     sttPython: env.STT_PYTHON || "tools/stt/.venv/bin/python",
     appPort: Number(env.APP_PORT ?? 8788),
     ...(env.APP_URL ? { appUrl: env.APP_URL } : {}),
+    ...(Number(env.ADMIN_TELEGRAM_ID) > 0 ? { adminTelegramId: Number(env.ADMIN_TELEGRAM_ID) } : {}),
   };
 }

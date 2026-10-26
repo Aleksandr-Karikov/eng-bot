@@ -72,6 +72,8 @@ export interface Deps {
   translations: TranslateStore;
   /** Публичный адрес Mini App (APP_URL); нет — кнопки «Учить» нет. */
   appUrl?: string;
+  /** Кому слать новые /bug (ADMIN_TELEGRAM_ID); нет — никому. */
+  adminTelegramId?: number;
   /** Недавняя переписка чатов — контекст для /bug. */
   transcript: ChatTranscript;
   /** Порт локального приёма слов из расширения. */

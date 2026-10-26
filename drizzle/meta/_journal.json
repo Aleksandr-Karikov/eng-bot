@@ -253,6 +253,13 @@
       "when": 1792853256692,
       "tag": "0035_last_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1792987904273,
+      "tag": "0036_bug_resolution",
+      "breakpoints": true
     }
   ]
 }

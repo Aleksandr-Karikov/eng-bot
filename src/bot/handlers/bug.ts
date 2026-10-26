@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { saveBug } from "../../services/bugs";
+import { newBugText, saveBug } from "../../services/bugs";
 import { recentLogs } from "../../log-buffer";
 import { HTML, type BotContext, type Deps } from "../context";
 
@@ -25,5 +25,12 @@ export function registerBug(bot: Bot<BotContext>, deps: Deps): void {
       ...HTML,
       reply_parameters: { message_id: ctx.message?.message_id ?? 0, allow_sending_without_reply: true },
     });
+    // Тому, кто чинит, — сразу (кроме его собственных багов в личке: там он и так видит ответ).
+    const admin = deps.adminTelegramId;
+    if (admin && !(ctx.from?.id === admin && ctx.chat.type === "private")) {
+      const where = ctx.chat.type === "private" ? "в личке" : `в группе «${"title" in ctx.chat ? ctx.chat.title : ""}»`;
+      const text = newBugText({ id, author: ctx.user.firstName, where, description: description || "(без описания)", replied: repliedText || undefined });
+      await ctx.api.sendMessage(admin, text, HTML).catch((err) => console.error("Bug notice failed", err));
+    }
   });
 }

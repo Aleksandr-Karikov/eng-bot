@@ -226,6 +226,9 @@ export const bugReports = sqliteTable("bug_reports", {
   context: text("context").notNull(),
   /** open | fixed | wontfix */
   status: text("status").notNull().default("open"),
+  /** Что сделано (или почему не чиним) — это же уходит автору при закрытии. */
+  resolution: text("resolution"),
+  resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
   createdAt: createdAt(),
 });
 

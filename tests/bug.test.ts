@@ -30,3 +30,34 @@ describe("🐞 /bug", () => {
     expect(bug.context.replied).toBe("❌ Our plans on the weather");
   });
 });
+
+describe("🐞 bug notices", () => {
+  it("a new bug reaches the admin with who, where and what; the admin's own bug in DM doesn't", async () => {
+    const h = botHarness({ adminTelegramId: 999 });
+    await makeUser(h.db, 100);
+    await h.bot.handleUpdate(h.message(100, "/bug звук не играет"));
+    const notice = h.calls.find((c) => c.method === "sendMessage" && c.payload.chat_id === 999);
+    expect(String(notice?.payload.text)).toMatch(/Новый баг #\d+.*в личке[\s\S]*звук не играет/);
+
+    await makeUser(h.db, 999);
+    const before = h.calls.length;
+    await h.bot.handleUpdate(h.message(999, "/bug свой баг"));
+    expect(h.calls.slice(before).filter((c) => c.payload.chat_id === 999 && String(c.payload.text).includes("Новый баг"))).toEqual([]);
+  });
+
+  it("closing a bug tells the author what they wrote and what was done", async () => {
+    const { resolveBug, bugResolvedText } = await import("../src/services/bugs");
+    const h = botHarness();
+    await makeUser(h.db, 100);
+    await h.bot.handleUpdate(h.message(100, "/bug кнопка <Дальше> не жмётся"));
+    const [bug] = await listBugs(h.db);
+    const r = await resolveBug(h.db, { id: bug.id, status: "fixed", resolution: "Починил кнопку", now: new Date() });
+    expect(r.author.telegramId).toBe(100);
+    const text = bugResolvedText(r.bug);
+    expect(text).toContain(`✅ <b>Баг #${bug.id} исправлен</b>`);
+    expect(text).toContain("кнопка &lt;Дальше&gt; не жмётся");
+    expect(text).toContain("Починил кнопку");
+    expect(await listBugs(h.db)).toEqual([]);
+    expect(bugResolvedText({ ...r.bug, status: "wontfix" })).toContain("ℹ️ <b>По багу");
+  });
+});
