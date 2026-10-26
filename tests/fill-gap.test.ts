@@ -41,6 +41,17 @@ describe("drill questions must contain what the rule is about", async () => {
     expect(parseDrill(JSON.stringify([broken]))).toEqual([]);
   });
 
+  it("drops a question whose sentence lost the anchor quoted in the explanation (I'm ___ a new laptop — no gonna)", () => {
+    const gonna = {
+      question: "I'm ___ a new laptop next week.",
+      options: ["get", "to get", "getting"],
+      correct: 0,
+      explanation: "После gonna (going to) стоит глагол в начальной форме без to, поэтому верно «gonna get». Вариант «to get» ошибочен из-за лишнего to, а «getting» после gonna не используется.",
+    };
+    expect(completeQuestion(gonna)).toBe(false);
+    expect(completeQuestion({ ...gonna, question: "I'm gonna ___ a new laptop next week." })).toBe(true);
+  });
+
   it("keeps ordinary questions", () => {
     expect(completeQuestion({ question: "We need ___ gold.", options: ["the", "a", "—"], correct: 2, explanation: "Gold — неисчисляемое, we use the zero article." })).toBe(true);
     expect(completeQuestion({ question: "I ___ there yesterday.", options: ["go", "went"], correct: 1, explanation: "С yesterday — Past Simple: went." })).toBe(true);

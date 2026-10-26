@@ -606,9 +606,9 @@ const GOVERNED = new Set(["on", "in", "at", "of", "for", "from", "to", "with", "
 
 export function completeQuestion(q: { question: string; options: string[]; correct: number; explanation: string }): boolean {
   const answer = (q.options[q.correct] ?? "").toLowerCase().trim();
-  if (!GOVERNED.has(answer)) return true;
   const sentence = q.question.toLowerCase();
   const stem = (w: string) => w.slice(0, Math.max(3, Math.min(5, w.length - 1)));
+  if (!GOVERNED.has(answer)) return quotedAnchorPresent(q, answer, sentence, stem);
   const phrases = q.explanation.toLowerCase().match(/[a-z']+(?:\s+[a-z']+){1,2}/g) ?? [];
   for (const phrase of phrases) {
     const parts = phrase.split(/\s+/);
@@ -617,6 +617,23 @@ export function completeQuestion(q: { question: string; options: string[]; corre
     // Сочетание вида «depend on»: слово прямо перед вариантом должно быть в предложении.
     const partner = parts[at - 1];
     if (partner && partner.length > 2 && !sentence.includes(stem(partner))) return false;
+  }
+  return true;
+}
+
+/**
+ * Для остальных ответов (глагол, форма) опора видна только там, где объяснение приводит верное сочетание в кавычках:
+ * «верно „gonna get“», а в предложении «I'm ___ a new laptop» нет gonna (баг: «I'm get a new laptop»).
+ */
+function quotedAnchorPresent(q: { question: string; options: string[]; explanation: string }, answer: string, sentence: string, stem: (w: string) => string): boolean {
+  const options = new Set(q.options.map((o) => o.toLowerCase().trim()));
+  const quoted = [...q.explanation.toLowerCase().matchAll(/[«"“]([a-z' ]+)[»"”]/g)].map((m) => m[1].trim());
+  for (const phrase of quoted) {
+    const parts = phrase.split(/\s+/);
+    const at = parts.indexOf(answer);
+    if (at <= 0) continue;
+    const partner = parts[at - 1];
+    if (partner.length > 2 && !options.has(partner) && !sentence.includes(stem(partner))) return false;
   }
   return true;
 }
