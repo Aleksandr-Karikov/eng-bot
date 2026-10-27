@@ -297,6 +297,57 @@ function statusFixture() {
   };
 }
 
+describe("лимиты: админу можно", () => {
+  it("админ заводит комнаты сверх лимита, обычный человек — нет", async () => {
+    const db = await testDb();
+    const admin = await makeUser(db, 100);
+    const user = await makeUser(db, 200);
+    for (let i = 0; i < 7; i++) await createRoom(db, { name: `R${i}`, createdBy: admin.id, now: T0 });
+
+    // Семь комнат — это больше трёх, но админ не злоупотребляет: он ими работает.
+    expect((await roomCreationAllowed(db, admin.id, { isAdmin: true })).allowed).toBe(true);
+    // А тот же счёт без флага — по-прежнему отказ: лимит снимается только админу.
+    expect((await roomCreationAllowed(db, admin.id)).allowed).toBe(false);
+  });
+
+  it("админ входит в переполненную комнату, а обычный человек — нет", async () => {
+    const db = await testDb();
+    const owner = await makeUser(db, 1);
+    const admin = await makeUser(db, 100);
+    const room = await createRoom(db, { name: "R", createdBy: owner.id, now: T0 });
+    for (let i = 1; i < 50; i++) {
+      const member = await makeUser(db, 1000 + i);
+      await joinRoom(db, { roomId: room.id, userId: member.id, now: T0, makeCurrent: false });
+    }
+
+    expect((await joinAllowed(db, { roomId: room.id, userId: admin.id, isAdmin: true })).allowed).toBe(true);
+    // Без флага тот же человек получает отказ: переполненная комната не впускает никого.
+    expect((await joinAllowed(db, { roomId: room.id, userId: admin.id })).allowed).toBe(false);
+  });
+
+  it("/newroom у админа создаёт комнату даже на восьмую", async () => {
+    const h = botHarness({ adminTelegramId: 100 });
+    const admin = await makeUser(h.db, 100);
+    for (let i = 0; i < 7; i++) await createRoom(h.db, { name: `R${i}`, createdBy: admin.id, now: T0 });
+
+    await h.bot.handleUpdate(h.message(100, "/newroom Восьмая"));
+    expect(texts(h).at(-1)).not.toContain("комнат");
+    const mine = (await h.db.select().from(rooms).where(eq(rooms.createdBy, admin.id))).filter((r) => r.personalOf == null);
+    expect(mine).toHaveLength(8);
+  });
+
+  it("обычному человеку тот же /newroom отвечает отказом", async () => {
+    const h = botHarness({ adminTelegramId: 999 });
+    const user = await makeUser(h.db, 100);
+    for (let i = 0; i < 7; i++) await createRoom(h.db, { name: `R${i}`, createdBy: user.id, now: T0 });
+
+    await h.bot.handleUpdate(h.message(100, "/newroom Восьмая"));
+    expect(texts(h).at(-1)).toContain("7 комнат");
+    const mine = (await h.db.select().from(rooms).where(eq(rooms.createdBy, user.id))).filter((r) => r.personalOf == null);
+    expect(mine).toHaveLength(7);
+  });
+});
+
 describe("лимиты: комнаты, заведённые до лимита", () => {
   it("старожилу отказ говорит правду о его числе комнат, а не «уже 3»", async () => {
     const db = await testDb();

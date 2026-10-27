@@ -131,11 +131,17 @@ export async function listMembers(db: Db, roomId: number): Promise<User[]> {
  * Личные словари не считаются: их заводит сам бот (`ensurePersonalRoom`) при первом заходе и при смене
  * языка, и человек об этом не просит. Иначе лимит «3 комнаты» съедался бы английским и корейским
  * словарями, и на друзей места не осталось бы.
+ *
+ * `isAdmin` снимает лимит: админ заводит комнаты для проверки и для чужих наборов, и упираться в потолок
+ * ему не за чем. Флаг приходит от обработчика (`deps.adminTelegramId`), а не сравнивается здесь с
+ * `users.telegramId`: сервис не должен знать про настройки бота.
  */
 export async function roomCreationAllowed(
   db: Db,
   userId: number,
+  opts: { isAdmin?: boolean } = {},
 ): Promise<{ allowed: true } | { allowed: false; refusal: string }> {
+  if (opts.isAdmin) return { allowed: true };
   const created = (await listUserRooms(db, userId)).filter((r) => r.personalOf == null && r.createdBy === userId).length;
   if (created >= ROOM_LIMITS.created) return { allowed: false, refusal: ROOM_REFUSALS.created(created) };
   return { allowed: true };
@@ -146,12 +152,17 @@ export async function roomCreationAllowed(
  *
  * Уже состоящий в комнате проходит всегда — иначе человек, добравшийся до лимита, не смог бы даже
  * вернуться в свою же комнату по старой ссылке и решил бы, что его выгнали.
+ *
+ * `isAdmin` снимает оба потолка. Лимит участий — это про «хватит собирать чужие комнаты», и админа он
+ * только мешает: разбираясь с чужой комнатой, он должен в неё попасть. Потолок комнаты снят за ту же
+ * цену: она не резиновая, но 50 — это защита от наплыва, а не от админа.
  */
 export async function joinAllowed(
   db: Db,
-  input: { roomId: number; userId: number },
+  input: { roomId: number; userId: number; isAdmin?: boolean },
 ): Promise<{ allowed: true } | { allowed: false; refusal: string }> {
   if (await isMember(db, input.roomId, input.userId)) return { allowed: true };
+  if (input.isAdmin) return { allowed: true };
   if ((await memberCount(db, input.roomId)) >= ROOM_LIMITS.members) return { allowed: false, refusal: ROOM_REFUSALS.full };
   if ((await listUserRooms(db, input.userId)).length >= ROOM_LIMITS.joined) {
     return { allowed: false, refusal: ROOM_REFUSALS.joined };
