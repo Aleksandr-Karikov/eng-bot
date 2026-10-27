@@ -48,6 +48,30 @@ export type BotContext = Context & {
   lead?: string;
 };
 
+/**
+ * Чем бот работает прямо сейчас — для команды админа /status.
+ *
+ * Собрано намеренно «плоско» и без `Config`: в `Config` лежат ключи, и достаточно одного неаккуратного
+ * `console.log(config)` или нового поля, чтобы они уехали в чат. Здесь только то, что можно показывать,
+ * и всё это известно в `src/index.ts` в момент сборки.
+ */
+export interface BotStatus {
+  /** Когда процесс стартовал: по этому видно, подхватились ли правки без перезапуска. */
+  startedAt: Date;
+  /** Провайдер LLM и доступность второго (см. LlmSwitch). */
+  llm: LlmSwitch;
+  /** Имена моделей по назначению; пусто — не задано. */
+  models: { main: string; mnemonic: string; check: string };
+  /** Чем рисуются картинки; "off" — картинки выключены целиком. */
+  images: { synth: "api" | "flux" | "off"; model?: string; background: boolean; style: string };
+  /** Заданы ли ключи — сами значения не показываем никогда, только факт. */
+  secrets: { openRouter: boolean; imageApi: boolean };
+  /** Что установлено из инструментов: нет venv — нет и умения. */
+  tools: { tts: string; stt: boolean; youtube: boolean; frequency: boolean };
+  /** Внешние поверхности: без APP_URL кнопки «Учить» нет, без ADMIN_TELEGRAM_ID нет /bug админу. */
+  app: { port?: number; urlSet: boolean; capturePort?: number };
+}
+
 export interface Deps {
   db: Db;
   enricher: WordEnricher;
@@ -86,6 +110,8 @@ export interface Deps {
   appUrl?: string;
   /** Кому слать новые /bug (ADMIN_TELEGRAM_ID); нет — никому. */
   adminTelegramId?: number;
+  /** Чем бот работает сейчас — для /status (только админ). Нет — команда скажет, что не собрана. */
+  status?: BotStatus;
   /** Недавняя переписка чатов — контекст для /bug. */
   transcript: ChatTranscript;
   /** Порт локального приёма слов из расширения. */

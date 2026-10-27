@@ -24,7 +24,7 @@ import { ProviderRouter } from "./llm/provider";
 import { initialProvider, writeProvider } from "./llm/provider-store";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
-import { ApiSynth, FluxSynth, ImageService, type ImageSynth } from "./images/images";
+import { ApiSynth, DEFAULT_IMAGE_STYLE, FluxSynth, ImageService, type ImageSynth } from "./images/images";
 import { BackgroundPainter, onAcPower } from "./images/painter";
 import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
@@ -162,6 +162,35 @@ const deps: Deps = {
   images,
   pictures,
   botUsername: bot.botInfo.username,
+  // Собрано здесь, где всё известно, и только из того, что можно показывать: в `config` лежат ключи.
+  status: {
+    startedAt: new Date(),
+    llm,
+    models: {
+      main: config.openRouterModel ?? "",
+      mnemonic: config.openRouterMnemonicModel ?? "",
+      check: config.openRouterCheckModel ?? "",
+    },
+    images: {
+      synth: imageSynth ? (imageSynth instanceof ApiSynth ? "api" : "flux") : "off",
+      ...(config.imageModel ? { model: config.imageModel } : {}),
+      background: config.imagesBackground,
+      style: config.imageStyle ?? DEFAULT_IMAGE_STYLE,
+    },
+    secrets: { openRouter: Boolean(config.openRouterKey), imageApi: Boolean(config.imageApiKey) },
+    tools: {
+      tts: englishSpeech instanceof KokoroSynth ? "Kokoro (нейросетевые голоса)" : "встроенный голос macOS",
+      stt: Boolean(recognizer),
+      // Считаем от источников, а не от deps: deps в этом месте ещё собирается.
+      youtube: existsSync(config.youtubePython),
+      frequency: existsSync(config.wordfreqPython),
+    },
+    app: {
+      ...(config.appPort ? { port: config.appPort } : {}),
+      urlSet: Boolean(config.appUrl),
+      ...(config.capturePort ? { capturePort: config.capturePort } : {}),
+    },
+  },
 };
 let captureServer: Server | undefined;
 if (config.capturePort) {

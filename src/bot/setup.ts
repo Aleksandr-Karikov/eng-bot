@@ -23,6 +23,7 @@ import { registerExtension } from "./handlers/extension";
 import { registerBug } from "./handlers/bug";
 import { registerLesson } from "./handlers/lesson";
 import { registerLlm } from "./handlers/llm";
+import { registerStatus } from "./handlers/status";
 import { buttonsText } from "./transcript";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
@@ -45,6 +46,7 @@ export const COMMANDS = [
   { command: "lang", description: "Язык: английский или корейский" },
   { command: "settings", description: "Настройки" },
   { command: "bug", description: "Сообщить об ошибке" },
+  { command: "status", description: "Чем бот работает (только админ)" },
   { command: "help", description: "Что умеет бот" },
 ];
 
@@ -118,6 +120,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerBug(bot, deps);
   registerLesson(bot, deps);
   registerLlm(bot, deps);
+  registerStatus(bot, deps);
   registerExtension(bot, deps);
   registerAdd(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».

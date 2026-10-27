@@ -60,7 +60,7 @@ describe("🎬 welcome video", () => {
 describe("simpler menus", () => {
   it("keeps the DM menu short and gives groups their own", async () => {
     const { GROUP_COMMANDS } = await import("../src/bot/setup");
-    expect(COMMANDS.length).toBeLessThanOrEqual(14);
+    expect(COMMANDS.length).toBeLessThanOrEqual(15);
     expect(GROUP_COMMANDS.map((c) => c.command)).toEqual(expect.arrayContaining(["check", "duel", "link"]));
   });
 
