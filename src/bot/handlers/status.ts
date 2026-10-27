@@ -2,6 +2,7 @@ import type { Bot } from "grammy";
 import type { BotContext, BotStatus, Deps } from "../context";
 import { HTML } from "../context";
 import { BUDGETS, budgetUsed, quotaLine, quotaSummary, type QuotaKind } from "../../services/limits";
+import { sourceLines, sourceSummary, type SourceRow } from "../../services/sources";
 
 const NAMES: Record<string, string> = {
   "claude-code": "Claude Code (локальный)",
@@ -42,13 +43,15 @@ export function registerStatus(bot: Bot<BotContext>, deps: Deps): void {
     // Лимиты — тоже живые данные: админу нужно видеть, сколько он сам уже израсходовал, а не только
     // числа из таблицы. Считаем по самому админу: смотреть лимиты всех пользователей смысла нет.
     const quotas = await quotaSummary(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
+    // Откуда приходят люди — тоже живые данные: в BotStatus их не положить, это меняется каждый день.
+    const sources = await sourceSummary(deps.db, deps.now());
 
     // buildStatus возвращает готовый HTML: значения приходят из наших же enum и путей, а не от людей.
-    await ctx.reply(render(status, deps.now(), images, quotas), HTML);
+    await ctx.reply(render(status, deps.now(), images, quotas, sources), HTML);
   });
 }
 
-function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ kind: string; used: number; limit: number; period: string }>): string {
+function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ kind: string; used: number; limit: number; period: string }>, sources?: SourceRow[]): string {
   const lines: string[] = [];
   const yes = (ok: boolean): string => (ok ? "да" : "нет");
 
@@ -94,6 +97,13 @@ function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ 
     lines.push("");
     lines.push("<b>Лимиты сегодня</b>");
     for (const q of quotas) lines.push(quotaLine(q.kind as QuotaKind, q.used));
+  }
+
+  // Источники — рядом с лимитами: и то и другое админ смотрит, чтобы понять, что происходит с людьми.
+  if (sources) {
+    lines.push("");
+    lines.push("<b>Откуда приходят</b>");
+    for (const line of sourceLines(sources)) lines.push(line);
   }
 
   lines.push("");

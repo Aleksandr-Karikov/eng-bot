@@ -59,6 +59,18 @@ export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<
   return user;
 }
 
+/**
+ * Записать, откуда человек пришёл, — **один раз за всю жизнь**. Второй переход по ссылке ничего не меняет:
+ * иначе последний канал переписывал бы историю, и через месяц все выглядели бы пришедшими из него.
+ * Пустой `source` игнорируем: лучше `null` («неизвестно»), чем затереть известное пустым.
+ */
+export async function setSourceOnce(db: Db, userId: number, source: string, now: Date): Promise<void> {
+  if (!source) return;
+  const [user] = await db.select({ sourceAt: users.sourceAt }).from(users).where(eq(users.id, userId));
+  if (!user || user.sourceAt != null) return;
+  await db.update(users).set({ source, sourceAt: now }).where(eq(users.id, userId));
+}
+
 /** {"en": 7, "ko": 12} — последняя комната каждого языка. */
 export function parseLastRooms(json: string): Record<string, number> {
   try {

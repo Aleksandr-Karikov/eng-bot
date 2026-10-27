@@ -34,6 +34,14 @@ export const users = sqliteTable("users", {
   /** Дата (воскресенье) последнего личного итога. */
   lastReportDate: text("last_report_date"),
   lastDueNoticeAt: integer("last_due_notice_at", { mode: "timestamp_ms" }),
+  /**
+   * Откуда человек пришёл (`?start=<payload>`): "direct", "join_<code>", "set_<slug>" или payload как есть.
+   * Заполняется один раз и больше не перезаписывается (см. `setSourceOnce`) — иначе второй переход
+   * по чужой ссылке переписал бы историю и все выглядели бы пришедшими из последнего канала.
+   */
+  source: text("source"),
+  /** Когда источник записан. null — человек был в боте до появления колонки: источник задним числом не выдумываем. */
+  sourceAt: integer("source_at", { mode: "timestamp_ms" }),
   createdAt: createdAt(),
 });
 

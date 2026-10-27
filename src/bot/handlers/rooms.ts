@@ -4,7 +4,8 @@ import type { Room, User } from "../../db/schema";
 import {
   createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed,
 } from "../../services/rooms";
-import { getUser, updateUser } from "../../services/users";
+import { getUser, setSourceOnce, updateUser } from "../../services/users";
+import { parseStartPayload } from "../../services/source";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, inviteLink, type BotContext, type Deps } from "../context";
@@ -95,6 +96,9 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
 
   bot.command("start", async (ctx) => {
     const payload = ctx.match.trim();
+    // Откуда человек пришёл — до ветки с приглашением: `join_<code>` тоже источник, и он нужен,
+    // даже если комната окажется недействительной. Пишется один раз за всю жизнь (`setSourceOnce`).
+    await setSourceOnce(deps.db, ctx.user.id, parseStartPayload(payload), deps.now());
     if (payload.startsWith("join_")) {
       const room = await findRoomByInvite(deps.db, payload.slice("join_".length));
       if (!room) return void (await ctx.reply("Ссылка-приглашение недействительна 🤷"));
