@@ -6,6 +6,7 @@ import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
+import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { ensurePersonalRoom, getRoom, isMember, listMembers } from "../services/rooms";
 import { isLangCode, withLang } from "../lang";
 
@@ -78,13 +79,21 @@ async function captureInto(deps: Deps, input: CaptureInput, user: User, roomId: 
 
   const added: Word[] = [];
   const duplicates: string[] = [];
+  // Лимит на слова — до разбора реплики: расширение ловит субтитры пачками, и если человек упёрся,
+  // честнее отказать сразу, чем звать модель на каждую реплику и потом ничего не сохранить.
+  const left = await wordsLeft(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
+  if (left.left <= 0) return { ok: false, status: 429, error: QUOTAS[left.kind].refusal };
   for (const draft of drafts) {
+    if (added.length >= left.left) break;
     if (await findWord(deps.db, roomId, draft.term)) {
       duplicates.push(draft.term);
       continue;
     }
     const result = await saveWord(deps.db, { roomId, addedBy: user.id, draft: { ...draft, mnemonic: "", context }, now: deps.now() });
-    if (result.status === "saved") added.push(result.word);
+    if (result.status !== "saved") continue;
+    // Расход — за каждое сохранённое: дубль места не занимает.
+    await checkAndCountWord(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
+    added.push(result.word);
   }
   if (added.length) {
     void deps.mnemonicGen.ensureMany(added.map((w) => w.id)).catch((err) => console.error("Capture mnemonics failed", err));

@@ -19,6 +19,10 @@ export class Batch {
     readonly userId: number,
     readonly chatId: number,
     readonly roomId: number,
+    /** Пояс человека: по нему считаются его дневной и недельный лимиты на слова. */
+    readonly timezone: string,
+    /** Сколько слов ещё помещается в лимиты на момент создания пачки. Больше пачка не сохранит. */
+    readonly left: number,
     readonly items: WordDraft[],
   ) {
     this.selected = items.map(() => true);
@@ -38,9 +42,9 @@ export class BatchStore {
   private seq = startSeq();
   private readonly batches = new Map<number, Batch>();
 
-  create(input: { userId: number; chatId: number; roomId: number; items: WordDraft[] }): Batch {
+  create(input: { userId: number; chatId: number; roomId: number; timezone: string; left: number; items: WordDraft[] }): Batch {
     for (const [id, b] of this.batches) if (b.userId === input.userId) this.batches.delete(id);
-    const batch = new Batch(++this.seq, input.userId, input.chatId, input.roomId, input.items);
+    const batch = new Batch(++this.seq, input.userId, input.chatId, input.roomId, input.timezone, input.left, input.items);
     this.batches.set(batch.id, batch);
     return batch;
   }

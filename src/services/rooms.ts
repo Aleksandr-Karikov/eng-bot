@@ -4,6 +4,7 @@ import type { Db } from "../db/client";
 import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
 import { LANGUAGES, type LangCode } from "../lang";
 import { createCards } from "./cards";
+import { ROOM_LIMITS, ROOM_REFUSALS } from "./limits";
 import { getUser, parseLastRooms, updateUser } from "./users";
 
 export async function createRoom(
@@ -122,6 +123,46 @@ export async function listMembers(db: Db, roomId: number): Promise<User[]> {
     .innerJoin(users, eq(roomMembers.userId, users.id))
     .where(eq(roomMembers.roomId, roomId));
   return rows.map((r) => r.user);
+}
+
+/**
+ * Можно ли этому человеку завести ещё одну комнату — и почему нет.
+ *
+ * Личные словари не считаются: их заводит сам бот (`ensurePersonalRoom`) при первом заходе и при смене
+ * языка, и человек об этом не просит. Иначе лимит «3 комнаты» съедался бы английским и корейским
+ * словарями, и на друзей места не осталось бы.
+ */
+export async function roomCreationAllowed(
+  db: Db,
+  userId: number,
+): Promise<{ allowed: true } | { allowed: false; refusal: string }> {
+  const created = (await listUserRooms(db, userId)).filter((r) => r.personalOf == null && r.createdBy === userId).length;
+  if (created >= ROOM_LIMITS.created) return { allowed: false, refusal: ROOM_REFUSALS.created };
+  return { allowed: true };
+}
+
+/**
+ * Можно ли этому человеку войти в комнату: не переполнена и у него самого есть место.
+ *
+ * Уже состоящий в комнате проходит всегда — иначе человек, добравшийся до лимита, не смог бы даже
+ * вернуться в свою же комнату по старой ссылке и решил бы, что его выгнали.
+ */
+export async function joinAllowed(
+  db: Db,
+  input: { roomId: number; userId: number },
+): Promise<{ allowed: true } | { allowed: false; refusal: string }> {
+  if (await isMember(db, input.roomId, input.userId)) return { allowed: true };
+  if ((await memberCount(db, input.roomId)) >= ROOM_LIMITS.members) return { allowed: false, refusal: ROOM_REFUSALS.full };
+  if ((await listUserRooms(db, input.userId)).length >= ROOM_LIMITS.joined) {
+    return { allowed: false, refusal: ROOM_REFUSALS.joined };
+  }
+  return { allowed: true };
+}
+
+/** Сколько людей в комнате. Отдельным запросом, а не `listMembers`: нужен только счёт. */
+export async function memberCount(db: Db, roomId: number): Promise<number> {
+  const rows = await db.select({ userId: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, roomId));
+  return rows.length;
 }
 
 export async function linkGroup(

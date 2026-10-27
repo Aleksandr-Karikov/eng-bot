@@ -24,12 +24,17 @@ import { localParts } from "../time";
  *
  * Тяжёлые команды (`/check`, `/talk`…) идут сюда же, но у каждой **свой** лимит и своё сообщение:
  * «100 запросов в час на всё» человек не понимает и злится, а «5 разборов разговора в день» понимает.
+ *
+ * `add_word_week` — отдельный вид, а не второй период у `add_word`: ключ счётчика включает вид, поэтому
+ * «50 в день» и «200 в неделю» — две независимые строки. Так человек, исчерпавший дневной лимит, не
+ * съедает недельный, и наоборот. Недельный лимит проверяется вместе с дневным, одним решением.
  */
 export type QuotaKind =
   | "inline_translate"
   | "image"
   | "image_redraw"
   | "add_word"
+  | "add_word_week"
   | "check"
   | "talk"
   | "translate"
@@ -88,6 +93,14 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     period: "day",
     limit: 50,
     refusal: "Слов на сегодня достаточно (50). Сначала повтори то, что уже есть, — /learn.",
+  },
+  add_word_week: {
+    kind: "add_word_week",
+    period: "week",
+    limit: 200,
+    // Недельный лимит — не про деньги, а про качество: 200 слов за неделю человек всё равно не выучит,
+    // а 500 просроченных карточек в первый же день заставляют уйти. Отказ объясняет, что делать.
+    refusal: "На этой неделе уже 200 слов — это много. Повтори то, что добавил, — /learn; новые слова продолжим в понедельник.",
   },
   // --- Тяжёлые команды. Лимиты намеренно щедрые: их задача — остановить накрутку, а не учёбу. ---
   check: {
@@ -249,12 +262,87 @@ export async function checkAndCount(
   return { allowed: true, used: used + 1, limit: quota.limit, refusal: quota.refusal };
 }
 
+/**
+ * Подписи видов для человека. Хранятся здесь, рядом с лимитами: `/status` печатает строку на каждый
+ * вид из `QUOTAS`, и без подписи админ увидел бы `inline_translate` вместо «Перевод в инлайне».
+ */
+const QUOTA_NAMES: Record<QuotaKind, string> = {
+  inline_translate: "Перевод в инлайне",
+  image: "Картинки к словам",
+  image_redraw: "Перерисовки",
+  add_word: "Новые слова",
+  add_word_week: "Новые слова за неделю",
+  check: "Проверки текста",
+  talk: "Разборы разговора",
+  translate: "Переводы",
+  story: "Истории",
+  say: "Проговорить",
+  drill: "Дриллы",
+  text: "Разбор текста",
+  pron: "Произношение",
+  audio: "Озвучка",
+};
+
 /** Строка «5 из 30» — для /status и там, где человеку важно видеть остаток. */
 export function quotaLine(kind: QuotaKind, used: number): string {
   const quota = QUOTAS[kind];
   const unit = quota.period === "day" ? "сегодня" : "на этой неделе";
   const what = quota.per === "word" ? "на это слово" : "на человека";
-  return `${kind}: ${used} из ${quota.limit} ${unit}, ${what}`;
+  return `${QUOTA_NAMES[kind]}: ${used} из ${quota.limit} ${unit}, ${what}`;
+}
+
+/**
+ * Сколько новых слов человек может добавить прямо сейчас — по дневному и недельному лимитам вместе.
+ *
+ * Два счётчика, а решение одно: показать остаток нужно там, где меньше запас, иначе человек увидит
+ * «можно ещё 40», упрётся в недельный лимит на третьем слове и решит, что бот врёт.
+ */
+export async function wordsLeft(
+  db: Db,
+  input: { userId: number; timeZone: string; now: Date },
+): Promise<{ left: number; kind: QuotaKind; used: number; limit: number }> {
+  const [dayUsed, weekUsed] = await Promise.all([
+    quotaUsed(db, { ...input, kind: "add_word" }),
+    quotaUsed(db, { ...input, kind: "add_word_week" }),
+  ]);
+  const day = { left: QUOTAS.add_word.limit - dayUsed, kind: "add_word" as const, used: dayUsed, limit: QUOTAS.add_word.limit };
+  const week = { left: QUOTAS.add_word_week.limit - weekUsed, kind: "add_word_week" as const, used: weekUsed, limit: QUOTAS.add_word_week.limit };
+  return week.left < day.left ? week : day;
+}
+
+/**
+ * Проверить дневной и недельный лимиты на слова и, если оба позволяют, записать по попытке в каждый.
+ *
+ * Отказ **ничего** не пишет: если упёрся недельный, дневной счётчик тоже не растёт — иначе человек
+ * сжигал бы дневной запас на отказах и после понедельника начинал бы день с нуля доступных слов.
+ */
+export async function checkAndCountWord(
+  db: Db,
+  input: { userId: number; timeZone: string; now: Date },
+): Promise<QuotaState> {
+  const [day, week] = await Promise.all([
+    checkAndCount(db, { ...input, kind: "add_word" }),
+    checkAndCount(db, { ...input, kind: "add_word_week" }),
+  ]);
+  if (!day.allowed) return day;
+  if (!week.allowed) return week;
+  return day;
+}
+
+/**
+ * Сколько чего сделано по каждому лимиту — для /status.
+ *
+ * Собирается из `QUOTAS`, а не из списка в обработчике: лимит, добавленный в таблицу, виден админу
+ * сразу, а забыть дописать строку в вывод невозможно. Лимиты «на слово» пропускаем: у них нет одного
+ * числа на человека, и «0 из 3» там означало бы неправду.
+ */
+export async function quotaSummary(
+  db: Db,
+  input: { userId: number; timeZone: string; now: Date },
+): Promise<Array<{ kind: QuotaKind; used: number; limit: number; period: QuotaPeriod }>> {
+  const kinds = (Object.keys(QUOTAS) as QuotaKind[]).filter((kind) => QUOTAS[kind].per !== "word");
+  const used = await Promise.all(kinds.map((kind) => quotaUsed(db, { ...input, kind })));
+  return kinds.map((kind, i) => ({ kind, used: used[i], limit: QUOTAS[kind].limit, period: QUOTAS[kind].period }));
 }
 
 /** Что ограничиваем на весь бот. Список закрытый — как у QuotaKind. */
@@ -322,3 +410,36 @@ export async function checkAndSpend(db: Db, kind: BudgetKind, now: Date): Promis
 
   return { allowed: true, used: used + 1, limit: budget.limit, refusal: budget.refusal };
 }
+
+/**
+ * Потолки на комнаты: сколько их можно создать, в скольких состоять и сколько людей в одной комнате.
+ *
+ * Это **не** `QUOTAS`, и намеренно: там счётчик растёт во времени и сбрасывается периодом, а здесь
+ * ограничено само наличие — «три созданных комнаты», а не «три создания в день». Иначе лимит обходился
+ * бы ожиданием до полуночи, а мусор в базе остался бы навсегда. Поэтому вместо `usage_counters` считаем
+ * существующие строки: удалил комнату — вернул себе место, и это честно.
+ *
+ * Комнаты не зовут модель (в отличие от картинок), поэтому лимит здесь не про деньги, а про то, чтобы
+ * комнаты потом можно было отличить друг от друга и чтобы человек не набивал себе 500 чужих словарей.
+ */
+export interface RoomLimits {
+  /** Сколько комнат человек может создать сам (личные словари не в счёт — они заводятся сами). */
+  created: number;
+  /** В скольких комнатах человек может состоять. */
+  joined: number;
+  /** Сколько людей помещается в одну комнату. */
+  members: number;
+}
+
+export const ROOM_LIMITS: RoomLimits = {
+  created: 3,
+  joined: 20,
+  members: 50,
+};
+
+/** Почему не получилось. Тексты — часть продукта, поэтому лежат здесь же, рядом с числами. */
+export const ROOM_REFUSALS = {
+  created: `Ты уже создал ${ROOM_LIMITS.created} комнаты — этого хватает для друзей. Удали ненужную в /room или вступи в чужую по ссылке.`,
+  joined: `Ты уже в ${ROOM_LIMITS.joined} комнатах — больше не нужно. Выйти из старой можно в /room.`,
+  full: `В комнате уже ${ROOM_LIMITS.members} человек — больше не помещается.`,
+} as const;

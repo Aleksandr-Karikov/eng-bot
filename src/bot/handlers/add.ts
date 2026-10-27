@@ -1,5 +1,6 @@
 import { currentLang, langForms } from "../../lang";
 import type { Bot } from "grammy";
+import { QUOTAS, wordsLeft } from "../../services/limits";
 import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { prepareWord } from "../../services/prepare-word";
 import { termPattern } from "../../services/word-uses";
@@ -9,6 +10,7 @@ import { wordActionsKeyboard } from "../keyboards";
 import { draftText, esc } from "../texts";
 import { askForTranslation, broadcastWord, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { onBatchDraft } from "./batch";
+import { spendWordQuota } from "./quota";
 
 const USAGE =
   "Напиши слово после команды: /add serendipity\nМожно сразу с переводом: /add bank — берег\nИли ответь командой /add на сообщение с фразой.";
@@ -19,6 +21,11 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   if (!parsed) return void (await ctx.reply(USAGE));
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
+  // Лимит проверяется до `prepareWord`: иначе человек ждал бы перевод от модели и только потом узнавал,
+  // что слов на сегодня больше нет. Счётчик при этом **не растёт** — слово ещё не добавлено, и отказаться
+  // от черновика человек вправе. Расход — в `spendWordQuota`, уже после сохранения.
+  const left = await wordsLeft(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
+  if (left.left <= 0) return void (await ctx.reply(QUOTAS[left.kind].refusal, HTML));
   await ctx.replyWithChatAction("typing");
   const prepared = await prepareWord(deps, room.id, parsed);
   if (prepared.status === "exists") return void (await ctx.reply(`«${esc(prepared.term)}» уже есть в комнате`, HTML));
@@ -101,6 +108,7 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
     }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
+    await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone });
     await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });
     const { word, members } = result;
     background(ctx, () => broadcastWord(deps, word, members, ctx.user, ctx.chat?.id));

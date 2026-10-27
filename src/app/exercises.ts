@@ -3,6 +3,7 @@ import type { Deps } from "../bot/context";
 import { gapParts } from "../bot/texts";
 import { clozeSentences, type User } from "../db/schema";
 import { gradeDictation, isExactAnswer } from "../services/exercises";
+import { checkAndCount, type QuotaKind } from "../services/limits";
 import { recordMistakes } from "../services/mistakes";
 import { answerCard, getDueItemByCard } from "../services/review";
 
@@ -16,6 +17,18 @@ const STAGES = new Set<TypedStage>(["cloze", "listen", "sentence"]);
 
 type Result = { status: number; body: Record<string, unknown> };
 const fail = (status: number, error: string): Result => ({ status, body: { ok: false, error } });
+
+/**
+ * Считает проверку моделью и отказывает, когда лимит выбран.
+ *
+ * В приложении нет `ctx.reply`, поэтому отказ возвращается как HTTP 429 с тем же русским текстом,
+ * что и в боте: клиент показывает его как обычную ошибку. Считаются только те ответы, где работу
+ * делает модель, — точное совпадение и «не знаю» проверяются на сервере бесплатно.
+ */
+async function allowModelCheck(deps: Deps, user: User, kind: QuotaKind): Promise<Result | null> {
+  const state = await checkAndCount(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now(), kind });
+  return state.allowed ? null : fail(429, state.refusal);
+}
 
 export async function appCheck(
   deps: Deps,
@@ -51,6 +64,8 @@ export async function appCheck(
       if (!(await rate(!dunno))) return fail(409, "Уже учтено");
       return { status: 200, body: { ok: true, correct: !dunno, ...base, ...reveal } };
     }
+    const denied = await allowModelCheck(deps, user, "check");
+    if (denied) return denied;
     let judgement;
     try {
       judgement = await deps.tutor.judge({ sentence: s.sentence, expected: s.answer, term: word.term, translation: word.translation, answer });
@@ -67,6 +82,8 @@ export async function appCheck(
     if (!(await rate(false))) return fail(409, "Уже учтено");
     return { status: 200, body: { ok: true, correct: false, ...reveal } };
   }
+  const denied = await allowModelCheck(deps, user, "check");
+  if (denied) return denied;
   let review;
   try {
     review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });

@@ -35,7 +35,7 @@ describe("extraction limits", () => {
   it("allows 100 items and pages them to stay under Telegram's 100-button limit", () => {
     expect(MAX_EXTRACT).toBe(100);
     const store = new BatchStore();
-    const batch = store.create({ userId: 1, chatId: 1, roomId: 1, items: Array.from({ length: MAX_EXTRACT }, (_, i) => item(`w${i}`)) });
+    const batch = store.create({ userId: 1, chatId: 1, roomId: 1, timezone: "UTC", left: 100, items: Array.from({ length: MAX_EXTRACT }, (_, i) => item(`w${i}`)) });
     const labels = () => batchKeyboard(batch).inline_keyboard.flat().map((b) => b.text);
     expect(labels().length).toBeLessThanOrEqual(100);
     expect(labels()).toContain("1/4");
@@ -107,8 +107,8 @@ describe("batch callbacks", () => {
 describe("BatchStore", () => {
   it("selects everything by default, toggles, and keeps one batch per user", () => {
     const store = new BatchStore();
-    const first = store.create({ userId: 1, chatId: 10, roomId: 1, items: [item("a"), item("b")] });
-    const second = store.create({ userId: 1, chatId: 10, roomId: 1, items: [item("a"), item("b"), item("c")] });
+    const first = store.create({ userId: 1, chatId: 10, roomId: 1, timezone: "UTC", left: 100, items: [item("a"), item("b")] });
+    const second = store.create({ userId: 1, chatId: 10, roomId: 1, timezone: "UTC", left: 100, items: [item("a"), item("b"), item("c")] });
     expect(store.get(first.id)).toBeUndefined();
     expect(second.selectedItems().map((i) => i.term)).toEqual(["a", "b", "c"]);
     second.toggle(1);
@@ -127,7 +127,7 @@ describe("batch texts and keyboard", () => {
 
   it("marks selection and shows the selected count", () => {
     const store = new BatchStore();
-    const batch = store.create({ userId: 1, chatId: 10, roomId: 1, items: [item("a"), item("b")] });
+    const batch = store.create({ userId: 1, chatId: 10, roomId: 1, timezone: "UTC", left: 100, items: [item("a"), item("b")] });
     batch.toggle(0);
     const labels = batchKeyboard(batch).inline_keyboard.flat().map((b) => b.text);
     expect(labels[0]).toMatch(/^⬜️ a/);

@@ -12,7 +12,8 @@ import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { downloadImage, ImageTooBigError, imageOf, type ImageRef } from "../files";
 import { findYoutubeUrl, YoutubeBlockedError, type Subtitles } from "../../youtube/subtitles";
-import { allowQuota } from "./quota";
+import { allowQuota, spendWordQuota } from "./quota";
+import { QUOTAS, wordsLeft } from "../../services/limits";
 
 const USAGE =
   "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение или фото — разберу его.";
@@ -84,15 +85,37 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
   const fresh = rated.sort((a, b) => (b.usefulness ?? 2) - (a.usefulness ?? 2));
   if (fresh.length === 0) return void (await ctx.reply("Ничего нового не нашёл — всё уже есть в комнате 👌"));
 
-  const batch = deps.batches.create({ userId: ctx.user.id, chatId: ctx.chat.id, roomId: room.id, items: fresh });
-  await ctx.reply(batchListText(fresh.length), { reply_markup: batchKeyboard(batch) });
+  // Сколько слов ещё помещается: обрезаем пачку до остатка, иначе показывали бы список из 100 слов,
+  // из которых сохранятся три. Проверка стоит после отбора — до неё неизвестно, сколько слов вообще новых.
+  const { left, kind } = await wordsLeft(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
+  if (left <= 0) return void (await ctx.reply(QUOTAS[kind].refusal, HTML));
+  const batch = deps.batches.create({
+    userId: ctx.user.id,
+    chatId: ctx.chat.id,
+    roomId: room.id,
+    timezone: ctx.user.timezone,
+    left,
+    items: fresh.slice(0, left),
+  });
+  await ctx.reply(batchListText(batch.items.length), { reply_markup: batchKeyboard(batch) });
 }
 
-/** Сохраняет слова из пачки, пропуская появившиеся тем временем дубли. */
+/**
+ * Сохраняет слова из пачки, пропуская появившиеся тем временем дубли.
+ *
+ * Здесь же расходуется лимит на слова — на каждое **действительно сохранённое**: дубль и слово в
+ * удалённую комнату места не занимают. Проверка лимита стоит в `offerExtracted`, то есть пачку вообще
+ * не показывают, когда дневной лимит выбран; при частичном остатке пачка сохранит столько, сколько
+ * помещается, и остановится — остальное человек добавит завтра.
+ */
 async function saveItems(deps: Deps, batch: Batch, items: WordDraft[]): Promise<void> {
   for (const draft of items) {
+    if (batch.saved.length >= batch.left) break;
     const result = await saveWord(deps.db, { roomId: batch.roomId, addedBy: batch.userId, draft, now: deps.now() });
-    if (result.status === "saved") batch.saved.push(result.word);
+    if (result.status !== "saved") continue;
+    // Именно `userId`: у `Batch.id` — номер пачки, а не человек, и счётчик ушёл бы не тому.
+    await spendWordQuota(deps, { userId: batch.userId, timezone: batch.timezone });
+    batch.saved.push(result.word);
   }
 }
 

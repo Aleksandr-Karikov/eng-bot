@@ -8,6 +8,7 @@ import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
 import { HARD_AFTER_LAPSES } from "../services/hard-words";
+import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
@@ -152,6 +153,10 @@ export async function appPrepareWord(deps: Deps, user: User, body: { text?: unkn
   const parsed = typeof body.text === "string" ? parseAddInput(body.text.slice(0, 200)) : null;
   if (!parsed) return { status: 400, body: { ok: false, error: "Напиши слово или фразу" } };
   if (user.currentRoomId == null) return { status: 400, body: { ok: false, error: "Сначала выбери комнату в настройках" } };
+  // Лимит проверяется здесь, как и в боте: перевод от модели стоит денег, и узнавать об отказе после
+  // него незачем. Счётчик пока не растёт — расход в `appAddWord`, после реального сохранения.
+  const left = await wordsLeft(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
+  if (left.left <= 0) return { status: 429, body: { ok: false, error: QUOTAS[left.kind].refusal } };
   const prepared = await prepareWord(deps, user.currentRoomId, parsed);
   if (prepared.status === "exists") return { status: 409, body: { ok: false, error: `«${prepared.term}» уже есть в комнате` } };
   if (prepared.status === "no-english") return { status: 422, body: { ok: false, error: `Не получилось подобрать ${langForms().neut} слово для «${prepared.term}» — напиши ${langForms().adv}` } };
@@ -185,6 +190,8 @@ export async function appAddWord(deps: Deps, user: User, body: Record<string, un
   });
   if (result.status === "duplicate") return { status: 409, body: { ok: false, error: `«${term}» уже есть в комнате` } };
   if (result.status === "no-room") return { status: 400, body: { ok: false, error: "Комнату уже удалили" } };
+  // Расход — только за действительно сохранённое слово: дубль и удалённая комната места не занимают.
+  await checkAndCountWord(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
   void broadcastWord(deps, result.word, result.members, user).catch((err) => console.error("App word broadcast failed", err));
   return { status: 200, body: { ok: true, id: result.word.id } };
 }

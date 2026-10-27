@@ -1,4 +1,4 @@
-import { checkAndCount, type QuotaKind } from "../../services/limits";
+import { checkAndCount, checkAndCountWord, type QuotaKind } from "../../services/limits";
 import { HTML, type BotContext, type Deps } from "../context";
 
 /**
@@ -25,3 +25,19 @@ export async function allowQuota(ctx: BotContext, deps: Deps, kind: QuotaKind): 
   await ctx.reply(state.refusal, HTML);
   return false;
 }
+
+/**
+ * Записать одно добавленное слово в дневной и недельный счётчики.
+ *
+ * Отдельно от `allowQuota`, потому что добавление слова — двухшаговый путь: сначала черновик, потом
+ * подтверждение, и человек вправе передумать. Проверка на входе (`startAdd`) только читает счётчики,
+ * а расход идёт здесь — после того, как слово действительно легло в базу. Так отменённый черновик
+ * не съедает место, а повторное «это слово уже есть» — тем более.
+ *
+ * Отказ здесь ничего не пишет и ничего не сообщает: на входе уже ответили, а между проверкой и
+ * сохранением человек успел бы израсходовать остаток только в том случае, если бы сам себе мешал.
+ */
+export async function spendWordQuota(deps: Deps, user: { userId: number; timezone: string }): Promise<void> {
+  await checkAndCountWord(deps.db, { userId: user.userId, timeZone: user.timezone, now: deps.now() });
+}
+

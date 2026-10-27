@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import type { BotContext, BotStatus, Deps } from "../context";
 import { HTML } from "../context";
-import { BUDGETS, budgetUsed } from "../../services/limits";
+import { BUDGETS, budgetUsed, quotaLine, quotaSummary, type QuotaKind } from "../../services/limits";
 
 const NAMES: Record<string, string> = {
   "claude-code": "Claude Code (локальный)",
@@ -39,13 +39,16 @@ export function registerStatus(bot: Bot<BotContext>, deps: Deps): void {
     // Расход картинок — живые данные из базы, а не то, с чем бот запустился: админу важно видеть
     // остаток на сегодня, а не настройку. Поэтому читаем здесь, а не кладём в BotStatus.
     const images = await budgetUsed(deps.db, "image", deps.now());
+    // Лимиты — тоже живые данные: админу нужно видеть, сколько он сам уже израсходовал, а не только
+    // числа из таблицы. Считаем по самому админу: смотреть лимиты всех пользователей смысла нет.
+    const quotas = await quotaSummary(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
 
     // buildStatus возвращает готовый HTML: значения приходят из наших же enum и путей, а не от людей.
-    await ctx.reply(render(status, deps.now(), images), HTML);
+    await ctx.reply(render(status, deps.now(), images, quotas), HTML);
   });
 }
 
-function render(s: BotStatus, now: Date, imagesToday?: number): string {
+function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ kind: string; used: number; limit: number; period: string }>): string {
   const lines: string[] = [];
   const yes = (ok: boolean): string => (ok ? "да" : "нет");
 
@@ -81,9 +84,17 @@ function render(s: BotStatus, now: Date, imagesToday?: number): string {
   }
 
   lines.push("");
-  lines.push("<b>Ключи</b>");
-  lines.push(`OpenRouter: ${yes(s.secrets.openRouter)}`);
+  lines.push("<b>Ключи</b>");  lines.push(`OpenRouter: ${yes(s.secrets.openRouter)}`);
   lines.push(`Рисовалка: ${yes(s.secrets.imageApi)}`);
+
+  // Лимиты печатаются для всех видов из `QUOTAS` — включая те, что ещё ни разу не тратились: админу
+  // важно видеть сам потолок, а не только израсходованное. Строки строит `quotaLine`, поэтому текст
+  // тут не дублируется и новый лимит появляется в /status сам.
+  if (quotas && quotas.length > 0) {
+    lines.push("");
+    lines.push("<b>Лимиты сегодня</b>");
+    for (const q of quotas) lines.push(quotaLine(q.kind as QuotaKind, q.used));
+  }
 
   lines.push("");
   lines.push("<b>Что установлено</b>");

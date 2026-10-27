@@ -2,7 +2,7 @@ import { currentLang, LANG_CODES, LANGUAGES, langForms, languageOf, type LangCod
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Room, User } from "../../db/schema";
 import {
-  createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinRoom, linkGroup, listMembers, listUserRooms,
+  createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed,
 } from "../../services/rooms";
 import { getUser, updateUser } from "../../services/users";
 import { listRoomWords } from "../../services/words";
@@ -51,6 +51,10 @@ async function askRoomName(ctx: BotContext, deps: Deps, renameRoomId?: number): 
 }
 
 async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
+  // Лимит — до создания: комната сама модель не зовёт, но это запись в `rooms` + `roomMembers`,
+  // и «нажал десять раз → десять неотличимых комнат» — именно то, от чего лимит и стоит.
+  const gate = await roomCreationAllowed(deps.db, ctx.user.id);
+  if (!gate.allowed) return void (await ctx.reply(gate.refusal, HTML));
   // Комната для друзей — на языке, который человек сейчас учит.
   const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now(), language: currentLang().code });
   await ctx.reply(
@@ -84,6 +88,10 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     if (payload.startsWith("join_")) {
       const room = await findRoomByInvite(deps.db, payload.slice("join_".length));
       if (!room) return void (await ctx.reply("Ссылка-приглашение недействительна 🤷"));
+      // Лимит участий и потолок комнаты — до `joinRoom`: он создаёт карточки на все слова комнаты,
+      // и отказ после него оставлял бы человеку чужой словарь, из которого он не просил.
+      const gate = await joinAllowed(deps.db, { roomId: room.id, userId: ctx.user.id });
+      if (!gate.allowed) return void (await ctx.reply(gate.refusal, HTML));
       const joined = await joinRoom(deps.db, { roomId: room.id, userId: ctx.user.id, now: deps.now(), makeCurrent: true });
       await ctx.reply(
         joined
@@ -256,6 +264,11 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
       await linkGroup(deps.db, target.id, chat.id);
       room = target;
     } else {
+      // Новая комната из группы — тоже комната: тот же лимит, что у «Комната для друзей».
+      const gate = await roomCreationAllowed(deps.db, ctx.user.id);
+      if (!gate.allowed) {
+        return void (await ctx.answerCallbackQuery({ text: gate.refusal, show_alert: true }));
+      }
       await unlinkGroup(deps.db, chat.id);
       room = await createRoom(deps.db, {
         name: "title" in chat ? chat.title : "Группа",
