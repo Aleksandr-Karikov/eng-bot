@@ -84,4 +84,17 @@ describe("loadConfig", () => {
     expect(config.mfluxBin).toBeUndefined();
     expect(config.imagesBackground).toBe(false);
   });
+
+  it("turns the background painter off with IMAGES_BACKGROUND=0, keeping pictures by button", () => {
+    // Фон рисует все слова подряд, не спрашивая: на платном API это главный расход.
+    // Выключить его должно быть можно, не выключая картинки целиком.
+    const config = loadConfig({ BOT_TOKEN: "t", IMAGES_ENABLED: "1", IMAGE_API_KEY: "sk-or-v1-x", IMAGES_BACKGROUND: "0" });
+    expect(config.imagesBackground).toBe(false);
+    expect(config.imageApiKey).toBe("sk-or-v1-x");
+  });
+
+  it("draws in the background by default, since the local FLUX was free", () => {
+    const config = loadConfig({ BOT_TOKEN: "t", IMAGES_ENABLED: "1", IMAGE_API_KEY: "sk-or-v1-x" });
+    expect(config.imagesBackground).toBe(true);
+  });
 });

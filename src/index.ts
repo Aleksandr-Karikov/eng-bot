@@ -111,7 +111,13 @@ const imageSynth: ImageSynth | undefined = config.imageApiKey && config.imageMod
 if (config.imageApiKey && config.mfluxBin) {
   console.warn("Заданы и IMAGE_API_KEY, и MFLUX_BIN — картинки рисует API (IMAGE_API_KEY важнее).");
 }
-console.log(imageSynth ? `Картинки: ${imageSynth instanceof ApiSynth ? `API ${config.imageModel}` : "локальный FLUX"}` : "Картинки: выключены");
+// Фон жжёт деньги сам по себе, поэтому в логе должно быть видно, включён он или нет.
+console.log(
+  imageSynth
+    ? `Картинки: ${imageSynth instanceof ApiSynth ? `API ${config.imageModel}` : "локальный FLUX"}` +
+        `, фон ${config.imagesBackground ? "включён" : "выключен (только по кнопке)"}`
+    : "Картинки: выключены",
+);
 const images = imageSynth ? new ImageService(imageSynth, llm, config.imageStyle, (wordId) => wordLanguage(db, wordId)) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, llm);
