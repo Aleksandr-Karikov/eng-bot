@@ -19,10 +19,12 @@ import { PracticeStore } from "./bot/practice";
 import { RoomNameStore } from "./bot/room-names";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
-import { ClaudeCodeEnricher } from "./llm/claude-code";
+import { OpenRouterBackend } from "./llm/openrouter";
+import { ProviderRouter } from "./llm/provider";
+import { initialProvider, writeProvider } from "./llm/provider-store";
 import { Notifier } from "./notifier";
 import { ClozeGenerator } from "./services/cloze-generator";
-import { FluxSynth, ImageService } from "./images/images";
+import { ApiSynth, FluxSynth, ImageService, type ImageSynth } from "./images/images";
 import { BackgroundPainter, onAcPower } from "./images/painter";
 import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
@@ -52,6 +54,10 @@ try {
 
 const config = loadConfig();
 redactLogs(config.botToken);
+// Ключ OpenRouter — второй секрет в логах: тела ошибок провайдера пишутся как есть.
+if (config.openRouterKey) redactLogs(config.openRouterKey, "<OPEN_ROUTER_API_KEY>");
+// Ключ рисовалки — третий секрет (инвариант 7): у него может быть отдельный баланс и лимит.
+if (config.imageApiKey) redactLogs(config.imageApiKey, "<IMAGE_API_KEY>");
 captureRecentLogs();
 const db = createDb(config.dbPath);
 const bot = new Bot<BotContext>(config.botToken);
@@ -72,15 +78,43 @@ const speech = new LanguageAwareSynth(englishSpeech);
 void englishSpeech.synthesize("hello", "uk").catch(() => {});
 // Голосовые: Whisper и модель фонем, если поставлены (tools/stt).
 const recognizer = existsSync(config.sttPython) ? new LocalRecognizer(config.sttPython, "tools/stt/stt_server.py") : undefined;
-const claude = new ClaudeCodeEnricher({
-  model: config.enrichModel,
+// LLM: по умолчанию локальный Claude Code; OpenRouter — если заданы ключ и модель.
+// Провайдера можно менять на лету (/llm в боте или scripts/llm.ts), перезапуск не нужен.
+const llm = new ProviderRouter({
+  models: {
+    claudeCode: { main: config.enrichModel, mnemonic: config.mnemonicModel, check: config.checkModel },
+    openrouter: {
+      main: config.openRouterModel ?? "",
+      mnemonic: config.openRouterMnemonicModel ?? "",
+      check: config.openRouterCheckModel ?? "",
+    },
+  },
   timeoutMs: config.enrichTimeoutMs,
-  mnemonicModel: config.mnemonicModel,
-  checkModel: config.checkModel,
+  provider: initialProvider(config.llmProviderFile, config.llmProvider),
+  ...(config.openRouterKey
+    ? { openRouter: new OpenRouterBackend({ apiKey: config.openRouterKey, title: "WordBoss" }) }
+    : {}),
 });
-const images = config.mfluxBin ? new ImageService(new FluxSynth(config.mfluxBin), claude, config.imageStyle, (wordId) => wordLanguage(db, wordId)) : undefined;
+// Куда сохранять выбор из бота: .env правит только CLI, бот пишет отдельный файл (см. provider-store).
+llm.onSwitch = (provider) => writeProvider(config.llmProviderFile, provider);
+// Ключ без имени модели бесполезен: переключение в OpenRouter такую настройку не пропустит.
+if (config.openRouterKey && !config.openRouterModel) {
+  console.warn("OPEN_ROUTER_API_KEY задан, а OPENROUTER_MODEL нет — OpenRouter не включится (см. .env.example).");
+}
+console.log(`LLM: ${llm.provider}${llm.openRouterReady ? " (OpenRouter доступен)" : ""}`);
+// Рисовалка: внешний API, если задан ключ (нужен на Linux), иначе локальный FLUX через MLX.
+const imageSynth: ImageSynth | undefined = config.imageApiKey && config.imageModel
+  ? new ApiSynth({ apiKey: config.imageApiKey, model: config.imageModel, title: "WordBoss" })
+  : config.mfluxBin
+    ? new FluxSynth(config.mfluxBin)
+    : undefined;
+if (config.imageApiKey && config.mfluxBin) {
+  console.warn("Заданы и IMAGE_API_KEY, и MFLUX_BIN — картинки рисует API (IMAGE_API_KEY важнее).");
+}
+console.log(imageSynth ? `Картинки: ${imageSynth instanceof ApiSynth ? `API ${config.imageModel}` : "локальный FLUX"}` : "Картинки: выключены");
+const images = imageSynth ? new ImageService(imageSynth, llm, config.imageStyle, (wordId) => wordLanguage(db, wordId)) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
-const mnemonicGen = new MnemonicGenerator(db, claude);
+const mnemonicGen = new MnemonicGenerator(db, llm);
 
 const exercises = new ExerciseStore(dbExercisePersistence(db));
 await exercises.load();
@@ -89,10 +123,10 @@ const deps: Deps = {
   db,
   notifier,
   now,
-  enricher: claude,
-  tutor: claude,
-  clozeGen: new ClozeGenerator(db, claude, now),
-  collocationGen: new CollocationGenerator(db, claude),
+  enricher: llm,
+  tutor: llm,
+  clozeGen: new ClozeGenerator(db, llm, now),
+  collocationGen: new CollocationGenerator(db, llm),
   mnemonicGen,
   drafts: new DraftStore(),
   batches: new BatchStore(),
@@ -111,6 +145,7 @@ const deps: Deps = {
   duels: new DuelStore(),
   pendingMistakes: new PendingMistakesStore(),
   random: Math.random,
+  llm,
   practice: new PracticeStore(),
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
