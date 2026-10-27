@@ -30,6 +30,16 @@ import type { FrequencySource } from "../frequency/frequency";
 import type { TranslateStore } from "./translations";
 import type { SubtitleSource } from "../youtube/subtitles";
 
+/** Что боту нужно знать про LLM-провайдера, чтобы им можно было управлять из чата (см. `src/llm/provider.ts`). */
+export interface LlmSwitch {
+  /** Имя активного провайдера. */
+  readonly provider: string;
+  /** Доступен ли второй провайдер; нет — переключаться некуда. */
+  readonly openRouterReady: boolean;
+  /** Переключить, вернув прежнего; ошибка — если провайдер не настроен. */
+  use(provider: "claude-code" | "openrouter"): string;
+}
+
 /** groupRoom — комната привязанной группы (в группах; null — группа не привязана), её находит userMiddleware. */
 export type BotContext = Context & {
   user: User;
@@ -66,6 +76,8 @@ export interface Deps {
   pendingMistakes: PendingMistakesStore;
   /** Случайность выбора упражнения (Math.random; в тестах — подменяется). */
   random: () => number;
+  /** Дополнительно к `enricher`/`tutor`: смена LLM-провайдера на лету и его текущее имя (нет — только Claude Code). */
+  llm?: LlmSwitch;
   practice: PracticeStore;
   pictureWishes: PictureWishStore;
   talks: TalkStore;

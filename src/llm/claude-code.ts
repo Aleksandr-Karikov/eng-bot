@@ -1,6 +1,7 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { currentLang, type Language } from "../lang";
 import { Limiter } from "./limiter";
+import type { LlmBackend } from "./backend";
 import {
   buildCheckPrompt,
   buildExtractPrompt,
@@ -71,6 +72,39 @@ import type { ClozeDraft } from "../services/cloze";
 const EXTRACT_TIMEOUT_MS = 180_000;
 
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
+export class ClaudeCodeBackend implements LlmBackend {
+  readonly name = "claude-code";
+
+  async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], lang: Language): Promise<string> {
+    const abortController = new AbortController();
+    const timer = setTimeout(() => abortController.abort(), timeoutMs);
+    try {
+      let result: string | undefined;
+      for await (const message of query({
+        prompt: images.length ? withImages(prompt, images) : prompt,
+        options: {
+          abortController,
+          model,
+          systemPrompt: systemPrompt(lang),
+          maxTurns: 1,
+          // Без инструментов и без пользовательских настроек/плагинов/хуков — только ответ модели.
+          tools: [],
+          settingSources: [],
+        },
+      })) {
+        if (message.type === "result") {
+          if (message.subtype !== "success") throw new Error(`Claude Code failed: ${message.subtype}`);
+          result = message.result;
+        }
+      }
+      if (result === undefined) throw new Error("Claude Code returned no result");
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
 /** Сообщение с картинками: SDK принимает их только в потоковом вводе, одним сообщением пользователя. */
 async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SDKUserMessage> {
   yield {
@@ -86,15 +120,27 @@ async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SD
   };
 }
 
+/**
+ * Все 19 методов `WordEnricher` + `ExerciseTutor`: собирает промпт, разбирает ответ, выбирает модель.
+ * Сам в модель не ходит — это делает `backend`, поэтому один и тот же класс обслуживает и Claude Code,
+ * и OpenRouter (см. `provider.ts`).
+ *
+ * Имя историческое: класс начинался как «обёртка над Claude Code» и переименование затронуло бы десяток
+ * мест без пользы. Читайте его как «слой методов поверх бэкенда».
+ */
 export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
-  /** Одновременно — не больше трёх процессов Claude Code. */
+  /** Одновременно — не больше трёх запросов: у Claude Code каждый — отдельный процесс, Мак их не тянет. */
   private readonly limiter = new Limiter(3);
 
   /**
    * checkModel — для проверок (/check, ответы в упражнениях, перевод): ошибка здесь подаётся человеку как факт,
    * поэтому сильнее основной модели. По умолчанию sonnet.
+   * backend — куда ходить; по умолчанию локальный Claude Code (тесты подставляют свой).
    */
-  constructor(private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string; checkModel?: string }) {}
+  constructor(
+    private readonly opts: { model: string; timeoutMs: number; mnemonicModel?: string; checkModel?: string },
+    private readonly backend: LlmBackend = new ClaudeCodeBackend(),
+  ) {}
 
   private get checker(): string {
     return this.opts.checkModel ?? "sonnet";
@@ -203,41 +249,12 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseJudgement(await this.ask(buildJudgePrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
-  /** Один запрос к Claude Code без инструментов; возвращает текст ответа. */
+  /** Один запрос к провайдеру без инструментов; возвращает текст ответа. */
   /** urgent — человек ждёт ответа; фоновые подготовки (предложения, сочетания, разборы) пропускают такие вперёд. */
   async ask(prompt: string, timeoutMs: number, model = this.opts.model, images: ImageInput[] = [], urgent = true): Promise<string> {
     // Язык — в момент вызова: из очереди запрос может уйти уже в контексте того, кто освободил место.
     const lang = currentLang();
     // Таймаут отсчитывается с начала самого запроса, а не с постановки в очередь.
-    return this.limiter.run(urgent, () => this.askNow(prompt, timeoutMs, model, images, lang));
-  }
-
-  private async askNow(prompt: string, timeoutMs: number, model: string, images: ImageInput[], lang: Language): Promise<string> {
-    const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), timeoutMs);
-    try {
-      let result: string | undefined;
-      for await (const message of query({
-        prompt: images.length ? withImages(prompt, images) : prompt,
-        options: {
-          abortController,
-          model,
-          systemPrompt: systemPrompt(lang),
-          maxTurns: 1,
-          // Без инструментов и без пользовательских настроек/плагинов/хуков — только ответ модели.
-          tools: [],
-          settingSources: [],
-        },
-      })) {
-        if (message.type === "result") {
-          if (message.subtype !== "success") throw new Error(`Claude Code failed: ${message.subtype}`);
-          result = message.result;
-        }
-      }
-      if (result === undefined) throw new Error("Claude Code returned no result");
-      return result;
-    } finally {
-      clearTimeout(timer);
-    }
+    return this.limiter.run(urgent, () => this.backend.ask(prompt, timeoutMs, model, images, lang));
   }
 }
