@@ -306,10 +306,16 @@ export const usageCounters = sqliteTable("usage_counters", {
   period: text("period").notNull(),
   /** Что считаем: "inline_translate", "image", "check"… Список — QUOTAS в src/services/limits.ts. */
   kind: text("kind").notNull(),
+  /**
+   * К чему относится счётчик, если лимит не общий на человека, а на объект: «word:123».
+   * Пустая строка — лимит на человека целиком. Нужно для «3 перерисовки на слово»: без этого
+   * три попытки тратились бы на все слова сразу.
+   */
+  scope: text("scope").notNull().default(""),
   count: integer("count").notNull().default(0),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, (t) => [
-  primaryKey({ columns: [t.userId, t.period, t.kind] }),
+  primaryKey({ columns: [t.userId, t.period, t.kind, t.scope] }),
 ]);
 
 export type WordSet = typeof wordSets.$inferSelect;

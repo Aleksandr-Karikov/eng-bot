@@ -8,6 +8,7 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import { cardView } from "../../services/card-view";
 import { collapseManage, expandManage, mnemonicKeyboard, pictureKeyboard, redrawMenuKeyboard } from "../keyboards";
 import { clearPendingInputs } from "../pending";
+import { checkAndCount } from "../../services/limits";
 import { esc, mnemonicText, pictureCaption } from "../texts";
 
 /** Запоминалка слова: из базы или свежая от Claude. "" — не получилось. */
@@ -19,7 +20,7 @@ async function ensureMnemonic(deps: Deps, wordId: number): Promise<string> {
 }
 
 /** Рисует (или перерисовывает) картинку слова, отправляет её и делает картинкой слова для всей комнаты. */
-async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { style?: string; wish?: string } = {}): Promise<void> {
+async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { style?: string; wish?: string; again?: boolean } = {}): Promise<void> {
   if (!deps.images) return;
   await ctx.replyWithChatAction("upload_photo").catch(() => {});
   let picture: Buffer;
@@ -42,6 +43,28 @@ async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { styl
 function drawingNotice(deps: Deps): string {
   const queue = deps.images?.queued ?? 0;
   return queue ? `🖼 В очереди (${queue} до тебя), потом ~20 секунд` : "🖼 Рисую, это около 20 секунд…";
+}
+
+/**
+ * Проверяет лимит перерисовок и объясняет отказ, если он есть. `true` — рисовать можно.
+ *
+ * Лимит **на слово**, а не на человека: у каждой картинки свои 3 попытки. Иначе человек потратил бы
+ * все три на первое слово, а второе осталось бы без картинки.
+ *
+ * Считается попытка, а не удача: если рисование упало, лимит всё равно израсходован. Возвращать лимит
+ * при ошибке нельзя — падение по любой причине обнуляло бы счёт и дыра открывалась бы заново.
+ */
+async function allowRedraw(ctx: BotContext, deps: Deps, wordId: number): Promise<boolean> {
+  const quota = await checkAndCount(deps.db, {
+    userId: ctx.user.id,
+    kind: "image_redraw",
+    timeZone: ctx.user.timezone,
+    now: deps.now(),
+    wordId,
+  });
+  if (quota.allowed) return true;
+  await ctx.answerCallbackQuery({ text: quota.refusal, show_alert: true });
+  return false;
 }
 
 export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
@@ -131,6 +154,8 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     // Новая картинка заменит старую для всей комнаты — только участникам.
     if (!(await isMember(deps.db, word.roomId, ctx.user.id))) return void (await ctx.answerCallbackQuery({ text: "Ты не в этой комнате" }));
     if (cb.how === "custom") {
+      // Лимит проверяем до force_reply: иначе человек напишет описание и только потом узнает об отказе.
+      if (!(await allowRedraw(ctx, deps, word.id))) return;
       await ctx.answerCallbackQuery();
       if (!ctx.chat) return;
       clearPendingInputs(deps, ctx.user.id);
@@ -141,8 +166,12 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
       }));
     }
     const style = typeof cb.how === "number" ? STYLE_PRESETS[cb.how]?.style : undefined;
+    // «🎲 Ещё вариант» обещает другую картинку: без флага вернулась бы та же самая из inFlight.
+    const again = cb.how === "again";
+    // Лимит — после проверок выше: неучастник и «уже удалили» не должны тратить попытку.
+    if (!(await allowRedraw(ctx, deps, word.id))) return;
     await ctx.answerCallbackQuery({ text: drawingNotice(deps) });
-    background(ctx, () => drawAndSend(ctx, deps, word, style ? { style } : {}));
+    background(ctx, () => drawAndSend(ctx, deps, word, { ...(style ? { style } : {}), ...(again ? { again } : {}) }));
   });
 
   // Описание для «✍️ Свой вариант». Регистрируется раньше общего обработчика текста (иначе стало бы /add).
@@ -153,6 +182,7 @@ export function registerMnemonic(bot: Bot<BotContext>, deps: Deps): void {
     if (wordId === undefined) return next();
     const word = await getWord(deps.db, wordId);
     if (!word || !deps.images) return void (await ctx.reply("Это слово уже удалили"));
+    // Лимит уже израсходован при показе «✍️ Свой вариант» — второй раз не считаем.
     await ctx.reply(drawingNotice(deps));
     background(ctx, () => drawAndSend(ctx, deps, word, { wish: ctx.message.text.trim() }));
   });

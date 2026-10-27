@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExerciseTutor } from "../src/llm/tutor";
 import { buildImagePromptPrompt } from "../src/llm/tutor";
 import { STYLE_PRESETS } from "../src/images/images";
-import { createRoom } from "../src/services/rooms";
+import { createRoom, joinRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { getWord, saveWord, setImageFileId } from "../src/services/words";
+import { QUOTAS, quotaUsed } from "../src/services/limits";
+import { users } from "../src/db/schema";
 import { botHarness, buttonData, lastButtons } from "./bot-harness";
-import { T0, makeUser } from "./helpers";
+import { at, DAY, T0, makeUser } from "./helpers";
 
 function setup(withImages = true) {
   const imagePrompt = vi.fn(async () => "an old family house");
@@ -83,5 +85,143 @@ describe("🔄 redraw a picture", () => {
     const w = await word(h);
     await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
     expect(String(h.calls.filter((c) => c.method === "answerCallbackQuery").at(-1)!.payload.text)).toContain("выключены");
+  });
+});
+
+describe("🔄 лимит перерисовок: 3 на слово в день", () => {
+  const alerts = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.method === "answerCallbackQuery" && c.payload.show_alert);
+  const alert = (h: ReturnType<typeof botHarness>) => alerts(h).at(-1)?.payload.text;
+
+  /**
+   * Жмёт «🎲 Ещё вариант» `times` раз, каждый раз дожидаясь конца рисования.
+   *
+   * Ждать обязательно: рисование уходит в `background`, и без паузы следующее нажатие приходит, пока
+   * предыдущее ещё рисуется. Тогда `inFlight` склеивает запросы, и это правильно — но проверить лимит
+   * так нельзя, потому что «сколько раз нажали» перестаёт совпадать с «сколько раз нарисовали».
+   */
+  async function redraw(h: ReturnType<typeof botHarness>, wordId: number, times: number, userId = 100) {
+    for (let i = 0; i < times; i++) {
+      const before = h.calls.length;
+      await h.bot.handleUpdate(h.callback(userId, `rd:${wordId}`));
+      await h.bot.handleUpdate(h.callback(userId, buttonData(h.calls.slice(before), "🎲 Ещё вариант")));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
+  it("даёт три попытки и отказывает на четвёртой", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    await redraw(h, w.id, 3);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    expect(alert(h)).toBeUndefined();
+
+    await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    expect(draw).toHaveBeenCalledTimes(3);
+    expect(alert(h)).toBe(QUOTAS.image_redraw.refusal);
+  });
+
+  it("считает попытки на каждое слово отдельно, а не на все сразу", async () => {
+    const { h, draw } = setup();
+    const first = await word(h);
+    const user = (await h.db.select().from(users))[0];
+    const second = await saveWord(h.db, {
+      roomId: first.roomId,
+      addedBy: user.id,
+      draft: { term: "ladder", translation: "лестница", explanation: "", example: "" },
+      now: T0,
+    });
+    if (second.status !== "saved") throw new Error("dup");
+    await setImageFileId(h.db, second.word.id, "old-pic");
+
+    // Три попытки выжимают первое слово до отказа…
+    await redraw(h, first.id, 3);
+    await h.bot.handleUpdate(h.callback(100, `rd:${first.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    expect(alert(h)).toBe(QUOTAS.image_redraw.refusal);
+
+    // …но у второго слова лимит свой, иначе одна картинка съедала бы попытки всех остальных.
+    await redraw(h, second.word.id, 1);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(4));
+  });
+
+  it("лимит личный: чужие перерисовки не тратят мои", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    await redraw(h, w.id, 3);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+
+    // Второй участник той же комнаты: картинка общая, а лимит у каждого свой.
+    const other = await makeUser(h.db, 200);
+    await joinRoom(h.db, { roomId: w.roomId, userId: other.id, now: T0, makeCurrent: false });
+    await h.bot.handleUpdate(h.callback(200, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(200, buttonData(h.calls, "🎲 Ещё вариант")));
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(4));
+    expect(alert(h)).toBeUndefined();
+  });
+
+  it("отказ не тратит попытки: десять нажатий не сдвигают счёт", async () => {
+    const { h } = setup();
+    const w = await word(h);
+    for (let i = 0; i < 10; i++) {
+      await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
+      await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    }
+    const user = (await h.db.select().from(users))[0];
+    expect(await quotaUsed(h.db, { userId: user.id, kind: "image_redraw", timeZone: "UTC", now: T0, wordId: w.id })).toBe(3);
+  });
+
+  it("«✍️ Свой вариант» тоже расходует попытку — и спрашивает до, а не после", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    await redraw(h, w.id, 3);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+
+    await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✍️ Свой вариант")));
+    // Отказ приходит сразу, а не после того, как человек напишет описание.
+    expect(alert(h)).toBe(QUOTAS.image_redraw.refusal);
+    expect(h.calls.some((c) => String(c.payload.text).includes("Опиши картинку"))).toBe(false);
+  });
+
+  it("неучастник и удалённое слово не тратят попытку", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    const stranger = await makeUser(h.db, 300);
+
+    await h.bot.handleUpdate(h.callback(300, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(300, buttonData(h.calls, "🎲 Ещё вариант")));
+    expect(draw).not.toHaveBeenCalled();
+
+    expect(await quotaUsed(h.db, { userId: stranger.id, kind: "image_redraw", timeZone: "UTC", now: T0, wordId: w.id })).toBe(0);
+  });
+
+  it("описание расходует одну попытку, а не две", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✍️ Свой вариант")));
+    await h.bot.handleUpdate(h.message(100, "старый сундук"));
+    await vi.waitFor(() => expect(draw).toHaveBeenCalled());
+
+    const user = (await h.db.select().from(users))[0];
+    expect(await quotaUsed(h.db, { userId: user.id, kind: "image_redraw", timeZone: "UTC", now: T0, wordId: w.id })).toBe(1);
+  });
+
+  it("на следующий день лимит снова полный", async () => {
+    const { h, draw } = setup();
+    const w = await word(h);
+    await redraw(h, w.id, 3);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    await h.bot.handleUpdate(h.callback(100, `rd:${w.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    expect(alert(h)).toBe(QUOTAS.image_redraw.refusal);
+    const refusals = alerts(h).length;
+
+    h.setNow(at(DAY));
+    await redraw(h, w.id, 1);
+    await vi.waitFor(() => expect(draw).toHaveBeenCalledTimes(4));
+    // Отказ выше остаётся в истории вызовов, поэтому смотрим, что новых отказов не добавилось.
+    expect(alerts(h)).toHaveLength(refusals);
   });
 });

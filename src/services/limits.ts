@@ -10,8 +10,13 @@ import { localParts } from "../time";
  * и вызовы модели, поэтому ограничиваем их точечно, а не «всё подряд» (см. docs/limits-and-pricing.md).
  *
  * Устройство намеренно простое: одна таблица `usage_counters` с ключом (человек, период, вид), а не
- * подсчёт по существующим таблицам. Причина — **отказ тоже обязан считаться**: если не считать попытки,
- * лимит обходится повтором запроса, и злоупотребление выглядит как обычная работа.
+ * подсчёт по существующим таблицам: считать по ним — значит писать отдельный запрос на каждый лимит
+ * и зависеть от того, что записи вообще создаются.
+ *
+ * **Считается только успешно начатая операция, отказ счётчик не трогает.** Это важно для `image_redraw`:
+ * если бы отказ считался, человек, нажавший кнопку десять раз, «израсходовал» бы лимит, не получив
+ * ни одной картинки, и после сброса периода начинал бы со счётом больше нуля. Защита от злоупотребления
+ * здесь не нужна: за отказом не стоит ни вызова модели, ни денег.
  */
 
 /** Что именно ограничиваем. Список закрытый: опечатка в строке иначе тихо создаст новый счётчик. */
@@ -26,6 +31,11 @@ export interface Quota {
   limit: number;
   /** Что сказать человеку, когда лимит исчерпан. Коротко и по делу, без «попробуйте позже». */
   refusal: string;
+  /**
+   * Считать по объекту, а не по человеку целиком. `word` — у каждого слова свои попытки.
+   * Без этого «3 перерисовки» означали бы «3 на все слова», и второе слово осталось бы без картинки.
+   */
+  per?: "word";
 }
 
 /**
@@ -52,6 +62,7 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     kind: "image_redraw",
     period: "day",
     limit: 3,
+    per: "word",
     refusal: "Эту картинку уже перерисовывали 3 раза. Попробуй другую — или оставь как есть.",
   },
   add_word: {
@@ -82,6 +93,19 @@ function weekKey(date: string): string {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+/**
+ * Ключ объекта для лимита «на слово»: `word:123`. Для лимитов на человека — пустая строка.
+ *
+ * Слово входит в ключ, поэтому лимит на слово не нужен ни в `QUOTAS`, ни в вызове: он виден из `kind`.
+ * Если у лимита `per: "word"`, а id слова не передан — это ошибка вызова, и лучше упасть громко:
+ * молча посчитать по человеку значит отдать чужой лимит.
+ */
+function scopeOf(quota: Quota, wordId?: number): string {
+  if (quota.per !== "word") return "";
+  if (wordId === undefined) throw new Error(`Лимиту ${quota.kind} нужен id слова`);
+  return `word:${wordId}`;
+}
+
 export interface QuotaState {
   /** Можно ли выполнить операцию. */
   allowed: boolean;
@@ -93,13 +117,24 @@ export interface QuotaState {
 }
 
 /** Сколько уже израсходовано — без записи. Нужно там, где важно показать остаток, а не потратить. */
-export async function quotaUsed(db: Db, userId: number, kind: QuotaKind, timeZone: string, now: Date): Promise<number> {
-  const quota = QUOTAS[kind];
-  const period = periodKey(quota.period, timeZone, now);
+export async function quotaUsed(
+  db: Db,
+  input: { userId: number; kind: QuotaKind; timeZone: string; now: Date; wordId?: number },
+): Promise<number> {
+  const quota = QUOTAS[input.kind];
+  const period = periodKey(quota.period, input.timeZone, input.now);
+  const scope = scopeOf(quota, input.wordId);
   const [row] = await db
     .select({ count: usageCounters.count })
     .from(usageCounters)
-    .where(and(eq(usageCounters.userId, userId), eq(usageCounters.period, period), eq(usageCounters.kind, kind)));
+    .where(
+      and(
+        eq(usageCounters.userId, input.userId),
+        eq(usageCounters.period, period),
+        eq(usageCounters.kind, input.kind),
+        eq(usageCounters.scope, scope),
+      ),
+    );
   return row?.count ?? 0;
 }
 
@@ -112,12 +147,13 @@ export async function quotaUsed(db: Db, userId: number, kind: QuotaKind, timeZon
  */
 export async function checkAndCount(
   db: Db,
-  input: { userId: number; kind: QuotaKind; timeZone: string; now: Date },
+  input: { userId: number; kind: QuotaKind; timeZone: string; now: Date; wordId?: number },
 ): Promise<QuotaState> {
   const quota = QUOTAS[input.kind];
   const period = periodKey(quota.period, input.timeZone, input.now);
-  const key = { userId: input.userId, period, kind: input.kind };
-  const used = await quotaUsed(db, input.userId, input.kind, input.timeZone, input.now);
+  const scope = scopeOf(quota, input.wordId);
+  const key = { userId: input.userId, period, kind: input.kind, scope };
+  const used = await quotaUsed(db, input);
 
   if (used >= quota.limit) {
     return { allowed: false, used, limit: quota.limit, refusal: quota.refusal };
@@ -128,7 +164,7 @@ export async function checkAndCount(
     .insert(usageCounters)
     .values({ ...key, count: 1, updatedAt: input.now })
     .onConflictDoUpdate({
-      target: [usageCounters.userId, usageCounters.period, usageCounters.kind],
+      target: [usageCounters.userId, usageCounters.period, usageCounters.kind, usageCounters.scope],
       set: { count: sql`${usageCounters.count} + 1`, updatedAt: input.now },
     });
 
@@ -139,5 +175,6 @@ export async function checkAndCount(
 export function quotaLine(kind: QuotaKind, used: number): string {
   const quota = QUOTAS[kind];
   const unit = quota.period === "day" ? "сегодня" : "на этой неделе";
-  return `${kind}: ${used} из ${quota.limit} ${unit}`;
+  const what = quota.per === "word" ? "на это слово" : "на человека";
+  return `${kind}: ${used} из ${quota.limit} ${unit}, ${what}`;
 }

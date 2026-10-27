@@ -269,7 +269,7 @@ describe("инлайн переводит новое слово", () => {
     }
 
     expect(calls).toHaveLength(QUOTAS.inline_translate.limit);
-    const used = await quotaUsed(h.db, user.id, "inline_translate", "Europe/Moscow", T0);
+    const used = await quotaUsed(h.db, { userId: user.id, kind: "inline_translate", timeZone: "Europe/Moscow", now: T0 });
     expect(used).toBe(QUOTAS.inline_translate.limit);
   });
 

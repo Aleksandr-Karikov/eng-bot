@@ -148,12 +148,18 @@ export class ImageService {
     return this.waiting;
   }
 
-  /** opts.style — другой стиль, opts.wish — пожелание ученика к сцене (для «Перерисовать»). */
+  /**
+   * `opts.style` — другой стиль, `opts.wish` — пожелание ученика к сцене.
+   *
+   * `opts.again` — «🎲 Ещё вариант»: тот же стиль, но **новая** картинка. Без флага повторный запрос
+   * с тем же ключом вернул бы уже готовую картинку из `inFlight`, и кнопка молча ничего бы не делала.
+   */
   drawWord(
     word: { id: number; term: string; translation: string; explanation: string; example: string },
-    opts: { style?: string; wish?: string } = {},
+    opts: { style?: string; wish?: string; again?: boolean } = {},
   ): Promise<Buffer> {
-    const key = `${word.id}\n${opts.style ?? ""}\n${opts.wish ?? ""}`;
+    const key = `${word.id}\n${opts.style ?? ""}\n${opts.wish ?? ""}\n${opts.again ? "again" : ""}`;
+    // Склейка нужна для одновременных запросов: два человека просят одну картинку — рисуем один раз.
     const running = this.inFlight.get(key);
     if (running) return running;
     const task = (async () => {

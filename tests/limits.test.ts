@@ -54,7 +54,7 @@ describe("лимиты: счёт и отказ", () => {
       await checkAndCount(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 });
     }
 
-    expect(await quotaUsed(db, user.id, "inline_translate", MSK, T0)).toBe(limit);
+    expect(await quotaUsed(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(limit);
   });
 
   it("на следующий день лимит снова полный", async () => {
@@ -78,8 +78,8 @@ describe("лимиты: счёт и отказ", () => {
 
     await checkAndCount(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 });
 
-    expect(await quotaUsed(db, user.id, "image", MSK, T0)).toBe(0);
-    expect(await quotaUsed(db, user.id, "inline_translate", MSK, T0)).toBe(1);
+    expect(await quotaUsed(db, { userId: user.id, kind: "image", timeZone: MSK, now: T0 })).toBe(0);
+    expect(await quotaUsed(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(1);
   });
 
   it("люди считаются порознь", async () => {
@@ -89,8 +89,8 @@ describe("лимиты: счёт и отказ", () => {
     await checkAndCount(db, { userId: a.id, kind: "inline_translate", timeZone: MSK, now: T0 });
     await checkAndCount(db, { userId: a.id, kind: "inline_translate", timeZone: MSK, now: T0 });
 
-    expect(await quotaUsed(db, a.id, "inline_translate", MSK, T0)).toBe(2);
-    expect(await quotaUsed(db, b.id, "inline_translate", MSK, T0)).toBe(0);
+    expect(await quotaUsed(db, { userId: a.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(2);
+    expect(await quotaUsed(db, { userId: b.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(0);
   });
 
   it("одновременные запросы не теряют счёт: инкремент идёт в базе", async () => {
@@ -103,6 +103,6 @@ describe("лимиты: счёт и отказ", () => {
       Array.from({ length: 10 }, () => checkAndCount(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })),
     );
 
-    expect(await quotaUsed(db, user.id, "inline_translate", MSK, T0)).toBe(10);
+    expect(await quotaUsed(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(10);
   });
 });
