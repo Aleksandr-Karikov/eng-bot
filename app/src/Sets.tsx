@@ -10,11 +10,14 @@ const UNDO_DEPTH = 5;
 /**
  * 📦 Готовые наборы: по уровням и по темам. Набор разбирается колодой — знаю / учу / не для меня;
  * «учу» отправляет слово в личный словарь «Мои слова».
+ *
+ * `startSetId` открывает набор сразу, минуя список: так пустой `/learn` ведёт новичка в A1 одним
+ * тапом. Список ему сейчас не нужен — он ещё не знает, чем A1 отличается от B2.
  */
-export function Sets({ onExit }: { onExit: () => void }) {
+export function Sets({ onExit, startSetId }: { onExit: () => void; startSetId?: number }) {
   const [sets, setSets] = useState<WordSetInfo[]>();
   const [error, setError] = useState<string>();
-  const [open, setOpen] = useState<number>();
+  const [open, setOpen] = useState<number | undefined>(startSetId);
 
   const load = useCallback(() => {
     getSets()

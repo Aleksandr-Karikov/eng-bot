@@ -40,6 +40,21 @@ export async function listSets(db: Db, userId: number): Promise<SetSummary[]> {
   });
 }
 
+/**
+ * Первый набор для новичка: A1 на языке текущей комнаты.
+ *
+ * Нужен ровно в одном месте — пустой `/learn`, где человеку нечего учить и его надо чем-то занять.
+ * Уровень не спрашиваем: на входе человек не знает, A1 у него или B1, а лишний экран выбора
+ * отпугивает новичка сильнее пустоты. Ошибка в сторону A1 безопаснее: знакомое он отбросит свайпом
+ * «знаю» за пару минут, а незнакомое из B1 придётся догонять.
+ */
+export async function starterSet(db: Db): Promise<SetSummary | undefined> {
+  const [a1] = await db.select().from(wordSets).where(and(eq(wordSets.language, currentLang().code), eq(wordSets.slug, "a1")));
+  if (!a1) return undefined;
+  const items = await db.select({ id: setItems.id }).from(setItems).where(eq(setItems.setId, a1.id));
+  return { set: a1, total: items.length, done: 0 };
+}
+
 /** Следующие неразобранные слова набора, по порядку; уже знакомые по словарю — пропускаем. */
 export async function nextSetItems(db: Db, userId: number, setId: number, limit = 50): Promise<SetItem[]> {
   const items = await db.select().from(setItems).where(eq(setItems.setId, setId)).orderBy(asc(setItems.position), asc(setItems.id));

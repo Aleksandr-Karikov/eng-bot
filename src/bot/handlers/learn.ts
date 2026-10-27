@@ -14,6 +14,7 @@ import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
+import { personalStats } from "../../services/stats";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
@@ -288,7 +289,9 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     }
   } else {
     const next = await nextReviewAt(deps.db, ctx.user.id);
-    text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone);
+    // Пустой словарь — не «всё повторил»: новичку надо предложить набор, а не «появятся сами».
+    const { total } = await personalStats(deps.db, ctx.user, deps.now());
+    text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
     replyMarkup = addUndoRow(practiceStartKeyboard(), undo);
     sessionCountsOf(deps).delete(ctx.user.id);

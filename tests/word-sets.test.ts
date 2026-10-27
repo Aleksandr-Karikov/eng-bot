@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { rooms, words } from "../src/db/schema";
-import { createRoom } from "../src/services/rooms";
+import { cards, rooms, words } from "../src/db/schema";
+import { createRoom, ensurePersonalRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
-import { decide, listSets, nextSetItems, replaceSet, undoDecision } from "../src/services/word-sets";
+import { decide, listSets, nextSetItems, replaceSet, starterSet, undoDecision } from "../src/services/word-sets";
 import { botHarness } from "./bot-harness";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 
 const TOKEN = "123:test-token";
-import { T0, makeUser } from "./helpers";
+import { DAY, T0, at, makeUser } from "./helpers";
 
 const item = (term: string) => ({ term, translation: term + "-ru", explanation: "", example: "", transcriptionUk: "", transcriptionUs: "", usefulness: 3, usefulnessNote: "" });
 
@@ -62,5 +62,84 @@ describe("📦 word sets", () => {
     expect((await post({ itemId: items[0].id, decision: "learn" })).status).toBe(409);
     expect((await post({ itemId: items[0].id, undo: true })).status).toBe(200);
     expect((await app.request(`/api/audio?item=${items[1].id}&accent=uk`, { headers })).status).toBe(200);
+  });
+});
+
+describe("📦 первый набор новичка", () => {
+  /** Наборы рядом, как в жизни: A1 и B1 лежат в одной комнате. */
+  async function newcomer() {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100);
+    await replaceSet(h.db, { slug: "a1", title: "A1 · Начальный", kind: "level", description: "", position: 0 }, [item("cat"), item("dog"), item("sun")], T0);
+    await replaceSet(h.db, { slug: "b1", title: "B1", kind: "level", description: "", position: 2 }, [item("bank")], T0);
+    return { h, user };
+  }
+
+  const headersFor = () => ({ authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, TOKEN, new Date())}` });
+
+  it("starterSet отдаёт A1, а не другой уровень с меньшим порядком", async () => {
+    const { h } = await newcomer();
+    const starter = await starterSet(h.db);
+    expect(starter?.set.slug).toBe("a1");
+    expect(starter).toMatchObject({ total: 3, done: 0 });
+  });
+
+  it("без набора A1 честно ничего не предлагает, а не падает", async () => {
+    const h = botHarness();
+    // Наборы есть, но A1 среди них нет: предлагать новичку B1 нельзя — это не «начать».
+    await replaceSet(h.db, { slug: "b1", title: "B1", kind: "level", description: "", position: 2 }, [item("bank")], T0);
+    expect(await starterSet(h.db)).toBeUndefined();
+  });
+
+  it("/api/me новичку отдаёт ноль слов и набор A1 для старта", async () => {
+    const { h } = await newcomer();
+    const app = createApp({ deps: h.deps, botToken: TOKEN });
+    const me = await (await app.request("/api/me", { headers: headersFor() })).json();
+
+    expect(me.total).toBe(0);
+    expect(me.starterSet).toMatchObject({ title: "A1 · Начальный", total: 3 });
+  });
+
+  it("у человека со словами набора нет: ему есть что учить, и «жди» — правда", async () => {
+    const { h, user } = await newcomer();
+    const room = await createRoom(h.db, { name: "Друзья", createdBy: user.id, now: T0 });
+    await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "own", translation: "своё", explanation: "", example: "" }, now: T0 });
+
+    const app = createApp({ deps: h.deps, botToken: TOKEN });
+    const me = await (await app.request("/api/me", { headers: headersFor() })).json();
+    // Именно по этому нулю `/learn` и отличает «всё повторил» от «нечего учить».
+    expect(me.total).toBe(1);
+    expect(me.starterSet).toBeUndefined();
+  });
+});
+
+describe("📦 новичок в /learn", () => {
+  /** То, что бот отправил человеку: тексты всех исходящих сообщений. */
+  const texts = (h: ReturnType<typeof botHarness>) =>
+    h.calls.flatMap((c) => ("text" in c.payload && typeof c.payload.text === "string" ? [c.payload.text] : []));
+
+  it("пустой /learn ведёт в наборы, а не обещает, что слова появятся сами", async () => {
+    const h = botHarness();
+    await makeUser(h.db, 100);
+    await replaceSet(h.db, { slug: "a1", title: "A1 · Начальный", kind: "level", description: "", position: 0 }, [item("cat"), item("dog")], T0);
+
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    const text = texts(h).at(-1)!;
+    expect(text).toContain("/sets");
+    expect(text).not.toContain("появятся сами");
+  });
+
+  it("у человека со словами /learn после очереди по-прежнему говорит «появятся сами»", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100);
+    const personal = await ensurePersonalRoom(h.db, user.id, T0);
+    await saveWord(h.db, { roomId: personal.id, addedBy: user.id, draft: { term: "own", translation: "своё", explanation: "", example: "" }, now: T0 });
+    // Слово уже отвечено и ждёт следующего срока: очередь пуста, но словарь не пуст — вот эта разница и важна.
+    await h.db.update(cards).set({ state: 2, stability: 5, due: at(DAY) });
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+
+    const text = texts(h).at(-1)!;
+    expect(text).not.toContain("/sets");
+    expect(text).toMatch(/нечего повторять|Следующее повторение/);
   });
 });

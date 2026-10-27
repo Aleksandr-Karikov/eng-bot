@@ -26,10 +26,17 @@ function startPage(): Page {
  */
 export function App() {
   const [page, setPage] = useState<Page>(startPage);
+  /** Набор, который надо открыть сразу в 📦: заполняет пустой `/learn`, когда у человека нет слов. */
+  const [startSetId, setStartSetId] = useState<number>();
   const open = useCallback((next: Page) => {
     haptic.select();
     setPage(next);
   }, []);
+  /** `setId` — открыть конкретный набор, а не список: так кнопка новичка ведёт прямо в A1. */
+  const openSets = useCallback((setId?: number) => {
+    setStartSetId(setId);
+    open("sets");
+  }, [open]);
   const back = useCallback(() => setPage("learn"), []);
   // Изучаемый язык нужен и страницам, открытым сразу по ссылке (?tab=), не только карточкам.
   const [, setLanguageLoaded] = useState(false);
@@ -54,15 +61,15 @@ export function App() {
     return () => off?.();
   }, [open]);
 
-  if (page === "words") return <Words onExit={back} onSets={() => open("sets")} />;
+  if (page === "words") return <Words onExit={back} onSets={() => openSets()} />;
   if (page === "settings") return <SettingsScreen onExit={back} />;
   if (page === "triage") return <Triage onExit={back} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
-  if (page === "sets") return <Sets onExit={back} />;
+  if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
   return (
     <Learn
       onTriage={() => open("triage")}
-      onSets={() => open("sets")}
+      onSets={openSets}
       corner={
         <div className="corner">
           <button className="corner-button" aria-label="Прогресс" onClick={() => open("progress")}>

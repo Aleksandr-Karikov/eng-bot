@@ -33,7 +33,7 @@ function savedMode(): QueueMode {
 const UNDO_DEPTH = 5;
 
 /** 📚 Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: () => void }) {
+export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: (setId?: number) => void }) {
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
@@ -203,7 +203,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} onSets={onSets} />
+          <Done done={done} me={me} onSets={onSets} />
         )}
       </div>
     );
@@ -262,16 +262,51 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   );
 }
 
-/** Конец очереди: нативная кнопка «Закрыть» внизу (или своя — вне Telegram). */
-function Done({ done, onSets }: { done: number; onSets: () => void }) {
+/**
+ * Конец очереди. Два разных случая, и раньше они выглядели одинаково:
+ *
+ * - **всё повторил** (`total > 0`) — честное «появятся сами, бот напомнит», так и есть;
+ * - **нечего учить** (`total === 0`) — новичок, который только что открыл бота и увидел пустоту.
+ *   Ему нельзя говорить «жди»: ждать нечего, слов нет вовсе. Вместо этого один тап до готового
+ *   набора A1, но только предложением — «Позже» остаётся на месте, никто ничего не навязывает.
+ *
+ * Нативная кнопка «Закрыть» внизу — или своя, вне Telegram.
+ */
+function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: number) => void }) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
+  const starter = me?.starterSet;
+
+  if (starter && done === 0) {
+    return (
+      <Placeholder
+        header="📦 Пока нечего учить"
+        description={`Возьми готовый набор — «${starter.title}», ${starter.total} слов. Листаешь: знаю / учу / не для меня. Взятое сразу появится здесь.`}
+        action={
+          <div className="actions">
+            <Button size="l" stretched onClick={() => onSets(starter.id)}>
+              📦 Начать с «{starter.title}»
+            </Button>
+            <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
+              Выбрать другой набор
+            </Button>
+            {!native && (
+              <Button mode="plain" size="m" stretched onClick={() => miniApp.close()}>
+                Позже
+              </Button>
+            )}
+          </div>
+        }
+      />
+    );
+  }
+
   return (
     <Placeholder
       header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
       description="Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
       action={
         <div className="actions">
-          <Button mode="bezeled" size="m" stretched onClick={onSets}>
+          <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
             📦 Взять слова из готового набора
           </Button>
           <LessonButton />

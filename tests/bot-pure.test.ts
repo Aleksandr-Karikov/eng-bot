@@ -46,6 +46,11 @@ describe("texts", () => {
   it("renders done and stats texts", () => {
     expect(doneText(0, undefined, "Europe/Moscow")).toContain("нечего повторять");
     expect(doneText(3, new Date("2026-10-16T17:00:00Z"), "Europe/Moscow")).toContain("16.10, 20:00");
+    // Пустой словарь — не «всё повторил»: новичку предлагаем набор, а не «появятся сами, жди».
+    expect(doneText(0, undefined, "Europe/Moscow", true)).toContain("/sets");
+    expect(doneText(0, undefined, "Europe/Moscow", true)).not.toContain("появятся сами");
+    // Но если человек что-то повторил в этой сессии, правда всё-таки «готово».
+    expect(doneText(3, undefined, "Europe/Moscow", true)).toContain("Повторено: 3");
     const text = statsText({ total: 3, learned: 1, learning: 1, fresh: 1, reviews7d: 2, streak: 2 }, "R", [
       { userId: 1, name: "Bob", learned: 1, reviews7d: 2 },
     ]);

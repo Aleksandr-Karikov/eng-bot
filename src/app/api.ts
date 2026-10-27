@@ -7,9 +7,9 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
-import { decide, listSets, nextSetItems, undoDecision, type SetDecision } from "../services/word-sets";
-import { setItems, wordSets } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
+import { cards as cardsTable, setItems, wordSets } from "../db/schema";
+import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
@@ -79,10 +79,20 @@ export async function appUser(deps: Pick<Deps, "db" | "now">, telegramId: number
 
 export async function appMe(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+  const due = await countDueSplit(deps.db, user.id, deps.now());
+  // Сколько слов у человека вообще. Без этого `due: 0/0` не отличить «всё повторил» от «нечего учить»,
+  // а экран пустой очереди показывает новичку совсем другое предложение, чем прилежному ученику.
+  const [cards] = await deps.db.select({ n: count() }).from(cardsTable).where(eq(cardsTable.userId, user.id));
+  const total = cards?.n ?? 0;
+  // Плоско и коротко, как `appSets`: приложению тут нужны только id, название и размер.
+  const starter = total === 0 ? await starterSet(deps.db) : undefined;
   return {
     name: user.firstName,
     room: room?.name ?? null,
-    due: await countDueSplit(deps.db, user.id, deps.now()),
+    due,
+    total,
+    // Чем занять новичка: пустой `/learn` предлагает именно этот набор (см. `starterSet`).
+    ...(starter ? { starterSet: { id: starter.set.id, title: starter.set.title, total: starter.total } } : {}),
     view: cardView(user),
     triage: await triageCount(deps.db, user.id),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.

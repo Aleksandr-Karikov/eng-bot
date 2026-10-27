@@ -235,7 +235,16 @@ export function goalReachedText(roomName: string, g: GoalProgress): string {
   return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} повторений!${top}`;
 }
 
-export function doneText(reviewed: number, next: Date | undefined, timeZone: string): string {
+/**
+ * Экран «Готово». `empty` — у человека вообще нет слов, и это совсем другой случай, чем «всё повторил».
+ *
+ * Без этого различия новичок, открывший `/learn` с пустым словарём, читал «появятся сами — бот напомнит»
+ * и уходил ждать: ждать было нечего, слов не было вовсе. Ему надо предложить /sets, а не тишину.
+ */
+export function doneText(reviewed: number, next: Date | undefined, timeZone: string, empty = false): string {
+  if (empty && reviewed === 0) {
+    return "📦 Слов пока нет — учить нечего.\nВозьми готовый набор: /sets — уровни A1–C1 и темы, листаешь «знаю / учу / не для меня».";
+  }
   const head = reviewed > 0 ? `🎉 Готово! Повторено: ${reviewed}.` : "Сейчас нечего повторять 👌";
   return next ? `${head}\nСледующее повторение: ${formatDateTime(next, timeZone)}` : head;
 }

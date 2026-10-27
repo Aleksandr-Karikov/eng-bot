@@ -43,6 +43,10 @@ export interface Me {
   name: string;
   room: string | null;
   due: { review: number; fresh: number };
+  /** Сколько слов у человека вообще: по нему `/learn` отличает «всё повторил» от «нечего учить». */
+  total?: number;
+  /** Набор, с которого начать: приходит только когда слов нет совсем. */
+  starterSet?: { id: number; title: string; total: number };
   /** Какие части карточки показывать (⚙️ → 🃏 Карточка). */
   view: CardView;
   /** Сколько новых слов от друзей ждут разбора. */
