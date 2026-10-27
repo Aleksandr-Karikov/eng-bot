@@ -6,7 +6,7 @@
 ## Команды
 
 ```bash
-npm test          # vitest run — 99 файлов, ~21 с (SQLite in-memory, сеть и LLM не нужны)
+npm test          # vitest run — 100 файлов, ~17 с (SQLite in-memory, сеть и LLM не нужны)
 npm run typecheck # tsc --noEmit — тоже обязательно
 npm run db:generate  # drizzle-kit generate — ПОСЛЕ правки src/db/schema.ts
 npm start         # запуск бота (не делать, если работает launchd — будет ошибка 409)
