@@ -235,3 +235,64 @@ describe("лимиты: комнаты", () => {
     expect(gate.allowed === false && gate.refusal).toContain("20 комнатах");
   });
 });
+
+describe("лимиты: комнаты через бота", () => {
+  it("«Комната для друзей» на четвёртой отвечает отказом, а не создаёт молча", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100);
+    for (let i = 0; i < 3; i++) await createRoom(h.db, { name: `R${i}`, createdBy: user.id, now: T0 });
+
+    // Именно так это выглядит для человека: команда и отказ в ответ.
+    await h.bot.handleUpdate(h.message(100, "/newroom Четвёртая"));
+    expect(texts(h).at(-1)).toContain("3 комнаты");
+    // Именно три **дружеских**: личный словарь middleware заводит сам, и в лимит он не входит.
+    const mine = (await h.db.select().from(rooms).where(eq(rooms.createdBy, user.id))).filter((r) => r.personalOf == null);
+    expect(mine).toHaveLength(3);
+
+    // А после удаления одной — снова можно.
+    const [first] = await h.db.select().from(rooms).where(eq(rooms.createdBy, user.id));
+    await deleteRoom(h.db, first.id);
+    await h.bot.handleUpdate(h.message(100, "/newroom Пятая"));
+    expect(texts(h).at(-1)).not.toContain("3 комнаты");
+  });
+});
+
+describe("лимиты: /status", () => {
+  it("админу видно и дневной, и недельный лимит на слова", async () => {
+    const h = botHarness({ adminTelegramId: 100, status: statusFixture() });
+    await makeUser(h.db, 100);
+    await h.bot.handleUpdate(h.message(100, "/status"));
+    const text = texts(h).at(-1)!;
+
+    // Лимиты печатаются по всем видам из QUOTAS — значит, новый вид появится в выводе сам.
+    expect(text).toContain("Лимиты сегодня");
+    expect(text).toContain(`Новые слова: 0 из ${QUOTAS.add_word.limit}`);
+    expect(text).toContain(`Новые слова за неделю: 0 из ${QUOTAS.add_word_week.limit} на этой неделе`);
+
+    // И расход в строке — живой, а не константа.
+    const now = at(0);
+    await h.db.insert(usageCounters).values({
+      userId: 1,
+      period: periodKey("day", MSK, now),
+      kind: "add_word",
+      scope: "",
+      count: 7,
+      updatedAt: now,
+    });
+    await h.bot.handleUpdate(h.message(100, "/status"));
+    expect(texts(h).at(-1)).toContain(`Новые слова: 7 из ${QUOTAS.add_word.limit}`);
+  });
+});
+
+/** Минимальное состояние бота для /status: проверяется только блок лимитов. */
+function statusFixture() {
+  return {
+    startedAt: T0,
+    llm: { provider: "openrouter", openRouterReady: true, use: () => "openrouter" },
+    models: { main: "m", mnemonic: "", check: "" },
+    images: { synth: "off" as const, background: false, style: "s" },
+    secrets: { openRouter: true, imageApi: true },
+    tools: { tts: "выключена", stt: false, youtube: false, frequency: false },
+    app: { port: 0, urlSet: false, capturePort: 0 },
+  };
+}
