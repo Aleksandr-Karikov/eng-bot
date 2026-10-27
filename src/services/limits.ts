@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { usageCounters } from "../db/schema";
+import { dailySpend, usageCounters } from "../db/schema";
 import { localParts } from "../time";
 
 /**
@@ -177,4 +177,70 @@ export function quotaLine(kind: QuotaKind, used: number): string {
   const unit = quota.period === "day" ? "сегодня" : "на этой неделе";
   const what = quota.per === "word" ? "на это слово" : "на человека";
   return `${kind}: ${used} из ${quota.limit} ${unit}, ${what}`;
+}
+
+/** Что ограничиваем на весь бот. Список закрытый — как у QuotaKind. */
+export type BudgetKind = "image";
+
+export interface Budget {
+  kind: BudgetKind;
+  /** Сколько штук за сутки можно на всех. */
+  limit: number;
+  /** Что сказать человеку, когда общий потолок выбран. Без слова «лимит»: ему важен не наш счёт. */
+  refusal: string;
+}
+
+/**
+ * Общие предохранители. Личный лимит не спасает от «200 человек одновременно рисуют»: 200 × 10 картинок
+ * — это $67 в день, что дороже всей текстовой работы бота за месяц.
+ *
+ * 200 картинок ≈ $6.7 в день при нынешней модели. Потолок выбран с запасом: он должен ловить аварию
+ * (цикл, наплыв, ошибка в коде), а не мешать нормальной работе. Днём он сбрасывается сам.
+ */
+export const BUDGETS: Record<BudgetKind, Budget> = {
+  image: {
+    kind: "image",
+    limit: 200,
+    refusal: "Картинок на сегодня уже нарисовано много — новые будут завтра.",
+  },
+};
+
+/** День общего счётчика — по UTC. Пояс одного человека не должен управлять расходом всего бота. */
+export function spendDay(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** Сколько всего израсходовано за сутки. Без записи — для /status. */
+export async function budgetUsed(db: Db, kind: BudgetKind, now: Date): Promise<number> {
+  const [row] = await db
+    .select({ count: dailySpend.count })
+    .from(dailySpend)
+    .where(and(eq(dailySpend.day, spendDay(now)), eq(dailySpend.kind, kind)));
+  return row?.count ?? 0;
+}
+
+/**
+ * Проверить общий потолок и записать расход — одной операцией, как `checkAndCount`.
+ *
+ * Отказ не увеличивает счётчик: смысла в этом нет, за отказом не стоит никакой работы, а растущий
+ * счётчик мешал бы понять, сколько нарисовано на самом деле.
+ */
+export async function checkAndSpend(db: Db, kind: BudgetKind, now: Date): Promise<QuotaState> {
+  const budget = BUDGETS[kind];
+  const day = spendDay(now);
+  const used = await budgetUsed(db, kind, now);
+
+  if (used >= budget.limit) {
+    return { allowed: false, used, limit: budget.limit, refusal: budget.refusal };
+  }
+
+  await db
+    .insert(dailySpend)
+    .values({ day, kind, count: 1, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [dailySpend.day, dailySpend.kind],
+      set: { count: sql`${dailySpend.count} + 1`, updatedAt: now },
+    });
+
+  return { allowed: true, used: used + 1, limit: budget.limit, refusal: budget.refusal };
 }

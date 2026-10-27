@@ -318,9 +318,31 @@ export const usageCounters = sqliteTable("usage_counters", {
   primaryKey({ columns: [t.userId, t.period, t.kind, t.scope] }),
 ]);
 
+/**
+ * Расход на весь бот за день — отдельно от `usage_counters`, потому что здесь счёт не на человека.
+ *
+ * `usage_counters` ключуется пользователем, и подставить туда «общего» пользователя значило бы завести
+ * фальшивую строку в `users` и сломать внешний ключ. Общий предохранитель нужен именно на всех:
+ * 200 человек × 10 картинок — это $67 в день, и личный лимит от такого не спасает.
+ *
+ * Считаем **штуки, а не деньги**: цену знает только тот, кто выбрал модель, и прайс в коде устареет
+ * молча, а число нарисованных картинок — нет.
+ */
+export const dailySpend = sqliteTable("daily_spend", {
+  /** День «2026-10-27» по UTC: общий счётчик не должен зависеть от пояса одного человека. */
+  day: text("day").notNull(),
+  /** Что считаем: "image". Список — BUDGETS в src/services/limits.ts. */
+  kind: text("kind").notNull(),
+  count: integer("count").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.day, t.kind] }),
+]);
+
 export type WordSet = typeof wordSets.$inferSelect;
 export type SetItem = typeof setItems.$inferSelect;
 export type UsageCounter = typeof usageCounters.$inferSelect;
+export type DailySpend = typeof dailySpend.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;

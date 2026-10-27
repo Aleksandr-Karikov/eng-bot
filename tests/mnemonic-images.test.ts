@@ -5,8 +5,9 @@ import { rateKeyboard } from "../src/bot/keyboards";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { getWord, saveWord, updateWord } from "../src/services/words";
-import { botHarness } from "./bot-harness";
+import { botHarness, buttonData } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
+import { BUDGETS, checkAndSpend, QUOTAS, quotaUsed } from "../src/services/limits";
 
 function tutor() {
   return {
@@ -109,5 +110,64 @@ describe("picture prompts and the queue", () => {
     await Promise.all([service.drawWord(w(1)), service.drawWord(w(2)), service.drawWord(w(1))]);
     expect(maxRunning).toBe(1);
     expect(draw).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("🖼 потолки на картинки", () => {
+  const texts = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text));
+
+  it("рисует, пока личный лимит не выбран, и потом вежливо отказывает", async () => {
+    const draw = vi.fn(async () => Buffer.from("png"));
+    const h = botHarness({ tutor: tutor(), images: { draw } });
+    const room = await setup(h);
+    const limit = QUOTAS.image.limit;
+
+    // Рисуем разные слова, а не одно: лимит перерисовок (3 на слово) закончился бы раньше общего,
+    // и тест проверял бы не тот лимит.
+    const extra = [];
+    for (let i = 1; i < limit; i++) {
+      const r = await saveWord(h.db, {
+        roomId: room.roomId,
+        addedBy: 1,
+        draft: { term: `word${i}`, translation: "т", explanation: "", example: "" },
+        now: T0,
+      });
+      if (r.status !== "saved") throw new Error("dup");
+      extra.push(r.word);
+    }
+
+    for (const w of [room, ...extra]) {
+      await h.bot.handleUpdate(h.callback(100, `im:${w.id}`));
+    }
+    await vi.waitFor(async () => expect(await quotaUsed(h.db, { userId: 1, kind: "image", timeZone: "UTC", now: T0 })).toBe(limit));
+    expect(draw).toHaveBeenCalledTimes(limit);
+
+    // Одиннадцатое слово — отказ, и это видно человеку текстом, а не молчанием.
+    const r = await saveWord(h.db, {
+      roomId: room.roomId,
+      addedBy: 1,
+      draft: { term: "last", translation: "т", explanation: "", example: "" },
+      now: T0,
+    });
+    if (r.status !== "saved") throw new Error("dup");
+    await h.bot.handleUpdate(h.callback(100, `im:${r.word.id}`));
+    await vi.waitFor(() => expect(texts(h)).toContain(QUOTAS.image.refusal));
+    expect(draw).toHaveBeenCalledTimes(limit);
+  });
+
+  it("общий потолок бота важнее личного: при выбранном потолке попытка не тратится", async () => {
+    const draw = vi.fn(async () => Buffer.from("png"));
+    const h = botHarness({ tutor: tutor(), images: { draw } });
+    const word = await setup(h);
+
+    // Выбираем общий потолок целиком.
+    for (let i = 0; i < BUDGETS.image.limit; i++) await checkAndSpend(h.db, "image", T0);
+
+    await h.bot.handleUpdate(h.callback(100, `rd:${word.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    await vi.waitFor(() => expect(texts(h).some((t) => t === BUDGETS.image.refusal)).toBe(true));
+    expect(draw).not.toHaveBeenCalled();
+    // Личный счётчик не тронут: за отказом не стоит работы, и тратить попытку незачем.
+    expect(await quotaUsed(h.db, { userId: 1, kind: "image", timeZone: "UTC", now: T0 })).toBe(0);
   });
 });

@@ -8,7 +8,7 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import { cardView } from "../../services/card-view";
 import { collapseManage, expandManage, mnemonicKeyboard, pictureKeyboard, redrawMenuKeyboard } from "../keyboards";
 import { clearPendingInputs } from "../pending";
-import { checkAndCount } from "../../services/limits";
+import { checkAndCount, checkAndSpend } from "../../services/limits";
 import { esc, mnemonicText, pictureCaption } from "../texts";
 
 /** Запоминалка слова: из базы или свежая от Claude. "" — не получилось. */
@@ -19,10 +19,22 @@ async function ensureMnemonic(deps: Deps, wordId: number): Promise<string> {
   return (await getWord(deps.db, wordId))?.mnemonic ?? "";
 }
 
-/** Рисует (или перерисовывает) картинку слова, отправляет её и делает картинкой слова для всей комнаты. */
+/**
+ * Рисует (или перерисовывает) картинку слова, отправляет её и делает картинкой слова для всей комнаты.
+ *
+ * Лимит перерисовок проверяется вызывающим и раньше: «✍️ Свой вариант» спрашивает описание до
+ * рисования, и если проверять здесь, человек писал бы текст и только потом узнавал об отказе.
+ * Личный лимит картинок и общий потолок бота — здесь: это единственная точка настоящего рисования.
+ */
 async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { style?: string; wish?: string; again?: boolean } = {}): Promise<void> {
   if (!deps.images) return;
   await ctx.replyWithChatAction("upload_photo").catch(() => {});
+  // Общий потолок бота проверяется первым: если выбраны все картинки на сегодня, личный лимит
+  // человеку тратить незачем — иначе он израсходует попытку и получит отказ.
+  const budget = await checkAndSpend(deps.db, "image", deps.now());
+  if (!budget.allowed) return void (await ctx.reply(budget.refusal, HTML));
+  const quota = await checkAndCount(deps.db, { userId: ctx.user.id, kind: "image", timeZone: ctx.user.timezone, now: deps.now() });
+  if (!quota.allowed) return void (await ctx.reply(quota.refusal, HTML));
   let picture: Buffer;
   try {
     picture = await deps.images.drawWord(word, opts);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testDb, makeUser, T0, at, DAY } from "./helpers";
-import { checkAndCount, periodKey, QUOTAS, quotaUsed } from "../src/services/limits";
+import { BUDGETS, budgetUsed, checkAndCount, checkAndSpend, periodKey, QUOTAS, quotaUsed, spendDay } from "../src/services/limits";
 
 const MSK = "Europe/Moscow";
 
@@ -104,5 +104,63 @@ describe("лимиты: счёт и отказ", () => {
     );
 
     expect(await quotaUsed(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(10);
+  });
+});
+
+describe("общий потолок бота: картинки на всех", () => {
+  it("считает картинки на весь бот, а не на человека", async () => {
+    const db = testDb();
+    const a = await makeUser(db, 100);
+    const b = await makeUser(db, 200);
+
+    // Расход общий: личный лимит от «200 человек рисуют разом» не спасает.
+    await checkAndSpend(db, "image", T0);
+    await checkAndSpend(db, "image", T0);
+
+    expect(await budgetUsed(db, "image", T0)).toBe(2);
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it("отказывает, когда потолок выбран, и отказ счётчик не увеличивает", async () => {
+    const db = testDb();
+    const limit = BUDGETS.image.limit;
+
+    for (let i = 0; i < limit; i++) {
+      expect((await checkAndSpend(db, "image", T0)).allowed).toBe(true);
+    }
+
+    const denied = await checkAndSpend(db, "image", T0);
+    expect(denied.allowed).toBe(false);
+    expect(denied.refusal).toBe(BUDGETS.image.refusal);
+    expect(await budgetUsed(db, "image", T0)).toBe(limit);
+  });
+
+  it("день считается по UTC: пояс одного человека не управляет расходом всего бота", async () => {
+    // 20:00Z — в Новосибирске уже следующие сутки, а общий счётчик должен остаться тем же днём.
+    const evening = new Date("2026-10-15T20:00:00Z");
+    expect(spendDay(evening)).toBe("2026-10-15");
+    expect(spendDay(new Date("2026-10-15T23:59:59Z"))).toBe("2026-10-15");
+    expect(spendDay(new Date("2026-10-16T00:00:01Z"))).toBe("2026-10-16");
+
+    const db = testDb();
+    await checkAndSpend(db, "image", evening);
+    expect(await budgetUsed(db, "image", evening)).toBe(1);
+    expect(await budgetUsed(db, "image", new Date("2026-10-16T09:00:00Z"))).toBe(0);
+  });
+
+  it("одновременные запросы не теряют счёт", async () => {
+    const db = testDb();
+    // 40 «одновременных» нажатий в потолок 200: счёт должен стать ровно 40, без потерь.
+    await Promise.all(Array.from({ length: 40 }, () => checkAndSpend(db, "image", T0)));
+    expect(await budgetUsed(db, "image", T0)).toBe(40);
+  });
+
+  it("потолок общий и не сбрасывается новым человеком", async () => {
+    const db = testDb();
+    for (let i = 0; i < BUDGETS.image.limit; i++) await checkAndSpend(db, "image", T0);
+    // Новый пользователь не получает свежий общий счётчик — иначе потолок обходился бы регистрацией.
+    const user = await makeUser(db, 300);
+    expect((await checkAndSpend(db, "image", T0)).allowed).toBe(false);
+    expect(user.id).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import type { BotContext, BotStatus, Deps } from "../context";
 import { HTML } from "../context";
+import { BUDGETS, budgetUsed } from "../../services/limits";
 
 const NAMES: Record<string, string> = {
   "claude-code": "Claude Code (локальный)",
@@ -35,12 +36,16 @@ export function registerStatus(bot: Bot<BotContext>, deps: Deps): void {
     const status = deps.status;
     if (!status) return void (await ctx.reply("Состояние тут не собрано — смотри src/index.ts.", HTML));
 
+    // Расход картинок — живые данные из базы, а не то, с чем бот запустился: админу важно видеть
+    // остаток на сегодня, а не настройку. Поэтому читаем здесь, а не кладём в BotStatus.
+    const images = await budgetUsed(deps.db, "image", deps.now());
+
     // buildStatus возвращает готовый HTML: значения приходят из наших же enum и путей, а не от людей.
-    await ctx.reply(render(status, deps.now()), HTML);
+    await ctx.reply(render(status, deps.now(), images), HTML);
   });
 }
 
-function render(s: BotStatus, now: Date): string {
+function render(s: BotStatus, now: Date, imagesToday?: number): string {
   const lines: string[] = [];
   const yes = (ok: boolean): string => (ok ? "да" : "нет");
 
@@ -68,6 +73,11 @@ function render(s: BotStatus, now: Date): string {
     // Фон — главный расход на платном API, поэтому про него пишем отдельной строкой и прямо.
     lines.push(`Фоновая генерация: ${s.images.background ? "включена" : "выключена (только по кнопке)"}`);
     lines.push(`Стиль: ${s.images.style}`);
+    if (imagesToday !== undefined) {
+      const budget = BUDGETS.image;
+      // Потолок на весь бот: без него 200 человек × 10 картинок = $67 в день.
+      lines.push(`Нарисовано сегодня: ${imagesToday} из ${budget.limit} на весь бот`);
+    }
   }
 
   lines.push("");

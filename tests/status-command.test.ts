@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { botHarness } from "./bot-harness";
 import type { BotStatus } from "../src/bot/context";
+import { BUDGETS, checkAndSpend } from "../src/services/limits";
+import { T0 } from "./helpers";
 
 const ADMIN = 999;
 const STRANGER = 555;
@@ -71,6 +73,14 @@ describe("/status", () => {
   it("reports pictures as off when there is no synth at all", async () => {
     const text = await ask(status({ images: { synth: "off", background: false, style: "s" } }));
     expect(text).toContain("Выключены целиком");
+  });
+
+  it("показывает расход картинок за сегодня — потолок общий на весь бот", async () => {
+    const h = botHarness({ adminTelegramId: ADMIN, status: status() });
+    await checkAndSpend(h.db, "image", T0);
+    await checkAndSpend(h.db, "image", T0);
+    await h.bot.handleUpdate(h.message(ADMIN, "/status"));
+    expect(lastText(h)).toContain(`Нарисовано сегодня: 2 из ${BUDGETS.image.limit} на весь бот`);
   });
 
   it("keeps the command to the admin", async () => {
