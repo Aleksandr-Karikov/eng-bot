@@ -45,7 +45,7 @@ describe("👀 on a group message works like /check", () => {
     expect(await recentMistakes(h.db, artem.id, T0)).toHaveLength(1);
   });
 
-  it("ignores other emoji, a 👀 that was already there and messages it hasn't seen", async () => {
+  it("ignores other emoji and a 👀 that was already there; on a message it hasn't seen it says how to check it", async () => {
     const { h, check } = harness();
     await makeUser(h.db, 100);
     const target = h.groupMessage(200, -500, "a book of good youtuber");
@@ -55,5 +55,9 @@ describe("👀 on a group message works like /check", () => {
     await h.bot.handleUpdate(reaction(100, -500, 9999, "👀"));
     await new Promise((r) => setTimeout(r, 20));
     expect(check).not.toHaveBeenCalled();
+    // На незнакомое сообщение бот не молчит, а говорит, как его проверить — и только на него.
+    const hints = h.calls.filter((c) => c.method === "sendMessage" && String(c.payload.text).includes("не помню"));
+    expect(hints).toHaveLength(1);
+    expect(hints[0].payload.reply_parameters).toMatchObject({ message_id: 9999 });
   });
 });

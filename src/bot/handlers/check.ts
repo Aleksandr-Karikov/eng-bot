@@ -121,8 +121,15 @@ async function runReactionCheck(ctx: BotContext, deps: Deps): Promise<void> {
   const had = reaction.old_reaction.some((r) => r.type === "emoji" && r.emoji === CHECK_REACTION);
   if (!added || had) return;
   const seen = deps.history.find(reaction.chat.id, reaction.message_id);
-  // Текст бот знает только по своей памяти: сообщение старое или было до перезапуска — молчим, чтобы не шуметь.
-  if (!seen || seen.authorId === undefined) return;
+  // Текст бот знает только по своей памяти: сообщение старое или было до перезапуска. Молчать нельзя —
+  // 👀 поставили явно, и тишина выглядит как поломка; объясняем, как проверить такое сообщение.
+  if (!seen || seen.authorId === undefined) {
+    return void (await ctx.api
+      .sendMessage(reaction.chat.id, `${CHECK_REACTION} Этого сообщения я не помню — оно было раньше, чем я его увидел. Ответь на него командой /check.`, {
+        reply_parameters: { message_id: reaction.message_id, allow_sending_without_reply: true },
+      })
+      .catch(() => {}));
+  }
   await checkTarget(ctx, deps, {
     text: seen.text,
     chatId: reaction.chat.id,
