@@ -1,5 +1,10 @@
 # eng-bot MVP Implementation Plan
 
+> **Исторический документ.** План MVP, написанный 2026-10-15 и **выполненный**: проект давно живёт
+> в `main`, чекбоксы в задачах так и не отмечались, и отсутствие `[x]` **не значит**, что задача не сделана.
+> Как руководство к действию этот файл не использовать — актуальные правила в `AGENTS.md`.
+> Ценность здесь историческая: «почему архитектура такая» и ранние решения.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Telegram-бот для совместного заучивания английских слов: общие комнаты, LLM-подсказки при добавлении, «знаешь?»-уведомления, повторение по FSRS, напоминания и статистика.
