@@ -1204,14 +1204,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
         "count": {
           "name": "count",
           "type": "integer",
@@ -1245,14 +1237,13 @@
         }
       },
       "compositePrimaryKeys": {
-        "usage_counters_user_id_period_kind_scope_pk": {
+        "usage_counters_user_id_period_kind_pk": {
           "columns": [
             "user_id",
             "period",
-            "kind",
-            "scope"
+            "kind"
           ],
-          "name": "usage_counters_user_id_period_kind_scope_pk"
+          "name": "usage_counters_user_id_period_kind_pk"
         }
       },
       "uniqueConstraints": {},

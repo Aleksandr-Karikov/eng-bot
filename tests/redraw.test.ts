@@ -93,18 +93,21 @@ describe("🔄 лимит перерисовок: 3 на слово в день"
   const alert = (h: ReturnType<typeof botHarness>) => alerts(h).at(-1)?.payload.text;
 
   /**
-   * Жмёт «🎲 Ещё вариант» `times` раз, каждый раз дожидаясь конца рисования.
+   * Жмёт «🎲 Ещё вариант» `times` раз, каждый раз дожидаясь, пока картинка действительно уйдёт.
    *
-   * Ждать обязательно: рисование уходит в `background`, и без паузы следующее нажатие приходит, пока
-   * предыдущее ещё рисуется. Тогда `inFlight` склеивает запросы, и это правильно — но проверить лимит
-   * так нельзя, потому что «сколько раз нажали» перестаёт совпадать с «сколько раз нарисовали».
+   * Ждать обязательно: рисование уходит в `background`, и без ожидания следующее нажатие приходит, пока
+   * предыдущее ещё рисуется — `inFlight` склеивает запросы, и «сколько раз нажали» перестаёт совпадать
+   * с «сколько раз нарисовали». Ждём по отправке картинки, а не по вызову `draw`: `draw` — это только
+   * начало работы, после него картинка ещё сжимается и отправляется.
    */
   async function redraw(h: ReturnType<typeof botHarness>, wordId: number, times: number, userId = 100) {
+    const sent = () => h.calls.filter((c) => c.method === "sendPhoto").length;
     for (let i = 0; i < times; i++) {
       const before = h.calls.length;
+      const photos = sent();
       await h.bot.handleUpdate(h.callback(userId, `rd:${wordId}`));
       await h.bot.handleUpdate(h.callback(userId, buttonData(h.calls.slice(before), "🎲 Ещё вариант")));
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await vi.waitFor(() => expect(sent()).toBeGreaterThan(photos));
     }
   }
 
