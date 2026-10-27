@@ -1,6 +1,7 @@
 node_modules/
 data/
 .env
+.env.bak*
 .superpowers/
 tools/imagegen/.venv/
 tools/imagegen/out/

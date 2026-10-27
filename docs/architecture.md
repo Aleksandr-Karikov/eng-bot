@@ -16,7 +16,7 @@
 ```
 src/index.ts — единственное место, где всё соединяется
    ├── createDb()            SQLite + миграции при старте
-   ├── ClaudeCodeEnricher    LLM (WordEnricher + ExerciseTutor)
+   ├── ProviderRouter        LLM (WordEnricher + ExerciseTutor): Claude Code или OpenRouter
    ├── Deps                  всё, что доступно обработчику (src/bot/context.ts)
    ├── startCaptureServer()  127.0.0.1:CAPTURE_PORT — слова из расширения
    ├── startAppServer()      127.0.0.1:APP_PORT — Mini App (/app/) и /ext
@@ -50,7 +50,7 @@ Telegram → grammY
 `currentLang()` — именно поэтому язык не протаскивается параметром через сотни функций.
 
 **Обработчики тонкие.** Логика — в `src/services/`, чистыми асинхронными функциями, принимающими
-`db` и `now`. Это не стилистика: благодаря этому 453 теста работают без Telegram и без сети.
+`db` и `now`. Это не стилистика: благодаря этому 507 тестов работают без Telegram и без сети.
 
 ## Жизненный цикл карточки
 
@@ -99,6 +99,34 @@ room.language ──► withLang() ──► AsyncLocalStorage ──► current
 фикстурой `tests/fixtures/prompts-en.json`. Если `tests/prompts-lang.test.ts` упал, вы сломали
 английский, а не «обновили ожидание».
 
+## Провайдер LLM
+
+Провайдер — это **только транспорт**: один запрос «промпт → текст». Всё остальное (какой промпт собрать,
+как разобрать ответ, какая модель для чего) одинаково и живёт в `src/llm/enricher.ts` и `src/llm/tutor.ts`.
+
+```
+WordEnricher + ExerciseTutor (19 методов)   src/llm/enricher.ts, tutor.ts
+        │  промпт и разбор ответа — общие для всех провайдеров
+        ▼
+  ProviderRouter                              src/llm/provider.ts
+        ├── ClaudeCodeEnricher ─► ClaudeCodeBackend  локальный Claude Code (без ключа)
+        └── ClaudeCodeEnricher ─► OpenRouterBackend  OpenRouter (ключ + имя модели)
+```
+
+Роутер держит по экземпляру на провайдера, и переключение — это замена ссылки: **перезапуск не нужен**,
+начатые запросы дорабатывают там, где начались. Поэтому `/llm` в боте (для админа) и
+`npx tsx scripts/llm.ts` переключают модель на живой системе.
+
+Два следствия, которые чаще всего удивляют:
+
+- **Имена моделей не переводимы друг в друга.** `haiku` — алиас Claude Code, `anthropic/claude-haiku-5.5` —
+  имя у OpenRouter; у каждого провайдера свои переменные (`ENRICH_MODEL` / `OPENROUTER_MODEL`, см. `src/llm/models.ts`).
+- **Модель выбирается внутри метода, а не в роутере** (`this.opts.model`, `this.checker`, `mnemonicModel`),
+  поэтому наборы моделей принадлежат экземпляру, а не запросу.
+
+Выбор провайдера переживает перезапуск: он лежит в файле `data/llm-provider` (`src/llm/provider-store.ts`),
+потому что бот не переписывает `.env` — там ключи. Порядок при старте: файл → `LLM_PROVIDER` → Claude Code.
+
 ## Что работает в фоне
 
 Два цикла с тиком раз в минуту, оба идемпотентны — при простое мака догоняют, но не дублируют.
@@ -131,6 +159,4 @@ room.language ──► withLang() ──► AsyncLocalStorage ──► current
 - **`docs/superpowers/`** — замысел MVP от 15–17 октября, а не текущее состояние. Расхождения
   (например, выбор ступени) объясняются тем, что систему изменили после написания спеки.
 - **«Проект про английский»** — в коде два языка с самого начала ветки `feature/korean`.
-- **`yt-dlp` не используется.** Субтитры берёт `youtube-transcript-api` (`src/youtube/subtitles.ts`).
-  В `src/bot/context.ts` остался комментарий, говорящий обратное, — он неверен.
 - **Карточка ≠ слово.** Прогресс, ступени и FSRS — у карточки; перевод, примеры и мнемоника — у слова.

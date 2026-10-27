@@ -6,7 +6,7 @@
 ## Команды
 
 ```bash
-npm test          # vitest run — 93 файла, ~16 с (SQLite in-memory, сеть и LLM не нужны)
+npm test          # vitest run — 98 файлов, ~14 с (SQLite in-memory, сеть и LLM не нужны)
 npm run typecheck # tsc --noEmit — тоже обязательно
 npm run db:generate  # drizzle-kit generate — ПОСЛЕ правки src/db/schema.ts
 npm start         # запуск бота (не делать, если работает launchd — будет ошибка 409)
@@ -18,9 +18,12 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
 
 ## Инварианты (нарушение = сломанная архитектура)
 
-1. **LLM — только через `@anthropic-ai/claude-agent-sdk`** (локальный Claude Code, `src/llm/claude-code.ts`).
-   Никакого `@anthropic-ai/sdk`, никакого `ANTHROPIC_API_KEY`. Обращения идут через интерфейсы
-   `WordEnricher` / `ExerciseTutor` из `src/llm/enricher.ts` и `src/llm/tutor.ts` — тесты подменяют их фейками.
+1. **LLM — только через интерфейс `LlmBackend`** (`src/llm/backend.ts`): один запрос «промпт → текст».
+   Реализаций две — локальный Claude Code (`src/llm/claude-code.ts`, через `@anthropic-ai/claude-agent-sdk`,
+   без `ANTHROPIC_API_KEY`) и OpenRouter (`src/llm/openrouter.ts`). Выбор — `ProviderRouter`
+   (`src/llm/provider.ts`), переключается на лету. Никакого `@anthropic-ai/sdk` и никакого второго способа
+   ходить в модель. Наружу торчат интерфейсы `WordEnricher` / `ExerciseTutor` из `src/llm/enricher.ts`
+   и `src/llm/tutor.ts` — тесты подменяют их фейками.
 2. **`src/services/` не импортирует `grammy`.** Сервисы — асинхронные функции, получающие `db` и `now`
    параметрами. Telegram-слой (`src/bot/`) тонкий и **не содержит SQL**.
 3. **Запросы пишутся переносимо:** только `await db.select()/insert()/update()`, без sqlite-специфичных
@@ -28,8 +31,10 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
 4. **Импорты без расширений** (`moduleResolution: "Bundler"`, запуск через tsx).
 5. **Язык интерфейса — всегда русский.** Меняется изучаемый язык (EN/KO), а не язык бота.
 6. **Пользовательский и LLM-текст идёт через `esc()`**, сообщения отправляются с `parse_mode: "HTML"`.
-7. **Не логировать текст личных сообщений.** В лог попадает только команда или факт (см. `src/bot/setup.ts`),
-   токен вырезается через `redactLogs`.
+7. **Не логировать текст личных сообщений.** В лог попадает только команда или факт (см. `src/bot/setup.ts`).
+   Секреты вырезаются через `redactLogs` с подписью: токен бота, ключ OpenRouter и ключ рисовалки
+   (`src/log-redact.ts`). Завели третий секрет — вызовите `redactLogs` и для него: тела ошибок внешних
+   API пишутся в лог как есть.
 
 ## Изучаемый язык (EN/KO) — самое частое место ошибок
 
@@ -42,6 +47,28 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
 - **Английские строки и промпты должны оставаться байт-в-байт прежними** — это закреплено фикстурой
   `tests/fixtures/prompts-en.json` (`tests/prompts-lang.test.ts`). Если тест упал — вы сломали английский,
   а не «обновили ожидание».
+
+## Провайдер LLM — второе место, где легко ошибиться
+
+Бот умеет считать через локальный Claude Code и через OpenRouter, переключаясь **без перезапуска**
+(`/llm` в боте для админа, `npx tsx scripts/llm.ts openrouter`). Устроено так: все 19 методов
+`WordEnricher` + `ExerciseTutor` — обёртки над одним `ask`, поэтому провайдер отличается только бэкендом.
+
+- **Новый вызов модели — это метод в `src/llm/enricher.ts` / `tutor.ts`, а не новый класс.** Промпт и
+  разбор ответа пишутся один раз и работают на обоих провайдерах.
+- **Имена моделей у провайдеров разные и не подставляются друг вместо друга:** `haiku` понимает только
+  Claude Code, `anthropic/claude-haiku-5.5` — только OpenRouter. Соответствие — `src/llm/models.ts`,
+  переменные `ENRICH_MODEL` / `MNEMONIC_MODEL` / `CHECK_MODEL` и `OPENROUTER_*`.
+- **Модель выбирается внутри метода** (`this.opts.model`, `this.checker`, `mnemonicModel`), поэтому у
+  каждого провайдера свой экземпляр со своим набором моделей; роутер не подменяет имена на своей границе.
+- **`OPENROUTER_MODEL` намеренно без значения по умолчанию** — имена моделей у OpenRouter уходят из
+  оборота (`anthropic/claude-3.5-haiku` уже снят). Пустое значение честно говорит «задай в .env».
+- **Выбор провайдера хранит файл `data/llm-provider`, а `.env` бот не переписывает** — там ключи.
+  Порядок при старте: файл → `LLM_PROVIDER` → Claude Code (`src/llm/provider-store.ts`).
+- Начатые запросы при переключении не рвутся: они дорабатывают в том экземпляре, где начались.
+- **Claude Code требует логина на этой машине.** Если он отвечает `Not logged in · Please run /login`,
+  это не баг бота: надо выполнить `claude` и войти, либо переключиться на OpenRouter (он ходит по ключу).
+  Проверить провайдера, не поднимая бота: `npx tsx scripts/llm.ts openrouter --check`.
 
 ## Тесты
 
@@ -84,5 +111,10 @@ npx tsx scripts/bugs.ts --wontfix=12 --note="Почему так"
 - `src/services/` — вся логика; `src/bot/handlers/` — по файлу на команду.
 - `docs/architecture.md` — карта системы: путь апдейта, жизненный цикл карточки, язык операции, фоновые
   циклы. Читать, когда непонятно, **где** искать, а не **как** написан код.
+- `docs/llm-models.md` — какие модели OpenRouter брать и почему не самые дешёвые: замеры цены
+  и задержки на живом API. Читать перед сменой `OPENROUTER_*`.
+- `docs/scaling-plan.md` — переезд на VPS: картинки через API вместо локального MLX (на Linux не
+  работает), защита от дублей слов, стоимость сервера. Читать перед масштабированием на реальных людей.
+  Картинки через API уже сделаны, остальное — план.
 - `docs/superpowers/` — **историческое планирование MVP (октябрь 2026), не описание текущего состояния.**
   Актуальная картина — код, тесты, `AGENTS.md` и `docs/architecture.md`.

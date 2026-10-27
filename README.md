@@ -7,13 +7,34 @@ Telegram-бот для совместного заучивания иностр�
 ## Запуск
 
 1. Node.js ≥ 20.12.
-2. Залогиниться в Claude Code на этой машине (`claude`): бот берёт переводы через Claude Agent SDK, API-ключ не нужен.
+2. Залогиниться в Claude Code на этой машине (`claude`): по умолчанию бот берёт переводы через Claude Agent SDK, API-ключ не нужен.
 3. Создать бота у @BotFather, скопировать `.env.example` в `.env` и вписать `BOT_TOKEN`.
    Privacy mode в группах можно оставить включённым — бот работает через команды и ответы на свои сообщения.
 4. `npm install`
 5. `npm start` (или `caffeinate -i npm start`, чтобы мак не засыпал).
 
 Проверить подсказки отдельно: `npx tsx scripts/try-enrich.ts serendipity`.
+
+## Модель: Claude Code или OpenRouter
+
+По умолчанию считает локальный Claude Code. Второй вариант — OpenRouter, если хочется модель в облаке
+или Claude Code под рукой нет: в `.env` нужны `OPEN_ROUTER_API_KEY` и `OPENROUTER_MODEL`
+(имена моделей у OpenRouter свои — `anthropic/claude-haiku-5.5`, список на openrouter.ai/models).
+
+Переключаться можно **на лету, без перезапуска** — `/llm` в боте (для `ADMIN_TELEGRAM_ID`) или:
+
+```bash
+npx tsx scripts/llm.ts                       # кто считает сейчас
+npx tsx scripts/llm.ts openrouter --check    # переключить и сразу проверить живым запросом
+npx tsx scripts/llm.ts claude-code           # вернуться назад
+```
+
+Выбор переживает перезапуск (`data/llm-provider`). Уже начатые запросы дорабатывают на прежнем провайдере.
+Модели для запоминалок и проверок задаются отдельно: `OPENROUTER_MNEMONIC_MODEL`, `OPENROUTER_CHECK_MODEL`
+(не заданы — берётся основная).
+
+Если Claude Code не залогинен, он отвечает `Not logged in · Please run /login` — тогда бот работать не будет,
+пока не выполнишь `claude` и не войдёшь, либо не переключишься на OpenRouter.
 
 ## Языки
 
