@@ -69,6 +69,11 @@ export type Cb =
   | { k: "delPage"; id: number; page: number }
   /** «➕ В мой словарь» из инлайн-карточки: слово уже переведено, нужна только копия человеку. */
   | { k: "inlineCopy"; wordId: number }
+  /**
+   * «Добавить в словарь» у перевода, которого ещё нет в базе: несёт сам текст слова.
+   * Перевод уже получен при показе подсказки, поэтому при нажатии остаётся только сохранить слово.
+   */
+  | { k: "inlineCopyNew"; query: string }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "learnLang"; lang: LangCode }
@@ -88,6 +93,22 @@ const ROOM_ACTIONS = { n: "new", i: "invite" } as const;
 
 const short = <T extends string>(map: Record<string, T>, value: T) =>
   Object.keys(map).find((key) => map[key] === value)!;
+
+/**
+ * Потолок слова в callback-данных: Telegram принимает не больше 64 байт на всю строку.
+ * Кириллица и эмодзи занимают по 2–4 байта, поэтому считаем байты, а не символы, и оставляем запас
+ * на префикс `in:`. Слово длиннее не потеряется: такие `looksLikeWord` и не пропускает.
+ */
+const CALLBACK_TEXT_LIMIT = 48;
+
+const clampText = (text: string): string => {
+  let out = "";
+  for (const ch of text) {
+    if (Buffer.byteLength(out + ch, "utf8") > CALLBACK_TEXT_LIMIT) break;
+    out += ch;
+  }
+  return out;
+};
 
 export function encodeCb(cb: Cb): string {
   switch (cb.k) {
@@ -150,6 +171,7 @@ export function encodeCb(cb: Cb): string {
     case "delPage": return `xp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
     case "inlineCopy": return `iw:${cb.wordId}`;
+    case "inlineCopyNew": return `in:${clampText(cb.query)}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "learnLang": return `ll:${cb.lang}`;
     case "groupLink": return `gl:${cb.roomId}`;
@@ -343,6 +365,11 @@ export function decodeCb(data: string): Cb | null {
     case "iw": {
       const wordId = int(a);
       return wordId !== null ? { k: "inlineCopy", wordId } : null;
+    }
+    // `in:` разбирается вручную, а не сплитом по ":": в слове может встретиться двоеточие.
+    case "in": {
+      const query = data.slice(3);
+      return query ? { k: "inlineCopyNew", query } : null;
     }
     case "rn": {
       const roomId = int(a);

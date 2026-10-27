@@ -210,8 +210,15 @@ export function botHarness(opts: {
         },
       } as Update;
     },
-    callback(userId: number, data: string): Update {
+    /**
+     * Нажатие кнопки. `chatType` — где нажали: инлайн-карточку можно отправить в группу, и тогда
+     * кнопка обязана повести себя иначе (личного словаря в чужом чате нет).
+     */
+    callback(userId: number, data: string, opts: { chatType?: "private" | "group" } = {}): Update {
       seq++;
+      const where = opts.chatType === "group"
+        ? { id: -1000 - userId, type: "group" as const, title: `Chat${userId}` }
+        : chat(userId);
       return {
         update_id: seq,
         callback_query: {
@@ -219,7 +226,7 @@ export function botHarness(opts: {
           from: from(userId),
           chat_instance: "ci",
           data,
-          message: { message_id: 1, date: 0, chat: chat(userId), text: "old" },
+          message: { message_id: 1, date: 0, chat: where, text: "old" },
         },
       } as Update;
     },

@@ -290,8 +290,31 @@ export const setDecisions = sqliteTable("set_decisions", {
   primaryKey({ columns: [t.userId, t.itemId] }),
 ]);
 
+/**
+ * Счётчики использования: сколько раз человек за период сделал тяжёлую операцию.
+ *
+ * Одна таблица на все лимиты (см. docs/limits-and-pricing.md). Ключ — (userId, period, kind), где period —
+ * строка вида «2026-10-27» для дневных квот и «2026-W43» для недельных: так одна таблица закрывает и день,
+ * и неделю, и месяц, а поиск идёт по точному ключу, без LIKE (его в проекте нет).
+ *
+ * Почему не считаем по существующим таблицам (review_logs, words): не всё, что нужно ограничивать,
+ * оставляет след. Отказ по лимиту обязан считаться тоже, иначе лимит обходится повтором запроса.
+ */
+export const usageCounters = sqliteTable("usage_counters", {
+  userId: integer("user_id").notNull().references(() => users.id),
+  /** День «2026-10-27» (по часовому поясу человека) или неделя «2026-W43». */
+  period: text("period").notNull(),
+  /** Что считаем: "inline_translate", "image", "check"… Список — QUOTAS в src/services/limits.ts. */
+  kind: text("kind").notNull(),
+  count: integer("count").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.period, t.kind] }),
+]);
+
 export type WordSet = typeof wordSets.$inferSelect;
 export type SetItem = typeof setItems.$inferSelect;
+export type UsageCounter = typeof usageCounters.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Room = typeof rooms.$inferSelect;

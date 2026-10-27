@@ -6,7 +6,7 @@
 ## Команды
 
 ```bash
-npm test          # vitest run — 100 файлов, ~17 с (SQLite in-memory, сеть и LLM не нужны)
+npm test          # vitest run — 101 файл, ~12 с (SQLite in-memory, сеть и LLM не нужны)
 npm run typecheck # tsc --noEmit — тоже обязательно
 npm run db:generate  # drizzle-kit generate — ПОСЛЕ правки src/db/schema.ts
 npm start         # запуск бота (не делать, если работает launchd — будет ошибка 409)
@@ -82,7 +82,7 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
 
 ## База данных и эксплуатация
 
-- Схема — `src/db/schema.ts` (18 таблиц). После её правки: `npm run db:generate`, получившуюся миграцию
+- Схема — `src/db/schema.ts` (19 таблиц). После её правки: `npm run db:generate`, получившуюся миграцию
   в `drizzle/` **коммитить**. Миграции применяет только сам бот при старте.
 - Скрипты работают с живой базой в режиме `createDb(path, { migrate: false })` — схему они не меняют.
 - База: `data/eng-bot.sqlite` (WAL). Бэкап — `scripts/backup.sh`, 14 последних в `data/backups/`.

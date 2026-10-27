@@ -71,6 +71,13 @@ import type { ClozeDraft } from "../services/cloze";
 /** Разбор списка до 100 пунктов отвечает намного дольше, чем подсказка к одному слову (46 пунктов ≈ 30 с). */
 const EXTRACT_TIMEOUT_MS = 180_000;
 
+/**
+ * Потолок для перевода в инлайн-режиме: Telegram ждёт ответ около 10 секунд и потом просто не показывает
+ * подсказки. Обычный `timeoutMs` — 30 с, то есть медленный запрос «съел» бы весь бюджет и человек увидел бы
+ * пустоту вместо карточки. Здесь жёстко 6 с: не успели — честно показываем «открыть бота».
+ */
+const INLINE_TRANSLATE_TIMEOUT_MS = 6_000;
+
 /** Ходит в локальный Claude Code через Agent SDK (авторизация Claude Code, без API-ключа). */
 export class ClaudeCodeBackend implements LlmBackend {
   readonly name = "claude-code";
@@ -148,6 +155,16 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
     return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context, currentLang()), this.opts.timeoutMs));
+  }
+
+  /**
+   * Перевод одного слова с жёстким потолком времени — для инлайн-режима.
+   *
+   * Отличие от `enrich` только в таймауте (см. INLINE_TRANSLATE_TIMEOUT_MS), промпт и разбор те же:
+   * отдельный промпт здесь означал бы вторую реализацию одного и того же, которая разъедется с первой.
+   */
+  async enrichFast(term: string): Promise<Enrichment> {
+    return parseEnrichment(await this.ask(buildPrompt(term, undefined, undefined, currentLang()), INLINE_TRANSLATE_TIMEOUT_MS));
   }
 
   async extract(text: string): Promise<ExtractedItem[]> {

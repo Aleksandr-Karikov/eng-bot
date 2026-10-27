@@ -64,3 +64,25 @@ export async function findInlineWords(db: Db, userId: number, query: string): Pr
   }
   return hits;
 }
+
+/** Сколько слов ещё считаем «словом или фразой», а не текстом: `set off`, `break the ice`. */
+export const INLINE_MAX_WORDS = 4;
+
+/**
+ * Похоже ли на слово или короткую фразу, которую имеет смысл переводить.
+ *
+ * Инлайн открыт кому угодно, включая случайно набранный мусор, и каждый запрос здесь — это расход
+ * на модель. Поэтому отсекаем заведомое: длинный текст (для него есть `/check` и `/add`), строки
+ * без букв, наборы одинаковых символов и «предложения» из многих слов.
+ *
+ * Ограничение по словам, а не только по длине: «это целое предложение из многих слов» — это 51 символ,
+ * то есть по длине проходит, а переводить его в подсказке бессмысленно и дорого.
+ */
+export function looksLikeWord(query: string): boolean {
+  const q = query.trim();
+  if (q.length < INLINE_MIN_CHARS || q.length > 60) return false;
+  if (!/\p{L}/u.test(q)) return false;
+  // «ааааааа» и «........» — не слово.
+  if (new Set(q.replace(/\s/g, "")).size < 2) return false;
+  return q.split(/\s+/).length <= INLINE_MAX_WORDS;
+}
