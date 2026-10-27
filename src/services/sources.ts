@@ -11,7 +11,7 @@ import { reviewLogs, users } from "../db/schema";
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/** Сколько ждём до «вернулся»: неделя — тот же срок, что и в критерии успеха (`docs/limits-and-pricing.md` §7.5). */
+/** Сколько ждём до «вернулся»: неделя — тот же срок, что и в критерии успеха (`docs/product-plan.md`, «Как понять, что канал сработал»). */
 export const RETURN_DAYS = 7;
 
 export interface SourceRow {
