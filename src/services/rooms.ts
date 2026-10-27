@@ -137,7 +137,7 @@ export async function roomCreationAllowed(
   userId: number,
 ): Promise<{ allowed: true } | { allowed: false; refusal: string }> {
   const created = (await listUserRooms(db, userId)).filter((r) => r.personalOf == null && r.createdBy === userId).length;
-  if (created >= ROOM_LIMITS.created) return { allowed: false, refusal: ROOM_REFUSALS.created };
+  if (created >= ROOM_LIMITS.created) return { allowed: false, refusal: ROOM_REFUSALS.created(created) };
   return { allowed: true };
 }
 

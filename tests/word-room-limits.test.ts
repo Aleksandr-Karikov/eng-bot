@@ -296,3 +296,18 @@ function statusFixture() {
     app: { port: 0, urlSet: false, capturePort: 0 },
   };
 }
+
+describe("лимиты: комнаты, заведённые до лимита", () => {
+  it("старожилу отказ говорит правду о его числе комнат, а не «уже 3»", async () => {
+    const db = await testDb();
+    const user = await makeUser(db, 100);
+    // Лимит ввели позже, чем появились комнаты: у человека их семь.
+    for (let i = 0; i < 7; i++) await createRoom(db, { name: `R${i}`, createdBy: user.id, now: T0 });
+
+    const gate = await roomCreationAllowed(db, user.id);
+    expect(gate.allowed).toBe(false);
+    // Врёт «уже 3» при семи на руках — и человек перестаёт верить остальным числам бота.
+    expect(gate.allowed === false && gate.refusal).toContain("7 комнат");
+    expect(gate.allowed === false && gate.refusal).not.toContain("уже создал 3");
+  });
+});
