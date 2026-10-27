@@ -47,7 +47,7 @@ const BOT_INFO = {
   username: "test_bot",
   can_join_groups: true,
   can_read_all_group_messages: false,
-  supports_inline_queries: false,
+  supports_inline_queries: true,
 } as UserFromGetMe;
 
 /** Настоящие обработчики бота поверх фейкового Telegram API. */
@@ -224,8 +224,7 @@ export function botHarness(opts: {
       } as Update;
     },
     /** Нажатие «⚙️ Управление словом» (или «▴ Скрыть») на последнем сообщении с этой кнопкой — с его клавиатурой, как в Telegram. */
-    manage(userId: number, label = "⚙️"): Update {
-      const keyboard = (c: ApiCall) => (c.payload.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
+    manage(userId: number, label = "⚙️"): Update {      const keyboard = (c: ApiCall) => (c.payload.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
       const call = [...calls].reverse().find((c) => keyboard(c)?.flat().some((b) => b.text.startsWith(label)));
       if (!call) throw new Error(`No "${label}" button`);
       const rows = keyboard(call)!;
@@ -240,6 +239,25 @@ export function botHarness(opts: {
           data: rows.flat().find((b) => b.text.startsWith(label))!.callback_data,
           message: { message_id: 1, date: 0, chat: chat(userId), ...content, reply_markup: { inline_keyboard: rows } },
         },
+      } as Update;
+    },
+    /**
+     * Инлайн-запрос `@бот <query>` из любого чата. У инлайн-апдейта **нет** `chat` — только `from`,
+     * и это главное отличие, из-за которого middleware обязан его переживать.
+     */
+    inlineQuery(userId: number, query: string): Update {
+      seq++;
+      return {
+        update_id: seq,
+        inline_query: { id: `iq${seq}`, from: from(userId), query, offset: "" },
+      } as Update;
+    },
+    /** Выбор карточки из списка инлайн-подсказок. */
+    chosenInline(userId: number, query: string, resultId: string): Update {
+      seq++;
+      return {
+        update_id: seq,
+        chosen_inline_result: { result_id: resultId, from: from(userId), query, inline_message_id: `im${seq}` },
       } as Update;
     },
   };

@@ -9,6 +9,13 @@ import { esc } from "./texts";
 export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
   return async (ctx, next) => {
     if (!ctx.from || ctx.from.is_bot) return;
+    // Инлайн-запрос приходит без чата (`chosen_inline_result` — тоже, а у нажатия кнопки под инлайн-карточкой
+    // чата нет вовсе). Комнаты, личного словаря и языка тут взять неоткуда: язык оставляем английским по
+    // умолчанию, а слова ищем по всем комнатам человека (см. src/services/inline.ts).
+    if (!ctx.chat) {
+      ctx.user = await upsertUser(deps.db, ctx.from, deps.now());
+      return await withLang("en", () => next());
+    }
     let user = await upsertUser(deps.db, ctx.from, deps.now());
     if (ctx.chat?.type === "private" && !user.canDm) user = await updateUser(deps.db, user.id, { canDm: true });
     // Личный словарь «Мои слова» — у каждого, кто пишет в личку: на него можно переключиться в любой момент,

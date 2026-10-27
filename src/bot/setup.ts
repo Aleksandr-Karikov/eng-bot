@@ -24,6 +24,7 @@ import { registerBug } from "./handlers/bug";
 import { registerLesson } from "./handlers/lesson";
 import { registerLlm } from "./handlers/llm";
 import { registerStatus } from "./handlers/status";
+import { registerInline } from "./handlers/inline";
 import { buttonsText } from "./transcript";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
@@ -123,6 +124,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerStatus(bot, deps);
   registerExtension(bot, deps);
   registerAdd(bot, deps);
+  registerInline(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».
   bot.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   bot.catch(async (err) => {

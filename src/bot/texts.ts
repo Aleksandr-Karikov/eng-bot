@@ -93,6 +93,26 @@ export function usefulnessLine(d: { usefulness?: number | null; usefulnessNote?:
   return d.usefulnessNote ? `${label}: ${esc(d.usefulnessNote)}` : label;
 }
 
+/**
+ * Карточка для инлайн-режима (`@бот слово` в любом чате).
+ *
+ * Отличия от обычной карточки осознанные: перевод **не** спрятан под спойлер (человек спрашивает
+ * «что это значит» — ответ и есть цель), лишние подробности не лезут (сообщение уходит в чужой чат),
+ * а `title` и `description` нужны Telegram для списка подсказок: он их обрезает сам.
+ */
+export function inlineWordText(w: { term: string; translation: string; explanation?: string; example?: string; transcriptionUs?: string }): string {
+  const transcription = w.transcriptionUs ? ` [${esc(w.transcriptionUs)}]` : "";
+  let text = `<b>${esc(w.term)}</b>${transcription} — ${esc(w.translation)}`;
+  if (w.example) text += `\n\n<i>${esc(w.example)}</i>`;
+  else if (w.explanation) text += `\n\n${esc(w.explanation)}`;
+  return text;
+}
+
+/** Строка для списка подсказок: Telegram показывает её рядом с заголовком. */
+export function inlineWordDescription(w: { translation: string; explanation?: string }): string {
+  return (w.explanation || w.translation).slice(0, 120);
+}
+
 export function draftText(d: WordDraft): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
   const useful = usefulnessLine(d);

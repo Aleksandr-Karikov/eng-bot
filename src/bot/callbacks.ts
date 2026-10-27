@@ -67,6 +67,8 @@ export type Cb =
   | { k: "delBatch"; id: number }
   | { k: "delBatchOk"; id: number }
   | { k: "delPage"; id: number; page: number }
+  /** «➕ В мой словарь» из инлайн-карточки: слово уже переведено, нужна только копия человеку. */
+  | { k: "inlineCopy"; wordId: number }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
   | { k: "learnLang"; lang: LangCode }
@@ -147,6 +149,7 @@ export function encodeCb(cb: Cb): string {
     case "delBatchOk": return `xbo:${cb.id}`;
     case "delPage": return `xp:${cb.id}:${cb.page}`;
     case "room": return `rm:${short(ROOM_ACTIONS, cb.action)}`;
+    case "inlineCopy": return `iw:${cb.wordId}`;
     case "roomsw": return `rs:${cb.roomId}`;
     case "learnLang": return `ll:${cb.lang}`;
     case "groupLink": return `gl:${cb.roomId}`;
@@ -336,6 +339,10 @@ export function decodeCb(data: string): Cb | null {
     case "rm": {
       const action = a ? ROOM_ACTIONS[a as keyof typeof ROOM_ACTIONS] : undefined;
       return action ? { k: "room", action } : null;
+    }
+    case "iw": {
+      const wordId = int(a);
+      return wordId !== null ? { k: "inlineCopy", wordId } : null;
     }
     case "rn": {
       const roomId = int(a);

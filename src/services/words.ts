@@ -105,6 +105,37 @@ export async function saveWord(
   return { status: "saved", word, members };
 }
 
+/**
+ * Копирует слово в другую комнату — для кнопки «➕ В мой словарь» под инлайн-карточкой.
+ *
+ * Модель здесь не зовётся: слово уже переведено и объяснено, копируем готовое. Это и есть причина,
+ * по которой инлайн отвечает мгновенно, а добавление из него не стоит ничего.
+ */
+export async function copyWord(
+  db: Db,
+  input: { word: Word; toRoomId: number; addedBy: number; now: Date },
+): Promise<{ status: "duplicate" } | { status: "saved"; word: Word }> {
+  if (await findWord(db, input.toRoomId, input.word.term)) return { status: "duplicate" };
+  const saved = await saveWord(db, {
+    roomId: input.toRoomId,
+    addedBy: input.addedBy,
+    now: input.now,
+    draft: {
+      term: input.word.term,
+      translation: input.word.translation,
+      explanation: input.word.explanation,
+      example: input.word.example,
+      transcriptionUk: input.word.transcriptionUk,
+      transcriptionUs: input.word.transcriptionUs,
+      mnemonic: input.word.mnemonic,
+      context: input.word.context,
+      usefulness: input.word.usefulness ?? undefined,
+      usefulnessNote: input.word.usefulnessNote,
+    },
+  });
+  return saved.status === "saved" ? { status: "saved", word: saved.word } : { status: "duplicate" };
+}
+
 /** Убирает слова, которые уже есть в комнате, и повторы внутри самой пачки (с учётом регистра и пробелов). */
 export async function filterNewItems<T extends { term: string }>(db: Db, roomId: number, items: T[]): Promise<T[]> {
   const existing = await db.select({ term: words.termNormalized }).from(words).where(eq(words.roomId, roomId));
