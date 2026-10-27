@@ -273,6 +273,24 @@ export function botHarness(opts: {
         chosen_inline_result: { result_id: resultId, from: from(userId), query, inline_message_id: `im${seq}` },
       } as Update;
     },
+    /**
+     * Нажатие кнопки под инлайн-карточкой в чужом чате. Отличие от `callback` принципиальное:
+     * у такого нажатия **нет `message`**, есть только `inline_message_id` — и обработчик обязан
+     * работать без чата (см. `iw:` в src/bot/handlers/inline.ts).
+     */
+    inlineCallback(userId: number, data: string): Update {
+      seq++;
+      return {
+        update_id: seq,
+        callback_query: {
+          id: `cq${seq}`,
+          from: from(userId),
+          chat_instance: "ci",
+          data,
+          inline_message_id: `im${seq}`,
+        },
+      } as Update;
+    },
   };
 }
 

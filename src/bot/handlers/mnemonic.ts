@@ -29,12 +29,13 @@ async function ensureMnemonic(deps: Deps, wordId: number): Promise<string> {
 async function drawAndSend(ctx: BotContext, deps: Deps, word: Word, opts: { style?: string; wish?: string; again?: boolean } = {}): Promise<void> {
   if (!deps.images) return;
   await ctx.replyWithChatAction("upload_photo").catch(() => {});
-  // Общий потолок бота проверяется первым: если выбраны все картинки на сегодня, личный лимит
-  // человеку тратить незачем — иначе он израсходует попытку и получит отказ.
-  const budget = await checkAndSpend(deps.db, "image", deps.now());
-  if (!budget.allowed) return void (await ctx.reply(budget.refusal, HTML));
+  // Личный лимит проверяется первым, общий потолок бота — вторым. Порядок важен: `checkAndSpend`
+  // пишет расход сразу, поэтому при обратном порядке человек, выбравший свои 10 картинок, продолжал бы
+  // нажатиями выбирать общий запас бота — и отказы остальных объяснялись бы его кнопкой.
   const quota = await checkAndCount(deps.db, { userId: ctx.user.id, kind: "image", timeZone: ctx.user.timezone, now: deps.now() });
   if (!quota.allowed) return void (await ctx.reply(quota.refusal, HTML));
+  const budget = await checkAndSpend(deps.db, "image", deps.now());
+  if (!budget.allowed) return void (await ctx.reply(budget.refusal, HTML));
   let picture: Buffer;
   try {
     picture = await deps.images.drawWord(word, opts);

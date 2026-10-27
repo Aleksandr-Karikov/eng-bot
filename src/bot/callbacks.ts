@@ -97,9 +97,18 @@ const short = <T extends string>(map: Record<string, T>, value: T) =>
 /**
  * Потолок слова в callback-данных: Telegram принимает не больше 64 байт на всю строку.
  * Кириллица и эмодзи занимают по 2–4 байта, поэтому считаем байты, а не символы, и оставляем запас
- * на префикс `in:`. Слово длиннее не потеряется: такие `looksLikeWord` и не пропускает.
+ * на префикс `in:`.
+ *
+ * **Обрезать слово нельзя молча:** `clampText` спасает кнопку от отказа Telegram, но в кнопку попадает
+ * кусок термина, и по нажатию в словарь уйдёт именно кусок. Поэтому длина проверяется вызывающим —
+ * `fitsCallbackText` в `handlers/inline.ts`, — и слишком длинная фраза показывается без кнопки.
  */
-const CALLBACK_TEXT_LIMIT = 48;
+export const CALLBACK_TEXT_LIMIT = 48;
+
+/** Влезет ли текст в callback-данные целиком. `false` — кнопку с таким текстом делать нельзя. */
+export function fitsCallbackText(text: string): boolean {
+  return Buffer.byteLength(text, "utf8") <= CALLBACK_TEXT_LIMIT;
+}
 
 const clampText = (text: string): string => {
   let out = "";

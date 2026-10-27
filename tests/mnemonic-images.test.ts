@@ -7,7 +7,7 @@ import { updateUser } from "../src/services/users";
 import { getWord, saveWord, updateWord } from "../src/services/words";
 import { botHarness, buttonData } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
-import { BUDGETS, checkAndSpend, QUOTAS, quotaUsed } from "../src/services/limits";
+import { BUDGETS, budgetUsed, checkAndCount, checkAndSpend, QUOTAS, quotaUsed } from "../src/services/limits";
 
 function tutor() {
   return {
@@ -155,19 +155,35 @@ describe("🖼 потолки на картинки", () => {
     expect(draw).toHaveBeenCalledTimes(limit);
   });
 
-  it("общий потолок бота важнее личного: при выбранном потолке попытка не тратится", async () => {
+  it("личный лимит проверяется раньше общего: отказ человека не тратит запас бота", async () => {
     const draw = vi.fn(async () => Buffer.from("png"));
     const h = botHarness({ tutor: tutor(), images: { draw } });
     const word = await setup(h);
 
-    // Выбираем общий потолок целиком.
+    // Личный лимит выбран целиком.
+    for (let i = 0; i < QUOTAS.image.limit; i++) await checkAndCount(h.db, { userId: 1, kind: "image", timeZone: "UTC", now: T0 });
+    const spentBefore = await budgetUsed(h.db, "image", T0);
+
+    await h.bot.handleUpdate(h.callback(100, `rd:${word.id}`));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
+    await vi.waitFor(() => expect(texts(h).some((t) => t === QUOTAS.image.refusal)).toBe(true));
+    expect(draw).not.toHaveBeenCalled();
+    // Общий запас не тронут: человеку уже отказано личным лимитом, его нажатия не должны
+    // приближать отказ для всех остальных.
+    expect(await budgetUsed(h.db, "image", T0)).toBe(spentBefore);
+  });
+
+  it("общий потолок бота останавливает рисование, когда запас выбран", async () => {
+    const draw = vi.fn(async () => Buffer.from("png"));
+    const h = botHarness({ tutor: tutor(), images: { draw } });
+    const word = await setup(h);
+
+    // Выбираем общий потолок целиком, личный при этом чист.
     for (let i = 0; i < BUDGETS.image.limit; i++) await checkAndSpend(h.db, "image", T0);
 
     await h.bot.handleUpdate(h.callback(100, `rd:${word.id}`));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🎲 Ещё вариант")));
     await vi.waitFor(() => expect(texts(h).some((t) => t === BUDGETS.image.refusal)).toBe(true));
     expect(draw).not.toHaveBeenCalled();
-    // Личный счётчик не тронут: за отказом не стоит работы, и тратить попытку незачем.
-    expect(await quotaUsed(h.db, { userId: 1, kind: "image", timeZone: "UTC", now: T0 })).toBe(0);
   });
 });

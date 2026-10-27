@@ -60,7 +60,10 @@ if (config.openRouterKey) redactLogs(config.openRouterKey, "<OPEN_ROUTER_API_KEY
 if (config.imageApiKey) redactLogs(config.imageApiKey, "<IMAGE_API_KEY>");
 captureRecentLogs();
 const db = createDb(config.dbPath);
-const bot = new Bot<BotContext>(config.botToken);
+// Таймаут запросов к Telegram. По умолчанию в grammY его нет (500 с), и зависший `sendMessage`
+// держит свой обработчик всё это время. 60 с — компромисс: `getUpdates` в long polling сам ждёт
+// апдейты до 30 с, поэтому меньше ставить нельзя, а больше незачем.
+const bot = new Bot<BotContext>(config.botToken, { client: { timeoutSeconds: 60 } });
 // Telegram ограничивает частоту (в группе — около 20 сообщений и правок в минуту) и отвечает 429 «подожди N секунд»:
 // ждём и повторяем, иначе шаг (например, разбор слов по одному) обрывался на полпути.
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }));
