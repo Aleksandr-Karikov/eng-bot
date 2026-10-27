@@ -4,6 +4,7 @@ import { withLang } from "../../lang";
 import { getWord, setAudioFileId, wordLanguage } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, type BotContext, type Deps } from "../context";
+import { allowQuota } from "./quota";
 
 type Accent = "uk" | "us";
 
@@ -42,6 +43,9 @@ export function registerAudio(bot: Bot<BotContext>, deps: Deps): void {
     // Синтез — в фоне: say + ffmpeg занимают секунду-другую, а апдейты обрабатываются по очереди.
     void ctx.answerCallbackQuery().catch(() => {});
     background(ctx, async () => {
+      // Лимит — только на настоящий синтез: из кэша озвучка бесплатна и мгновенна, и ограничивать её
+      // значило бы наказывать за повторное нажатие на то же слово.
+      if (!(await allowQuota(ctx, deps, "audio"))) return;
       const voice = await wordVoice(deps, word, cb.accent);
       if (!voice) return void (await ctx.reply("Озвучка недоступна 😔"));
       await sendWordVoice(ctx, deps, word, cb.accent, voice);

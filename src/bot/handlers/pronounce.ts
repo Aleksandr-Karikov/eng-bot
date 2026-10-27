@@ -10,6 +10,7 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import { endLongModes } from "../pending";
 import { esc } from "../texts";
 import { voiceAudio } from "../voice-input";
+import { allowQuota } from "./quota";
 
 /**
  * 🎤 /pron — проверка произношения. Главное — поймут ли: Whisper слушает без подсказки, как собеседник.
@@ -130,6 +131,10 @@ export function registerPronounce(bot: Bot<BotContext>, deps: Deps): void {
   const targets = new Map<number, Target>();
 
   async function ask(ctx: BotContext, text: string, accent: Accent | "any"): Promise<void> {
+    // Лимит берётся здесь, при постановке задания, а не при получении голосового: иначе человек записал
+    // бы голосовое и только потом узнал об отказе. Считается проверка, а не команда, — но отказать
+    // заранее честнее, чем после записи.
+    if (!(await allowQuota(ctx, deps, "pron"))) return;
     endLongModes(deps, ctx.user.id);
     const prepared = prepare(deps, text, accent);
     targets.set(ctx.user.id, { text, accent, chatId: ctx.chat!.id, at: Date.now(), prepared });

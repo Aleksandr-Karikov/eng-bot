@@ -9,6 +9,7 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import { translateKeyboard, translatePauseKeyboard } from "../keyboards";
 import { drillProgressText, esc, translateDoneText, translateResultText, translateTaskText } from "../texts";
 import { RECENT_TASKS, type ActiveTask, type TranslateSession } from "../translations";
+import { allowQuota } from "./quota";
 
 async function makeTask(deps: Deps, userId: number, session: TranslateSession): Promise<ActiveTask | undefined> {
   const material = await translationMaterial(deps.db, userId, deps.now(), deps.random, session.recent);
@@ -87,6 +88,8 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
 export async function startTranslate(ctx: BotContext, deps: Deps): Promise<void> {
   if (!ctx.chat) return;
   if (ctx.chat.type !== "private") return void (await ctx.reply(`Тренажёр перевода — в личке: https://t.me/${deps.botUsername}`));
+  // Считается тренировка целиком, а не перевод: внутри сессии заданий много, и они идут подряд.
+  if (!(await allowQuota(ctx, deps, "translate"))) return;
   endLongModes(deps, ctx.user.id, "translate");
   clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
   const session = deps.translations.start(ctx.user.id, ctx.chat.id);

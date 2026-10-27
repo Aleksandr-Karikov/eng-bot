@@ -12,6 +12,7 @@ import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { downloadImage, ImageTooBigError, imageOf, type ImageRef } from "../files";
 import { findYoutubeUrl, YoutubeBlockedError, type Subtitles } from "../../youtube/subtitles";
+import { allowQuota } from "./quota";
 
 const USAGE =
   "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение или фото — разберу его.";
@@ -59,6 +60,10 @@ async function startImage(ctx: BotContext, deps: Deps, image: ImageRef, note: st
 }
 
 async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promise<ExtractedItem[]>, failText: string): Promise<void> {
+  // Единый вход для всех трёх путей разбора — /text, фото и ссылки на YouTube. Проверка здесь, а не в
+  // каждом: лимит на текст, картинку и субтитры — один и тот же расход, и обойти его сменой пути нельзя.
+  // Стоит до самой работы: субтитры тоже качаются, и отказывать после них было бы обидно.
+  if (!(await allowQuota(ctx, deps, "text"))) return;
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
 

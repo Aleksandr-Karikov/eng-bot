@@ -17,6 +17,7 @@ import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAns
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
+import { allowQuota } from "./quota";
 import { addUndoRow, collocationKeyboard, leechKeyboard, mistakesAskKeyboard, restoreCardKeyboard } from "../keyboards";
 import { decodeCb, encodeCb, type NextAfter } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
@@ -341,6 +342,10 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
 /** /drill — вопросы по ошибкам подряд, без карточек. */
 async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   const ready = deps.drills.get(ctx.user.id)?.questions ?? [];
+  // Лимит — только когда вопросы правда генерируются: готовые лежат в памяти, модель для них не звалась,
+  // и брать за них попытку было бы обманом. `/learn` готовит вопросы фоном (`ensureDrill`) и лимит не
+  // трогает вовсе — иначе ограничение ударило бы по обычной тренировке, то есть по ядру продукта.
+  if (ready.length === 0 && !(await allowQuota(ctx, deps, "drill"))) return;
   if (ready.length === 0) await ctx.reply("🧠 Готовлю вопросы по твоим ошибкам, это секунд 15…");
   let questions;
   try {

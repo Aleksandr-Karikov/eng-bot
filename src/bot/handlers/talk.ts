@@ -10,6 +10,7 @@ import { mistakesAskKeyboard, talkEndKeyboard, talkTopicsKeyboard } from "../key
 import { MAX_TALK_TURNS, type Talk } from "../talks";
 import { esc, mistakesAskText, talkReviewText } from "../texts";
 import { hearVoice } from "../voice-input";
+import { allowQuota } from "./quota";
 
 /** Готовые ситуации: label — на кнопке, topic — для Claude. */
 export const TALK_TOPICS = [
@@ -26,6 +27,9 @@ const TALK_WORDS = 6;
 
 async function startTalk(ctx: BotContext, deps: Deps, topic: string, label: string): Promise<void> {
   if (!ctx.chat) return;
+  // Считается разговор, а не реплика: внутри одного разговора модель зовётся на каждую строку ученика.
+  // Проверка — в начале, до конца прошлого разговора: иначе отказ обрывал бы текущую беседу ни за что.
+  if (!(await allowQuota(ctx, deps, "talk"))) return;
   const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
   const words = room ? (await storyWords(deps.db, room.id, deps.random, ctx.user.id)).slice(0, TALK_WORDS) : [];
   endLongModes(deps, ctx.user.id, "talk");

@@ -7,6 +7,7 @@ import { getUserByTelegramId } from "../../services/users";
 import { decodeCb } from "../callbacks";
 import { mistakesAskKeyboard } from "../keyboards";
 import { checkText, mistakesAskText, mistakesNotSavedText, mistakesSavedText } from "../texts";
+import { allowQuota } from "./quota";
 
 const usage = () =>
   currentLang().code === "en"
@@ -46,6 +47,11 @@ async function checkTarget(ctx: BotContext, deps: Deps, target: CheckTarget): Pr
   if (text.length > MAX_CHECK_CHARS) {
     return void (await ctx.reply(`Слишком длинный текст для проверки — пришли до ${MAX_CHECK_CHARS} символов за раз`));
   }
+  // Лимит считается на того, кто **просит** проверку (`ctx.user`), а не на автора текста: в группе
+  // проверяют чужие сообщения, и счётчик на автора наказывал бы человека за чужую активность.
+  // Проверка стоит здесь, а не в `runCheck`, потому что сюда же приходит 👀-реакция — иначе она была бы
+  // бесплатной лазейкой в обход лимита.
+  if (!(await allowQuota(ctx, deps, "check"))) return;
   const context = original
     ? deps.history.before(chatId, original, CONTEXT_MESSAGES, CONTEXT_MAX_AGE_SEC).map((m) => ({ author: m.author, text: m.text }))
     : [];

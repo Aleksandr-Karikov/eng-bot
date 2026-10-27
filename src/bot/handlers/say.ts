@@ -7,6 +7,7 @@ import { sayKeyboard } from "../keyboards";
 import { sayText } from "../texts";
 import { commandInput } from "../word-flow";
 import { startAdd } from "./add";
+import { allowQuota } from "./quota";
 
 const USAGE = "Напиши фразу после команды: /say неудобно получилось\nИли ответь командой /say на сообщение.";
 const MAX_PHRASE = 500;
@@ -18,6 +19,8 @@ let seq = startSeq();
 async function runSay(ctx: BotContext, deps: Deps, phrase: string): Promise<void> {
   if (!phrase) return void (await ctx.reply(USAGE));
   if (phrase.length > MAX_PHRASE) return void (await ctx.reply(`Слишком длинно — пришли до ${MAX_PHRASE} символов`));
+  // После проверок ввода: на пустую команду и слишком длинную фразу модель не зовётся, и попытка не тратится.
+  if (!(await allowQuota(ctx, deps, "say"))) return;
   await ctx.replyWithChatAction("typing");
   let answer: SayAnswer;
   try {

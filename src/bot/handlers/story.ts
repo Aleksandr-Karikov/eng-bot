@@ -7,6 +7,7 @@ import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { storyKeyboard, storyQuestionKeyboard } from "../keyboards";
 import { storyAnswerAlert, storyQuestionText, storyText } from "../texts";
+import { allowQuota } from "./quota";
 
 /** Меньше — история выходит про одно-два слова, смысла мало. */
 const MIN_WORDS = 3;
@@ -44,6 +45,8 @@ async function runStory(ctx: BotContext, deps: Deps): Promise<void> {
   if (!room) {
     return void (await ctx.reply(inGroup ? "Эта группа ещё не привязана к комнате — отправь /link" : "Сначала создай комнату или вступи в неё — /room"));
   }
+  // После проверки комнаты: без комнаты истории не будет вовсе, и тратить попытку на подсказку незачем.
+  if (!(await allowQuota(ctx, deps, "story"))) return;
   await ctx.reply("📖 Пишу историю из слов комнаты, это около минуты…");
   await ctx.replyWithChatAction("typing");
   try {
