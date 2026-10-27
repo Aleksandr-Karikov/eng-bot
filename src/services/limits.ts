@@ -315,18 +315,28 @@ export async function wordsLeft(
  *
  * Отказ **ничего** не пишет: если упёрся недельный, дневной счётчик тоже не растёт — иначе человек
  * сжигал бы дневной запас на отказах и после понедельника начинал бы день с нуля доступных слов.
+ *
+ * Поэтому проверка и запись разведены: сначала читаем оба счётчика (`quotaUsed`), и только убедившись,
+ * что места хватает по обоим, пишем. Звать `checkAndCount` через `Promise.all` нельзя — он пишет сам,
+ * и дневной счётчик вырос бы ещё до того, как выяснится отказ по недельному.
  */
 export async function checkAndCountWord(
   db: Db,
   input: { userId: number; timeZone: string; now: Date },
 ): Promise<QuotaState> {
-  const [day, week] = await Promise.all([
+  const [dayUsed, weekUsed] = await Promise.all([
+    quotaUsed(db, { ...input, kind: "add_word" }),
+    quotaUsed(db, { ...input, kind: "add_word_week" }),
+  ]);
+  const day = QUOTAS.add_word;
+  const week = QUOTAS.add_word_week;
+  if (dayUsed >= day.limit) return { allowed: false, used: dayUsed, limit: day.limit, refusal: day.refusal };
+  if (weekUsed >= week.limit) return { allowed: false, used: weekUsed, limit: week.limit, refusal: week.refusal };
+  const [state] = await Promise.all([
     checkAndCount(db, { ...input, kind: "add_word" }),
     checkAndCount(db, { ...input, kind: "add_word_week" }),
   ]);
-  if (!day.allowed) return day;
-  if (!week.allowed) return week;
-  return day;
+  return state;
 }
 
 /**
