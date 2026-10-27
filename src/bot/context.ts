@@ -80,7 +80,7 @@ export interface Deps {
   capturePort?: number;
   /** Частотность слов для оценки полезности; undefined — оценивает только модель. */
   frequency?: FrequencySource;
-  /** Субтитры YouTube для /text со ссылкой; undefined — yt-dlp не установлен. */
+  /** Субтитры YouTube для /text со ссылкой; undefined — нет tools/youtube/.venv (YOUTUBE_PYTHON). */
   youtube?: SubtitleSource;
   /** Картинки-ассоциации; undefined — выключены (IMAGES_ENABLED). */
   images?: ImageService;
