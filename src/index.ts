@@ -3,7 +3,7 @@ import { API_CONSTANTS, Bot } from "grammy";
 import { redactLogs } from "./log-redact";
 import { captureRecentLogs } from "./log-buffer";
 import { ChatTranscript } from "./bot/transcript";
-import { setupBot, COMMANDS, GROUP_COMMANDS } from "./bot/setup";
+import { setupBot, COMMANDS, GROUP_COMMANDS, ADMIN_COMMANDS } from "./bot/setup";
 import type { BotContext } from "./bot/context";
 import { BatchStore } from "./bot/batches";
 import { DraftStore } from "./bot/drafts";
@@ -205,6 +205,14 @@ deps.appUrl = config.appUrl;
 setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS, { scope: { type: "all_private_chats" } });
 await bot.api.setMyCommands(GROUP_COMMANDS, { scope: { type: "all_group_chats" } });
+// Админские команды — только в меню админа: у остальных они и так не работают.
+// Scope «user» не принимают не все Bot API endpoint-ы (локальный сервер отвечает 400 «Unsupported type»):
+// меню — украшение, падать из-за него на старте нельзя, поэтому ошибки глотаем. Сама команда /users работает без меню.
+if (config.adminTelegramId) {
+  await bot.api
+    .setMyCommands(ADMIN_COMMANDS, { scope: { type: "user", user_id: config.adminTelegramId } as never })
+    .catch((err) => console.warn("Admin command menu not set (endpoint без scope user):", (err as Error).message));
+}
 // Прежнее общее меню (scope по умолчанию) — тоже на короткое, чтобы не всплывало старое длинное.
 await bot.api.setMyCommands(COMMANDS);
 // Кнопка у поля ввода в личке: открывает Mini App с карточками (если задан APP_URL), иначе — обычное меню команд.

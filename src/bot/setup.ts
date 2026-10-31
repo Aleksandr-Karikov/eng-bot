@@ -24,6 +24,7 @@ import { registerBug } from "./handlers/bug";
 import { registerLesson } from "./handlers/lesson";
 import { registerLlm } from "./handlers/llm";
 import { registerStatus } from "./handlers/status";
+import { registerUsers } from "./handlers/users";
 import { registerInline } from "./handlers/inline";
 import { buttonsText } from "./transcript";
 import { userMiddleware } from "./middleware";
@@ -47,8 +48,17 @@ export const COMMANDS = [
   { command: "lang", description: "Язык: английский или корейский" },
   { command: "settings", description: "Настройки" },
   { command: "bug", description: "Сообщить об ошибке" },
-  { command: "status", description: "Чем бот работает (только админ)" },
   { command: "help", description: "Что умеет бот" },
+];
+
+/**
+ * Команды, которые показываются только админу (scope user в setMyCommands): в общее меню и в /help
+ * они не попадают — у обычных людей в списке команд они лишние и раздували бы меню (тест welcome
+ * держит COMMANDS ≤ 15).
+ */
+export const ADMIN_COMMANDS = [
+  { command: "status", description: "Чем бот работает (только админ)" },
+  { command: "users", description: "Кто в боте и как активен (только админ)" },
 ];
 
 /** Меню в группах — то, что там имеет смысл. */
@@ -122,6 +132,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerLesson(bot, deps);
   registerLlm(bot, deps);
   registerStatus(bot, deps);
+  registerUsers(bot, deps);
   registerExtension(bot, deps);
   registerAdd(bot, deps);
   registerInline(bot, deps);
