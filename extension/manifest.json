@@ -17,6 +17,9 @@
     "https://*.ngrok.app/*",
     "https://*.ngrok.dev/*"
   ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
