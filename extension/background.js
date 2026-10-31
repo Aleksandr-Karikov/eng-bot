@@ -80,7 +80,9 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
 });
 
 // ---------- На любом сайте ----------
-// Панель и рамка подключаются к вкладке только по действию человека — разрешения «читать все сайты» нет.
+// Рамка подключается к вкладке по действию человека (activeTab), постоянного «читать все сайты» нет.
+// Панель субтитров — так же разово; а для плеера во вложенном фрейме доступ ко всем сайтам берётся
+// по жесту и только на время включённого «режима фильма» (enableMovieMode / disableMovieMode ниже).
 
 async function injectPanel(target) {
   await chrome.scripting.insertCSS({ target, files: ["content.css"] });
@@ -97,18 +99,77 @@ async function startRegion(tab) {
   }
 }
 
-// Клик по иконке или Alt+Shift+S — рамка. Настройки — правый клик по иконке → «Параметры» или ⚙ в панели.
+// «Режим фильма»: панель субтитров на любом сайте. content.js сам найдёт видео (`findVideo`) и реплики
+// (дорожки WebVTT или текст поверх видео) — как на inoriginal.cc. Главная трудность: видео обычно сидит
+// во вложенном cross-origin iframe плеера (домен заранее неизвестен), который догружается ПОСЛЕ клика и
+// бывает двойным. Разовая инъекция в него не попадает. Поэтому режим включается по жесту человека: просим
+// доступ ко всем сайтам и регистрируем панель постоянным content-script'ом — браузер сам вставляет её в
+// каждый фрейм при загрузке, включая поздние и вложенные (как объявленный скрипт inoriginal.cc, но везде).
+const ALL_URLS = { origins: ["<all_urls>"] };
+const PANEL_SCRIPT = {
+  id: "wordboss-panel",
+  matches: ["<all_urls>"],
+  allFrames: true,
+  matchOriginAsFallback: true, // about:blank/blob-фреймы некоторых плееров
+  js: ["content.js"],
+  css: ["content.css"],
+  runAt: "document_idle",
+};
+
+async function movieModeOn() {
+  const reg = await chrome.scripting.getRegisteredContentScripts({ ids: [PANEL_SCRIPT.id] }).catch(() => []);
+  return reg.length > 0;
+}
+
+/** Подключить панель к текущей вкладке сразу (уже загруженные фреймы постоянный скрипт не покрывает). */
+async function startPanel(tab) {
+  const broad = await chrome.permissions.contains(ALL_URLS).catch(() => false);
+  const hint = broad
+    ? "🎬 WordBoss включён. Субтитры появятся, когда пойдёт видео. Если их не видно текстом — выдели область: Alt+Shift+S"
+    : "🎬 Плеер во встроенном окне? Включи через правый клик → «🎬 Субтитры WordBoss…» и разреши доступ. Вшитые в кадр субтитры — Alt+Shift+S";
+  try {
+    await injectPanel({ tabId: tab.id, allFrames: broad });
+    // Статус — только в верхнем фрейме: видео и субтитры появляются не сразу, сразу даём знать, что включилось.
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (m) => window.__wordbossAPI?.status(m), args: [hint] });
+  } catch (err) {
+    // chrome://, магазин расширений и подобные страницы расширениям закрыты.
+    console.warn("WordBoss: can't start on this page", err);
+  }
+}
+
+// Включить режим фильма: доступ ко всем сайтам (по жесту) + регистрация панели на будущих загрузках фреймов.
+async function enableMovieMode(tab) {
+  const granted = await chrome.permissions.request(ALL_URLS).catch(() => false);
+  // Доступ не дали (отказ или жест не засчитан) — работаем хотя бы в доступных фреймах текущей вкладки.
+  if (!granted) return void startPanel(tab);
+  if (!(await movieModeOn())) await chrome.scripting.registerContentScripts([PANEL_SCRIPT]).catch((err) => console.warn("WordBoss: register failed", err));
+  await startPanel(tab);
+}
+
+// Выключить режим фильма: снять регистрацию и вернуть доступ. Панель перестанет подключаться сама.
+async function disableMovieMode() {
+  if (await movieModeOn()) await chrome.scripting.unregisterContentScripts({ ids: [PANEL_SCRIPT.id] }).catch(() => {});
+  await chrome.permissions.remove(ALL_URLS).catch(() => {});
+}
+
+// Клик по иконке или Alt+Shift+S — рамка; Alt+Shift+V — панель субтитров. Настройки — правый клик по иконке → «Параметры» или ⚙ в панели.
 chrome.action.onClicked.addListener((tab) => void startRegion(tab));
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "region" && tab) void startRegion(tab);
+  else if (command === "panel" && tab) void enableMovieMode(tab);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "wordboss-add", title: "➕ В WordBoss: «%s»", contexts: ["selection"] });
+  chrome.contextMenus.create({ id: "wordboss-panel", title: "🎬 Субтитры WordBoss на этой странице", contexts: ["page", "action"] });
+  chrome.contextMenus.create({ id: "wordboss-panel-off", title: "⏹ Выключить режим фильма WordBoss", contexts: ["action"] });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== "wordboss-add" || !tab?.id) return;
+  if (info.menuItemId === "wordboss-panel-off") return void disableMovieMode();
+  if (!tab?.id) return;
+  if (info.menuItemId === "wordboss-panel") return void enableMovieMode(tab);
+  if (info.menuItemId !== "wordboss-add") return;
   // Выделение может быть во фрейме (плеер, встроенная статья) — панель там же.
   const target = { tabId: tab.id, frameIds: [info.frameId ?? 0] };
   try {
