@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "WordBoss — слова в Telegram-бота",
-  "version": "0.6.1",
-  "description": "Слова и фразы с любой страницы — в Telegram-бота WordBoss: клик по субтитрам на inoriginal.cc, рамка вокруг любого текста или картинки, правый клик по выделенному.",
+  "version": "0.7.0",
+  "description": "Слова и фразы с любой страницы — в Telegram-бота WordBoss: панель субтитров поверх видео на любом сайте (Alt+Shift+V), рамка вокруг любого текста или картинки, правый клик по выделенному.",
   "permissions": [
     "storage",
     "activeTab",
@@ -46,6 +46,12 @@
         "default": "Alt+Shift+S"
       },
       "description": "Выделить область с текстом"
+    },
+    "panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+V"
+      },
+      "description": "Субтитры: панель WordBoss поверх видео на этой странице"
     }
   }
 }

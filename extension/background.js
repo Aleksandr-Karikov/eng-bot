@@ -97,18 +97,35 @@ async function startRegion(tab) {
   }
 }
 
-// Клик по иконке или Alt+Shift+S — рамка. Настройки — правый клик по иконке → «Параметры» или ⚙ в панели.
+// «Режим фильма»: подключить панель субтитров к текущей вкладке на любом сайте. Дальше content.js
+// сам найдёт видео (`findVideo`) и реплики (дорожки WebVTT или текст поверх видео) — как на inoriginal.cc.
+async function startPanel(tab) {
+  try {
+    await injectPanel({ tabId: tab.id });
+    // Видео и субтитры появляются не сразу — сразу показываем панель, чтобы человек видел, что включилось.
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.__wordbossAPI?.status("🎬 Ищу субтитры на этой странице…") });
+  } catch (err) {
+    // chrome://, магазин расширений и подобные страницы расширениям закрыты.
+    console.warn("WordBoss: can't start on this page", err);
+  }
+}
+
+// Клик по иконке или Alt+Shift+S — рамка; Alt+Shift+V — панель субтитров. Настройки — правый клик по иконке → «Параметры» или ⚙ в панели.
 chrome.action.onClicked.addListener((tab) => void startRegion(tab));
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "region" && tab) void startRegion(tab);
+  else if (command === "panel" && tab) void startPanel(tab);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "wordboss-add", title: "➕ В WordBoss: «%s»", contexts: ["selection"] });
+  chrome.contextMenus.create({ id: "wordboss-panel", title: "🎬 Субтитры WordBoss на этой странице", contexts: ["page", "action"] });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== "wordboss-add" || !tab?.id) return;
+  if (!tab?.id) return;
+  if (info.menuItemId === "wordboss-panel") return void startPanel(tab);
+  if (info.menuItemId !== "wordboss-add") return;
   // Выделение может быть во фрейме (плеер, встроенная статья) — панель там же.
   const target = { tabId: tab.id, frameIds: [info.frameId ?? 0] };
   try {
