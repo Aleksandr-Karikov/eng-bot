@@ -70,6 +70,17 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
       <Section header="🃏 Карточка" footer="Что показывать на обороте карточки.">
         {toggles(settings.card, (t) => ({ cardPart: t.key, on: !t.on }))}
       </Section>
+
+      <Section header="🗣 Озвучка карточек" footer="В приложении выбранный вариант звучит сам, как только карточка показала ответ. В боте слово всегда по кнопке.">
+        {settings.voice.accents.map((a) => (
+          <Cell key={a.key} after={settings.voice.accent === a.key ? "✓" : undefined} onClick={() => void change({ voice: a.key })}>
+            🔊 {a.label}
+          </Cell>
+        ))}
+        <Cell after={settings.voice.accent === null ? "✓" : undefined} onClick={() => void change({ voice: "off" })}>
+          🔇 Не включать
+        </Cell>
+      </Section>
     </List>
   );
 }

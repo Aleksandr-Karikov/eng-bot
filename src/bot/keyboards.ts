@@ -261,7 +261,7 @@ export const MODE_LABELS: Array<[Stage, string, keyof User]> = [
 ];
 
 /** Часы напоминания + переключатели режимов тренажёра. */
-export type SettingsScreen = "main" | "remind" | "modes" | "card";
+export type SettingsScreen = "main" | "remind" | "modes" | "card" | "voice";
 
 /** /settings по экранам: на одном сообщении было ~27 кнопок. */
 export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): InlineKeyboard {
@@ -272,7 +272,9 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
       .row()
       .text("🎯 Упражнения", encodeCb({ k: "settingsScreen", screen: "modes" }))
       .row()
-      .text("🃏 Карточка", encodeCb({ k: "settingsScreen", screen: "card" }));
+      .text("🃏 Карточка", encodeCb({ k: "settingsScreen", screen: "card" }))
+      .row()
+      .text("🗣 Озвучка карточек", encodeCb({ k: "settingsScreen", screen: "voice" }));
   }
   if (screen === "remind") {
     const kb = hoursKeyboard().row();
@@ -284,6 +286,15 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
     const kb = new InlineKeyboard();
     for (const [stage, label, field] of MODE_LABELS) kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
     kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Вопросы по ошибкам в /learn`, encodeCb({ k: "drillMode" }));
+    return back(kb);
+  }
+  if (screen === "voice") {
+    // Варианты — по языку комнаты: у корейского произношение одно, выбирать не из чего.
+    const kb = new InlineKeyboard();
+    for (const accent of currentLang().accents) {
+      kb.text(`${user.voiceAccent === accent ? "✅" : "⬜️"} 🔊 ${currentLang().accentLabel[accent]}`, encodeCb({ k: "voice", accent })).row();
+    }
+    kb.text(`${user.voiceAccent ? "⬜️" : "✅"} 🔇 Не включать`, encodeCb({ k: "voice", accent: "off" }));
     return back(kb);
   }
   const kb = new InlineKeyboard();

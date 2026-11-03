@@ -88,10 +88,12 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   }, [queue, me]);
 
   // Озвучка текущей и пары следующих — тоже заранее: тап по 🔊 (и диктант) играют сразу.
+  // Выбранный вариант озвучивается сам при показе ответа, поэтому его грузим первым.
   useEffect(() => {
     if (me?.view.audio === false) return;
+    const accents = me?.voice ? [me.voice, ...studyLanguage().accents.map((a) => a.key).filter((a) => a !== me.voice)] : studyLanguage().accents.map((a) => a.key);
     for (const next of queue.slice(0, 3)) {
-      if (next.kind === "card") for (const a of studyLanguage().accents) preloadAudio(cardAudioPath(next.cardId, a.key));
+      if (next.kind === "card") for (const a of accents) preloadAudio(cardAudioPath(next.cardId, a));
     }
   }, [queue, me]);
 
@@ -256,7 +258,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           onNext={advance}
         />
       ) : (
-        <SwipeCard key={`${card.cardId}-${card.reps}`} card={card} view={me?.view} onAnswer={(a) => answer(card, a)} />
+        <SwipeCard key={`${card.cardId}-${card.reps}`} card={card} view={me?.view} voice={me?.voice} onAnswer={(a) => answer(card, a)} />
       )}
     </div>
   );

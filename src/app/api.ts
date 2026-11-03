@@ -7,6 +7,7 @@ import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
+import { autoVoice } from "../services/voice";
 import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
 import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
@@ -94,6 +95,8 @@ export async function appMe(deps: Deps, user: User) {
     // Чем занять новичка: пустой `/learn` предлагает именно этот набор (см. `starterSet`).
     ...(starter ? { starterSet: { id: starter.set.id, title: starter.set.title, total: starter.total } } : {}),
     view: cardView(user),
+    // 🗣 Каким произношением озвучивать карточку самим: null — озвучка выключена (как было всегда).
+    voice: autoVoice(user) ?? null,
     triage: await triageCount(deps.db, user.id),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
     language: {

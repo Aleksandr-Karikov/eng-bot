@@ -1,5 +1,6 @@
 import { isLangCode, type LangCode } from "../lang";
 import { CARD_PARTS, type CardPart } from "../services/card-view";
+import { VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { STAGES, type Stage } from "../services/exercises";
 import type { Answer } from "../srs/srs";
 
@@ -29,6 +30,8 @@ export type Cb =
   | { k: "notifyDue" }
   | { k: "weeklyReport" }
   | { k: "cardPart"; part: CardPart }
+  /** 🗣 Озвучка карточек в приложении: "off" — выключить, иначе — какой вариант играть самому. */
+  | { k: "voice"; accent: VoiceAccent | "off" }
   | { k: "mistakesClear" }
   | { k: "mistakesSave"; id: number; save: boolean }
   | { k: "draft"; id: number; action: "ok" | "edit" | "cancel" | "skip" | "stop" }
@@ -47,7 +50,7 @@ export type Cb =
   | { k: "pronNext" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
-  | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" }
+  | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" | "voice" }
   | { k: "mistakesGo"; to: "drill" | "translate" }
   | { k: "notForMe"; wordId: number; from: "know" | "learn" }
   | { k: "restoreCard"; wordId: number }
@@ -140,6 +143,7 @@ export function encodeCb(cb: Cb): string {
     case "notifyDue": return "nd";
     case "weeklyReport": return "wr";
     case "cardPart": return `cv:${cb.part}`;
+    case "voice": return `vo:${cb.accent === "off" ? "x" : cb.accent}`;
     case "mistakesClear": return "mz";
     case "mistakesSave": return `mk:${cb.id}:${cb.save ? "y" : "n"}`;
     case "draft": return `d:${cb.id}:${short(DRAFT_ACTIONS, cb.action)}`;
@@ -297,7 +301,8 @@ export function decodeCb(data: string): Cb | null {
       const wordId = int(a);
       return wordId !== null ? { k: "restoreCard", wordId } : null;
     }
-    case "ss": return a === "main" || a === "remind" || a === "modes" || a === "card" ? { k: "settingsScreen", screen: a } : null;
+    case "vo": return a === "x" ? { k: "voice", accent: "off" } : (VOICE_ACCENTS as readonly string[]).includes(a ?? "") ? { k: "voice", accent: a as VoiceAccent } : null;
+    case "ss": return a === "main" || a === "remind" || a === "modes" || a === "card" || a === "voice" ? { k: "settingsScreen", screen: a } : null;
     case "mg": return a === "d" || a === "t" ? { k: "mistakesGo", to: a === "d" ? "drill" : "translate" } : null;
     case "uf": {
       const wordId = int(a);

@@ -2,6 +2,7 @@
 # Ставит два LaunchAgent'а текущего пользователя:
 #   com.engbot.bot    — бот: старт при входе в систему, перезапуск при падении, мак не засыпает, пока бот работает;
 #   com.engbot.backup — бэкап базы каждый день в 04:00 (если мак спал — сразу после пробуждения);
+#   com.engbot.watchdog — сторож: раз в минуту проверяет бота, Telegram и туннель, о поломках пишет в чат;
 #   com.engbot.ngrok  — туннель ngrok к Mini App (и /ext для расширения), если ngrok установлен.
 # Логи: data/logs/. Удалить: scripts/launchd/uninstall.sh
 set -euo pipefail
@@ -50,7 +51,27 @@ cat > "$AGENTS/com.engbot.backup.plist" <<PLIST
 </plist>
 PLIST
 
-LABELS=(com.engbot.bot com.engbot.backup)
+cat > "$AGENTS/com.engbot.watchdog.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.engbot.watchdog</string>
+  <key>ProgramArguments</key>
+  <array><string>$NODE</string><string>$REPO/node_modules/tsx/dist/cli.mjs</string><string>scripts/watchdog.ts</string></array>
+  <key>WorkingDirectory</key><string>$REPO</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>$PATH_VALUE</string><key>HOME</key><string>$HOME</string></dict>
+  <key>RunAtLoad</key><true/>
+  <!-- Раз в минуту. launchd не запустит второй экземпляр, пока жив первый, поэтому медленная сеть не копит процессы. -->
+  <key>StartInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>$REPO/data/logs/watchdog.out.log</string>
+  <key>StandardErrorPath</key><string>$REPO/data/logs/watchdog.out.log</string>
+</dict>
+</plist>
+PLIST
+
+LABELS=(com.engbot.bot com.engbot.backup com.engbot.watchdog)
 NGROK=$(command -v ngrok || true)
 # Постоянный адрес туннеля — из APP_URL в .env (бесплатный домен ngrok), иначе ngrok выдаст случайный.
 NGROK_URL=$(grep -E '^APP_URL=https://[^/]*ngrok' "$REPO/.env" 2>/dev/null | sed -E 's|^APP_URL=(https://[^/]+).*|\1|' || true)

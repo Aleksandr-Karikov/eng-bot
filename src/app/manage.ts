@@ -1,10 +1,11 @@
-import { langForms } from "../lang";
+import { currentLang, langForms } from "../lang";
 import { and, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import { CARD_PART_LABELS, MODE_LABELS } from "../bot/keyboards";
 import { cards, reviewLogs, type User, type Word } from "../db/schema";
 import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services/card-view";
+import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
 import { HARD_AFTER_LAPSES } from "../services/hard-words";
@@ -118,6 +119,8 @@ export async function appSettings(deps: Deps, user: User) {
     modes: MODE_LABELS.map(([key, label, field]) => ({ key, label, on: Boolean(user[field]) })),
     drill: user.modeDrill,
     card: CARD_PART_LABELS.map(([key, label]) => ({ key, label, on: view[key] })),
+    // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
+    voice: { accent: autoVoice(user) ?? null, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
   };
 }
 
@@ -138,6 +141,8 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
     const field = entry[2];
     if (!body.on && MODE_LABELS.every(([, , f]) => f === field || !user[f])) return { ok: false, error: "Хотя бы один режим должен остаться включённым" };
     patch = { [field]: body.on };
+  } else if (typeof body.voice === "string" && (body.voice === "off" || (VOICE_ACCENTS as readonly string[]).includes(body.voice))) {
+    patch = { voiceAccent: toggleVoiceAccent(user.voiceAccent, body.voice as VoiceAccent | "off") };
   } else if (typeof body.cardPart === "string" && typeof body.on === "boolean") {
     const part = body.cardPart as CardPart;
     if (!CARD_PARTS.includes(part)) return { ok: false, error: "Нет такой части карточки" };

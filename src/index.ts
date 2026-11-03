@@ -1,6 +1,7 @@
 import { autoRetry } from "@grammyjs/auto-retry";
 import { API_CONSTANTS, Bot } from "grammy";
 import { redactLogs } from "./log-redact";
+import { touchHeartbeat } from "./heartbeat";
 import { captureRecentLogs } from "./log-buffer";
 import { ChatTranscript } from "./bot/transcript";
 import { setupBot, COMMANDS, GROUP_COMMANDS, ADMIN_COMMANDS } from "./bot/setup";
@@ -220,6 +221,11 @@ await bot.api
   .setChatMenuButton({ menu_button: config.appUrl ? { type: "web_app", text: "📚 Учить", web_app: { url: config.appUrl } } : { type: "commands" } })
   .catch((err) => console.error("Menu button failed", err));
 
+// Пульс для сторожа: жив не только процесс, но и polling. Пишется таймером, а не на апдейтах —
+// в тихом чате апдейтов нет, и живой бот выглядел бы зависшим (см. src/heartbeat.ts).
+const heartbeatTimer = setInterval(() => touchHeartbeat(), 30_000);
+touchHeartbeat();
+
 const stopReminders = startReminderLoop({
   db,
   notifier,
@@ -232,6 +238,7 @@ const stopPainter =
     : () => {};
 
 const shutdown = () => {
+  clearInterval(heartbeatTimer);
   stopReminders();
   stopPainter();
   if (englishSpeech instanceof KokoroSynth) englishSpeech.close();

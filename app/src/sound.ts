@@ -25,12 +25,21 @@ export function preloadAudio(path: string): void {
   void load(path);
 }
 
-export function playAudio(path: string): void {
+/**
+ * `true` — звук уже в памяти и заиграл в этом же нажатии (iOS разрешает play() только сразу после
+ * действия человека). `false` — придётся ждать загрузки: вызывающий должен спросить об этом человека,
+ * а не включать звук потом, без спроса.
+ */
+export function playAudio(path: string): boolean {
   const url = ready.get(path);
-  if (url) return void new Audio(url).play().catch(() => {});
+  if (url) {
+    void new Audio(url).play().catch(() => {});
+    return true;
+  }
   void load(path).then((u) => {
     if (u) void new Audio(u).play().catch(() => {});
   });
+  return false;
 }
 
 export const cardAudioPath = (cardId: number, accent: "uk" | "us") => `/api/audio?card=${cardId}&accent=${accent}`;

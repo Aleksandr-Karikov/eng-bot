@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `voice_accent` text DEFAULT 'uk' NOT NULL;

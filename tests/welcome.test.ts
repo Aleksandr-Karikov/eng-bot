@@ -67,13 +67,14 @@ describe("simpler menus", () => {
     expect(GROUP_COMMANDS.map((c) => c.command)).toEqual(expect.arrayContaining(["check", "duel", "link"]));
   });
 
-  it("/settings opens on a short menu of three screens", async () => {
+  it("/settings opens on a short menu of screens", async () => {
     const h = botHarness();
     await h.bot.handleUpdate(h.message(100, "/settings"));
     expect((h.calls.at(-1)?.payload.reply_markup as { inline_keyboard: Array<Array<{ text: string }>> }).inline_keyboard.flat().map((b) => b.text)).toEqual([
       "⏰ Напоминания",
       "🎯 Упражнения",
       "🃏 Карточка",
+      "🗣 Озвучка карточек",
     ]);
   });
 

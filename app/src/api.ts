@@ -49,6 +49,8 @@ export interface Me {
   starterSet?: { id: number; title: string; total: number };
   /** Какие части карточки показывать (⚙️ → 🃏 Карточка). */
   view: CardView;
+  /** 🗣 Что играть самим при показе карточки: null — озвучка выключена. */
+  voice: VoiceAccent | null;
   /** Сколько новых слов от друзей ждут разбора. */
   triage: number;
   /** Изучаемый язык текущей комнаты. */
@@ -56,6 +58,9 @@ export interface Me {
 }
 
 export type CardView = Record<"transcription" | "explanation" | "example" | "context" | "collocations" | "mnemonic" | "audio" | "picture", boolean>;
+
+/** Вариант произношения. */
+export type VoiceAccent = "uk" | "us";
 
 export type Answer = "again" | "good" | "easy";
 
@@ -181,6 +186,8 @@ export interface Settings {
   modes: Toggle[];
   drill: boolean;
   card: Toggle[];
+  /** 🗣 Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
+  voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
 }
 
 /** Одна настройка за раз, например { reminderHour: 9 } или { mode: "cloze", on: false }. */
@@ -191,7 +198,9 @@ export type SettingChange =
   | { weeklyReport: boolean }
   | { drill: boolean }
   | { mode: string; on: boolean }
-  | { cardPart: string; on: boolean };
+  | { cardPart: string; on: boolean }
+  /** Повторный выбор того же варианта и "off" — выключить. */
+  | { voice: VoiceAccent | "off" };
 
 export const getSettings = () => call<{ settings: Settings }>("/api/settings").then((r) => r.settings);
 export const changeSetting = (change: SettingChange) => post<{ settings: Settings }>("/api/settings", change).then((r) => r.settings);

@@ -15,7 +15,7 @@ describe("🐞 /bug", () => {
     expect(bug.description).toBe("кнопки странно подписаны");
     const lines = bug.context.transcript.map((e) => `${e.from}: ${e.text}`);
     expect(lines[0]).toBe("user: /settings");
-    expect(lines.some((l) => l.startsWith("bot: ⚙️ Настройки") && l.includes("[кнопки: ⏰ Напоминания | 🎯 Упражнения | 🃏 Карточка]"))).toBe(true);
+    expect(lines.some((l) => l.startsWith("bot: ⚙️ Настройки") && l.includes("[кнопки: ⏰ Напоминания | 🎯 Упражнения | 🃏 Карточка | 🗣 Озвучка карточек]"))).toBe(true);
     expect(lines.some((l) => l === "user: [нажал кнопку ss:modes]")).toBe(true);
     expect(lines.some((l) => l.includes("/bug"))).toBe(false);
   });

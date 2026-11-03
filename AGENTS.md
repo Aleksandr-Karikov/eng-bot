@@ -86,8 +86,12 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
   в `drizzle/` **коммитить**. Миграции применяет только сам бот при старте.
 - Скрипты работают с живой базой в режиме `createDb(path, { migrate: false })` — схему они не меняют.
 - База: `data/eng-bot.sqlite` (WAL). Бэкап — `scripts/backup.sh`, 14 последних в `data/backups/`.
-- Бот живёт под launchd (`~/Library/LaunchAgents/com.engbot.*.plist`): бот, бэкап в 04:00, туннель ngrok.
-  Логи — `data/logs/`. **Не запускайте `npm start` параллельно с launchd** — Telegram ответит 409.
+- Бот живёт под launchd (`~/Library/LaunchAgents/com.engbot.*.plist`): бот, бэкап в 04:00, туннель ngrok,
+  сторож (`scripts/watchdog.ts`, раз в минуту). Логи — `data/logs/`. **Не запускайте `npm start`
+  параллельно с launchd** — Telegram ответит 409.
+- Сторож — отдельный процесс, потому что бот не может сообщить о собственной смерти. Логика решений
+  (что считать поломкой, когда писать, что писать) — чистые функции в `src/services/monitor.ts`,
+  их проверяет `tests/watchdog.test.ts`; сеть, диск и Telegram — только в скрипте.
 - `data/` целиком в `.gitignore`. Ничего оттуда не коммитить.
 
 ## Баги

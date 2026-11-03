@@ -9,6 +9,8 @@ import type { WeeklyReport } from "../services/weekly-report";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
 import type { WordDraft } from "../services/words";
+import { voiceLabel } from "../services/voice";
+import type { SettingsScreen } from "./keyboards";
 
 export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -477,10 +479,19 @@ export function mistakesText(p: MistakeProfile, resolved: Map<string, number> = 
   ].join("\n");
 }
 
-export function settingsText(user: User, screen: "main" | "remind" | "modes" | "card" = "main"): string {
+export function settingsText(user: User, screen: SettingsScreen = "main"): string {
   if (screen === "remind") return `⏰ Напоминаю в ${user.reminderTime} (${user.timezone}). Выбери час или отправь /settings ЧЧ:ММ`;
   if (screen === "modes") return "🎯 Упражнения в /learn — каждая карточка приходит в случайном из включённых (новое слово — сначала EN → RU):";
   if (screen === "card") return "🃏 Что показывать на карточке в /learn (перевод — всегда):";
+  if (screen === "voice") {
+    return [
+      "🗣 <b>Озвучка карточек в приложении.</b>",
+      "",
+      "В боте слово всегда звучит по кнопке. В приложении (Mini App) выбранный вариант играет сам — как только карточка показала ответ.",
+      "",
+      `Сейчас: <b>${esc(voiceLabel(user))}</b>.`,
+    ].join("\n");
+  }
   return `⚙️ Настройки\n\n⏰ Напоминание в ${user.reminderTime}`;
 }
 

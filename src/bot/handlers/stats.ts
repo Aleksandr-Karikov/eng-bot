@@ -1,8 +1,10 @@
 import type { Bot } from "grammy";
+import { currentLang } from "../../lang";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
 import { personalStats, roomLeaderboard } from "../../services/stats";
 import { toggleCardPart } from "../../services/card-view";
+import { autoVoice, toggleVoiceAccent } from "../../services/voice";
 import { updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
@@ -113,6 +115,15 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const user = await updateUser(deps.db, ctx.user.id, { reminderTime: time });
     await ctx.answerCallbackQuery({ text: `Буду напоминать в ${time}` });
     await ctx.editMessageText(settingsText(user, "remind"), { reply_markup: settingsKeyboard(user, "remind") });
+  });
+
+  bot.callbackQuery(/^vo:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "voice") return void (await ctx.answerCallbackQuery());
+    const user = await updateUser(deps.db, ctx.user.id, { voiceAccent: toggleVoiceAccent(ctx.user.voiceAccent, cb.accent) });
+    const accent = autoVoice(user);
+    await ctx.answerCallbackQuery({ text: accent ? `Буду включать ${currentLang().accentLabel[accent]}` : "Озвучка карточек выключена" });
+    await ctx.editMessageText(settingsText(user, "voice"), { reply_markup: settingsKeyboard(user, "voice") });
   });
 
   bot.callbackQuery(/^ss:/, async (ctx) => {

@@ -25,6 +25,12 @@ export const users = sqliteTable("users", {
   modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
+  /**
+   * Озвучка карточек в Mini App: каким произношением играть сразу при показе карточки.
+   * "uk" / "us", см. services/voice.ts. Колонка и есть «включено/выключено»: пусто — не играть.
+   * По умолчанию включена (DEFAULT_VOICE_ACCENT) — таково же и «выключено» у тех, кто её убрал.
+   */
+  voiceAccent: text("voice_accent").notNull().default("uk"),
   /** Уведомлять, когда снова накопились слова к повторению. */
   notifyDue: integer("notify_due", { mode: "boolean" }).notNull().default(true),
   /** Личный ключ расширения браузера (/extension): по нему бот понимает, чьё слово пришло. */
