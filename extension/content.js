@@ -107,7 +107,7 @@
       state.index -= 1;
     }
     // Пока мышь над панелью, новая реплика не выбивает старую из-под курсора.
-    if ((!state.hover && !state.selection) || state.index < 0) {
+    if (!state.hover || state.index < 0) {
       state.index = state.lines.length - 1;
       state.selection = null;
     }
