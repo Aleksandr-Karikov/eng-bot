@@ -94,7 +94,7 @@ export interface WordEnricher {
 export const MAX_EXTRACT = 100;
 
 const enrichmentFields = {
-  translation: z.string().trim().min(1),
+  translation: z.string().trim().min(1).refine((s) => /[а-яё]/i.test(s), "translation must be in Russian"),
   explanation: z.string().trim().default(""),
   example: z.string().trim().default(""),
   transcription_uk: z.string().trim().default(""),

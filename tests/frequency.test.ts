@@ -35,7 +35,7 @@ describe("usefulness by rules", () => {
   });
 
   it("the model answers questions with options; unknown answers are ignored", () => {
-    const e = parseEnrichment(JSON.stringify({ translation: "x", sense: "Rare", register: "whatever", phrase_frequency: "" }));
+    const e = parseEnrichment(JSON.stringify({ translation: "редкий", sense: "Rare", register: "whatever", phrase_frequency: "" }));
     expect(e).toMatchObject({ sense: "rare", register: undefined, phraseFrequency: undefined });
   });
 

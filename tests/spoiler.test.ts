@@ -20,6 +20,8 @@ describe("answers under a spoiler", () => {
     expect(String(card.payload.text)).toMatch(/^<b>bank<\/b>/);
     expect(String(card.payload.text)).toContain("<tg-spoiler><b>берег");
     expect(String(card.payload.text)).toContain("край реки");
+    expect(String(card.payload.text)).toContain("<tg-spoiler>край реки");
+    expect(String(card.payload.text)).not.toContain("<blockquote");
     const labels = lastButtons(h.calls).map((b) => b.text);
     expect(labels).toContain("😎 Помню");
     expect(labels).toContain("✅ Уже знаю");

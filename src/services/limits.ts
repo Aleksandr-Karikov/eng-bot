@@ -31,6 +31,7 @@ import { localParts } from "../time";
  */
 export type QuotaKind =
   | "inline_translate"
+  | "explain"
   | "image"
   | "image_redraw"
   | "add_word"
@@ -74,6 +75,12 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     period: "day",
     limit: 30,
     refusal: "На сегодня хватит переводов (30). Продолжим завтра, а пока — добавь слово в словарь и повторяй его.",
+  },
+  explain: {
+    kind: "explain",
+    period: "day",
+    limit: 30,
+    refusal: "Разборов фраз на сегодня достаточно. Продолжим завтра.",
   },
   image: {
     kind: "image",
@@ -270,6 +277,7 @@ export async function checkAndCount(
  */
 const QUOTA_NAMES: Record<QuotaKind, string> = {
   inline_translate: "Перевод в инлайне",
+  explain: "Объяснения в расширении",
   image: "Картинки к словам",
   image_redraw: "Перерисовки",
   add_word: "Новые слова",

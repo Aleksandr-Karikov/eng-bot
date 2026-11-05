@@ -6,7 +6,7 @@ import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
-import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
+import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { ensurePersonalRoom, getRoom, isMember, listMembers } from "../services/rooms";
 import { isLangCode, withLang } from "../lang";
 
@@ -53,6 +53,24 @@ export async function capture(deps: Deps, input: CaptureInput): Promise<CaptureR
   const roomId = user.currentRoomId ?? (await ensurePersonalRoom(deps.db, user.id, deps.now())).id;
   // Перевод и подсказки — на языке комнаты, куда слово попадёт.
   return withLang(await roomLanguage(deps, roomId), () => captureInto(deps, input, user, roomId));
+}
+
+/** Разобрать выделение в его реплике, не сохраняя слово в словарь. */
+export async function explainSelection(deps: Deps, input: CaptureInput) {
+  const user = await userByCaptureKey(deps, input.key);
+  if (!user) return { ok: false as const, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
+  const context = (input.context ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CONTEXT);
+  const text = cleanSelection(input.text ?? "");
+  if (!text || text.length > MAX_CONTEXT) return { ok: false as const, status: 400, error: "Выдели слово, фразу или реплику покороче" };
+  const quota = await checkAndCount(deps.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: deps.now() });
+  if (!quota.allowed) return { ok: false as const, status: 429, error: quota.refusal };
+  try {
+    const answer = await withLang(await roomLanguage(deps, user.currentRoomId), () => deps.enricher.enrich(text, undefined, context || undefined));
+    return { ok: true as const, translation: answer.translation, explanation: answer.explanation, example: answer.example };
+  } catch (err) {
+    console.error("Explain selection failed", err instanceof Error ? err.name : "unknown error");
+    return { ok: false as const, status: 502, error: "Не получилось объяснить — попробуй ещё раз" };
+  }
 }
 
 async function roomLanguage(deps: Deps, roomId: number | null) {

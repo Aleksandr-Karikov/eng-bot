@@ -181,10 +181,12 @@
       <button class="wb-next" title="Следующая реплика">▶</button>
       <span class="wb-status">Клик — слово, клик по другому — фраза. ➕ без выделения — вся реплика</span>
       <span class="wb-count" title="Добавлено за этот сеанс"></span>
+      <button class="wb-explain" title="Объяснить выделенное в этой реплике">Объясни</button>
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
       <button class="wb-close" title="Скрыть панель">✕</button>
     </div>
+    <div class="wb-explanation" hidden></div>
     <div class="wb-queue"></div>
     <div class="wb-toast"></div>
     <div class="wb-pop wb-hidden"><span class="wb-pop-text"></span><button class="wb-pop-example">📍 Ещё пример</button><button class="wb-pop-close">✕</button></div>`;
@@ -194,6 +196,10 @@
   const countEl = panel.querySelector(".wb-count");
   const popEl = panel.querySelector(".wb-pop");
   const queueEl = panel.querySelector(".wb-queue");
+  const explanationEl = panel.querySelector(".wb-explanation");
+  let explanationContext = "";
+  let explanationSelection = "";
+  let explainRequest = 0;
 
   function showPopup(entry) {
     state.popup = entry;
@@ -255,6 +261,7 @@
   function render() {
     const line = state.lines[state.index];
     panel.classList.toggle("wb-hidden", !line && !state.notice && !state.queue.length);
+    explanationEl.hidden = !line || explanationContext !== line || explanationSelection !== selectedText();
     countEl.textContent = state.added.size ? `➕ ${state.added.size}` : "";
     lineEl.textContent = "";
     if (!line) return;
@@ -309,6 +316,29 @@
     state.selection = null;
     state.anchor = null;
     render();
+  }
+
+  async function explain() {
+    const context = state.lines[state.index];
+    if (!context) return;
+    const selection = selectedText();
+    const request = ++explainRequest;
+    explanationContext = context;
+    explanationSelection = selection;
+    explanationEl.textContent = "Объясняю…";
+    explanationEl.hidden = false;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "explain", payload: { text: selection || context, context } });
+      if (request !== explainRequest) return;
+      explanationEl.textContent = res?.ok
+        ? [`${selection || context} — ${res.translation}`, res.explanation, res.example ? `Пример: ${res.example}` : ""].filter(Boolean).join("\n")
+        : res?.error ?? "Расширение не ответило — обнови страницу";
+    } catch {
+      if (request !== explainRequest) return;
+      explanationEl.textContent = "Расширение обновилось — перезагрузи страницу";
+    }
+    render();
+    position();
   }
 
   function enqueue(text, context) {
@@ -472,6 +502,7 @@
   });
 
   panel.querySelector(".wb-add").addEventListener("click", send);
+  panel.querySelector(".wb-explain").addEventListener("click", () => void explain());
   panel.querySelector(".wb-pop-example").addEventListener("click", sendExample);
   panel.querySelector(".wb-pop-close").addEventListener("click", hidePopup);
   panel.querySelector(".wb-settings").addEventListener("click", () => chrome.runtime.sendMessage({ type: "openOptions" }));

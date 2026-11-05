@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, parseEnrichment } from "../src/llm/enricher";
+import { buildPrompt, parseEnrichment, parseExtraction } from "../src/llm/enricher";
 
 const ok = { translation: "счастливая случайность", explanation: "Удачное открытие.", example: "It was pure serendipity." };
 
@@ -15,7 +15,15 @@ describe("parseEnrichment", () => {
   it("throws on garbage and on missing translation", () => {
     expect(() => parseEnrichment("не знаю")).toThrow();
     expect(() => parseEnrichment(JSON.stringify({ ...ok, translation: "" }))).toThrow();
+    expect(() => parseEnrichment(JSON.stringify({ ...ok, translation: "steady-handed experts" }))).toThrow();
   });
+});
+
+it("drops extracted words whose translation is still English", () => {
+  expect(parseExtraction(JSON.stringify([
+    { term: "steady-handed", ...ok, translation: "steady-handed experts" },
+    { term: "bank", ...ok, translation: "берег" },
+  ])).map((w) => w.term)).toEqual(["bank"]);
 });
 
 describe("buildPrompt", () => {

@@ -129,8 +129,7 @@ export function draftText(d: WordDraft): string {
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
 /** Карточка EN → RU. view — что показывать (настройка пользователя); запоминалка под спойлером, т.к. подсказывает ответ. */
 /**
- * Подробности — в свёрнутой цитате: основной ответ остаётся коротким, остальное раскрывается по тапу.
- * Внутри тоже спойлер — иначе первые строки свёрнутого блока подсказывали бы ответ до проверки.
+ * Подробности — под спойлером, чтобы объяснение не подсказывало ответ до проверки.
  */
 function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView, withExplanation: boolean): string {
   let text = "";
@@ -140,7 +139,7 @@ function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: s
   if (view.collocations && word.collocations) text += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) text += `\n\n<b>Как запомнить:</b> ${esc(word.mnemonic)}`;
   const body = text.replace(/^\n\n/, "");
-  return body ? `\n\n<blockquote expandable><tg-spoiler>${body}</tg-spoiler></blockquote>` : "";
+  return body ? `\n\n<tg-spoiler>${body}</tg-spoiler>` : "";
 }
 
 export function cardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {

@@ -75,6 +75,15 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
         }),
       );
     }
+    if (message.type === "explain") {
+      return reply(
+        await call("/explain", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...message.payload, key }),
+        }),
+      );
+    }
   })();
   return true; // ответ асинхронный
 });

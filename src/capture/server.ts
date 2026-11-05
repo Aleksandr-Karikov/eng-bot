@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { getRoom } from "../services/rooms";
 import type { Deps } from "../bot/context";
-import { addExample, capture, knownWords, MAX_IMAGE_BYTES, readImage, userByCaptureKey, type CaptureInput } from "./capture";
+import { addExample, capture, explainSelection, knownWords, MAX_IMAGE_BYTES, readImage, userByCaptureKey, type CaptureInput } from "./capture";
 
 const MAX_BODY = 16 * 1024;
 
@@ -73,6 +73,15 @@ export function startCaptureServer(deps: Deps, port: number): Server {
           title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
         };
         const result = await capture(deps, input);
+        return send(result.ok ? 200 : result.status, result);
+      }
+      if (req.method === "POST" && url.pathname === "/explain") {
+        const body = (await readJson(req)) as Partial<CaptureInput>;
+        const result = await explainSelection(deps, {
+          key: String(body.key ?? ""),
+          text: typeof body.text === "string" ? body.text : "",
+          context: typeof body.context === "string" ? body.context : "",
+        });
         return send(result.ok ? 200 : result.status, result);
       }
       if (req.method === "POST" && url.pathname === "/read-image") {

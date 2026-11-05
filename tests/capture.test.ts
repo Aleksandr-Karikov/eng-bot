@@ -8,7 +8,8 @@ import type { Server } from "node:http";
 import { rooms, words } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
-import { capture, cleanSelection, readImage } from "../src/capture/capture";
+import { capture, cleanSelection, explainSelection, readImage } from "../src/capture/capture";
+import { quotaUsed } from "../src/services/limits";
 import { startCaptureServer } from "../src/capture/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { getUser, updateUser } from "../src/services/users";
@@ -42,6 +43,18 @@ afterEach(() => {
 });
 
 describe("words from the browser extension", () => {
+  it("explains a selection in its context without adding a word", async () => {
+    const { h, enrich, user } = await setup();
+    expect(await explainSelection(h.deps, { key: "wrong", text: "long shot", context: line })).toMatchObject({ ok: false, status: 401 });
+    expect(await explainSelection(h.deps, { key: "secret-key", text: "", context: line })).toMatchObject({ ok: false, status: 400 });
+    expect(await explainSelection(h.deps, { key: "secret-key", text: "a long shot", context: line })).toEqual({
+      ok: true, translation: "ходить вокруг да около", explanation: "", example: "",
+    });
+    expect(enrich).toHaveBeenCalledWith("a long shot", undefined, line);
+    expect(await h.db.select().from(words)).toEqual([]);
+    expect(await quotaUsed(h.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: T0 })).toBe(1);
+  });
+
   it("trims quotes and punctuation around a selection", () => {
     expect(cleanSelection(" “bush,” ")).toBe("bush");
     expect(cleanSelection("— a long shot.")).toBe("a long shot");
@@ -106,6 +119,8 @@ describe("words from the browser extension", () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     expect(await (await fetch(`${base}/ping?key=secret-key`)).json()).toEqual({ ok: true, name: "User100", room: "R" });
     expect((await fetch(`${base}/ping?key=bad`)).status).toBe(401);
+    const explanation = await fetch(`${base}/explain`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "secret-key", text: "a long shot", context: line }) });
+    expect(await explanation.json()).toMatchObject({ ok: true, translation: "ходить вокруг да около" });
     const res = await fetch(`${base}/capture`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "secret-key", text: "long shot", context: line }) });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { added: unknown[] }).added).toHaveLength(1);
