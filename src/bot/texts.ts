@@ -151,10 +151,6 @@ export function knowPrompt(adderName: string, word: Word, roomName: string): str
   return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b> — <tg-spoiler>${esc(word.translation)}</tg-spoiler>${withTranscription(word)}\n\nЗнаешь это слово?`;
 }
 
-export function announceText(adderName: string, word: Word): string {
-  return `📥 ${esc(adderName)} добавил(а) слово\n\n${draftText(word)}`;
-}
-
 /** due — число к повторению или по отдельности: к повторению и новые. */
 export function reminderText(due: number | { review: number; fresh: number }, friend?: { name: string; reviews: number }): string {
   const { review, fresh } = typeof due === "number" ? { review: due, fresh: 0 } : due;

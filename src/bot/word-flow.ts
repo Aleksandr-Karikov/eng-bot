@@ -4,7 +4,7 @@ import { HTML, type BotContext, type Deps } from "./context";
 import type { Draft } from "./drafts";
 import { clearPendingInputs } from "./pending";
 import { draftKeyboard, knowKeyboard } from "./keyboards";
-import { announceText, batchSummaryText, draftText, esc, knowPrompt } from "./texts";
+import { batchSummaryText, draftText, esc, knowPrompt } from "./texts";
 
 /** Комната для добавления: текущая — в личке, привязанная — в группе. Сам объясняет пользователю, если её нет. */
 export async function resolveRoom(ctx: BotContext, deps: Deps): Promise<Room | undefined> {
@@ -35,13 +35,10 @@ export async function sendPreview(ctx: BotContext, draft: Draft): Promise<void> 
   await ctx.reply(text, { ...HTML, reply_markup: draftKeyboard(draft.id, draft.batchId !== undefined) });
 }
 
-/** Одно слово: объявление в группу и «знаешь?» каждому участнику, кроме автора. */
-export async function broadcastWord(deps: Deps, word: Word, members: User[], adder: User, currentChatId?: number) {
+/** Одно слово: «знаешь?» каждому участнику, кроме автора. */
+export async function broadcastWord(deps: Deps, word: Word, members: User[], adder: User) {
   const room = await getRoom(deps.db, word.roomId);
   if (!room) return;
-  if (room.telegramChatId != null && room.telegramChatId !== currentChatId) {
-    await deps.notifier.group(room.telegramChatId, announceText(adder.firstName, word), HTML);
-  }
   for (const member of members) {
     if (member.id === adder.id) continue;
     await deps.notifier.dm(member, knowPrompt(adder.firstName, word, room.name), {
@@ -52,14 +49,11 @@ export async function broadcastWord(deps: Deps, word: Word, members: User[], add
 }
 
 /** Пачка слов: одно сводное сообщение вместо «знаешь?» на каждое слово. */
-export async function broadcastBatch(deps: Deps, roomId: number, words: Word[], adder: User, currentChatId?: number) {
+export async function broadcastBatch(deps: Deps, roomId: number, words: Word[], adder: User) {
   if (words.length === 0) return;
   const room = await getRoom(deps.db, roomId);
   if (!room) return;
   const text = batchSummaryText(adder.firstName, words, room.name);
-  if (room.telegramChatId != null && room.telegramChatId !== currentChatId) {
-    await deps.notifier.group(room.telegramChatId, text, HTML);
-  }
   for (const member of await listMembers(deps.db, roomId)) {
     if (member.id !== adder.id) await deps.notifier.dm(member, text, HTML);
   }

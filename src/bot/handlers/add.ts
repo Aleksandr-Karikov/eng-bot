@@ -111,6 +111,6 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone });
     await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });
     const { word, members } = result;
-    background(ctx, () => broadcastWord(deps, word, members, ctx.user, ctx.chat?.id));
+    background(ctx, () => broadcastWord(deps, word, members, ctx.user));
   });
 }
