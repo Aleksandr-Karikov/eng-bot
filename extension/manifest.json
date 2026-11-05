@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WordBoss — слова в Telegram-бота",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Слова и фразы с любой страницы — в Telegram-бота WordBoss: панель субтитров поверх видео на любом сайте (Alt+Shift+V), рамка вокруг любого текста или картинки, правый клик по выделенному.",
   "permissions": [
     "storage",

@@ -182,6 +182,7 @@
       <span class="wb-status">Клик — слово, клик по другому — фраза. ➕ без выделения — вся реплика</span>
       <span class="wb-count" title="Добавлено за этот сеанс"></span>
       <button class="wb-explain" title="Объяснить выделенное в этой реплике">Объясни</button>
+      <button class="wb-copy" title="Скопировать выделенное или всю реплику">Копировать</button>
       <button class="wb-add" title="Добавить в бота (Enter)">➕ В бота</button>
       <button class="wb-settings" title="Настройки">⚙</button>
       <button class="wb-close" title="Скрыть панель">✕</button>
@@ -503,6 +504,16 @@
 
   panel.querySelector(".wb-add").addEventListener("click", send);
   panel.querySelector(".wb-explain").addEventListener("click", () => void explain());
+  panel.querySelector(".wb-copy").addEventListener("click", async () => {
+    const text = selectedText() || state.lines[state.index];
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Скопировано", "wb-ok");
+    } catch {
+      toast("Не удалось скопировать", "wb-err");
+    }
+  });
   panel.querySelector(".wb-pop-example").addEventListener("click", sendExample);
   panel.querySelector(".wb-pop-close").addEventListener("click", hidePopup);
   panel.querySelector(".wb-settings").addEventListener("click", () => chrome.runtime.sendMessage({ type: "openOptions" }));
