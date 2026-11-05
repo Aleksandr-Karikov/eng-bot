@@ -96,7 +96,7 @@ function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ 
   if (quotas && quotas.length > 0) {
     lines.push("");
     lines.push("<b>Лимиты сегодня</b>");
-    for (const q of quotas) lines.push(quotaLine(q.kind as QuotaKind, q.used));
+    for (const q of quotas) lines.push(q.kind === "explain" ? `Объяснения в расширении: без лимита для админа, обычно ${q.limit} в день` : quotaLine(q.kind as QuotaKind, q.used));
   }
 
   // Источники — рядом с лимитами: и то и другое админ смотрит, чтобы понять, что происходит с людьми.

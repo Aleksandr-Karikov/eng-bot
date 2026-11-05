@@ -14,7 +14,7 @@ export interface TgUser {
 export type UserPatch = Partial<
   Pick<
     User,
-    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "lastReportDate" | "lastDueNoticeAt"
+    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "explainLimit" | "lastReportDate" | "lastDueNoticeAt"
   >
 >;
 

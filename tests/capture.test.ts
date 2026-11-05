@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { capture, cleanSelection, explainSelection, readImage } from "../src/capture/capture";
 import { quotaUsed } from "../src/services/limits";
+import { usageCounters } from "../src/db/schema";
 import { startCaptureServer } from "../src/capture/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { getUser, updateUser } from "../src/services/users";
@@ -53,6 +54,18 @@ describe("words from the browser extension", () => {
     expect(enrich).toHaveBeenCalledWith("a long shot", undefined, line);
     expect(await h.db.select().from(words)).toEqual([]);
     expect(await quotaUsed(h.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: T0 })).toBe(1);
+  });
+
+  it("ignores the admin's explain limit and uses a friend's personal limit", async () => {
+    const { h, user } = await setup();
+    h.deps.adminTelegramId = user.telegramId;
+    await h.db.insert(usageCounters).values({ userId: user.id, kind: "explain", period: "2026-10-15", scope: "", count: 30, updatedAt: T0 });
+    expect((await explainSelection(h.deps, { key: "secret-key", text: "long shot", context: line })).ok).toBe(true);
+    expect(await quotaUsed(h.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: T0 })).toBe(30);
+    h.deps.adminTelegramId = 999;
+    expect((await explainSelection(h.deps, { key: "secret-key", text: "long shot", context: line })).ok).toBe(false);
+    await updateUser(h.db, user.id, { explainLimit: 100 });
+    expect((await explainSelection(h.deps, { key: "secret-key", text: "long shot", context: line })).ok).toBe(true);
   });
 
   it("trims quotes and punctuation around a selection", () => {

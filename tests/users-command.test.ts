@@ -5,7 +5,7 @@ import { listUsers } from "../src/services/user-list";
 import { createRoom } from "../src/services/rooms";
 import { answerCard } from "../src/services/review";
 import { saveWord } from "../src/services/words";
-import { setSourceOnce, upsertUser } from "../src/services/users";
+import { getUserByTelegramId, setSourceOnce, upsertUser } from "../src/services/users";
 import { botHarness } from "./bot-harness";
 import { DAY, T0, at, makeUser, testDb } from "./helpers";
 
@@ -112,5 +112,20 @@ describe("/users", () => {
     const h = botHarness({ adminTelegramId: ADMIN });
     await h.bot.handleUpdate(h.message(ADMIN, "/users 777"));
     expect(lastText(h)).toContain("Никого не нашёл");
+  });
+});
+
+describe("/explainlimit", () => {
+  it("lets only the admin set, inspect and reset a user's explain limit", async () => {
+    const h = botHarness({ adminTelegramId: ADMIN });
+    await makeUser(h.db, 101, "Alice");
+    await h.bot.handleUpdate(h.message(STRANGER, "/explainlimit 101 100"));
+    expect((await getUserByTelegramId(h.db, 101))?.explainLimit).toBeNull();
+    await h.bot.handleUpdate(h.message(ADMIN, "/explainlimit 101 100"));
+    expect((await getUserByTelegramId(h.db, 101))?.explainLimit).toBe(100);
+    await h.bot.handleUpdate(h.message(ADMIN, "/explainlimit 101"));
+    expect(lastText(h)).toContain("100 объяснений в день");
+    await h.bot.handleUpdate(h.message(ADMIN, "/explainlimit 101 обычный"));
+    expect((await getUserByTelegramId(h.db, 101))?.explainLimit).toBeNull();
   });
 });

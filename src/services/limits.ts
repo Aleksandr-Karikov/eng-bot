@@ -63,7 +63,7 @@ export interface Quota {
 }
 
 /**
- * Квоты на время запуска. Тарифов пока нет — у всех одинаково (docs/product-plan.md, «Тарифы»).
+ * Квоты на время запуска. Тарифов пока нет; исключения для объяснений — в capture.ts.
  *
  * `inline_translate` — перевод нового слова прямо из инлайн-режима: человек написал `@бот слово`,
  * слова нет в словарях, и бот зовёт модель. Это единственный вызов модели, доступный **незнакомому**
@@ -247,16 +247,17 @@ export async function quotaUsed(
  */
 export async function checkAndCount(
   db: Db,
-  input: { userId: number; kind: QuotaKind; timeZone: string; now: Date; wordId?: number },
+  input: { userId: number; kind: QuotaKind; timeZone: string; now: Date; wordId?: number; limit?: number },
 ): Promise<QuotaState> {
   const quota = QUOTAS[input.kind];
+  const limit = input.limit ?? quota.limit;
   const period = periodKey(quota.period, input.timeZone, input.now);
   const scope = scopeOf(quota, input.wordId);
   const key = { userId: input.userId, period, kind: input.kind, scope };
   const used = await quotaUsed(db, input);
 
-  if (used >= quota.limit) {
-    return { allowed: false, used, limit: quota.limit, refusal: quota.refusal };
+  if (used >= limit) {
+    return { allowed: false, used, limit, refusal: quota.refusal };
   }
 
   // ON CONFLICT … DO UPDATE SET count = count + 1 — переносимо между SQLite и Postgres.
@@ -268,7 +269,7 @@ export async function checkAndCount(
       set: { count: sql`${usageCounters.count} + 1`, updatedAt: input.now },
     });
 
-  return { allowed: true, used: used + 1, limit: quota.limit, refusal: quota.refusal };
+  return { allowed: true, used: used + 1, limit, refusal: quota.refusal };
 }
 
 /**

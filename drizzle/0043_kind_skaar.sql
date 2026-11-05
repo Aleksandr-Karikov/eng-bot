@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `explain_limit` integer;

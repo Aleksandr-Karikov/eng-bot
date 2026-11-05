@@ -62,8 +62,10 @@ export async function explainSelection(deps: Deps, input: CaptureInput) {
   const context = (input.context ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_CONTEXT);
   const text = cleanSelection(input.text ?? "");
   if (!text || text.length > MAX_CONTEXT) return { ok: false as const, status: 400, error: "Выдели слово, фразу или реплику покороче" };
-  const quota = await checkAndCount(deps.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: deps.now() });
-  if (!quota.allowed) return { ok: false as const, status: 429, error: quota.refusal };
+  if (user.telegramId !== deps.adminTelegramId) {
+    const quota = await checkAndCount(deps.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: deps.now(), limit: user.explainLimit ?? undefined });
+    if (!quota.allowed) return { ok: false as const, status: 429, error: quota.refusal };
+  }
   try {
     const answer = await withLang(await roomLanguage(deps, user.currentRoomId), () => deps.enricher.enrich(text, undefined, context || undefined));
     return { ok: true as const, translation: answer.translation, explanation: answer.explanation, example: answer.example };

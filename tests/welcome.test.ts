@@ -63,7 +63,7 @@ describe("simpler menus", () => {
     expect(COMMANDS.length).toBeLessThanOrEqual(15);
     // Админские команды живут отдельно: в общее меню и /help они не попадают.
     expect(COMMANDS.map((c) => c.command)).not.toEqual(expect.arrayContaining(["status", "users"]));
-    expect(ADMIN_COMMANDS.map((c) => c.command)).toEqual(["status", "users"]);
+    expect(ADMIN_COMMANDS.map((c) => c.command)).toEqual(["status", "users", "explainlimit"]);
     expect(GROUP_COMMANDS.map((c) => c.command)).toEqual(expect.arrayContaining(["check", "duel", "link"]));
   });
 

@@ -2,6 +2,8 @@ import type { Bot } from "grammy";
 import type { BotContext, Deps } from "../context";
 import { HTML } from "../context";
 import { listUsers, type UserRow } from "../../services/user-list";
+import { QUOTAS } from "../../services/limits";
+import { getUserByTelegramId, updateUser } from "../../services/users";
 import { esc } from "../texts";
 
 /** Сколько символов в одном сообщении: Telegram режет на 4096, берём с запасом под длинный ник. */
@@ -60,5 +62,21 @@ export function registerUsers(bot: Bot<BotContext>, deps: Deps): void {
     }
 
     for (const message of pack(rows, ctx.user.timezone)) await ctx.reply(message, HTML);
+  });
+
+  bot.command("explainlimit", async (ctx) => {
+    if (!deps.adminTelegramId || ctx.from?.id !== deps.adminTelegramId) return void (await ctx.reply("Команда только для админа.", HTML));
+    if (ctx.chat.type !== "private") return void (await ctx.reply("Настрой лимит в личке с ботом.", HTML));
+    const [idText, limitText, ...extra] = ctx.match.trim().split(/\s+/);
+    const telegramId = Number(idText);
+    if (!/^\d+$/.test(idText ?? "") || !Number.isSafeInteger(telegramId) || telegramId <= 0 || extra.length || (limitText && limitText !== "обычный" && (!/^\d+$/.test(limitText) || Number(limitText) < 1 || Number(limitText) > 1000))) {
+      return void (await ctx.reply("Формат: /explainlimit Telegram_ID 100. Сброс: /explainlimit Telegram_ID обычный. ID виден в /users.", HTML));
+    }
+    const user = await getUserByTelegramId(deps.db, telegramId);
+    if (!user) return void (await ctx.reply("Пользователь не найден. ID виден в /users.", HTML));
+    if (user.telegramId === deps.adminTelegramId) return void (await ctx.reply("Для администратора объяснения без лимита.", HTML));
+    if (!limitText) return void (await ctx.reply(`${esc(user.firstName)}: ${user.explainLimit ?? QUOTAS.explain.limit} объяснений в день.`, HTML));
+    const updated = await updateUser(deps.db, user.id, { explainLimit: limitText === "обычный" ? null : Number(limitText) });
+    await ctx.reply(`${esc(updated.firstName)}: ${updated.explainLimit ?? QUOTAS.explain.limit} объяснений в день.`, HTML);
   });
 }

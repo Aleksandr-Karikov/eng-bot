@@ -35,6 +35,8 @@ export const users = sqliteTable("users", {
   notifyDue: integer("notify_due", { mode: "boolean" }).notNull().default(true),
   /** Личный ключ расширения браузера (/extension): по нему бот понимает, чьё слово пришло. */
   captureKey: text("capture_key").unique(),
+  /** Личный дневной лимит кнопки «Объясни»; null — обычный лимит. */
+  explainLimit: integer("explain_limit"),
   /** Личный итог недели в личку по воскресеньям. */
   weeklyReport: integer("weekly_report", { mode: "boolean" }).notNull().default(true),
   /** Дата (воскресенье) последнего личного итога. */

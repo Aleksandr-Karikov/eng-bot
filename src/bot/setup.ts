@@ -59,6 +59,7 @@ export const COMMANDS = [
 export const ADMIN_COMMANDS = [
   { command: "status", description: "Чем бот работает (только админ)" },
   { command: "users", description: "Кто в боте и как активен (только админ)" },
+  { command: "explainlimit", description: "Лимит объяснений для пользователя" },
 ];
 
 /** Меню в группах — то, что там имеет смысл. */

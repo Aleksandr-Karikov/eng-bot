@@ -302,6 +302,13 @@
       "when": 1793852442268,
       "tag": "0042_lyrical_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1793859481693,
+      "tag": "0043_kind_skaar",
+      "breakpoints": true
     }
   ]
 }
