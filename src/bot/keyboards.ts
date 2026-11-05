@@ -347,14 +347,16 @@ export function addUndoRow(kb: InlineKeyboard, undo: { cardId: number; answer: s
   return kb.row().text(`↩️ Отменить «${ANSWER_LABELS[undo.answer] ?? undo.answer}»`, encodeCb({ k: "undo", cardId: undo.cardId, stage: undo.stage })).row();
 }
 
-export function practiceStartKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("🔁 Потренироваться вне зачёта", encodeCb({ k: "practiceStart" }));
+export function practiceStartKeyboard(stormCount = 0): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (stormCount >= 3) kb.text(`🧠 Штурм ${stormCount} трудных слов`, "ps").row();
+  return kb.text("🔁 Потренироваться вне зачёта", encodeCb({ k: "practiceStart" }));
 }
 
-export function practiceKeyboard(cardId: number, wordId: number, withAudio: boolean): InlineKeyboard {
+export function practiceKeyboard(cardId: number, wordId: number, withAudio: boolean, attempt?: number): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("😵 Забыл", encodeCb({ k: "practiceRate", cardId, remembered: false }))
-    .text("😎 Помню", encodeCb({ k: "practiceRate", cardId, remembered: true }))
+    .text("😵 Забыл", encodeCb({ k: "practiceRate", cardId, remembered: false, attempt }))
+    .text("😎 Помню", encodeCb({ k: "practiceRate", cardId, remembered: true, attempt }))
     .row();
   if (withAudio) addAudioRow(kb, wordId);
   return addManageButton(kb.text("⏹ Хватит", encodeCb({ k: "practiceStop" })).row(), wordId);

@@ -10,6 +10,7 @@ import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
+import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/storm";
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
@@ -191,6 +192,7 @@ const countAnswer = (deps: Deps, userId: number) => sessionCountsOf(deps).set(us
 
 /** Разбор трудного слова, который покажем перед следующей карточкой. */
 const leechNoticesOf = perBot<{ wordId: number; forgot: number }>();
+const stormStartsOf = perBot<Array<{ cardId: number; triggerLogId: number }>>();
 
 /**
  * После ответа на карточку: если она дорастает до «вставь по смыслу» — готовим предложения,
@@ -293,7 +295,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     const { total } = await personalStats(deps.db, ctx.user, deps.now());
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
-    replyMarkup = addUndoRow(practiceStartKeyboard(), undo);
+    replyMarkup = addUndoRow(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length), undo);
     sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
@@ -308,12 +310,23 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   clearPendingInputs(deps, ctx.user.id);
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   const cardId = deps.practice.next(ctx.user.id);
+  const storm = deps.practice.isStorm(ctx.user.id);
   const item = cardId !== undefined ? await getDueItemByCard(deps.db, ctx.user.id, cardId) : undefined;
   if (!item) {
+    if (storm) {
+      const candidates = stormStartsOf(deps).get(ctx.user.id);
+      if (candidates) await markStormStarted(deps.db, candidates);
+      stormStartsOf(deps).delete(ctx.user.id);
+    }
     deps.practice.stop(ctx.user.id);
-    return void (await present(ctx, practiceDoneText(), HTML, mode));
+    return void (await present(ctx, storm ? "🧠 Штурм закончен. Слова вернутся в обычные повторы по расписанию." : practiceDoneText(), HTML, mode));
   }
   const { card, word } = item;
+  if (storm) {
+    const view = cardView(ctx.user);
+    const text = deps.practice.stormReverse(ctx.user.id) ? reverseCardText(word, view) : cardText(word, view);
+    return void (await present(ctx, `🧠 <b>Штурм</b> · вне зачёта\n\n${text}`, { ...HTML, reply_markup: practiceKeyboard(card.id, word.id, view.audio, deps.practice.stormAttempt(ctx.user.id)) }, mode));
+  }
   const modes = userModes(ctx);
   const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
   const optional = word.usefulness === 1;
@@ -336,6 +349,8 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
   endLongModes(deps, ctx.user.id);
+  deps.practice.stop(ctx.user.id);
+  stormStartsOf(deps).delete(ctx.user.id);
   pausesOf(deps).delete(ctx.user.id);
   sessionCountsOf(deps).set(ctx.user.id, 0);
   prefetchDrill(ctx, deps);
@@ -512,11 +527,27 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const queue = await practiceQueue(deps.db, ctx.user.id);
     if (queue.length === 0) return void (await ctx.reply("Пока не на чем тренироваться — сначала поучи новые слова в /learn"));
     endLongModes(deps, ctx.user.id);
+    stormStartsOf(deps).delete(ctx.user.id);
     deps.practice.start(ctx.user.id, queue);
     await showPractice(ctx, deps, "reply");
   });
 
+  bot.callbackQuery(/^ps$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const candidates = await stormCandidates(deps.db, ctx.user.id);
+    if (candidates.length < STORM_MIN) return void (await ctx.reply("Пока не набралось достаточно трудных слов для штурма."));
+    endLongModes(deps, ctx.user.id);
+    stormStartsOf(deps).set(ctx.user.id, candidates);
+    deps.practice.startStorm(ctx.user.id, candidates.map((c) => c.cardId));
+    await showPractice(ctx, deps, "reply");
+  });
+
   bot.callbackQuery(/^pr:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "practiceRate") return void (await ctx.answerCallbackQuery());
+    if (deps.practice.isStorm(ctx.user.id) && !deps.practice.stormAnswer(ctx.user.id, cb.cardId, cb.remembered, cb.attempt)) {
+      return void (await ctx.answerCallbackQuery({ text: "Этот ответ уже учтён" }));
+    }
     void ctx.answerCallbackQuery().catch(() => {});
     await showPractice(ctx, deps, "replace");
   });
@@ -534,6 +565,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
 
   bot.callbackQuery(/^pz$/, async (ctx) => {
     await ctx.answerCallbackQuery();
+    stormStartsOf(deps).delete(ctx.user.id);
     deps.practice.stop(ctx.user.id);
     clearPendingInputs(deps, ctx.user.id);
     await ctx.editMessageReplyMarkup().catch(() => {});

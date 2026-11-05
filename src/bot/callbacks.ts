@@ -13,7 +13,7 @@ export type Cb =
   | { k: "rate"; cardId: number; reps: number; answer: Answer; stage?: Stage }
   | { k: "learn" }
   | { k: "practiceStart" }
-  | { k: "practiceRate"; cardId: number; remembered: boolean }
+  | { k: "practiceRate"; cardId: number; remembered: boolean; attempt?: number }
   | { k: "practiceDunno"; cardId: number }
   | { k: "practiceStop" }
   /** «▶ Дальше» под разбором ответа: что показать следом — карточку /learn, тренировку или вопрос /drill. */
@@ -129,7 +129,7 @@ export function encodeCb(cb: Cb): string {
     case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "learn": return "l";
     case "practiceStart": return "px";
-    case "practiceRate": return `pr:${cb.cardId}:${cb.remembered ? "g" : "a"}`;
+    case "practiceRate": return `pr:${cb.cardId}:${cb.remembered ? "g" : "a"}${cb.attempt !== undefined ? `:${cb.attempt}` : ""}`;
     case "practiceDunno": return `pu:${cb.cardId}`;
     case "practiceStop": return "pz";
     case "next": return `nx:${cb.then[0]}`;
@@ -230,8 +230,9 @@ export function decodeCb(data: string): Cb | null {
       return then ? { k: "next", then } : null;
     }
     case "pr": {
-      const cardId = int(a);
-      return cardId !== null && (b === "g" || b === "a") ? { k: "practiceRate", cardId, remembered: b === "g" } : null;
+      const cardId = int(a), attempt = int(c);
+      return cardId !== null && (b === "g" || b === "a") && (c === undefined || attempt !== null)
+        ? { k: "practiceRate", cardId, remembered: b === "g", ...(attempt !== null ? { attempt } : {}) } : null;
     }
     case "pu": {
       const cardId = int(a);

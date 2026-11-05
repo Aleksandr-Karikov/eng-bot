@@ -1,5 +1,5 @@
 import { currentLang, langForms } from "../lang";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import { CARD_PART_LABELS, MODE_LABELS } from "../bot/keyboards";
@@ -8,7 +8,7 @@ import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services
 import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
-import { HARD_AFTER_LAPSES } from "../services/hard-words";
+import { isStormHard } from "../services/storm";
 import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
@@ -35,14 +35,14 @@ export async function appWords(deps: Deps, user: User): Promise<{ room: string |
   const list = await listRoomWords(deps.db, room.id);
   const ids = list.map((w) => w.id);
   const mine = ids.length ? await deps.db.select().from(cards).where(and(eq(cards.userId, user.id), inArray(cards.wordId, ids))) : [];
-  const forgot = new Map<number, number>();
+  const history = new Map<number, string[]>();
   const cardIds = mine.map((c) => c.id);
   if (cardIds.length) {
     const logs = await deps.db
-      .select({ cardId: reviewLogs.cardId })
+      .select({ cardId: reviewLogs.cardId, rating: reviewLogs.rating })
       .from(reviewLogs)
-      .where(and(inArray(reviewLogs.cardId, cardIds), eq(reviewLogs.rating, "again")));
-    for (const { cardId } of logs) forgot.set(cardId, (forgot.get(cardId) ?? 0) + 1);
+      .where(inArray(reviewLogs.cardId, cardIds)).orderBy(asc(reviewLogs.id));
+    for (const { cardId, rating } of logs) history.set(cardId, [...(history.get(cardId) ?? []), rating]);
   }
   const byWord = new Map(mine.map((c) => [c.wordId, c]));
   return {
@@ -53,7 +53,7 @@ export async function appWords(deps: Deps, user: User): Promise<{ room: string |
         ? "dropped"
         : card.state === State.New
           ? "new"
-          : (forgot.get(card.id) ?? 0) >= HARD_AFTER_LAPSES
+          : isStormHard(history.get(card.id) ?? [])
             ? "hard"
             : isLearned(card)
               ? "known"

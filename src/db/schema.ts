@@ -230,6 +230,12 @@ export const pendingExercises = sqliteTable("pending_exercises", {
   since: integer("since", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Последний обычный провал, по которому пользователь уже запустил штурм слова. */
+export const stormStarts = sqliteTable("storm_starts", {
+  cardId: integer("card_id").primaryKey().references(() => cards.id, { onDelete: "cascade" }),
+  triggerLogId: integer("trigger_log_id").notNull(),
+});
+
 /** /bug: описание от пользователя и снимок того, что было вокруг (переписка, ошибки в логах). */
 export const bugReports = sqliteTable("bug_reports", {
   id: integer("id").primaryKey({ autoIncrement: true }),
