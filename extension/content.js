@@ -107,7 +107,7 @@
       state.index -= 1;
     }
     // Пока мышь над панелью, новая реплика не выбивает старую из-под курсора.
-    if (!state.hover || state.index < 0) {
+    if ((!state.hover && !state.selection) || state.index < 0) {
       state.index = state.lines.length - 1;
       state.selection = null;
     }
@@ -494,10 +494,9 @@
     hidePopup();
     if (state.pausedByUs && state.video) state.video.play().catch(() => {});
     state.pausedByUs = false;
-    // Вернуться к текущей реплике — только у субтитров; текст из рамки листают сами.
-    if (state.video && (state.index !== state.lines.length - 1 || state.selection)) {
+    // Вернуться к текущей реплике, если ничего не выделено; текст из рамки листают сами.
+    if (state.video && !state.selection && state.index !== state.lines.length - 1) {
       state.index = state.lines.length - 1;
-      state.selection = null;
       render();
     }
   });
