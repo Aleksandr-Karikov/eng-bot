@@ -21,6 +21,7 @@ import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
 import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { practiceQueue } from "../services/practice";
+import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId } from "../services/users";
 import { wordLanguage } from "../services/words";
@@ -154,6 +155,7 @@ async function queueItems(deps: Deps, user: User, mode: QueueMode) {
 export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"): Promise<AppItem[]> {
   const items = await queueItems(deps, user, mode);
   const practice = mode === "hard";
+  const weak = practice ? new Map() : await weakDirections(deps.db, items.map(({ card }) => card.id));
   const modes = {
     en_ru: user.modeEnRu,
     ru_en: user.modeRuEn,
@@ -174,7 +176,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
     const stage = optional
       ? "en_ru"
-      : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(collocations?.quiz));
+      : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(collocations?.quiz), weak.get(card.id));
     const cloze = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     cards.push({
       kind: "card",

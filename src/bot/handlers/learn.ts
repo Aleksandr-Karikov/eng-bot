@@ -10,6 +10,7 @@ import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
+import { weakDirections } from "../../services/weak-direction";
 import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/storm";
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
@@ -267,7 +268,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     if (modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
     // Необязательное слово учим только на узнавание: EN → RU, без упражнений на употребление.
     const again = forced?.stage === "en_ru" || forced?.stage === "ru_en" ? forced.stage : forced ? "en_ru" : undefined;
-    const picked = again ?? (optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz)));
+    const weak = !forced && !optional ? (await weakDirections(deps.db, [card.id])).get(card.id) : undefined;
+    const picked = again ?? (optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz), weak));
     if (await presentSpecial(ctx, deps, item, picked, mode, false, undo)) return;
     const stage = SPECIAL.includes(picked) ? "en_ru" : picked;
     const sentence = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;

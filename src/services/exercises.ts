@@ -22,6 +22,7 @@ export function pickStage(
   random: () => number,
   /** Для слова готов вопрос на сочетания. */
   collocationReady = false,
+  weakDirection?: "en_ru" | "ru_en",
 ): Stage {
   if (card.state === State.New) return FIRST_MEETING.find((s) => modes[s]) ?? "en_ru";
   const available = STAGES.filter(
@@ -32,6 +33,7 @@ export function pickStage(
       (s !== "sentence" || (card.reps ?? 0) >= SENTENCE_MIN_REPS),
   );
   if (available.length === 0) return "en_ru";
+  if (weakDirection && available.includes(weakDirection) && random() < 0.5) return weakDirection;
   return available[Math.min(available.length - 1, Math.floor(random() * available.length))];
 }
 
