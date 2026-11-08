@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Eng Bot IP certificate twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
