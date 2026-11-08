@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy Eng Bot after GitHub CI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=engbot
+Group=engbot
+WorkingDirectory=/opt/eng-bot-git
+ExecStart=/usr/bin/python3 scripts/server/deploy.py
