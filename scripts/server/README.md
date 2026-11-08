@@ -1,7 +1,7 @@
 # Сервер
 
 Бот работает из `/opt/eng-bot-git`; `data/` и `.env` — ссылки на `/opt/eng-bot/`, вне Git. Для
-Linux нужны Node.js 24, `ffmpeg`, `espeak-ng` и Python с Kokoro из `tools/tts/README.md`.
+Linux нужны Node.js 24, `ffmpeg`, `espeak-ng`, `zip` и Python с Kokoro из `tools/tts/README.md`.
 Распознавание речи не установлено.
 
 После push в `main` GitHub Actions запускает тесты, typecheck и сборку Mini App. Таймер

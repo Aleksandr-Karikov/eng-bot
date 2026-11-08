@@ -41,7 +41,7 @@ async function packExtension(preset: { key: string; server: string }): Promise<B
 }
 
 /**
- * Куда расширению слать слова: если приложение открыто наружу (ngrok по APP_URL), сервер приложения
+ * Куда расширению слать слова: если приложение открыто наружу (по APP_URL), сервер приложения
  * пробрасывает /ext на сервер расширения — работает с любого компьютера; иначе только localhost.
  */
 function extensionServer(deps: Deps): string {
@@ -89,7 +89,7 @@ export function registerExtension(bot: Bot<BotContext>, deps: Deps): void {
         return void (await ctx.reply("Не получилось упаковать расширение 😔"));
       }
       await ctx.replyWithDocument(new InputFile(zip, `wordboss-extension-${extensionVersion()}.zip`), {
-        caption: "Распакуй архив → chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → выбери папку wordboss. Ключ и адрес уже внутри — настраивать ничего не надо. Архив личный, не пересылай его.",
+        caption: "Удали старую версию → распакуй архив → chrome://extensions → «Режим разработчика» → «Загрузить распакованное» → выбери папку wordboss. Ключ и адрес уже внутри — настраивать ничего не надо. Архив личный, не пересылай его.",
       });
     });
   });

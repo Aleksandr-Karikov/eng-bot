@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WordBoss — слова в Telegram-бота",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Слова и фразы с любой страницы — в Telegram-бота WordBoss: панель субтитров поверх видео на любом сайте (Alt+Shift+V), рамка вокруг любого текста или картинки, правый клик по выделенному.",
   "permissions": [
     "storage",
@@ -12,10 +12,7 @@
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
-    "https://*.ngrok-free.app/*",
-    "https://*.ngrok-free.dev/*",
-    "https://*.ngrok.app/*",
-    "https://*.ngrok.dev/*"
+    "https://144.31.167.217/*"
   ],
   "optional_host_permissions": [
     "<all_urls>"

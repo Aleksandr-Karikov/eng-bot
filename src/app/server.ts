@@ -157,7 +157,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return r.ok ? c.json({ ok: true, settings: await appSettings(deps, r.user) }) : c.json(r, 400);
   });
 
-  // Сервер расширения — через тот же адрес (/ext/…), чтобы хватало одного туннеля ngrok.
+  // Сервер расширения — через тот же публичный адрес (/ext/…), что и Mini App.
   if (deps.capturePort) {
     app.all("/ext/*", (c) => {
       const url = new URL(c.req.url);
@@ -172,7 +172,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   return app;
 }
 
-/** Только 127.0.0.1: снаружи — через ngrok (или туннель/хостинг), который пробрасывает этот порт. */
+/** Только 127.0.0.1: снаружи — через HTTPS-прокси, который пробрасывает этот порт. */
 export function startAppServer(ctx: AppContext, port: number): ServerType {
   const server = serve({ fetch: createApp(ctx).fetch, port, hostname: "127.0.0.1" }, () => console.log(`Mini App on http://127.0.0.1:${port}/app/`));
   // Порт занят или запрещён (ниже 1024 без прав) — без приложения, но бот продолжает работать.

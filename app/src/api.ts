@@ -74,9 +74,8 @@ function initData(): string {
 
 /**
  * Все запросы — с подписанными данными запуска Telegram: по ним бот понимает, кто это.
- * ngrok-skip-browser-warning — иначе бесплатный ngrok отдаёт на запрос свою страницу-предупреждение вместо JSON.
  */
-const headers = () => ({ authorization: `tma ${initData()}`, "ngrok-skip-browser-warning": "1" });
+const headers = () => ({ authorization: `tma ${initData()}` });
 
 /** Ошибка сервера с кодом: 409 — «уже учтено» (карточку уже оценили). */
 export class ApiError extends Error {

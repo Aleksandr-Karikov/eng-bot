@@ -107,7 +107,7 @@ FLUX.1-schnell рисует её (~20 с, пик памяти ~12 ГБ, по о�
 | Что | Где | Документация |
 |---|---|---|
 | Бот (grammY, long polling), серверы Mini App и приёма слов | `src/` | — |
-| Mini App с карточками (React + Vite, отдаётся ботом по `/app/`, наружу — ngrok) | `app/` | `app/README.md` |
+| Mini App с карточками (React + Vite, отдаётся ботом по `/app/`, наружу — HTTPS-прокси) | `app/` | `app/README.md` |
 | Расширение браузера: слова со страниц и субтитров | `extension/` | `extension/README.md` |
 | Озвучка Kokoro | `tools/tts/` | `tools/tts/README.md` |
 | Распознавание речи Whisper | `tools/stt/` | `tools/stt/README.md` |

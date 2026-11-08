@@ -156,6 +156,7 @@ describe("📦 the extension right in the chat", () => {
   it("sends a fresh zip of the extension folder", async () => {
     const { h } = await setup();
     h.deps.capturePort = 8787;
+    h.deps.appUrl = "https://144.31.167.217/app/";
     await h.bot.handleUpdate(h.message(100, "/extension"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "📦 Скачать расширение")));
     await vi.waitFor(() => expect(h.calls.some((c) => c.method === "sendDocument")).toBe(true));
@@ -166,7 +167,8 @@ describe("📦 the extension right in the chat", () => {
     const dir = mkdtempSync(join(tmpdir(), "ext-test-"));
     writeFileSync(join(dir, "ext.zip"), zip);
     const preset = JSON.parse(execFileSync("unzip", ["-p", join(dir, "ext.zip"), "wordboss/preset.json"], { encoding: "utf8" }));
-    expect(preset).toEqual({ key: "secret-key", server: "http://localhost:8787" });
-    expect(execFileSync("unzip", ["-l", join(dir, "ext.zip")], { encoding: "utf8" })).toContain("wordboss/manifest.json");
+    expect(preset).toEqual({ key: "secret-key", server: "https://144.31.167.217/ext" });
+    const manifest = JSON.parse(execFileSync("unzip", ["-p", join(dir, "ext.zip"), "wordboss/manifest.json"], { encoding: "utf8" }));
+    expect(manifest.host_permissions).toContain("https://144.31.167.217/*");
   });
 });

@@ -1,5 +1,5 @@
 // Сетевые запросы к боту — отсюда, а не из страницы: у расширения есть доступ к localhost без CORS и смешанного контента.
-const DEFAULT_SERVER = "http://localhost:8787";
+const DEFAULT_SERVER = "https://144.31.167.217/ext";
 
 /** Ключ и адрес, вписанные ботом в архив (preset.json); в папке из репозитория его нет. */
 async function preset() {
@@ -23,8 +23,7 @@ async function settings() {
 async function call(path, init) {
   const { server } = await settings();
   try {
-    // Без этого заголовка ngrok вместо ответа отдаёт свою страницу-предупреждение.
-    const res = await fetch(`${server}${path}`, { ...init, headers: { ...init?.headers, "ngrok-skip-browser-warning": "1" } });
+    const res = await fetch(`${server}${path}`, init);
     const body = await res.json().catch(() => ({}));
     return res.ok ? body : { ok: false, error: body.error || `Бот ответил ${res.status}` };
   } catch {
