@@ -29,7 +29,11 @@ if not any(c["name"] == "checks" and c["conclusion"] == "success" for c in check
     print(f"CI not passed for {latest[:12]}")
     raise SystemExit(0)
 
-run("git", "pull", "--ff-only", "origin", "main")
+run("git", "fetch", "origin", "main")
+fetched = subprocess.check_output(["git", "rev-parse", "FETCH_HEAD"], cwd=REPO, text=True).strip()
+if fetched != latest:
+    raise SystemExit("main changed during fetch; retry next time")
+run("git", "merge", "--ff-only", "FETCH_HEAD")
 run("npm", "ci", "--no-audit", "--no-fund")
 run("npm", "ci", "--no-audit", "--no-fund", cwd=f"{REPO}/app")
 run("npm", "run", "build", cwd=f"{REPO}/app")
