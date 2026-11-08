@@ -201,7 +201,7 @@ if (config.capturePort) {
   deps.capturePort = config.capturePort;
   captureServer = startCaptureServer(deps, config.capturePort);
 }
-if (config.appPort) startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort);
+const appServer = config.appPort ? startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort) : undefined;
 deps.appUrl = config.appUrl;
 setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS, { scope: { type: "all_private_chats" } });
@@ -244,6 +244,7 @@ const shutdown = () => {
   if (englishSpeech instanceof KokoroSynth) englishSpeech.close();
   recognizer?.close();
   captureServer?.close();
+  appServer?.close();
   void bot.stop();
 };
 process.once("SIGINT", shutdown);
