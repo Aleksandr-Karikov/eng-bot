@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg espeak-ng
       - run: npm ci
       - run: mkdir -p data
       - run: npm test

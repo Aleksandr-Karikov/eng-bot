@@ -26,7 +26,7 @@ export interface Config {
   adminTelegramId?: number;
   /** Python с wordfreq — частотность слов для оценки полезности. */
   wordfreqPython: string;
-  /** Python с Kokoro (tools/tts); нет такого файла — озвучка встроенным голосом macOS. */
+  /** Python с Kokoro (tools/tts); нет такого файла — системный голос. */
   ttsPython: string;
   /** Python с распознаванием речи (tools/stt); нет такого файла — голосовые не распознаются. */
   sttPython: string;

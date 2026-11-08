@@ -26,8 +26,8 @@ export function speakableText(text: string): string {
 }
 
 /**
- * Встроенный синтез macOS (`say`) + `ffmpeg`. Текст передаётся файлом, а не аргументом,
- * чтобы фраза вида "-o x" не стала параметром команды. На Linux заменить на Piper/espeak-ng.
+ * Системный синтез (`say` на macOS, `espeak-ng` на Linux) + `ffmpeg`.
+ * Текст передаётся файлом, чтобы фраза вида "-o x" не стала параметром команды.
  */
 export class MacSaySynth implements SpeechSynth {
   async synthesize(text: string, accent: Accent, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
@@ -35,16 +35,21 @@ export class MacSaySynth implements SpeechSynth {
   }
 }
 
-/** Фраза голосом macOS (`voice` — имя голоса из `say -v '?'`). */
+/** Фраза системным голосом (`voice` — имя голоса macOS; на Linux выбирается язык). */
 export async function macSay(text: string, voice: string, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "eng-bot-tts-"));
   try {
     const input = join(dir, "text.txt");
-    const aiff = join(dir, "speech.aiff");
+    const audio = join(dir, process.platform === "linux" ? "speech.wav" : "speech.aiff");
     const out = join(dir, `speech.${format}`);
     await writeFile(input, speakableText(text), "utf8");
-    await run("say", ["-v", voice, "-f", input, "-o", aiff], { timeout: 20_000 });
-    await encode(aiff, out, format);
+    if (process.platform === "linux") {
+      const lang = voice === RUSSIAN_VOICE ? "ru" : voice === "Yuna" ? "ko" : voice === VOICES.uk ? "en-gb" : "en-us";
+      await run("espeak-ng", ["-v", lang, "-f", input, "-w", audio], { timeout: 20_000 });
+    } else {
+      await run("say", ["-v", voice, "-f", input, "-o", audio], { timeout: 20_000 });
+    }
+    await encode(audio, out, format);
     return await readFile(out);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -59,7 +64,7 @@ async function encode(input: string, out: string, format: "ogg" | "m4a"): Promis
 
 /**
  * Озвучка на языке текущей операции (lang.ts): английский — основным синтезом (Kokoro или say),
- * другие языки — голосом macOS этого языка (у Kokoro корейского нет).
+ * другие языки — системным голосом этого языка (у Kokoro корейского нет).
  */
 export class LanguageAwareSynth implements SpeechSynth {
   constructor(readonly english: SpeechSynth) {}
@@ -75,9 +80,9 @@ const START_TIMEOUT_MS = 180_000;
 const PHRASE_TIMEOUT_MS = 30_000;
 
 /**
- * Нейросетевые голоса Kokoro (tools/tts): заметно естественнее `say`. Работает отдельным постоянным процессом
+ * Нейросетевые голоса Kokoro (tools/tts): заметно естественнее системного голоса. Работает отдельным постоянным процессом
  * на Python, чтобы модель грузилась один раз. Если процесс не запустился или упал — эта фраза озвучивается
- * запасным синтезом (`say`), а процесс перезапускается со следующей.
+ * запасным системным синтезом, а процесс перезапускается со следующей.
  */
 export class KokoroSynth implements SpeechSynth {
   private readonly worker: JsonLineWorker;
@@ -99,7 +104,7 @@ export class KokoroSynth implements SpeechSynth {
       await encode(wav, out, format);
       return await readFile(out);
     } catch (err) {
-      console.error("Kokoro failed, falling back to say", err instanceof Error ? err.message : err);
+      console.error("Kokoro failed, falling back to system voice", err instanceof Error ? err.message : err);
       return this.fallback.synthesize(text, accent, format);
     } finally {
       await rm(dir, { recursive: true, force: true });
