@@ -8,7 +8,7 @@ Type=simple
 User=engbot
 Group=engbot
 WorkingDirectory=/opt/eng-bot-git
-ExecStart=/usr/local/bin/node node_modules/tsx/dist/cli.mjs src/index.ts
+ExecStart=/usr/local/bin/node --import tsx src/index.ts
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
