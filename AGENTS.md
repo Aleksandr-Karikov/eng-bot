@@ -10,7 +10,7 @@ npm test          # vitest run, ~15 с (SQLite in-memory, сеть и LLM не �
 npm run typecheck # tsc --noEmit — тоже обязательно
 npm run db:generate  # drizzle-kit generate — ПОСЛЕ правки src/db/schema.ts
 npm start         # только локально и когда серверный бот остановлен: иначе Telegram 409
-# продакшен: push в main → CI → eng-bot-deploy.timer (или systemctl start eng-bot-deploy.service)
+# продакшен: push в main → CI checks → GitHub Actions deploy → eng-bot-deploy.service
 ```
 
 `npm test` и `npm run typecheck` должны быть зелёными до того, как вы отдадите работу. `tsconfig.json`
@@ -87,7 +87,8 @@ npm start         # только локально и когда серверны
 - Скрипты работают с живой базой в режиме `createDb(path, { migrate: false })` — схему они не меняют.
 - База на VPS: `/opt/eng-bot/data/eng-bot.sqlite` (WAL), код — `/opt/eng-bot-git`. Бэкап делает
   `eng-bot-backup.timer` через `scripts/server/backup.py`; последние 14 в `data/backups/`.
-- Продакшен живёт под systemd (`eng-bot.service`), деплоится после CI через `eng-bot-deploy.timer`.
+- Продакшен живёт под systemd (`eng-bot.service`), деплоится после CI через GitHub Actions,
+  который запускает `eng-bot-deploy.service` по ограниченному SSH-ключу.
   Mac launchd-задания `com.engbot.*` отключены. **Не запускайте второй экземпляр с тем же токеном**:
   Telegram ответит 409. Схема установки и восстановления — `docs/server-runbook.md`.
 - `scripts/watchdog.ts` и `scripts/launchd/` остались для Mac, на VPS не запущены. Логика решений

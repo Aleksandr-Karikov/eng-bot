@@ -26,3 +26,29 @@ jobs:
         working-directory: app
       - run: npm run build
         working-directory: app
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    concurrency:
+      group: eng-bot-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Trigger deployment on VPS
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/engbot_deploy
+          chmod 600 ~/.ssh/engbot_deploy
+          printf '%s\n' '144.31.167.217 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTGWOLt+HnTpvWFpp/e6WL7I2BYvSHCcAlHAQExaKV1' > ~/.ssh/known_hosts
+          for attempt in 1 2 3 4 5; do
+            if ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 -i ~/.ssh/engbot_deploy engbot-deploy@144.31.167.217; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1

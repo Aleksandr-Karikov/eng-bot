@@ -17,7 +17,7 @@
 | Расширение | `https://144.31.167.217/ext/*` → Mini App → локальный сервер приёма слов `127.0.0.1:8787` |
 | LLM и картинки | OpenRouter; `IMAGES_ENABLED=1` и `IMAGE_API_KEY`, локальный FLUX на Linux не используется |
 | Речь | Kokoro для английского, `espeak-ng` как системный голос и для остальных языков; STT отключён |
-| CI/CD | GitHub Actions `checks` → `eng-bot-deploy.timer` → `scripts/server/deploy.py` |
+| CI/CD | GitHub Actions `checks` → `deploy` по ограниченному SSH-ключу → `eng-bot-deploy.service` |
 | Бэкап | `eng-bot-backup.timer` → `scripts/server/backup.py`, последние 14 копий на том же диске |
 | HTTPS | Короткоживущий сертификат Let's Encrypt для IP, отдельный Certbot и `eng-bot-cert-renew.timer` |
 
@@ -137,7 +137,8 @@
    systemctl start eng-bot-backup.service
    ```
 
-   Бот и таймер деплоя пока не запускайте: сначала остановите прежний long polling процесс.
+   Бот пока не запускайте: сначала остановите прежний long polling процесс.
+   `eng-bot-deploy.timer` — прежний вариант с опросом GitHub; в рабочей конфигурации он выключен.
 
 7. Выпустить сертификат для IP **до** включения HTTPS-сайта. Сейчас Certbot 5.9 установлен
    отдельно в `/opt/certbot-ip`; его состояние — в `/etc/letsencrypt-ip`, рабочие файлы — в
@@ -179,21 +180,49 @@
    После остановки старого экземпляра:
 
    ```bash
-   systemctl enable --now eng-bot.service eng-bot-deploy.timer
+   systemctl enable --now eng-bot.service
    ```
+
+9. Для прямого деплоя из GitHub Actions создать отдельного SSH-пользователя `engbot-deploy`
+   и ключ. В `authorized_keys` разрешить ключу только принудительную команду
+   `/usr/bin/sudo -n /usr/bin/systemctl start eng-bot-deploy.service` с опцией `restrict`.
+   Пример на сервере после передачи **публичного** ключа в `/tmp/engbot-actions-deploy.pub`:
+
+   ```bash
+   useradd --system --create-home --home-dir /var/lib/engbot-deploy --shell /bin/sh engbot-deploy
+   install -d -o engbot-deploy -g engbot-deploy -m 700 /var/lib/engbot-deploy/.ssh
+   printf '%s ' 'restrict,command="/usr/bin/sudo -n /usr/bin/systemctl start eng-bot-deploy.service"' > /var/lib/engbot-deploy/.ssh/authorized_keys
+   cat /tmp/engbot-actions-deploy.pub >> /var/lib/engbot-deploy/.ssh/authorized_keys
+   chown engbot-deploy:engbot-deploy /var/lib/engbot-deploy/.ssh/authorized_keys
+   chmod 600 /var/lib/engbot-deploy/.ssh/authorized_keys
+   ```
+
+   В `/etc/sudoers.d/engbot-actions-deploy` (права `0440`) разрешить только эту команду:
+
+   ```text
+   engbot-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl start eng-bot-deploy.service
+   ```
+
+   Приватную часть отдельного ключа сохранить в секрете репозитория GitHub
+   `DEPLOY_SSH_KEY` командой `gh secret set DEPLOY_SSH_KEY --repo Aleksandr-Karikov/eng-bot
+   < ПУТЬ_К_ПРИВАТНОМУ_КЛЮЧУ`; публичный ключ сервера SSH закрепить в `.github/workflows/ci.yml`.
+   Не использовать для Actions root-ключ или `BOT_TOKEN`. Проверить ключ и право на запуск
+   вручную до первого push. Если IP или host key сервера поменялись, обновить SSH-адрес,
+   `known_hosts` в workflow и авторизацию на сервере.
 
 ## Выкладка и проверки
 
 GitHub Actions (`.github/workflows/ci.yml`) после push в `main` запускает тесты, typecheck и
-сборку Mini App на Linux с `ffmpeg` и `espeak-ng`. Каждые пять минут `eng-bot-deploy.timer`
-проверяет успешный check-run `checks` для точного HEAD `main`. Только после успеха
-`deploy.py` делает `git fetch`, fast-forward merge, `npm ci` в корне и `app/`, сборку,
-перезапуск бота и проверку `http://127.0.0.1:8788/app/`. Для немедленной выкладки после CI:
+сборку Mini App на Linux с `ffmpeg` и `espeak-ng`. Успешный job `checks` запускает job `deploy`:
+тот по SSH вызывает только `eng-bot-deploy.service`. На сервере `deploy.py` проверяет успешный
+check-run `checks` для точного HEAD `main`, делает `git fetch`, fast-forward merge, `npm ci` в
+корне и `app/`, сборку, перезапуск бота и проверку `http://127.0.0.1:8788/app/`.
+Если нужно повторить деплой после CI, запустите сервис вручную:
 
 ```bash
 systemctl start eng-bot-deploy.service
 runuser -u engbot -- git -C /opt/eng-bot-git rev-parse --short HEAD
-systemctl is-active eng-bot.service eng-bot-deploy.timer eng-bot-backup.timer eng-bot-cert-renew.timer
+systemctl is-active eng-bot.service eng-bot-backup.timer eng-bot-cert-renew.timer
 journalctl -u eng-bot.service -n 50 --no-pager
 journalctl -u eng-bot-deploy.service -n 50 --no-pager
 curl -fsS https://144.31.167.217/app/ > /dev/null

@@ -1,4 +1,4 @@
-"""Pull main after GitHub CI succeeds, then restart the bot."""
+"""Deploy main after GitHub CI succeeds, then check the bot."""
 
 import json
 import subprocess
@@ -15,10 +15,6 @@ def run(*args, cwd=REPO):
 
 
 latest = subprocess.check_output(["git", "ls-remote", URL, "refs/heads/main"], text=True).split()[0]
-current = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
-if latest == current:
-    raise SystemExit(0)
-
 request = Request(
     f"https://api.github.com/repos/Aleksandr-Karikov/eng-bot/commits/{latest}/check-runs",
     headers={"Accept": "application/vnd.github+json", "User-Agent": "eng-bot-deploy"},

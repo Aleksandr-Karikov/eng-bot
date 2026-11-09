@@ -7,14 +7,16 @@
 Linux нужны Node.js 24, `ffmpeg`, `espeak-ng`, `zip` и Python с Kokoro из `tools/tts/README.md`.
 Распознавание речи не установлено.
 
-После push в `main` GitHub Actions запускает тесты, typecheck и сборку Mini App. Таймер
-`eng-bot-deploy.timer` раз в пять минут смотрит результат; прошедший коммит забирает через
-`git fetch` и fast-forward merge, устанавливает зависимости, собирает Mini App и перезапускает сервис.
+После push в `main` GitHub Actions запускает тесты, typecheck и сборку Mini App, затем по
+ограниченному SSH-ключу запускает `eng-bot-deploy.service`. Сервис ещё раз проверяет CI для
+текущего HEAD `main`, делает `git fetch` и fast-forward merge, устанавливает зависимости,
+собирает Mini App и перезапускает бота. `eng-bot-deploy.timer` оставлен в репозитории как
+резервный вариант, на сервере выключен.
 
 ```bash
 systemctl status eng-bot.service
 journalctl -u eng-bot.service -n 50
-systemctl status eng-bot-deploy.timer
+systemctl status eng-bot-deploy.service
 systemctl status eng-bot-backup.timer
 ```
 
