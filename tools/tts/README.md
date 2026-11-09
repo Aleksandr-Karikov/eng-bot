@@ -7,4 +7,4 @@
     uv pip install --python .venv/bin/python kokoro==0.9.4 soundfile==0.13.1
 
 Первый запуск скачивает модель (~330 МБ). Бот запускает `kokoro_server.py` сам, если есть `.venv`;
-без него — встроенный голос macOS (`say`).
+без него — системный голос macOS (`say`) или Linux (`espeak-ng`).

@@ -9,8 +9,8 @@
 npm test          # vitest run, ~15 с (SQLite in-memory, сеть и LLM не нужны)
 npm run typecheck # tsc --noEmit — тоже обязательно
 npm run db:generate  # drizzle-kit generate — ПОСЛЕ правки src/db/schema.ts
-npm start         # запуск бота (не делать, если работает launchd — будет ошибка 409)
-scripts/launchd/restart.sh   # перезапуск бота после правки кода
+npm start         # только локально и когда серверный бот остановлен: иначе Telegram 409
+# продакшен: push в main → CI → eng-bot-deploy.timer (или systemctl start eng-bot-deploy.service)
 ```
 
 `npm test` и `npm run typecheck` должны быть зелёными до того, как вы отдадите работу. `tsconfig.json`
@@ -85,13 +85,13 @@ scripts/launchd/restart.sh   # перезапуск бота после прав
 - Схема — `src/db/schema.ts`. После её правки: `npm run db:generate`, получившуюся миграцию
   в `drizzle/` **коммитить**. Миграции применяет только сам бот при старте.
 - Скрипты работают с живой базой в режиме `createDb(path, { migrate: false })` — схему они не меняют.
-- База: `data/eng-bot.sqlite` (WAL). Бэкап — `scripts/backup.sh`, 14 последних в `data/backups/`.
-- Бот живёт под launchd (`~/Library/LaunchAgents/com.engbot.*.plist`): бот, бэкап в 04:00, туннель ngrok,
-  сторож (`scripts/watchdog.ts`, раз в минуту). Логи — `data/logs/`. **Не запускайте `npm start`
-  параллельно с launchd** — Telegram ответит 409.
-- Сторож — отдельный процесс, потому что бот не может сообщить о собственной смерти. Логика решений
-  (что считать поломкой, когда писать, что писать) — чистые функции в `src/services/monitor.ts`,
-  их проверяет `tests/watchdog.test.ts`; сеть, диск и Telegram — только в скрипте.
+- База на VPS: `/opt/eng-bot/data/eng-bot.sqlite` (WAL), код — `/opt/eng-bot-git`. Бэкап делает
+  `eng-bot-backup.timer` через `scripts/server/backup.py`; последние 14 в `data/backups/`.
+- Продакшен живёт под systemd (`eng-bot.service`), деплоится после CI через `eng-bot-deploy.timer`.
+  Mac launchd-задания `com.engbot.*` отключены. **Не запускайте второй экземпляр с тем же токеном**:
+  Telegram ответит 409. Схема установки и восстановления — `docs/server-runbook.md`.
+- `scripts/watchdog.ts` и `scripts/launchd/` остались для Mac, на VPS не запущены. Логика решений
+  сторожа — чистые функции в `src/services/monitor.ts`, их проверяет `tests/watchdog.test.ts`.
 - `data/` целиком в `.gitignore`. Ничего оттуда не коммитить.
 
 ## Баги
@@ -123,8 +123,7 @@ npx tsx scripts/bugs.ts --wontfix=12 --note="Почему так"
   циклы. Читать, когда непонятно, **где** искать, а не **как** написан код.
 - `docs/llm-models.md` — какие модели OpenRouter брать и почему не самые дешёвые: замеры цены
   и задержки на живом API. Читать перед сменой `OPENROUTER_*`.
-- `docs/scaling-plan.md` — переезд на VPS: картинки через API вместо локального MLX (на Linux не
-  работает), дубли слов, стоимость сервера, что сломается на Linux. Читать перед масштабированием.
-  Код картинок через API написан, но выключен: сейчас рисует локальный FLUX. Остальное — план.
+- `docs/server-runbook.md` — фактическая конфигурация VPS, повторная установка и восстановление.
+- `docs/scaling-plan.md` — исторический план переезда на VPS, а не текущее состояние.
 - `docs/superpowers/` — **историческое планирование MVP (октябрь 2026), не описание текущего состояния.**
   Актуальная картина — код, тесты, `AGENTS.md` и `docs/architecture.md`.

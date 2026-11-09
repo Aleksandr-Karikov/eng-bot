@@ -1,5 +1,8 @@
 # Сервер
 
+Полная конфигурация VPS, повторная установка, перенос данных и найденные проблемы —
+`docs/server-runbook.md`.
+
 Бот работает из `/opt/eng-bot-git`; `data/` и `.env` — ссылки на `/opt/eng-bot/`, вне Git. Для
 Linux нужны Node.js 24, `ffmpeg`, `espeak-ng`, `zip` и Python с Kokoro из `tools/tts/README.md`.
 Распознавание речи не установлено.
