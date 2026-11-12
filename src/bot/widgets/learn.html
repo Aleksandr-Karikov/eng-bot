@@ -1,0 +1,73 @@
+<style>
+body{margin:0;font-family:-apple-system,system-ui,sans-serif;color:var(--tx,#e9eef3)}
+#w{padding:14px;border-radius:12px;background:linear-gradient(160deg,rgba(94,181,247,.18),rgba(94,181,247,.04))}
+.top{display:flex;justify-content:space-between;font-size:12px;opacity:.65;margin-bottom:10px}
+.t{font-size:30px;font-weight:700;text-align:center;margin-top:6px;word-break:break-word}
+.s{font-size:13px;opacity:.65;text-align:center;margin:4px 0 10px}
+.e{font-size:13px;font-style:italic;opacity:.8;text-align:center;margin-bottom:12px}
+.box{border-radius:10px;padding:14px;text-align:center;margin-bottom:12px;transition:background .2s}
+.hid{border:1px dashed rgba(127,127,127,.5);font-size:14px;opacity:.75}
+.ans{background:rgba(94,181,247,.22);font-size:20px;font-weight:600}
+.row{display:flex;gap:8px;margin-top:8px}
+.b{flex:1;border:0;border-radius:10px;padding:12px 6px;font-size:15px;font-weight:600;color:inherit}
+.r{background:rgba(255,100,120,.25)}.g{background:rgba(80,200,130,.25)}.k{background:rgba(94,181,247,.25)}
+.m{text-align:center;font-size:15px;opacity:.8;margin:8px 0}
+.busy .b{opacity:.5}
+</style>
+<div id="w"></div>
+<script>
+var W = window.TelegramWidget, root = document.getElementById("w"), open = false, busy = false;
+if (W && W.themeParams && W.themeParams.text_color) document.body.style.setProperty("--tx", W.themeParams.text_color);
+function esc(s) {
+  return String(s || "").replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+}
+function card() {
+  try { return W && W.chatData ? JSON.parse(W.chatData) : null; } catch (e) { return null; }
+}
+function on(id, fn) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener("click", fn);
+}
+function rate(d, a) {
+  // Запрос — прямо из обработчика тапа: после await или таймера Telegram его отклонит.
+  if (busy) return;
+  busy = true;
+  root.className = "busy";
+  W.request(d.c + ":" + d.r + ":" + a + ":" + (d.n || 0)).then(function () {
+    busy = false;
+  }, function () {
+    busy = false;
+    root.className = "";
+    var m = document.getElementById("err");
+    if (m) m.textContent = "Не отправилось, нажми ещё раз";
+  });
+}
+function render() {
+  var d = card();
+  root.className = "";
+  if (!d) { root.innerHTML = '<p class="m">Карточка открывается только в Telegram</p>'; return; }
+  if (d.done) {
+    root.innerHTML = '<div class="t">🎉</div><p class="m">На сегодня всё' + (d.n ? " · ответов: " + d.n : "") + "</p>";
+    return;
+  }
+  var h = '<div class="top"><span>' + (d.new ? "🆕 Новое слово" : "📚 Повторение") + "</span><span>" + (d.n ? "✓ " + d.n : "") + "</span></div>" +
+    '<div class="t">' + esc(d.t) + "</div>" +
+    // s уже экранирована ботом (transcriptionLine).
+    (d.s ? '<div class="s">' + d.s + "</div>" : "") +
+    (d.e ? '<div class="e">' + esc(d.e) + "</div>" : "");
+  if (!open) {
+    h += '<div class="box hid" id="show">👆 Нажми, чтобы увидеть перевод</div>';
+  } else {
+    h += '<div class="box ans">' + esc(d.a) + "</div>" +
+      '<div class="row"><button class="b r" id="again">😵 Забыл</button><button class="b g" id="good">😎 Помню</button></div>' +
+      (d.new ? '<div class="row"><button class="b k" id="easy">✅ Уже знаю</button></div>' : "");
+  }
+  root.innerHTML = h + '<p class="m" id="err"></p>';
+  on("show", function () { open = true; render(); });
+  on("again", function () { rate(d, "again"); });
+  on("good", function () { rate(d, "good"); });
+  on("easy", function () { rate(d, "easy"); });
+}
+if (W) W.onEvent("chatDataChanged", function () { open = false; render(); });
+render();
+</script>

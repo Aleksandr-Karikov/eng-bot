@@ -26,6 +26,7 @@ import { registerLlm } from "./handlers/llm";
 import { registerStatus } from "./handlers/status";
 import { registerUsers } from "./handlers/users";
 import { registerInline } from "./handlers/inline";
+import { registerLearnWidget, widgetQueryContext } from "./handlers/learn-widget";
 import { buttonsText } from "./transcript";
 import { userMiddleware } from "./middleware";
 import { clearPendingInputs } from "./pending";
@@ -97,6 +98,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
     const what = ctx.callbackQuery?.data ?? (ctx.message?.text?.startsWith("/") ? ctx.message.text.split(/\s/)[0] : ctx.message ? "message" : "other");
     if (ms > SLOW_MS) console.warn(`Slow update (${ms} ms): ${what}`);
   });
+  bot.use(widgetQueryContext);
   bot.use(userMiddleware(deps));
   // Что писал и нажимал человек — для /bug.
   bot.use(async (ctx, next) => {
@@ -117,6 +119,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerAudio(bot, deps);
   registerMnemonic(bot, deps);
   registerLearn(bot, deps);
+  registerLearnWidget(bot, deps);
   registerStats(bot, deps);
   registerBatch(bot, deps);
   registerCheck(bot, deps);

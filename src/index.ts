@@ -252,4 +252,5 @@ process.once("SIGTERM", shutdown);
 
 console.log(`@${bot.botInfo.username} started`);
 // message_reaction не входит в обновления по умолчанию — без него 👀 для /check не придёт.
-await bot.start({ allowed_updates: [...API_CONSTANTS.DEFAULT_UPDATE_TYPES, "message_reaction"] });
+// widget_query — нажатия в виджете /learnnew; grammY этот тип ещё не знает.
+await bot.start({ allowed_updates: [...API_CONSTANTS.DEFAULT_UPDATE_TYPES, "message_reaction", "widget_query" as "message_reaction"] });
