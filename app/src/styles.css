@@ -218,21 +218,23 @@ body {
 .card-answer { flex-shrink: 0; max-width: 52%; text-align: right; }
 .card-answer .answer { line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; }
 
-/* До открытия ответ и всё под ним на месте, но размыты — вёрстка не меняется, поэтому нет прыжка.
-   Размытие, а не прозрачность: размеры остаются те же, и слово не переезжает на две строки. */
-.veiled { filter: blur(6px); opacity: 0.55; user-select: none; transition: filter 0.15s ease, opacity 0.15s ease; }
+/* До открытия ответ и всё под ним не видны, но занимают своё место: вёрстка не меняется,
+   поэтому нет прыжка и переноса. visibility, а не display — место сохраняется; blur подсказывал
+   длину слова пятном, для этого не годится. */
+.veiled { opacity: 0; visibility: hidden; user-select: none; transition: opacity 0.15s ease; }
 .card-rest { display: flex; flex-direction: column; gap: 10px; }
 
 /* Кегль по длине текста: длинная фраза не должна уезжать за край карточки. */
-.size-m { font-size: 28px; }
-.size-s { font-size: 22px; letter-spacing: -0.3px; }
-.size-xs { font-size: 17px; letter-spacing: -0.1px; }
-.card-answer.size-m { font-size: 22px; }
-.card-answer.size-s { font-size: 19px; }
-.card-answer.size-xs { font-size: 16px; }
+.size-m { font-size: 22px; }
+.size-s { font-size: 18px; letter-spacing: -0.2px; }
+.size-xs { font-size: 15px; letter-spacing: -0.1px; }
+.card-answer.size-m { font-size: 19px; }
+.card-answer.size-s { font-size: 17px; }
+.card-answer.size-xs { font-size: 15px; }
 
 /* Длинное слово и ответ рядом не влезают — ответ уходит под слово, а не обрезается. */
 .card-head.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+/* Ответ ушёл под вопрос — читается как продолжение строки, поэтому прижат влево, не по центру. */
 .card-head.stacked .card-answer { max-width: 100%; text-align: left; }
 
 /* Полезность — мелким чипом в левом верхнем углу: при заучивании нужна редко. */
