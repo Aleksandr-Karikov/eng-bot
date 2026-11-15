@@ -29,6 +29,10 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
   const enRu = card.stage === "en_ru";
   const withPicture = w.hasPicture && view.picture;
   const withVoice = Boolean(voice) && view.audio;
+  // Вопрос и ответ рядом не влезают, если хоть один длинный, — тогда ответ уходит под вопрос.
+  const question = enRu ? w.term : w.translation;
+  const answerText = enRu ? w.translation : w.term;
+  const stacked = question.trim().length + answerText.trim().length > 34;
 
   // Картинка грузится сразу при показе карточки (обычно уже подгружена заранее), а не после переворота.
   useEffect(() => {
@@ -83,6 +87,8 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
         }}
         onClick={reveal}
       >
+        {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
+        {w.usefulness ? <span className="useful-chip" title={`Полезность: ${w.usefulness} из 3`}>{usefulnessIcon(w.usefulness)}</span> : null}
         <motion.div className="stamp stamp-know" style={{ opacity: knowOpacity }}>
           ПОМНЮ
         </motion.div>
@@ -90,55 +96,56 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
           ЗАБЫЛ
         </motion.div>
 
-        {flipped ? (
-          <div className="back">
-            {/* Слово слева крупно, перевод справа акцентом: главная пара видна сразу, остальное мельче. */}
-            <div className="back-head">
-              <div className="back-term">
-                <div className="term">
-                  {w.term} {usefulnessIcon(w.usefulness)}
-                </div>
-                <div className="meta">
-                  {metaLine(w, view.transcription ? transcription(w) : "")}
-                </div>
+        {/* Шапка одна на обе стороны: слово стоит на месте, при открытии ответа карточка не прыгает.
+            Слева — то, что спрашивают; справа место под ответ, которое до переворота пустует. */}
+        <div className="card-body">
+          <div className={`card-head${stacked ? " stacked" : ""}`}>
+            <div className="card-head-main">
+              <div className={`term ${sizeOf(enRu ? w.term : w.translation)}`}>
+                {enRu ? w.term : w.translation}
               </div>
-              <div className="back-translation answer">{w.translation}</div>
+              <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
             </div>
-
-            {/* Родня — сразу под переводом: она важнее запоминалки, поэтому не спрятана. */}
-            <WordKin word={w} />
-
-            {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
-
-            {view.example && w.example && (
-              <div>
-                <div className="lbl">Пример</div>
-                <Text className="block example">
-                  <i>{w.example}</i>
-                </Text>
+            {flipped && (
+              <div className={`card-answer answer ${sizeOf(enRu ? w.translation : w.term)}`}>
+                {enRu ? w.translation : w.term}
               </div>
             )}
-
-            <WordForms word={w} />
-
-            {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
-            {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
-            {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
-
-            {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
-            {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
-        ) : (
-          <div className="front">
-            <div className="term">
-              {enRu ? w.term : w.translation} {usefulnessIcon(w.usefulness)}
-            </div>
-            <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
-            {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
-            {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
-            <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
-          </div>
-        )}
+
+          {flipped ? (
+            <>
+              {/* Родня — сразу под ответом: она важнее запоминалки, поэтому не спрятана. */}
+              <WordKin word={w} />
+
+              {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
+
+              {view.example && w.example && (
+                <div>
+                  <div className="lbl">Пример</div>
+                  <Text className="block example">
+                    <i>{w.example}</i>
+                  </Text>
+                </div>
+              )}
+
+              <WordForms word={w} />
+
+              {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
+              {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
+              {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
+
+              {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
+              {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
+            </>
+          ) : (
+            <>
+              {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
+              {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
+              <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
+            </>
+          )}
+        </div>
       </motion.div>
 
       {flipped && (
@@ -173,6 +180,18 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
       )}
     </div>
   );
+}
+
+/**
+ * Размер текста по длине: словами бывают и `mantelpiece`, и `something of a niggle regarding our business
+ * dealings` (53 символа). Кегль подбирается по длине, а не обрезается — иначе текст уезжал за край карточки.
+ * Классы, а не инлайн-стиль: правило в CSS рядом с остальными размерами карточки.
+ */
+function sizeOf(text: string): string {
+  const len = text.trim().length;
+  if (len > 28) return "size-xs";
+  if (len > 16) return "size-s";
+  return "size-m";
 }
 
 /** «транскрипция · часть речи · уровень» — одной строкой, мельче остального: это справка, а не главное. */

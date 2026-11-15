@@ -29,7 +29,6 @@ body {
   cursor: grab;
 }
 .front { display: flex; flex-direction: column; gap: 6px; text-align: center; padding-top: 18px; }
-.back { display: flex; flex-direction: column; gap: 10px; }
 .answer { text-align: center; color: var(--tg-theme-accent-text-color, #2481cc); }
 .block { line-height: 1.45; }
 .picture { width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 14px; overflow: hidden; background: var(--tg-theme-secondary-bg-color, #eee); }
@@ -40,7 +39,7 @@ body {
 .stamp {
   position: absolute;
   will-change: opacity;
-  top: 18px;
+  top: 24px;
   padding: 4px 10px;
   border: 3px solid;
   border-radius: 8px;
@@ -191,16 +190,39 @@ body {
 @media (max-width: 420px) { .correction-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
 
 /* Карточка слова: слово крупное, всё остальное мельче и плотнее — меньше скролла. */
-.term { font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -0.4px; color: var(--tg-theme-text-color, #111318); }
-.front .term { font-size: 30px; text-align: center; }
+/* Размер приходит из size-m/s/xs — он зависит от длины слова, а не от места на экране. */
+.term { line-height: 1.15; font-weight: 700; letter-spacing: -0.4px; color: var(--tg-theme-text-color, #111318); overflow-wrap: anywhere; }
+.front .term { text-align: center; }
 .meta { margin-top: 4px; font-size: 13px; line-height: 1.35; color: var(--tg-theme-hint-color, #5f6673); }
 .front .meta { text-align: center; }
 .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tg-theme-hint-color, #9aa0aa); }
 
-/* Слово слева, перевод справа: главная пара видна сразу, без двух строк во всю ширину. */
-.back-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.back-term { min-width: 0; }
-.back-translation { flex-shrink: 0; max-width: 52%; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; text-align: right; }
+/* Тело и шапка одни на обе стороны: слово стоит на одном месте, и при открытии
+   ответа карточка не перестраивается — меняется только правая часть шапки и то, что ниже. */
+.card-body { display: flex; flex-direction: column; gap: 10px; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 62px; }
+.card-head-main { min-width: 0; }
+/* Ответ — на том же уровне, что слово, справа. До переворота места под него нет, но высота шапки
+   зарезервирована, поэтому ничего не сдвигается. */
+/* Ответ — тот же кегль, что у слова: главная пара читается как пара. */
+.card-answer { flex-shrink: 0; max-width: 52%; line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; text-align: right; }
+
+/* Кегль по длине текста: длинная фраза не должна уезжать за край карточки. */
+.size-m { font-size: 28px; }
+.size-s { font-size: 22px; letter-spacing: -0.3px; }
+.size-xs { font-size: 17px; letter-spacing: -0.1px; }
+.card-answer.size-m { font-size: 22px; }
+.card-answer.size-s { font-size: 19px; }
+.card-answer.size-xs { font-size: 16px; }
+
+/* Длинное слово и ответ рядом не влезают — ответ уходит под слово, а не обрезается. */
+.card-head.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+.card-head.stacked .card-answer { max-width: 100%; text-align: left; }
+
+/* Полезность — мелким чипом в левом верхнем углу: при заучивании нужна редко. */
+/* В левом верхнем углу уже живёт штамп «ПОМНЮ» при свайпе — чип сидит над ним у самого края,
+   чтобы они не накладывались друг на друга. */
+.useful-chip { position: absolute; top: 6px; left: 12px; font-size: 10px; line-height: 1; opacity: 0.5; pointer-events: none; }
 
 /* Синонимы и антонимы в две колонки: сравнение, а не ещё один список подряд. */
 .kin { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border-radius: 12px; background: var(--tg-theme-secondary-bg-color, #f7f8fa); }
