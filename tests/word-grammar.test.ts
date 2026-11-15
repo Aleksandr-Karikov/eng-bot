@@ -83,6 +83,17 @@ describe("грамматика слова: часть речи, уровень, 
     expect(failing.grammar).toHaveBeenCalledTimes(1);
   });
 
+  // Идиома: модели нечего ответить, но карточка не должна спрашивать её на каждом показе.
+  it("does not ask again when the model found nothing to fill", async () => {
+    const { h, word } = await setup();
+    const empty = vi.fn(async () => ({ partOfSpeech: "", cefr: "", forms: [], synonyms: [], antonyms: [] }));
+    const gen = new GrammarGenerator(h.db, { ...h.deps.tutor, grammar: empty }, () => T0);
+    await gen.ensure(word);
+    await gen.ensure((await getWord(h.db, word.id))!);
+    expect(empty).toHaveBeenCalledTimes(1);
+    expect((await getWord(h.db, word.id))?.grammarAskedAt).toEqual(T0);
+  });
+
   it("keeps the card readable when the stored JSON is broken", () => {
     const d = { term: "variety", translation: "разнообразие", explanation: "", example: "" };
     expect(formsLine("{oops")).toBe("");

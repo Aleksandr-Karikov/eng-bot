@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `grammar_asked_at` integer;

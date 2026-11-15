@@ -14,10 +14,14 @@ export interface WordGrammarRow {
   partOfSpeech: string;
   cefr: string;
   forms: string;
+  grammarAskedAt?: Date | null;
 }
 
-/** Готово, если хоть что-то заполнено: у идиомы не бывает форм, и это не повод ходить в модель каждый раз. */
-const ready = (word: WordGrammarRow) => Boolean(word.partOfSpeech || word.forms !== "[]");
+/**
+ * Готово, если хоть что-то заполнено или модель уже спрашивали: у идиомы не бывает форм,
+ * и без второй отметки такая карточка дёргала бы модель при каждом показе.
+ */
+const ready = (word: WordGrammarRow) => Boolean(word.partOfSpeech || word.forms !== "[]" || word.grammarAskedAt);
 
 /**
  * Готовит грамматику слова в фоне — один запрос на слово, даже если попросили несколько раз.
@@ -31,6 +35,7 @@ export class GrammarGenerator {
   constructor(
     private readonly db: Db,
     private readonly tutor: ExerciseTutor,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   ensure(word: WordGrammarRow): Promise<void> {
@@ -62,6 +67,7 @@ export class GrammarGenerator {
         forms: JSON.stringify(generated.forms),
         synonyms: JSON.stringify(generated.synonyms),
         antonyms: JSON.stringify(generated.antonyms),
+        grammarAskedAt: this.now(),
       })
       .where(eq(words.id, word.id));
   }

@@ -131,6 +131,8 @@ export const words = sqliteTable(
     synonyms: text("synonyms").notNull().default("[]"),
     /** JSON Array<{ term, translation }>: антонимы. "[]" — ещё не готовили. */
     antonyms: text("antonyms").notNull().default("[]"),
+    /** Когда грамматику спрашивали у модели: чтобы не спрашивать снова, если она ответила «ничего нет». */
+    grammarAskedAt: integer("grammar_asked_at", { mode: "timestamp_ms" }),
     /** Telegram file_id картинки-ассоциации (по запоминалке). */
     imageFileId: text("image_file_id"),
     /** Когда слово было «словом дня» — чтобы не повторять его месяц. */

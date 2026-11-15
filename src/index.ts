@@ -138,7 +138,7 @@ const deps: Deps = {
   tutor: llm,
   clozeGen: new ClozeGenerator(db, llm, now),
   collocationGen: new CollocationGenerator(db, llm),
-  grammarGen: new GrammarGenerator(db, llm),
+  grammarGen: new GrammarGenerator(db, llm, now),
   mnemonicGen,
   drafts: new DraftStore(),
   batches: new BatchStore(),
