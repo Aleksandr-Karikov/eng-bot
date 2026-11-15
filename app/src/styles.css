@@ -184,6 +184,35 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .correction-field p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
 @media (max-width: 420px) { .correction-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
 
-/* Формы и родня на карточке: компактно, чтобы до кнопок не приходилось скроллить. */
-.grammar { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
-.grammar .block { font-size: 14px; line-height: 1.35; margin: 0; }
+/* Карточка слова: слово крупное, всё остальное мельче и плотнее — меньше скролла. */
+.term { font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -0.4px; color: var(--tg-theme-text-color, #111318); }
+.front .term { font-size: 30px; text-align: center; }
+.meta { margin-top: 4px; font-size: 13px; line-height: 1.35; color: var(--tg-theme-hint-color, #5f6673); }
+.front .meta { text-align: center; }
+.lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tg-theme-hint-color, #9aa0aa); }
+
+/* Слово слева, перевод справа: главная пара видна сразу, без двух строк во всю ширину. */
+.back-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.back-term { min-width: 0; }
+.back-translation { flex-shrink: 0; max-width: 46%; font-size: 18px; line-height: 1.25; font-weight: 600; text-align: right; }
+
+/* Синонимы и антонимы в две колонки: сравнение, а не ещё один список подряд. */
+.kin { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border-radius: 12px; background: var(--tg-theme-secondary-bg-color, #f7f8fa); }
+.kin:has(> :only-child) { grid-template-columns: 1fr; }
+.kin > :nth-child(2) { border-left: 1px solid var(--tg-theme-section-separator-color, #e4e7eb); padding-left: 10px; }
+
+.small { font-size: 14px; line-height: 1.45; }
+.pre { white-space: pre-line; }
+.example { font-size: 14px; line-height: 1.45; margin-top: 3px; }
+
+/* Формы — чипами в строку: одна-две штуки не должны занимать абзац. */
+.forms { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { padding: 2px 7px; border-radius: 6px; font-size: 12px; font-weight: 600; background: var(--tg-theme-secondary-bg-color, #eef2f7); color: var(--tg-theme-text-color, #3d4a5c); }
+
+/* Свёрнутый блок: до раскрытия — одна строка, поэтому карточка не растягивается. */
+.fold { padding-top: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, #ebedf0); }
+.fold-head { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 4px 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--tg-theme-link-color, #2481cc); cursor: pointer; }
+/* Тап-цель не меньше 44 px — иначе по заголовку трудно попасть. */
+.fold-head { min-height: 44px; }
+.fold-icon { color: var(--tg-theme-hint-color, #9aa0aa); transition: transform 0.15s ease; }
+.fold-icon.open { transform: rotate(180deg); }

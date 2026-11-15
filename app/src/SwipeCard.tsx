@@ -1,7 +1,7 @@
 import { cardAudioPath, playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
-import { Button, Text, Title } from "@telegram-apps/telegram-ui";
+import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
@@ -90,44 +90,54 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
           ЗАБЫЛ
         </motion.div>
 
-        <div className="front">
-          <Title level="1" weight="2">
-            {enRu ? w.term : w.translation} {usefulnessIcon(w.usefulness)}
-          </Title>
-          {enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
-          {grammarLine(w) && <Text className="hint">{grammarLine(w)}</Text>}
-          {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
-          {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
-        </div>
-
         {flipped ? (
           <div className="back">
-            <Title level="2" weight="2" className="answer">
-              {enRu ? w.translation : w.term}
-            </Title>
-            {!enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
+            {/* Слово слева крупно, перевод справа акцентом: главная пара видна сразу, остальное мельче. */}
+            <div className="back-head">
+              <div className="back-term">
+                <div className="term">
+                  {w.term} {usefulnessIcon(w.usefulness)}
+                </div>
+                <div className="meta">
+                  {metaLine(w, view.transcription ? transcription(w) : "")}
+                </div>
+              </div>
+              <div className="back-translation answer">{w.translation}</div>
+            </div>
+
+            {/* Родня — сразу под переводом: она важнее запоминалки, поэтому не спрятана. */}
+            <WordKin word={w} />
+
             {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
+
             {view.example && w.example && (
-              <Text className="block">
-                <b>Пример:</b> <i>{w.example}</i>
-              </Text>
+              <div>
+                <div className="lbl">Пример</div>
+                <Text className="block example">
+                  <i>{w.example}</i>
+                </Text>
+              </div>
             )}
-            {view.context && w.context && (
-              <Text className="block">
-                <b>Где встретилось:</b> <i>{w.context}</i>
-              </Text>
-            )}
-            {view.mnemonic && w.mnemonic && (
-              <Text className="block">
-                <b>Как запомнить:</b> {w.mnemonic}
-              </Text>
-            )}
-            <WordGrammar word={w} />
+
+            <WordForms word={w} />
+
+            {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
+            {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
+            {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
+
             {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
             {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
         ) : (
-          <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
+          <div className="front">
+            <div className="term">
+              {enRu ? w.term : w.translation} {usefulnessIcon(w.usefulness)}
+            </div>
+            <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
+            {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
+            {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
+            <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
+          </div>
         )}
       </motion.div>
 
@@ -179,40 +189,71 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
   );
 }
 
-/** «существительное · B1» — открыто: часть речи и уровень ответ не выдают. */
-function grammarLine(w: { partOfSpeech?: string; cefr?: string }): string {
-  return [w.partOfSpeech, w.cefr].filter(Boolean).join(" · ");
+/** «транскрипция · часть речи · уровень» — одной строкой, мельче остального: это справка, а не главное. */
+function metaLine(w: { partOfSpeech?: string; cefr?: string }, transcriptionText: string): string {
+  return [transcriptionText, w.partOfSpeech, w.cefr].filter(Boolean).join(" · ");
 }
 
+type Kin = { term: string; translation: string };
+
 /**
- * Формы и родня — компактно, строками через «·»: на маленьком экране карточка
- * не должна растягиваться, иначе до кнопок приходится скроллить.
+ * Синонимы и антонимы рядом, в общей плашке: они нужны при каждом ответе, поэтому видны всегда.
+ * Колонки, а не строки подряд — так две группы читаются как сравнение, а не как ещё один список.
  */
-function WordGrammar({ word }: { word: {
-  forms?: Array<{ form: string; label: string }>;
-  synonyms?: Array<{ term: string; translation: string }>;
-  antonyms?: Array<{ term: string; translation: string }>;
-} }) {
-  const forms = word.forms ?? [];
+function WordKin({ word }: { word: { synonyms?: Kin[]; antonyms?: Kin[] } }) {
   const synonyms = word.synonyms ?? [];
   const antonyms = word.antonyms ?? [];
-  if (!forms.length && !synonyms.length && !antonyms.length) return null;
-  const join = (items: Array<{ term: string; translation: string }>) => items.map((i) => `${i.term} — ${i.translation}`).join(" · ");
+  if (!synonyms.length && !antonyms.length) return null;
+  const list = (items: Kin[]) => items.map((i) => `${i.term} — ${i.translation}`).join("\n");
   return (
-    <div className="grammar">
-      {forms.length > 0 && (
-        <Text className="block">
-          <b>Формы:</b> {forms.map((f) => (f.label ? `${f.form} (${f.label})` : f.form)).join(" · ")}
-        </Text>
-      )}
+    <div className="kin">
       {synonyms.length > 0 && (
-        <Text className="block">
-          <b>Синонимы:</b> {join(synonyms)}
-        </Text>
+        <div>
+          <div className="lbl">Синонимы</div>
+          <Text className="block small pre">{list(synonyms)}</Text>
+        </div>
       )}
       {antonyms.length > 0 && (
-        <Text className="block">
-          <b>Антонимы:</b> {join(antonyms)}
+        <div>
+          <div className="lbl">Антонимы</div>
+          <Text className="block small pre">{list(antonyms)}</Text>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Формы — чипами в одну строку: их обычно одна-две, и они не должны занимать абзац. */
+function WordForms({ word }: { word: { forms?: Array<{ form: string; label: string }> } }) {
+  const forms = word.forms ?? [];
+  if (!forms.length) return null;
+  return (
+    <div className="forms">
+      <span className="lbl">Формы</span>
+      {forms.map((f) => (
+        <span key={f.form} className="chip">
+          {f.form}
+          {f.label ? ` · ${f.label}` : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Свёрнутый блок: заголовок в одну строку, содержимое — по тапу. Долгие тексты не растягивают карточку. */
+function Fold({ title, text, italic }: { title: string; text: string; italic?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="fold">
+      <button type="button" className="fold-head" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
+        <span>{title}</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className={open ? "fold-icon open" : "fold-icon"}>
+          <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <Text className={italic ? "block small" : "block"}>
+          {italic ? <i>{text}</i> : text}
         </Text>
       )}
     </div>
