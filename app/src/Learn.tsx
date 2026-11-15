@@ -20,6 +20,15 @@ const MODES: Array<{ id: QueueMode; label: string }> = [
   { id: "hard", label: "Трудные" },
 ];
 
+/** Свёрнута ли шапка с режимами — помним на устройстве: кто свернул ради места, не хочет сворачивать снова. */
+function savedFolded(): boolean {
+  try {
+    return localStorage.getItem("wordboss-header-folded") === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** Выбранный режим помним на этом устройстве (если хранилище недоступно — просто «Всё»). */
 function savedMode(): QueueMode {
   try {
@@ -40,6 +49,8 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
+  /** Шапка с режимами свёрнута — на карточку уходит больше места. */
+  const [headerFolded, setHeaderFolded] = useState(savedFolded);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
@@ -156,10 +167,33 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const card = queue[0];
   const total = done + queue.length;
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
+  const fold = () => {
+    const next = !headerFolded;
+    setHeaderFolded(next);
+    try {
+      localStorage.setItem("wordboss-header-folded", next ? "1" : "0");
+    } catch {
+      // хранилище недоступно — настройка просто не запомнится
+    }
+  };
   const header = (
     <header className="top">
+      {/* Свернуть шапку с режимами: на телефоне каждая полоса отнимает место у карточки.
+          Без карточки сворачивать нечего — на «Готово» кнопки нет. */}
+      {card ? (
+        <button
+          className="corner-button fold-button"
+          aria-label={headerFolded ? "Показать режимы" : "Свернуть шапку"}
+          aria-expanded={!headerFolded}
+          onClick={fold}
+        >
+          {headerFolded ? "▾" : "▴"}
+        </button>
+      ) : null}
       <Text weight="2" className="top-title">
         {me?.room ?? "WordBoss"}
+        {/* Шапка свёрнута — режим не виден, а знать его надо: показываем рядом с названием. */}
+        {headerFolded && mode !== "all" ? ` · ${MODES.find((m) => m.id === mode)?.label ?? ""}` : ""}
       </Text>
       <div className="top-right">
         {card && (
@@ -187,7 +221,8 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
 
   const count = (id: QueueMode) =>
     !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
-  const modes = (
+  // Свёрнутая шапка режимов не занимает места вовсе: это и есть выигрыш по высоте.
+  const modes = headerFolded ? null : (
     <div className="chips modes">
       {MODES.map((m) => (
         <Chip key={m.id} mode={mode === m.id ? "mono" : "outline"} onClick={() => changeMode(m.id)}>

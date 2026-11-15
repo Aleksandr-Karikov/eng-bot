@@ -91,6 +91,8 @@ body {
   cursor: pointer;
 }
 .corner-button:active { opacity: 0.6; }
+/* Кнопка сворачивания шапки — слева от названия комнаты и уже обычной: она служебная. */
+.fold-button { width: 26px; height: 26px; font-size: 13px; color: var(--tg-theme-hint-color, #8e8e93); }
 
 /* 📖 Слова */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 16px; scrollbar-width: none; }
