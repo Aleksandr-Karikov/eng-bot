@@ -8,6 +8,7 @@ import {
   buildCorrectionPrompt,
   parseCorrection,
   type CorrectionWord,
+  type WordCorrection,
   buildExtractPrompt,
   buildPrompt,
   parseEnrichment,
@@ -163,8 +164,8 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseEnrichment(await this.ask(dictionaryFormPrompt(buildPrompt(term, translationHint, context, currentLang()), currentLang()), this.opts.timeoutMs));
   }
 
-  async correctWord(word: CorrectionWord, instruction: string): Promise<Enrichment & { term: string }> {
-    return parseCorrection(await this.ask(buildCorrectionPrompt(word, instruction, currentLang()), this.opts.timeoutMs));
+  async correctWord(word: CorrectionWord, instruction: string): Promise<WordCorrection> {
+    return parseCorrection(await this.ask(buildCorrectionPrompt(word, instruction, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /**

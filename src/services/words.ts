@@ -191,8 +191,11 @@ export async function updateWord(
     /** undefined — оставить как есть. */
     usefulness?: number;
     usefulnessNote?: string;
+    collocations?: string;
+    leechHelp?: string;
   },
-): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "updated"; word: Word }> {
+  expected?: Word,
+): Promise<{ status: "duplicate" } | { status: "missing" } | { status: "stale" } | { status: "updated"; word: Word }> {
   const word = await getWord(db, wordId);
   if (!word) return { status: "missing" };
   const term = patch.term?.trim() || word.term;
@@ -203,7 +206,7 @@ export async function updateWord(
   }
   // Предложения с пропуском писались под старое слово/значение — пересоздадутся позже.
   const meaningChanged = termNormalized !== word.termNormalized || patch.translation.trim() !== word.translation.trim();
-  if (meaningChanged) await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
+
   const [updated] = await db
     .update(words)
     .set({
@@ -220,9 +223,18 @@ export async function updateWord(
       // Запоминалка писалась под старое значение.
       ...(meaningChanged ? { mnemonic: "", imageFileId: null, leechHelp: "", collocations: "" } : {}),
       ...(patch.mnemonic !== undefined ? { mnemonic: patch.mnemonic } : {}),
+      ...(patch.collocations !== undefined ? { collocations: patch.collocations } : {}),
+      ...(patch.leechHelp !== undefined ? { leechHelp: patch.leechHelp } : {}),
     })
-    .where(eq(words.id, wordId))
+    .where(and(eq(words.id, wordId), ...(expected ? [
+      eq(words.roomId, expected.roomId), eq(words.term, expected.term), eq(words.translation, expected.translation), eq(words.explanation, expected.explanation),
+      eq(words.example, expected.example), eq(words.transcriptionUk, expected.transcriptionUk), eq(words.transcriptionUs, expected.transcriptionUs),
+      eq(words.mnemonic, expected.mnemonic), eq(words.collocations, expected.collocations), eq(words.leechHelp, expected.leechHelp),
+      eq(words.context, expected.context), eq(words.moreContexts, expected.moreContexts),
+    ] : [])))
     .returning();
+  if (!updated) return { status: expected ? "stale" : "missing" };
+  if (meaningChanged) await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
   return { status: "updated", word: updated };
 }
 

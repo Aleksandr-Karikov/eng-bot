@@ -157,6 +157,8 @@ export interface WordItem {
 }
 
 export interface WordDetails extends Omit<Card["word"], "id"> {
+  leechHelp: string;
+  usefulnessNote: string;
   id: number;
   moreContexts: Array<{ text: string; title: string }>;
   collocations: Array<{ phrase: string; translation: string }>;
@@ -168,7 +170,15 @@ export type WordAction = "drop" | "restore" | "promote" | "delete";
 
 export const getWords = () => call<{ room: string | null; words: WordItem[] }>("/api/words");
 export const getWord = (id: number) => call<{ word: WordDetails }>(`/api/words/${id}`).then((r) => r.word);
-export const correctWord = (id: number, instruction: string) => post(`/api/words/${id}/correct`, { instruction });
+export interface CorrectionPreview {
+  draftId: string;
+  message: string;
+  before: WordDetails;
+  after: WordDetails;
+  effects: string[];
+}
+export const correctWord = (id: number, instruction: string, draftId?: string) => post<CorrectionPreview>(`/api/words/${id}/correct`, { instruction, draftId });
+export const applyCorrection = (id: number, draftId: string) => post(`/api/words/${id}/correct/apply`, { draftId });
 export const editWord = (id: number, patch: { translation: string; explanation: string }) => post(`/api/words/${id}/edit`, patch);
 export const wordAction = (id: number, action: WordAction) => post(`/api/words/${id}/${action}`);
 

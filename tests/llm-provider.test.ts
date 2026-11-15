@@ -63,13 +63,13 @@ describe("ProviderRouter", () => {
   });
 
   it("corrects words with the same prompt through both providers", async () => {
-    const ask = vi.fn(async () => JSON.stringify({ ...CARD, term: "bank" }));
+    const ask = vi.fn(async () => JSON.stringify({ message: "Исправлено", patch: { term: "bank" } }));
     const llm = router({ claudeCode: { name: "test", ask }, openRouter: { name: "test", ask } });
-    await llm.correctWord({ ...CARD, term: "banks" }, "Начальная форма");
+    await llm.correctWord({ ...CARD, term: "banks", transcriptionUk: "", transcriptionUs: "", mnemonic: "", collocations: "", leechHelp: "", context: "", moreContexts: "[]" }, "Начальная форма");
     llm.use("openrouter");
-    await llm.correctWord({ ...CARD, term: "banks" }, "Начальная форма");
+    await llm.correctWord({ ...CARD, term: "banks", transcriptionUk: "", transcriptionUs: "", mnemonic: "", collocations: "", leechHelp: "", context: "", moreContexts: "[]" }, "Начальная форма");
     expect(ask).toHaveBeenCalledTimes(2);
-    expect(ask.mock.calls[0]).toEqual(expect.arrayContaining([expect.stringContaining("Начальная форма"), "haiku"]));
+    expect(ask.mock.calls[0]).toEqual(expect.arrayContaining([expect.stringContaining("Начальная форма"), "opus"]));
     expect(ask.mock.calls[1]).toEqual(expect.arrayContaining([expect.stringContaining("Начальная форма"), MODELS.openrouter.main]));
   });
 

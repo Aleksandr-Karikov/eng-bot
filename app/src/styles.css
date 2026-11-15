@@ -177,3 +177,9 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .set-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .set-progress > :first-child { flex: 1; }
 .add-word { display: flex; gap: 8px; }
+
+.correction-field { padding: 14px 20px; border-bottom: 1px solid var(--tg-theme-hint-color, #888); }
+.correction-changed { border-left: 4px solid var(--tg-theme-button-color, #2481cc); }
+.correction-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.correction-field p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+@media (max-width: 420px) { .correction-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; } }

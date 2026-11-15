@@ -47,4 +47,15 @@ describe("updateWord", () => {
     expect((await getWord(db, hangar.id))?.translation).toBe("t-hangar");
     expect(await updateWord(db, hangar.id, { term: "Hangar", translation: "ангар", explanation: "", example: "" })).toMatchObject({ status: "updated" });
   });
+
+  // Пока модель готовит исправление (десятки секунд), карточку может изменить другой человек.
+  it("refuses to overwrite a card that changed while the answer was being prepared", async () => {
+    const { db, add } = await setup();
+    const bank = await add("bank");
+    const stale = (await getWord(db, bank.id))!;
+    await updateWord(db, bank.id, { translation: "берег", explanation: "кто-то успел", example: "x" });
+
+    expect(await updateWord(db, bank.id, { term: "banks", translation: "банки", explanation: "e", example: "x" }, stale)).toEqual({ status: "stale" });
+    expect(await getWord(db, bank.id)).toMatchObject({ term: "bank", translation: "берег" });
+  });
 });

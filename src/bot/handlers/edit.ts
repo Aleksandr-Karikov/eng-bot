@@ -56,7 +56,9 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
     transcriptionUs: enrichment?.transcriptionUs ?? (term === word.term ? undefined : ""),
     ...(rated?.usefulness ? { usefulness: rated.usefulness, usefulnessNote: rated.usefulnessNote ?? "" } : {}),
     mnemonic: mnemonic || undefined,
-  });
+    // Между чтением и записью прошёл запрос к модели: карточку могли изменить в боте или Mini App.
+  }, word);
+  if (result.status === "stale") return void (await ctx.reply("Слово уже изменили — повтори правку"));
   if (result.status === "missing") return void (await ctx.reply("Это слово уже удалили"));
   if (result.status === "duplicate") return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
   await ctx.reply(`✏️ Обновлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });

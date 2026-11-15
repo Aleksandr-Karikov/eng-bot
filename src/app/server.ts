@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { isLangCode, withLang } from "../lang";
 import { getRoom } from "../services/rooms";
 import { serve, type ServerType } from "@hono/node-server";
@@ -12,7 +13,7 @@ import { undoAnswer } from "../services/review";
 import { QUEUE_MODES, appAnswer, appAudio, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
-import { appCorrectWord, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
+import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
 export interface AppContext {
   deps: Deps;
@@ -26,6 +27,8 @@ export interface AppContext {
  */
 export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> {
   const { deps } = ctx;
+  // Один черновик на пользователя; после перезапуска нужно запросить предложение заново.
+  const corrections = new Map<number, CorrectionDraft>();
   const app = new Hono<{ Variables: { user: User } }>();
 
   app.use("/api/*", async (c, next) => {
@@ -137,10 +140,47 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json(r, r.ok ? 200 : 400);
   });
   app.post("/api/words/:id/correct", async (c) => {
-    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    const user = c.get("user");
+    const word = await memberWord(deps, user, Number(c.req.param("id")));
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
-    const r = await appCorrectWord(deps, word, await c.req.json().catch(() => ({})));
-    return c.json(r.body, r.status as 200 | 400 | 404 | 409 | 502);
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.instruction !== "string" || !body.instruction.trim() || body.instruction.length > 1000) {
+      return c.json({ ok: false, error: "Опиши исправление: от 1 до 1000 символов" }, 400);
+    }
+    const now = deps.now().getTime();
+    for (const [id, draft] of corrections) if (draft.expiresAt <= now) corrections.delete(id);
+    const previous = body.draftId ? corrections.get(user.id) : undefined;
+    if (body.draftId && (!previous || previous.id !== body.draftId || previous.before.id !== word.id)) {
+      return c.json({ ok: false, error: "Черновик устарел. Запроси исправление заново" }, 409);
+    }
+    if ((previous?.instruction.length ?? 0) + body.instruction.length > 10000) {
+      return c.json({ ok: false, error: "Слишком много уточнений. Начни исправление заново" }, 400);
+    }
+    try {
+      const proposed = await appCorrectWord(deps, word, body.instruction.trim(), previous);
+      const draft: CorrectionDraft = { ...proposed, id: randomUUID(), userId: user.id, expiresAt: deps.now().getTime() + 30 * 60_000 };
+      corrections.set(user.id, draft);
+      return c.json({ ok: true, draftId: draft.id, message: draft.message,
+        before: await appWordDetails(deps, user, draft.before), after: await appWordDetails(deps, user, draft.after),
+        effects: correctionEffects(draft.before, draft.after),
+      });
+    } catch (err) {
+      console.error("App correction failed", err instanceof Error ? err.name : "unknown error");
+      return c.json({ ok: false, error: "Не получилось подготовить правку — попробуй ещё раз. Карточка не изменена" }, 502);
+    }
+  });
+  app.post("/api/words/:id/correct/apply", async (c) => {
+    const user = c.get("user");
+    const word = await memberWord(deps, user, Number(c.req.param("id")));
+    if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+    const body = await c.req.json().catch(() => null);
+    const draft = corrections.get(user.id);
+    if (!draft || draft.id !== body?.draftId || draft.before.id !== word.id || draft.expiresAt <= deps.now().getTime()) {
+      return c.json({ ok: false, error: "Черновик устарел. Запроси исправление заново" }, 409);
+    }
+    const r = await appApplyCorrection(deps, draft);
+    if (r.status === 200 && corrections.get(user.id)?.id === draft.id) corrections.delete(user.id);
+    return c.json(r.body, r.status as 200 | 409);
   });
   app.post("/api/words/:id/mnemonic", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
