@@ -10,7 +10,7 @@ body {
 .screen { min-height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 20px; box-sizing: border-box; }
 .top { display: flex; justify-content: space-between; align-items: center; }
 .hint { color: var(--tg-theme-hint-color, #8e8e93); }
-.deck { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+.deck { position: relative; flex: 1; display: flex; flex-direction: column; gap: 14px; }
 .card {
   position: relative;
   flex: 1;
@@ -40,8 +40,8 @@ body {
 .row { display: flex; gap: 8px; justify-content: center; }
 .stamp {
   position: absolute;
+  z-index: 2;
   will-change: opacity;
-  top: 24px;
   padding: 4px 10px;
   border: 3px solid;
   border-radius: 8px;
@@ -49,8 +49,16 @@ body {
   letter-spacing: 1px;
   pointer-events: none;
 }
-.stamp-know { left: 16px; color: #22c55e; transform: rotate(-12deg); }
-.stamp-forgot { right: 16px; color: #ef4444; transform: rotate(12deg); }
+/* Карточка /learn: штампы лежат над карточкой и заходят на её край, поэтому внутри места не занимают.
+   Сама карточка наклоняется под свайпом, а штампы — нет. */
+.stamp-know { left: 6px; color: #22c55e; transform: rotate(-12deg); }
+.stamp-forgot { right: 6px; color: #ef4444; transform: rotate(12deg); }
+/* Карточка /learn: штампы над карточкой, заходят на её край. */
+.deck > .stamp { top: -6px; }
+/* Колода «реши про слово» (/triage): штампы остались внутри карточки, как были. */
+.card > .stamp { top: 24px; }
+.card > .stamp-know { left: 16px; }
+.card > .stamp-forgot { right: 16px; }
 
 /* Своя панель кнопок (когда нет нативных): закреплена над вкладками, карточка прокручивается над ней. */
 .actions.fixed {
@@ -228,9 +236,7 @@ body {
 .card-head.stacked .card-answer { max-width: 100%; text-align: left; }
 
 /* Полезность — мелким чипом в левом верхнем углу: при заучивании нужна редко. */
-/* В левом верхнем углу уже живёт штамп «ПОМНЮ» при свайпе — чип сидит над ним у самого края,
-   чтобы они не накладывались друг на друга. */
-.useful-chip { position: absolute; top: 6px; left: 12px; font-size: 10px; line-height: 1; opacity: 0.5; pointer-events: none; }
+.useful-chip { position: absolute; top: 8px; left: 12px; font-size: 10px; line-height: 1; opacity: 0.5; pointer-events: none; }
 
 /* Синонимы и антонимы в две колонки: сравнение, а не ещё один список подряд. */
 .kin { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border-radius: 12px; background: var(--tg-theme-secondary-bg-color, #f7f8fa); }

@@ -74,6 +74,14 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
 
   return (
     <div className="deck">
+      {/* Штампы «ПОМНЮ/ЗАБЫЛ» — над карточкой, а не внутри: карточка наклоняется под свайпом,
+          и место под них больше не отнимается у содержимого. */}
+      <motion.div className="stamp stamp-know" style={{ opacity: knowOpacity }}>
+        ПОМНЮ
+      </motion.div>
+      <motion.div className="stamp stamp-forgot" style={{ opacity: forgotOpacity }}>
+        ЗАБЫЛ
+      </motion.div>
       <motion.div
         className="card"
         style={{ x, rotate }}
@@ -88,14 +96,8 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
         onClick={reveal}
       >
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
+        {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
         {w.usefulness ? <span className="useful-chip" title={`Полезность: ${w.usefulness} из 3`}>{usefulnessIcon(w.usefulness)}</span> : null}
-        <motion.div className="stamp stamp-know" style={{ opacity: knowOpacity }}>
-          ПОМНЮ
-        </motion.div>
-        <motion.div className="stamp stamp-forgot" style={{ opacity: forgotOpacity }}>
-          ЗАБЫЛ
-        </motion.div>
-
         {/* Карточка свёрстана целиком сразу: ответ под блюром, пока не открыт. При открытии ничего
             не сдвигается — ни слово, ни блоки под ним, — поэтому нет прыжка и переноса на две строки. */}
         <div className="card-body">
