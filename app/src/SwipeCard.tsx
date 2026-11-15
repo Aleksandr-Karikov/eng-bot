@@ -103,11 +103,15 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
             <div className={`term ${sizeOf(question)}`}>{question}</div>
             {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
             <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
-            {/* Ответ всегда под словом, влево: в одну строку со словом он не помещался и переносился. */}
-            <div className={`card-answer ${sizeOf(answerText)}${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
-              <div className="answer">{answerText}</div>
-              {/* В RU → EN транскрипция относится к ответу-английскому, а не к вопросу. */}
-              {!enRu && view.transcription && transcription(w) && <div className="meta">{transcription(w)}</div>}
+            {/* Ответ всегда под словом, влево: в одну строку со словом он не помещался и переносился.
+                До открытия настоящий текст скрыт, но держит место, а поверх лежит размытая подделка:
+                так и высота не меняется, и по форме пятна ответ не угадать. */}
+            <div className={`card-answer ${sizeOf(answerText)}`} aria-hidden={!flipped}>
+              <div className="answer" style={flipped ? undefined : HIDDEN}>{answerText}</div>
+              {!enRu && view.transcription && transcription(w) && (
+                <div className="meta" style={flipped ? undefined : HIDDEN}>{transcription(w)}</div>
+              )}
+              {!flipped && <div className="answer fake" aria-hidden="true">{fakeText(answerText)}</div>}
             </div>
           </div>
 
@@ -176,6 +180,29 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
     </div>
   );
 }
+
+/**
+ * Псевдотекст той же длины, что и ответ, но из чужих букв: под блюром он держит форму строки,
+ * а угадать по нему настоящий ответ нельзя. Детерминированный — иначе мигал бы на каждом рендере.
+ */
+function fakeText(text: string): string {
+  const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+  let seed = 0;
+  for (const ch of text) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  let out = "";
+  for (const ch of text) {
+    if (!ch.trim()) {
+      out += ch;
+      continue;
+    }
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    out += ALPHABET[seed % ALPHABET.length];
+  }
+  return out;
+}
+
+/** Прячем текст, не убирая его из потока: высота остаётся прежней, прыжка нет. */
+const HIDDEN = { visibility: "hidden" } as const;
 
 /**
  * Размер текста по длине: словами бывают и `mantelpiece`, и `something of a niggle regarding our business
