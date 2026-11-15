@@ -207,16 +207,14 @@ body {
 .front .meta { text-align: center; }
 .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tg-theme-hint-color, #9aa0aa); }
 
-/* Тело и шапка одни на обе стороны: слово стоит на одном месте, и при открытии
-   ответа карточка не перестраивается — меняется только правая часть шапки и то, что ниже. */
+/* Тело одно на обе стороны: до открытия ответ и всё под ним не видны, но занимают место,
+   поэтому при открытии карточка не перестраивается. */
 .card-body { display: flex; flex-direction: column; gap: 10px; }
-.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 62px; }
-.card-head-main { min-width: 0; }
-/* Ответ — на том же уровне, что слово, справа. До переворота места под него нет, но высота шапки
-   зарезервирована, поэтому ничего не сдвигается. */
-/* Ответ — тот же кегль, что у слова: главная пара читается как пара. */
-.card-answer { flex-shrink: 0; max-width: 52%; text-align: right; }
-.card-answer .answer { line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; }
+/* Шапка в одну колонку: слово, справка, под ними ответ. В строку слово и перевод не помещались
+   и переносились, поэтому двухколоночную раскладку убрал совсем. */
+.card-head { display: flex; flex-direction: column; gap: 4px; min-height: 62px; }
+.card-answer { text-align: left; }
+.card-answer .answer { line-height: 1.25; font-weight: 700; letter-spacing: -0.2px; }
 
 /* До открытия ответ и всё под ним не видны, но занимают своё место: вёрстка не меняется,
    поэтому нет прыжка и переноса. visibility, а не display — место сохраняется; blur подсказывал
@@ -231,11 +229,6 @@ body {
 .card-answer.size-m { font-size: 19px; }
 .card-answer.size-s { font-size: 17px; }
 .card-answer.size-xs { font-size: 15px; }
-
-/* Длинное слово и ответ рядом не влезают — ответ уходит под слово, а не обрезается. */
-.card-head.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
-/* Ответ ушёл под вопрос — читается как продолжение строки, поэтому прижат влево, не по центру. */
-.card-head.stacked .card-answer { max-width: 100%; text-align: left; }
 
 /* Полезность — мелким чипом в левом верхнем углу: при заучивании нужна редко. */
 .useful-chip { position: absolute; top: 8px; left: 12px; font-size: 10px; line-height: 1; opacity: 0.5; pointer-events: none; }

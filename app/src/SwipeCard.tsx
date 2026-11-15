@@ -29,10 +29,8 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
   const enRu = card.stage === "en_ru";
   const withPicture = w.hasPicture && view.picture;
   const withVoice = Boolean(voice) && view.audio;
-  // Вопрос и ответ рядом не влезают, если хоть один длинный, — тогда ответ уходит под вопрос.
   const question = enRu ? w.term : w.translation;
   const answerText = enRu ? w.translation : w.term;
-  const stacked = question.trim().length + answerText.trim().length > 34;
 
   // Картинка грузится сразу при показе карточки (обычно уже подгружена заранее), а не после переворота.
   useEffect(() => {
@@ -98,16 +96,14 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
         {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
         {w.usefulness ? <span className="useful-chip" title={`Полезность: ${w.usefulness} из 3`}>{usefulnessIcon(w.usefulness)}</span> : null}
-        {/* Карточка свёрстана целиком сразу: ответ под блюром, пока не открыт. При открытии ничего
+        {/* Карточка свёрстана целиком сразу: ответ просто не виден, пока не открыт. При открытии ничего
             не сдвигается — ни слово, ни блоки под ним, — поэтому нет прыжка и переноса на две строки. */}
         <div className="card-body">
-          <div className={`card-head${stacked ? " stacked" : ""}`}>
-            <div className="card-head-main">
-              <div className={`term ${sizeOf(question)}`}>{question}</div>
-              {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
-              <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
-            </div>
-            {/* Ответ на месте с самого начала — иначе слово сжимается и переезжает на две строки. */}
+          <div className="card-head">
+            <div className={`term ${sizeOf(question)}`}>{question}</div>
+            {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
+            <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
+            {/* Ответ всегда под словом, влево: в одну строку со словом он не помещался и переносился. */}
             <div className={`card-answer${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
               <div className={`answer ${sizeOf(answerText)}`}>{answerText}</div>
               {/* В RU → EN транскрипция относится к ответу-английскому, а не к вопросу. */}
