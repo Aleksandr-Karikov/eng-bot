@@ -29,7 +29,7 @@ body {
   cursor: grab;
 }
 .front { display: flex; flex-direction: column; gap: 6px; text-align: center; padding-top: 18px; }
-.back { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, #e5e5ea); padding-top: 14px; }
+.back { display: flex; flex-direction: column; gap: 10px; }
 .answer { text-align: center; color: var(--tg-theme-accent-text-color, #2481cc); }
 .block { line-height: 1.45; }
 .picture { width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 14px; overflow: hidden; background: var(--tg-theme-secondary-bg-color, #eee); }
@@ -200,7 +200,7 @@ body {
 /* Слово слева, перевод справа: главная пара видна сразу, без двух строк во всю ширину. */
 .back-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .back-term { min-width: 0; }
-.back-translation { flex-shrink: 0; max-width: 46%; font-size: 18px; line-height: 1.25; font-weight: 600; text-align: right; }
+.back-translation { flex-shrink: 0; max-width: 52%; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; text-align: right; }
 
 /* Синонимы и антонимы в две колонки: сравнение, а не ещё один список подряд. */
 .kin { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border-radius: 12px; background: var(--tg-theme-secondary-bg-color, #f7f8fa); }
