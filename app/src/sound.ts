@@ -8,10 +8,16 @@ import { mediaUrl } from "./api";
 const loading = new Map<string, Promise<string | undefined>>();
 const ready = new Map<string, string>();
 
+export function clearAudioCache() {
+  loading.clear();
+  ready.clear();
+}
+
 function load(path: string): Promise<string | undefined> {
   let url = loading.get(path);
   if (!url) {
     url = mediaUrl(path).then((u) => {
+      if (loading.get(path) !== url) return undefined;
       if (u) ready.set(path, u);
       else loading.delete(path); // не вышло — попробуем снова при следующем нажатии
       return u;

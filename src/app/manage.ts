@@ -1,4 +1,4 @@
-import { currentLang, langForms } from "../lang";
+import { currentLang, langForms, withLang } from "../lang";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
@@ -13,7 +13,8 @@ import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
-import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord } from "../services/words";
+import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord, wordLanguage } from "../services/words";
+import { rateUsefulness } from "../services/usefulness";
 import { prepareWord } from "../services/prepare-word";
 import { broadcastWord } from "../bot/word-flow";
 
@@ -106,6 +107,34 @@ export async function appEditWord(deps: Deps, word: Word, body: { translation?: 
   if (!translation) return { ok: false as const, error: "Перевод не может быть пустым" };
   await updateWord(deps.db, word.id, { translation, explanation, example: word.example });
   return { ok: true as const };
+}
+
+/** Исправление меняет общую запись, сохраняя карточки и историю повторений. */
+export async function appCorrectWord(deps: Deps, word: Word, body: unknown) {
+  const instruction = body && typeof body === "object" && "instruction" in body ? body.instruction : undefined;
+  if (typeof instruction !== "string" || !instruction.trim() || instruction.length > 1000) {
+    return { status: 400, body: { ok: false, error: "Опиши исправление: от 1 до 1000 символов" } };
+  }
+  try {
+    if (!deps.enricher.correctWord) throw new Error("Correction unavailable");
+    const corrected = await withLang(await wordLanguage(deps.db, word.id), () => deps.enricher.correctWord!(
+      { term: word.term, translation: word.translation, explanation: word.explanation, example: word.example, context: word.context }, instruction.trim(),
+    ));
+    const [rated] = await rateUsefulness([corrected], deps.frequency);
+    const current = await getWord(deps.db, word.id);
+    if (!current) return { status: 404, body: { ok: false, error: "Это слово уже удалили" } };
+    if (current.term !== word.term || current.translation !== word.translation || current.explanation !== word.explanation || current.example !== word.example) {
+      return { status: 409, body: { ok: false, error: "Слово уже изменили. Открой его заново и повтори исправление" } };
+    }
+    const result = await updateWord(deps.db, word.id, { ...rated, transcriptionUk: rated.transcriptionUk ?? "", transcriptionUs: rated.transcriptionUs ?? "" });
+    if (result.status === "duplicate") return { status: 409, body: { ok: false, error: `«${corrected.term}» уже есть в комнате — ничего не изменено` } };
+    if (result.status === "missing") return { status: 404, body: { ok: false, error: "Это слово уже удалили" } };
+    return { status: 200, body: { ok: true, term: result.word.term } };
+  } catch (err) {
+    // Ответ модели и текст замечания могут содержать личные сведения.
+    console.error("App correction failed", err instanceof Error ? err.name : "unknown error");
+    return { status: 502, body: { ok: false, error: "Не получилось исправить — попробуй ещё раз" } };
+  }
 }
 
 export async function appSettings(deps: Deps, user: User) {

@@ -43,30 +43,19 @@ export async function prepareWord(
         return "";
       });
 
-  let enrichment: Enrichment | undefined;
-  let mnemonic: string;
-  if (fromRussian) {
-    // Запоминалку — уже для английского слова, поэтому после перевода.
-    enrichment = await enrich;
-    if (!enrichment?.term) return { status: "no-english", term };
-    term = enrichment.term;
-    if (await findWord(deps.db, roomId, term)) return { status: "exists", term };
-    mnemonic = await mnemonicFor(term, enrichment.translation);
-  } else {
-    // Перевод и запоминалка (другой, более сильной моделью) — параллельно.
-    [enrichment, mnemonic] = await Promise.all([enrich, mnemonicFor(term, translation ?? "")]);
-    // Корейское слово могли прислать с частицей или в спряжении (책을, 갔어요) — сохраняем словарную форму от модели.
-    if (lang.code !== "en" && enrichment?.term && normalizeTerm(enrichment.term) !== normalizeTerm(term)) {
-      term = enrichment.term;
-      if (await findWord(deps.db, roomId, term)) return { status: "exists", term };
-    }
-  }
+  const enrichment = await enrich;
+  if (fromRussian && !enrichment?.term) return { status: "no-english", term };
+  const changed = enrichment?.term && normalizeTerm(enrichment.term) !== normalizeTerm(term);
+  if (enrichment?.term) term = enrichment.term;
+  if ((fromRussian || changed) && await findWord(deps.db, roomId, term)) return { status: "exists", term };
+  // Запоминалка должна описывать уже словарную форму и её значение.
+  const mnemonic = await mnemonicFor(term, enrichment?.translation ?? translation ?? "");
   return {
     status: "ok",
     draft: {
       term,
       // Для русского слова перевод — от модели (она могла уточнить его), а не само русское слово.
-      translation: (fromRussian ? enrichment?.translation : translation) ?? enrichment?.translation ?? "",
+      translation: (fromRussian || changed ? enrichment?.translation : translation) ?? enrichment?.translation ?? "",
       explanation: enrichment?.explanation ?? "",
       example: enrichment?.example ?? "",
       transcriptionUk: enrichment?.transcriptionUk ?? "",

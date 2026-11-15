@@ -30,22 +30,21 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
   const parsed = parseAddInput(text);
   // «слово — перевод» переименовывает слово, только если слева английский; «сдаться — уступить» — это просто перевод.
   const rename = Boolean(parsed?.translation && currentLang().script.test(parsed.term));
-  const term = rename && parsed ? parsed.term : word.term;
-  const translation = rename && parsed?.translation ? parsed.translation : text.trim();
+  let term = rename && parsed ? parsed.term : word.term;
+  let translation = rename && parsed?.translation ? parsed.translation : text.trim();
   const clash = normalizeTerm(term) !== word.termNormalized ? await findWord(deps.db, word.roomId, term) : undefined;
   if (clash) return void (await ctx.reply(`«${esc(term)}» уже есть в комнате — ничего не менял`, HTML));
 
   await ctx.replyWithChatAction("typing");
-  const [enrichment, mnemonic] = await Promise.all([
-    deps.enricher.enrich(term, translation).catch((err): Enrichment | undefined => {
-      console.error("Re-enrichment failed, keeping old explanation", term, err);
-      return undefined;
-    }),
-    deps.tutor
-      .mnemonics([{ term, translation }])
-      .then(([m]) => m ?? "")
-      .catch(() => ""),
-  ]);
+  const enrichment = await deps.enricher.enrich(term, translation).catch((err): Enrichment | undefined => {
+    console.error("Re-enrichment failed, keeping old explanation", term, err);
+    return undefined;
+  });
+  if (enrichment?.term && normalizeTerm(enrichment.term) !== normalizeTerm(term)) {
+    term = enrichment.term;
+    translation = enrichment.translation;
+  }
+  const mnemonic = await deps.tutor.mnemonics([{ term, translation }]).then(([m]) => m ?? "").catch(() => "");
   const [rated] = enrichment ? await rateUsefulness([{ ...enrichment, term }], deps.frequency) : [undefined];
   const result = await updateWord(deps.db, word.id, {
     term,

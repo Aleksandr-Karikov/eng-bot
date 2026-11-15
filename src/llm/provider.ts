@@ -1,4 +1,4 @@
-import type { ImageInput } from "./enricher";
+import type { CorrectionWord, ImageInput } from "./enricher";
 import type { LlmBackend } from "./backend";
 import type { WordEnricher, Enrichment, ExtractedItem, CheckResult, ContextMessage } from "./enricher";
 import type {
@@ -125,6 +125,10 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
 
   // Ниже — то же делегирование, что было бы унаследовано: каждый метод уходит в активный провайдер.
   // Список длинный намеренно: явные методы видны в типах и не дают молча потерять новый при добавлении.
+
+  correctWord(word: CorrectionWord, instruction: string): Promise<Enrichment & { term: string }> {
+    return this.active.correctWord(word, instruction);
+  }
 
   enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
     return this.active.enrich(term, translationHint, context);

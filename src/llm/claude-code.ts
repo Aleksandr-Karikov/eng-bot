@@ -4,6 +4,10 @@ import { Limiter } from "./limiter";
 import type { LlmBackend } from "./backend";
 import {
   buildCheckPrompt,
+  dictionaryFormPrompt,
+  buildCorrectionPrompt,
+  parseCorrection,
+  type CorrectionWord,
   buildExtractPrompt,
   buildPrompt,
   parseEnrichment,
@@ -154,7 +158,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
-    return parseEnrichment(await this.ask(buildPrompt(term, translationHint, context, currentLang()), this.opts.timeoutMs));
+    return parseEnrichment(await this.ask(dictionaryFormPrompt(buildPrompt(term, translationHint, context, currentLang()), currentLang()), this.opts.timeoutMs));
+  }
+
+  async correctWord(word: CorrectionWord, instruction: string): Promise<Enrichment & { term: string }> {
+    return parseCorrection(await this.ask(buildCorrectionPrompt(word, instruction, currentLang()), this.opts.timeoutMs));
   }
 
   /**
@@ -164,15 +172,15 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
    * отдельный промпт здесь означал бы вторую реализацию одного и того же, которая разъедется с первой.
    */
   async enrichFast(term: string): Promise<Enrichment> {
-    return parseEnrichment(await this.ask(buildPrompt(term, undefined, undefined, currentLang()), INLINE_TRANSLATE_TIMEOUT_MS));
+    return parseEnrichment(await this.ask(dictionaryFormPrompt(buildPrompt(term, undefined, undefined, currentLang()), currentLang()), INLINE_TRANSLATE_TIMEOUT_MS));
   }
 
   async extract(text: string): Promise<ExtractedItem[]> {
-    return parseExtraction(await this.ask(buildExtractPrompt(text, currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+    return parseExtraction(await this.ask(dictionaryFormPrompt(buildExtractPrompt(text, currentLang()), currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
   }
 
   async extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]> {
-    const raw = await this.ask(buildExtractImagePrompt(note, currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]);
+    const raw = await this.ask(dictionaryFormPrompt(buildExtractImagePrompt(note, currentLang()), currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS), this.opts.model, [image]);
     const items = parseExtraction(raw);
     // Пусто — чтобы было видно почему: что за файл пришёл и что ответила модель.
     if (items.length === 0) {

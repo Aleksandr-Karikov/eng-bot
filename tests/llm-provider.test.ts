@@ -62,6 +62,17 @@ describe("ProviderRouter", () => {
     expect(openRouter.calls).toHaveLength(0);
   });
 
+  it("corrects words with the same prompt through both providers", async () => {
+    const ask = vi.fn(async () => JSON.stringify({ ...CARD, term: "bank" }));
+    const llm = router({ claudeCode: { name: "test", ask }, openRouter: { name: "test", ask } });
+    await llm.correctWord({ ...CARD, term: "banks" }, "Начальная форма");
+    llm.use("openrouter");
+    await llm.correctWord({ ...CARD, term: "banks" }, "Начальная форма");
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(ask.mock.calls[0]).toEqual(expect.arrayContaining([expect.stringContaining("Начальная форма"), "haiku"]));
+    expect(ask.mock.calls[1]).toEqual(expect.arrayContaining([expect.stringContaining("Начальная форма"), MODELS.openrouter.main]));
+  });
+
   it("sends each provider its own model names", async () => {
     // Алиас haiku и имя anthropic/claude-haiku-5.5 — из разных пространств, подменять их нельзя.
     const claudeCode = recording();

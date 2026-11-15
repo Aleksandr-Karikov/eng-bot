@@ -1,3 +1,4 @@
+import { CorrectionForm } from "./CorrectionForm";
 import { cardAudioPath, preloadAudio } from "./sound";
 import { setStudyLanguage, studyLanguage } from "./language";
 
@@ -34,6 +35,7 @@ const UNDO_DEPTH = 5;
 
 /** 📚 Карточки: очередь /learn со свайпами. */
 export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: (setId?: number) => void }) {
+  const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
@@ -175,6 +177,9 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
             🆕<span className="badge">{me.triage > 99 ? "99+" : me.triage}</span>
           </button>
         )}
+        {card?.kind === "card" && (
+          <button className="corner-button" aria-label="Исправить слово с ИИ" onClick={() => setCorrecting(card.word)}>✏️</button>
+        )}
         {corner}
       </div>
     </header>
@@ -192,6 +197,15 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       ))}
     </div>
   );
+
+  if (correcting) return <CorrectionForm word={correcting} onDone={(saved) => {
+    setCorrecting(undefined);
+    if (saved) {
+      setHistory([]);
+      setQueue([]);
+      void load();
+    }
+  }} />;
 
   if (error || (loading && !card) || !card) {
     return (

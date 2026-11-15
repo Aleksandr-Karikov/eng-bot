@@ -50,14 +50,14 @@ describe("pictures show the word, not the mnemonic", () => {
 });
 
 describe("where mnemonics come from", () => {
-  it("/add writes the mnemonic in parallel with the translation and shows it in the draft", async () => {
+  it("/add writes the mnemonic for the enriched word and shows it in the draft", async () => {
     const { t, mnemonics } = tutor();
     const h = botHarness({ tutor: t });
     const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
     await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await h.bot.handleUpdate(h.message(100, "/add heritage"));
     await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
-    expect(mnemonics).toHaveBeenCalledWith([{ term: "heritage", translation: "" }]);
+    expect(mnemonics).toHaveBeenCalledWith([{ term: "heritage", translation: "перевод" }]);
     expect(h.calls.some((c) => String(c.payload.text).includes("💡 m-heritage"))).toBe(true);
   });
 

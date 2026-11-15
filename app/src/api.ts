@@ -168,6 +168,7 @@ export type WordAction = "drop" | "restore" | "promote" | "delete";
 
 export const getWords = () => call<{ room: string | null; words: WordItem[] }>("/api/words");
 export const getWord = (id: number) => call<{ word: WordDetails }>(`/api/words/${id}`).then((r) => r.word);
+export const correctWord = (id: number, instruction: string) => post(`/api/words/${id}/correct`, { instruction });
 export const editWord = (id: number, patch: { translation: string; explanation: string }) => post(`/api/words/${id}/edit`, patch);
 export const wordAction = (id: number, action: WordAction) => post(`/api/words/${id}/${action}`);
 
@@ -207,14 +208,21 @@ export const changeSetting = (change: SettingChange) => post<{ settings: Setting
 /** Картинка и озвучка тоже под подписью — <img>/<audio> так не умеют, поэтому через fetch и blob-ссылку. */
 export async function mediaUrl(path: string): Promise<string | undefined> {
   try {
-    const res = await fetch(path, { headers: headers() });
+    const res = await fetch(`${path}&v=${mediaRevision}`, { headers: headers() });
     return res.ok ? URL.createObjectURL(await res.blob()) : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** Картинки — по одной загрузке: кэш blob-ссылок, чтобы подгрузить заранее и не качать дважды. */
+/** После исправления URL меняется и для браузерного кэша. */
+let mediaRevision = Date.now();
+export function invalidateWordMedia() {
+  mediaRevision++;
+  pictures.clear();
+}
+
+/** Картинки — по одной загрузке: кэш blob-ссылок. */
 const pictures = new Map<string, Promise<string | undefined>>();
 
 function cachedPicture(query: string): Promise<string | undefined> {

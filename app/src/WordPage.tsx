@@ -1,3 +1,4 @@
+import { CorrectionForm } from "./CorrectionForm";
 import { playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
@@ -15,17 +16,19 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
   const [word, setWord] = useState<WordDetails>();
   const [error, setError] = useState<string>();
   const [picture, setPicture] = useState<string>();
+  const [correcting, setCorrecting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
   // Одна кнопка «Назад» на экран: из правки — к слову, со слова — к списку.
-  const back = useCallback(() => (editing ? setEditing(false) : onClose()), [editing, onClose]);
+  const back = useCallback(() => (correcting ? undefined : editing ? setEditing(false) : onClose()), [correcting, editing, onClose]);
   useBackButton(back);
 
   const load = useCallback(async () => {
     try {
       const w = await getWord(id);
       setWord(w);
+      setPicture(undefined);
       if (w.hasPicture) void wordPictureUrl(w.id).then(setPicture);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -61,6 +64,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
       </div>
     );
   }
+  if (correcting) return <CorrectionForm word={word} onDone={(saved) => { setCorrecting(false); if (saved) void load(); }} />;
   if (editing) {
     return (
       <EditForm
@@ -143,6 +147,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
       {word.hasPicture && <div className="picture word-picture">{picture && <img src={picture} alt="" />}</div>}
 
       <Section header="Управление словом">
+        <Cell onClick={() => setCorrecting(true)}>✨ Исправить с ИИ</Cell>
         <Cell onClick={() => setEditing(true)}>✏️ Изменить перевод и объяснение</Cell>
         {word.usefulness === 1 && <Cell onClick={() => void act("promote")}>⭐ Сделать полезным — учить полностью</Cell>}
         {word.mine ? (
