@@ -68,6 +68,12 @@ export interface AppCard {
     transcriptionUs: string;
     usefulness: number | null;
     hasPicture: boolean;
+    /** Часть речи и уровень: «существительное · B1»; пусто — ещё не готово. */
+    partOfSpeech: string;
+    cefr: string;
+    forms: Array<{ form: string; label: string }>;
+    synonyms: Array<{ term: string; translation: string }>;
+    antonyms: Array<{ term: string; translation: string }>;
   };
 }
 
@@ -202,6 +208,11 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
         transcriptionUs: word.transcriptionUs,
         usefulness: word.usefulness,
         hasPicture: hasPicture(deps, word),
+        partOfSpeech: word.partOfSpeech,
+        cefr: word.cefr,
+        forms: JSON.parse(word.forms || "[]") as Array<{ form: string; label: string }>,
+        synonyms: JSON.parse(word.synonyms || "[]") as Array<{ term: string; translation: string }>,
+        antonyms: JSON.parse(word.antonyms || "[]") as Array<{ term: string; translation: string }>,
       },
     });
   }

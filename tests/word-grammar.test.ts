@@ -108,7 +108,7 @@ describe("грамматика слова: часть речи, уровень, 
     const d = { term: "variety", translation: "разнообразие", explanation: "", example: "" };
     const text = draftText({ ...d, partOfSpeech: "существительное", cefr: "B1", forms: JSON.stringify(grammar.forms), synonyms: JSON.stringify(grammar.synonyms), antonyms: JSON.stringify(grammar.antonyms) });
     expect(text).toContain("существительное · B1");
-    expect(text).toContain("Другие формы:");
+    expect(text).toContain("Формы:");
     expect(text).toContain("varieties — множественное число");
     expect(text).toContain("Синонимы:");
   });

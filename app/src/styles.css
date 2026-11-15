@@ -183,3 +183,7 @@ body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behav
 .correction-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 .correction-field p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
 @media (max-width: 420px) { .correction-pair { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+
+/* Формы и родня на карточке: компактно, чтобы до кнопок не приходилось скроллить. */
+.grammar { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.grammar .block { font-size: 14px; line-height: 1.35; margin: 0; }

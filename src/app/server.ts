@@ -131,6 +131,8 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.get("/api/words/:id", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    // Человек открыл слово — самое время подготовить часть речи и родню, если их ещё нет.
+    if (word) void deps.grammarGen.ensure(word);
     return word ? c.json({ ok: true, word: await appWordDetails(deps, c.get("user"), word) }) : c.json({ ok: false, error: "Этого слова уже нет" }, 404);
   });
   app.post("/api/words/:id/edit", async (c) => {

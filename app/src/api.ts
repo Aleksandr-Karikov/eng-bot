@@ -36,6 +36,12 @@ export interface Card {
     transcriptionUs: string;
     usefulness: number | null;
     hasPicture: boolean;
+    /** Часть речи и уровень: «существительное · B1»; пусто — ещё не готово. */
+    partOfSpeech: string;
+    cefr: string;
+    forms: Array<{ form: string; label: string }>;
+    synonyms: Array<{ term: string; translation: string }>;
+    antonyms: Array<{ term: string; translation: string }>;
   };
 }
 

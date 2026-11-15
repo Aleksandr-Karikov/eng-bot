@@ -74,7 +74,20 @@ export function formsLine(forms: string | undefined): string {
 /** Синонимы и антонимы: «diversity — разнообразие». Пусто, если их нет. */
 export function kinLine(title: string, raw: string | undefined): string {
   const items = jsonArray<{ term: string; translation: string }>(raw);
-  return items.length ? `\n\n<b>${title}:</b> ${items.map((i) => `${esc(i.term)} — ${esc(i.translation)}`).join("; ")}` : "";
+  return items.length ? `<b>${title}:</b> ${items.map((i) => `${esc(i.term)} — ${esc(i.translation)}`).join("; ")}` : "";
+}
+
+/**
+ * Формы и родня одним компактным блоком: в боте каждый кусок через пустую строку растягивал карточку.
+ * Пусто, если готовить ещё нечего.
+ */
+export function grammarBlock(word: GrammarFields): string {
+  const lines = [
+    formsLine(word.forms) ? `<b>Формы:</b> ${formsLine(word.forms)}` : "",
+    kinLine("Синонимы", word.synonyms),
+    kinLine("Антонимы", word.antonyms),
+  ].filter(Boolean);
+  return lines.join("\n");
 }
 
 function collocationsLine(collocations: string): string {
@@ -152,17 +165,17 @@ export interface GrammarFields {
 
 export function draftText(d: WordDraft & GrammarFields): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
-  const grammar = grammarLine(d);
-  if (grammar) text += `\n${grammar}`;
+  const head = grammarLine(d);
+  if (head) text += `\n${head}`;
   const useful = usefulnessLine(d);
   if (useful) text += `\n${useful}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
-  const forms = formsLine(d.forms);
-  if (forms) text += `\n\n<b>Другие формы:</b> ${forms}`;
+  const grammar = grammarBlock(d);
+  if (grammar) text += `\n\n${grammar}`;
   if (d.context) text += `\n\n${contextLine(d.context, d.term)}`;
   if (d.mnemonic) text += `\n\n💡 ${esc(d.mnemonic)}`;
-  return text + kinLine("Синонимы", d.synonyms) + kinLine("Антонимы", d.antonyms);
+  return text;
 }
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
@@ -177,9 +190,8 @@ function cardDetails(word: WordDraft & GrammarFields & { collocations?: string; 
   if (view.context) text += contextBlock(word);
   if (view.collocations && word.collocations) text += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) text += `\n\n<b>Как запомнить:</b> ${esc(word.mnemonic)}`;
-  const forms = formsLine(word.forms);
-  if (forms) text += `\n\n<b>Другие формы:</b> ${forms}`;
-  text += kinLine("Синонимы", word.synonyms) + kinLine("Антонимы", word.antonyms);
+  const grammar = grammarBlock(word);
+  if (grammar) text += `\n\n${grammar}`;
   const body = text.replace(/^\n\n/, "");
   return body ? `\n\n<tg-spoiler>${body}</tg-spoiler>` : "";
 }

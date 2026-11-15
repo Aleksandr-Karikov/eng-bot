@@ -95,6 +95,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
             {enRu ? w.term : w.translation} {usefulnessIcon(w.usefulness)}
           </Title>
           {enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
+          {grammarLine(w) && <Text className="hint">{grammarLine(w)}</Text>}
           {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
           {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
         </div>
@@ -121,6 +122,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
                 <b>Как запомнить:</b> {w.mnemonic}
               </Text>
             )}
+            <WordGrammar word={w} />
             {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
             {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
           </div>
@@ -172,6 +174,46 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
             </Button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** «существительное · B1» — открыто: часть речи и уровень ответ не выдают. */
+function grammarLine(w: { partOfSpeech?: string; cefr?: string }): string {
+  return [w.partOfSpeech, w.cefr].filter(Boolean).join(" · ");
+}
+
+/**
+ * Формы и родня — компактно, строками через «·»: на маленьком экране карточка
+ * не должна растягиваться, иначе до кнопок приходится скроллить.
+ */
+function WordGrammar({ word }: { word: {
+  forms?: Array<{ form: string; label: string }>;
+  synonyms?: Array<{ term: string; translation: string }>;
+  antonyms?: Array<{ term: string; translation: string }>;
+} }) {
+  const forms = word.forms ?? [];
+  const synonyms = word.synonyms ?? [];
+  const antonyms = word.antonyms ?? [];
+  if (!forms.length && !synonyms.length && !antonyms.length) return null;
+  const join = (items: Array<{ term: string; translation: string }>) => items.map((i) => `${i.term} — ${i.translation}`).join(" · ");
+  return (
+    <div className="grammar">
+      {forms.length > 0 && (
+        <Text className="block">
+          <b>Формы:</b> {forms.map((f) => (f.label ? `${f.form} (${f.label})` : f.form)).join(" · ")}
+        </Text>
+      )}
+      {synonyms.length > 0 && (
+        <Text className="block">
+          <b>Синонимы:</b> {join(synonyms)}
+        </Text>
+      )}
+      {antonyms.length > 0 && (
+        <Text className="block">
+          <b>Антонимы:</b> {join(antonyms)}
+        </Text>
       )}
     </div>
   );
