@@ -104,8 +104,8 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
             {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
             <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
             {/* Ответ всегда под словом, влево: в одну строку со словом он не помещался и переносился. */}
-            <div className={`card-answer${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
-              <div className={`answer ${sizeOf(answerText)}`}>{answerText}</div>
+            <div className={`card-answer ${sizeOf(answerText)}${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
+              <div className="answer">{answerText}</div>
               {/* В RU → EN транскрипция относится к ответу-английскому, а не к вопросу. */}
               {!enRu && view.transcription && transcription(w) && <div className="meta">{transcription(w)}</div>}
             </div>

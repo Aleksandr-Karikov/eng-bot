@@ -216,7 +216,9 @@ body {
    и переносились, поэтому двухколоночную раскладку убрал совсем. */
 .card-head { display: flex; flex-direction: column; gap: 4px; min-height: 62px; }
 .card-answer { text-align: left; }
-.card-answer .answer { line-height: 1.25; font-weight: 700; letter-spacing: -0.2px; }
+/* text-align: left обязателен именно здесь: базовое правило .answer центрирует текст,
+   и на родителе его не перебить — оно на самом элементе с текстом. */
+.card-answer .answer { text-align: left; line-height: 1.25; font-weight: 700; letter-spacing: -0.2px; }
 
 /* До открытия ответ и всё под ним не видны, но занимают своё место: вёрстка не меняется,
    поэтому нет прыжка и переноса. visibility, а не display — место сохраняется; blur подсказывал
