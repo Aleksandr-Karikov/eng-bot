@@ -92,6 +92,10 @@ function fields(word: WordDetails): Array<[string, string]> {
   return [
     ["Слово", word.term], ["Перевод", word.translation], ["Объяснение", word.explanation], ["Пример", word.example],
     ["Транскрипция / романизация", word.transcriptionUk], ["Американская транскрипция", word.transcriptionUs],
+    ["Часть речи", word.partOfSpeech], ["Уровень", word.cefr],
+    ["Другие формы", word.forms.map((f) => `${f.form}${f.label ? ` — ${f.label}` : ""}`).join("\n")],
+    ["Синонимы", word.synonyms.map((s) => `${s.term} — ${s.translation}`).join("\n")],
+    ["Антонимы", word.antonyms.map((a) => `${a.term} — ${a.translation}`).join("\n")],
     ["Запоминалка", word.mnemonic], ["Разбор трудного слова", word.leechHelp],
     ["Сочетания", word.collocations.map((c) => `${c.phrase} — ${c.translation}`).join("\n")],
     ["Где встретилось", [word.context, ...word.moreContexts.map((c) => `${c.text}${c.title ? ` (${c.title})` : ""}`)].filter(Boolean).join("\n")],

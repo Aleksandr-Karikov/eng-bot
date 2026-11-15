@@ -121,6 +121,16 @@ export const words = sqliteTable(
     moreContexts: text("more_contexts").notNull().default("[]"),
     /** JSON-разбор «трудного» слова (LeechHelp): почему путается, отличия от похожих, примеры. "" — ещё нет. */
     leechHelp: text("leech_help").notNull().default(""),
+    /** Часть речи по-русски («существительное», «глагол»); "" — не определена. */
+    partOfSpeech: text("part_of_speech").notNull().default(""),
+    /** Уровень CEFR (A1…C2); "" — не определён. */
+    cefr: text("cefr").notNull().default(""),
+    /** JSON Array<{ form, label }>: значимые формы слова (forms → plural). "[]" — ещё не готовили. */
+    forms: text("forms").notNull().default("[]"),
+    /** JSON Array<{ term, translation }>: синонимы. "[]" — ещё не готовили. */
+    synonyms: text("synonyms").notNull().default("[]"),
+    /** JSON Array<{ term, translation }>: антонимы. "[]" — ещё не готовили. */
+    antonyms: text("antonyms").notNull().default("[]"),
     /** Telegram file_id картинки-ассоциации (по запоминалке). */
     imageFileId: text("image_file_id"),
     /** Когда слово было «словом дня» — чтобы не повторять его месяц. */

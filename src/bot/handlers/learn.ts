@@ -206,6 +206,8 @@ async function afterAnswer(ctx: BotContext, deps: Deps, cardId: number): Promise
   const optional = item.word.usefulness === 1;
   if (ctx.user.modeCloze && !optional) void deps.clozeGen.ensure(item.word);
   if (ctx.user.modeCollocation && !optional) void deps.collocationGen.ensure(item.word);
+  // Часть речи и родня есть в карточке любого режима, даже у необязательного слова.
+  void deps.grammarGen.ensure(item.word);
   if (!item.word.mnemonic && (await isHard(deps.db, cardId))) void deps.mnemonicGen.ensure(item.word.id);
   const leech = await leechMoment(deps.db, cardId);
   if (leech.prefetch) void deps.mnemonicGen.help(item.word.id);
@@ -266,6 +268,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     const optional = word.usefulness === 1;
     if (modes.cloze && sentences.length === 0 && card.state !== State.New && !optional) void deps.clozeGen.ensure(word);
     if (modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
+    void deps.grammarGen.ensure(word);
     // Необязательное слово учим только на узнавание: EN → RU, без упражнений на употребление.
     const again = forced?.stage === "en_ru" || forced?.stage === "ru_en" ? forced.stage : forced ? "en_ru" : undefined;
     const weak = !forced && !optional ? (await weakDirections(deps.db, [card.id])).get(card.id) : undefined;
@@ -333,6 +336,7 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
   const optional = word.usefulness === 1;
   if (modes.collocation && !optional) void deps.collocationGen.ensure(word);
+  void deps.grammarGen.ensure(word);
   const picked = optional ? "en_ru" : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(storedCollocations(word)?.quiz));
   if (await presentSpecial(ctx, deps, item, picked, mode, true)) return;
   const stage = SPECIAL.includes(picked) ? "en_ru" : picked;

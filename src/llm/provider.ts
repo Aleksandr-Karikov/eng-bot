@@ -9,6 +9,7 @@ import type {
   TranslationTask,
   TranslationReview,
   Collocations,
+  WordGrammar,
   SayAnswer,
   TalkInput,
   TalkReview,
@@ -162,6 +163,10 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   }
   collocations(term: string, translation: string): Promise<Collocations> {
     return this.active.collocations(term, translation);
+  }
+
+  grammar(term: string, translation: string): Promise<WordGrammar> {
+    return this.active.grammar(term, translation);
   }
   say(phrase: string): Promise<SayAnswer> {
     return this.active.say(phrase);

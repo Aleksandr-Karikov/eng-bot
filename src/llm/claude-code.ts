@@ -45,6 +45,9 @@ import {
   type TranslationTask,
   parseCollocations,
   type Collocations,
+  buildGrammarPrompt,
+  parseGrammar,
+  type WordGrammar,
   parseSayAnswer,
   type SayAnswer,
   buildTalkReviewPrompt,
@@ -246,6 +249,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */
   async collocations(term: string, translation: string): Promise<Collocations> {
     return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
+  }
+
+  /** Грамматика и родня слова — как и сочетания, в фоне и сильной моделью: часть речи и CEFR Haiku врёт. */
+  async grammar(term: string, translation: string): Promise<WordGrammar> {
+    return parseGrammar(await this.ask(buildGrammarPrompt(term, translation, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
   }
 
   /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */

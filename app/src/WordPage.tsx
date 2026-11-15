@@ -86,6 +86,9 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
         </Title>
         {word.usefulness == null && <Text className="hint">❔ Полезность пока не оценена</Text>}
         {transcription(word) && <Text className="hint">{transcription(word)}</Text>}
+        {(word.partOfSpeech || word.cefr) && (
+          <Text className="hint">{[word.partOfSpeech, word.cefr].filter(Boolean).join(" · ")}</Text>
+        )}
         <Title level="2" weight="2" className="answer">
           {word.translation}
         </Title>
@@ -115,11 +118,38 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
           ))}
         </Section>
       )}
+      {word.forms.length > 0 && (
+        <Section header="Другие формы слова">
+          {word.forms.map((f) => (
+            <Cell key={f.form} multiline subtitle={f.label || undefined}>
+              {f.form}
+            </Cell>
+          ))}
+        </Section>
+      )}
       {word.collocations.length > 0 && (
         <Section header="Сочетания">
           {word.collocations.map((c) => (
             <Cell key={c.phrase} multiline subtitle={c.translation}>
               {c.phrase}
+            </Cell>
+          ))}
+        </Section>
+      )}
+      {word.synonyms.length > 0 && (
+        <Section header="Синонимы">
+          {word.synonyms.map((s) => (
+            <Cell key={s.term} multiline subtitle={s.translation}>
+              {s.term}
+            </Cell>
+          ))}
+        </Section>
+      )}
+      {word.antonyms.length > 0 && (
+        <Section header="Антонимы">
+          {word.antonyms.map((a) => (
+            <Cell key={a.term} multiline subtitle={a.translation}>
+              {a.term}
             </Cell>
           ))}
         </Section>

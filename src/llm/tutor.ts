@@ -79,6 +79,77 @@ export interface Collocations {
   quiz?: { question: string; options: string[]; correct: number; explanation: string };
 }
 
+/**
+ * Грамматический портрет слова: часть речи, уровень и родня — формы, синонимы, антонимы.
+ * Готовится лениво, как сочетания: добавление слова не должно ждать лишний запрос к модели.
+ */
+export interface WordGrammar {
+  /** По-русски: «существительное», «глагол», «прилагательное», «фразовый глагол», «идиома»… */
+  partOfSpeech: string;
+  /** Уровень CEFR (A1–C2) или "" — не определить (например, у редкой идиомы). */
+  cefr: string;
+  /** Значимые формы: множественное число, прошедшее время, причастие. Сама словарная форма сюда не идёт. */
+  forms: Array<{ form: string; label: string }>;
+  synonyms: Array<{ term: string; translation: string }>;
+  antonyms: Array<{ term: string; translation: string }>;
+}
+
+const grammarItem = z.object({ term: z.string().trim().min(1).max(120), translation: z.string().trim().min(1).max(200) });
+
+/** Часть речи приходит по-русски, но модель может ответить по-английски — приводим к одному виду. */
+const POS_BY_EN: Record<string, string> = {
+  noun: "существительное",
+  verb: "глагол",
+  adjective: "прилагательное",
+  adverb: "наречие",
+  pronoun: "местоимение",
+  preposition: "предлог",
+  conjunction: "союз",
+  numeral: "числительное",
+  interjection: "междометие",
+  "phrasal verb": "фразовый глагол",
+  phrase: "фраза",
+  idiom: "идиома",
+};
+
+export function buildGrammarPrompt(term: string, translation: string, lang: Language = EN): string {
+  return [
+    `${capStem(lang)}ое слово или фраза: "${term}" — ${translation}.`,
+    "Опиши его грамматику и ближайшую родню.",
+    'part_of_speech — часть речи по-русски: "существительное", "глагол", "прилагательное", "наречие", "фразовый глагол", "идиома", "фраза", "междометие".',
+    'cefr — уровень владения, на котором это слово обычно встречается: "A1", "A2", "B1", "B2", "C1" или "C2"; пустая строка — если слово слишком редкое или узкое, чтобы говорить об уровне.',
+    "forms — значимые нерегулярные или важные формы: для существительного множественное число (если отличается от словарной формы),",
+    "для глагола прошедшее время и причастие, для прилагательного степени сравнения. Саму словарную форму не включай.",
+    'label — короткая подпись по-русски: "множественное число", "прошедшее время", "причастие", "сравнительная степень".',
+    "synonyms — 2–4 самых близких по значению слова с переводом на русский; близкие, а не любые из той же темы.",
+    "antonyms — 0–3 настоящих антонима с переводом на русский; если антонима нет (у большинства конкретных существительных его нет), верни пустой массив.",
+    "Если синонима нет — пустой массив. Не выдумывай слова.",
+    'Верни JSON: {"part_of_speech": "...", "cefr": "...", "forms": [{"form": "...", "label": "..."}], "synonyms": [{"term": "...", "translation": "..."}], "antonyms": [{"term": "...", "translation": "..."}]}',
+  ].join("\n");
+}
+
+const grammarSchema = z.object({
+  part_of_speech: z.string().trim().default(""),
+  cefr: z.string().trim().default(""),
+  forms: z.array(z.object({ form: z.string().trim().min(1).max(120), label: z.string().trim().max(80).default("") })).max(6).default([]),
+  synonyms: z.array(grammarItem).max(6).default([]),
+  antonyms: z.array(grammarItem).max(6).default([]),
+});
+
+export function parseGrammar(text: string): WordGrammar {
+  const raw = grammarSchema.parse(jsonObject(text));
+  const pos = raw.part_of_speech.toLowerCase();
+  const cefr = raw.cefr.toUpperCase().match(/^(A1|A2|B1|B2|C1|C2)$/)?.[0] ?? "";
+  return {
+    partOfSpeech: POS_BY_EN[pos] ?? raw.part_of_speech,
+    cefr,
+    forms: raw.forms,
+    synonyms: raw.synonyms,
+    antonyms: raw.antonyms,
+  };
+}
+
+
 /** «Как сказать по-английски»: варианты фразы и что из них стоит выучить. */
 export interface SayAnswer {
   variants: Array<{ text: string; register: string; note: string }>;
@@ -158,6 +229,8 @@ export interface ExerciseTutor {
   reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview>;
   /** Сочетания слова: с какими словами его обычно употребляют. */
   collocations(term: string, translation: string): Promise<Collocations>;
+  /** Часть речи, уровень CEFR, формы слова, синонимы и антонимы. Необязателен для тестовых подмен. */
+  grammar?(term: string, translation: string): Promise<WordGrammar>;
   /** Как естественно сказать это по-английски. */
   say(phrase: string): Promise<SayAnswer>;
   /** Следующая реплика собеседника в разговоре /talk. */

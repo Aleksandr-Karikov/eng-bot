@@ -222,6 +222,8 @@ export async function updateWord(
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
       ...(meaningChanged ? { mnemonic: "", imageFileId: null, leechHelp: "", collocations: "" } : {}),
+      // Формы, родня, часть речи и уровень относятся к самому слову: при его смене готовятся заново.
+      ...(termNormalized !== word.termNormalized ? { partOfSpeech: "", cefr: "", forms: "[]", synonyms: "[]", antonyms: "[]" } : {}),
       ...(patch.mnemonic !== undefined ? { mnemonic: patch.mnemonic } : {}),
       ...(patch.collocations !== undefined ? { collocations: patch.collocations } : {}),
       ...(patch.leechHelp !== undefined ? { leechHelp: patch.leechHelp } : {}),

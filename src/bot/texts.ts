@@ -51,6 +51,32 @@ const withTranscription = (d: WordDraft, show = true) => {
 /** Сочетаний на карточке — не больше трёх, по одному в строке: длинная строка через «·» читалась плохо. */
 const CARD_COLLOCATIONS = 3;
 
+/** JSON-массивы карточки читаются терпимо: поле могло остаться от старой версии или прийти битым. */
+function jsonArray<T>(raw: string | undefined): T[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** «noun · B1» — что за слово и на каком уровне; пусто, если модель ещё не ответила. */
+export function grammarLine(word: { partOfSpeech?: string; cefr?: string }): string {
+  return [word.partOfSpeech, word.cefr].filter(Boolean).map((s) => esc(String(s))).join(" · ");
+}
+
+export function formsLine(forms: string | undefined): string {
+  return jsonArray<{ form: string; label: string }>(forms).map((f) => `${esc(f.form)}${f.label ? ` — ${esc(f.label)}` : ""}`).join("; ");
+}
+
+/** Синонимы и антонимы: «diversity — разнообразие». Пусто, если их нет. */
+export function kinLine(title: string, raw: string | undefined): string {
+  const items = jsonArray<{ term: string; translation: string }>(raw);
+  return items.length ? `\n\n<b>${title}:</b> ${items.map((i) => `${esc(i.term)} — ${esc(i.translation)}`).join("; ")}` : "";
+}
+
 function collocationsLine(collocations: string): string {
   const c = JSON.parse(collocations) as Collocations;
   return c.items.length ? `\n\n<b>Сочетания:</b>\n${c.items.slice(0, CARD_COLLOCATIONS).map((i) => `• ${esc(i.phrase)}`).join("\n")}` : "";
@@ -115,15 +141,28 @@ export function inlineWordDescription(w: { translation: string; explanation?: st
   return (w.explanation || w.translation).slice(0, 120);
 }
 
-export function draftText(d: WordDraft): string {
+/** Поля слова, которые заполняет фоновая генерация грамматики. */
+export interface GrammarFields {
+  partOfSpeech?: string;
+  cefr?: string;
+  forms?: string;
+  synonyms?: string;
+  antonyms?: string;
+}
+
+export function draftText(d: WordDraft & GrammarFields): string {
   let text = `<b>${esc(d.term)}</b> — ${esc(d.translation)}${withTranscription(d)}`;
+  const grammar = grammarLine(d);
+  if (grammar) text += `\n${grammar}`;
   const useful = usefulnessLine(d);
   if (useful) text += `\n${useful}`;
   if (d.explanation) text += `\n\n${esc(d.explanation)}`;
   if (d.example) text += `\n\n<i>${esc(d.example)}</i>`;
+  const forms = formsLine(d.forms);
+  if (forms) text += `\n\n<b>Другие формы:</b> ${forms}`;
   if (d.context) text += `\n\n${contextLine(d.context, d.term)}`;
   if (d.mnemonic) text += `\n\n💡 ${esc(d.mnemonic)}`;
-  return text;
+  return text + kinLine("Синонимы", d.synonyms) + kinLine("Антонимы", d.antonyms);
 }
 
 /** Карточка для /learn: слово видно, ответ спрятан под спойлер Telegram (тап — открыть). */
@@ -131,20 +170,24 @@ export function draftText(d: WordDraft): string {
 /**
  * Подробности — под спойлером, чтобы объяснение не подсказывало ответ до проверки.
  */
-function cardDetails(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView, withExplanation: boolean): string {
+function cardDetails(word: WordDraft & GrammarFields & { collocations?: string; moreContexts?: string }, view: CardView, withExplanation: boolean): string {
   let text = "";
   if (withExplanation && view.explanation && word.explanation) text += `\n\n${esc(word.explanation)}`;
   if (view.example && word.example) text += `\n\n<b>Пример:</b> <i>${esc(word.example)}</i>`;
   if (view.context) text += contextBlock(word);
   if (view.collocations && word.collocations) text += collocationsLine(word.collocations);
   if (view.mnemonic && word.mnemonic) text += `\n\n<b>Как запомнить:</b> ${esc(word.mnemonic)}`;
+  const forms = formsLine(word.forms);
+  if (forms) text += `\n\n<b>Другие формы:</b> ${forms}`;
+  text += kinLine("Синонимы", word.synonyms) + kinLine("Антонимы", word.antonyms);
   const body = text.replace(/^\n\n/, "");
   return body ? `\n\n<tg-spoiler>${body}</tg-spoiler>` : "";
 }
 
-export function cardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
+export function cardText(word: WordDraft & GrammarFields & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
   const answer = `<tg-spoiler><b>${esc(word.translation)}</b></tg-spoiler>`;
-  return `<b>${esc(word.term)}</b>${usefulnessIcon(word)}${withTranscription(word, view.transcription)}\n\n${answer}${cardDetails(word, view, true)}\n\nВспомни перевод и проверь себя тапом:`;
+  const grammar = view.explanation ? grammarLine(word) : "";
+  return `<b>${esc(word.term)}</b>${usefulnessIcon(word)}${withTranscription(word, view.transcription)}${grammar ? `\n${grammar}` : ""}\n\n${answer}${cardDetails(word, view, true)}\n\nВспомни перевод и проверь себя тапом:`;
 }
 
 export function knowPrompt(adderName: string, word: Word, roomName: string): string {

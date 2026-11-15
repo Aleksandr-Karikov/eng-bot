@@ -173,6 +173,8 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     // Как в /learn: упражнения на употребление готовятся в фоне, пока их нет.
     if (!isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
     if (!isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
+    // Часть речи и родня есть в карточке любого режима, даже у необязательного слова.
+    void deps.grammarGen.ensure(word);
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
     const stage = optional
       ? "en_ru"

@@ -43,6 +43,7 @@ import { WordfreqSource } from "./frequency/frequency";
 import { TranslateStore } from "./bot/translations";
 import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
+import { GrammarGenerator } from "./services/grammar";
 import { startReminderLoop } from "./reminder-loop";
 import type { Deps } from "./bot/context";
 import { publishStory } from "./bot/handlers/story";
@@ -137,6 +138,7 @@ const deps: Deps = {
   tutor: llm,
   clozeGen: new ClozeGenerator(db, llm, now),
   collocationGen: new CollocationGenerator(db, llm),
+  grammarGen: new GrammarGenerator(db, llm),
   mnemonicGen,
   drafts: new DraftStore(),
   batches: new BatchStore(),

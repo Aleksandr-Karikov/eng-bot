@@ -159,6 +159,11 @@ export interface WordItem {
 export interface WordDetails extends Omit<Card["word"], "id"> {
   leechHelp: string;
   usefulnessNote: string;
+  partOfSpeech: string;
+  cefr: string;
+  forms: Array<{ form: string; label: string }>;
+  synonyms: Array<{ term: string; translation: string }>;
+  antonyms: Array<{ term: string; translation: string }>;
   id: number;
   moreContexts: Array<{ text: string; title: string }>;
   collocations: Array<{ phrase: string; translation: string }>;

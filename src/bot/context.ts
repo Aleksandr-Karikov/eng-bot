@@ -7,6 +7,7 @@ import type { WordEnricher } from "../llm/enricher";
 import type { ExerciseTutor } from "../llm/tutor";
 import type { ClozeGenerator } from "../services/cloze-generator";
 import type { CollocationGenerator } from "../services/collocations";
+import type { GrammarGenerator } from "../services/grammar";
 import type { MnemonicGenerator } from "../services/hard-words";
 import type { SpeechSynth } from "../speech/tts";
 import type { SpeechRecognizer } from "../speech/stt";
@@ -78,6 +79,7 @@ export interface Deps {
   tutor: ExerciseTutor;
   clozeGen: ClozeGenerator;
   collocationGen: CollocationGenerator;
+  grammarGen: GrammarGenerator;
   mnemonicGen: MnemonicGenerator;
   notifier: Notifier;
   drafts: DraftStore;
