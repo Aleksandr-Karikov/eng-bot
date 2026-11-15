@@ -48,4 +48,20 @@ export function playAudio(path: string): boolean {
   return false;
 }
 
+/**
+ * Играет, только если звук уже в памяти; иначе молчит и НЕ запускает его потом.
+ * Нужен там, где при неудаче человеку показывают кнопку: иначе звук заиграет дважды —
+ * сам, когда загрузится, и ещё раз по тапу.
+ */
+export function playAudioIfReady(path: string): boolean {
+  const url = ready.get(path);
+  if (!url) {
+    // Подгружаем к следующему тапу, но без спроса не играем.
+    void load(path);
+    return false;
+  }
+  void new Audio(url).play().catch(() => {});
+  return true;
+}
+
 export const cardAudioPath = (cardId: number, accent: "uk" | "us") => `/api/audio?card=${cardId}&accent=${accent}`;

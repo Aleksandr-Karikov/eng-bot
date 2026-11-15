@@ -1,5 +1,11 @@
 html, body, #root, #root > div { height: 100%; margin: 0; }
-body { background: var(--tg-theme-secondary-bg-color, #f1f1f4); overscroll-behavior: none; }
+/* Шрифт задаётся здесь, а не только в теме telegram-ui: .term/.meta/.lbl — свои классы,
+   без этого браузер отдаёт Times. Стек тот же, что у telegram-ui, чтобы карточка не выбивалась. */
+body {
+  font-family: var(--tgui--font-family, system-ui, -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", sans-serif);
+  background: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  overscroll-behavior: none;
+}
 .center { height: 100%; display: grid; place-items: center; }
 .screen { min-height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 20px; box-sizing: border-box; }
 .top { display: flex; justify-content: space-between; align-items: center; }

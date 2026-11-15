@@ -1,4 +1,4 @@
-import { cardAudioPath, playAudio } from "./sound";
+import { cardAudioPath, playAudio, playAudioIfReady } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
 import { Button, Text } from "@telegram-apps/telegram-ui";
@@ -20,8 +20,6 @@ const ALL: CardView = { transcription: true, explanation: true, example: true, c
 
 export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; view?: CardView; voice?: VoiceAccent | null; onAnswer: (a: Answer) => void }) {
   const [flipped, setFlipped] = useState(false);
-  /** Озвучка не успела загрузиться к перевороту — играть без спроса нельзя, показываем кнопку. */
-  const [voiceLate, setVoiceLate] = useState(false);
   const [picture, setPicture] = useState<string>();
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
@@ -60,7 +58,9 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
     if (revealed.current) return;
     revealed.current = true;
     setFlipped(true);
-    if (withVoice && voice && !play(card, voice)) setVoiceLate(true);
+    // Успело загрузиться — играем сразу (iOS разрешает play() только в самом нажатии).
+    // Не успело — молчим: кнопки озвучки ниже есть всегда, и звук не заиграет сам второй раз.
+    if (withVoice && voice) playAudioIfReady(cardAudioPath(card.cardId, voice));
   }, [card, voice, withVoice]);
   // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
   const native = useBottomButtons(
@@ -143,21 +143,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
 
       {flipped && (
         <div className="row">
-          {/* Озвучка не успела к перевороту — вместо неё кнопка: включить по своему решению. */}
-          {voiceLate ? (
-            <Button
-              mode="bezeled"
-              size="m"
-              onClick={() => {
-                if (voice) void play(card, voice);
-                setVoiceLate(false);
-              }}
-            >
-              🔊 Озвучить
-            </Button>
-          ) : (
-            view.audio && <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />
-          )}
+          {view.audio && <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />}
           {card.isNew && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
               ✅ Уже знаю
