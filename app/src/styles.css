@@ -33,7 +33,9 @@ body {
 .block { line-height: 1.45; }
 .picture { width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 14px; overflow: hidden; background: var(--tg-theme-secondary-bg-color, #eee); }
 .picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tap { text-align: center; margin-top: auto; }
+.tap { text-align: center; }
+/* Сверху карточки подсказка нарисована абсолютно: в потоке она сдвигала содержимое при открытии. */
+.card > .tap { position: absolute; left: 0; right: 0; bottom: 18px; pointer-events: none; }
 .actions { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 8px; justify-content: center; }
 .stamp {
@@ -205,7 +207,13 @@ body {
 /* Ответ — на том же уровне, что слово, справа. До переворота места под него нет, но высота шапки
    зарезервирована, поэтому ничего не сдвигается. */
 /* Ответ — тот же кегль, что у слова: главная пара читается как пара. */
-.card-answer { flex-shrink: 0; max-width: 52%; line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; text-align: right; }
+.card-answer { flex-shrink: 0; max-width: 52%; text-align: right; }
+.card-answer .answer { line-height: 1.2; font-weight: 700; letter-spacing: -0.2px; }
+
+/* До открытия ответ и всё под ним на месте, но размыты — вёрстка не меняется, поэтому нет прыжка.
+   Размытие, а не прозрачность: размеры остаются те же, и слово не переезжает на две строки. */
+.veiled { filter: blur(6px); opacity: 0.55; user-select: none; transition: filter 0.15s ease, opacity 0.15s ease; }
+.card-rest { display: flex; flex-direction: column; gap: 10px; }
 
 /* Кегль по длине текста: длинная фраза не должна уезжать за край карточки. */
 .size-m { font-size: 28px; }

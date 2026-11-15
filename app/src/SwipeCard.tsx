@@ -96,56 +96,53 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
           ЗАБЫЛ
         </motion.div>
 
-        {/* Шапка одна на обе стороны: слово стоит на месте, при открытии ответа карточка не прыгает.
-            Слева — то, что спрашивают; справа место под ответ, которое до переворота пустует. */}
+        {/* Карточка свёрстана целиком сразу: ответ под блюром, пока не открыт. При открытии ничего
+            не сдвигается — ни слово, ни блоки под ним, — поэтому нет прыжка и переноса на две строки. */}
         <div className="card-body">
           <div className={`card-head${stacked ? " stacked" : ""}`}>
             <div className="card-head-main">
-              <div className={`term ${sizeOf(enRu ? w.term : w.translation)}`}>
-                {enRu ? w.term : w.translation}
-              </div>
+              <div className={`term ${sizeOf(question)}`}>{question}</div>
+              {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
               <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
             </div>
-            {flipped && (
-              <div className={`card-answer answer ${sizeOf(enRu ? w.translation : w.term)}`}>
-                {enRu ? w.translation : w.term}
-              </div>
-            )}
+            {/* Ответ на месте с самого начала — иначе слово сжимается и переезжает на две строки. */}
+            <div className={`card-answer${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
+              <div className={`answer ${sizeOf(answerText)}`}>{answerText}</div>
+              {/* В RU → EN транскрипция относится к ответу-английскому, а не к вопросу. */}
+              {!enRu && view.transcription && transcription(w) && <div className="meta">{transcription(w)}</div>}
+            </div>
           </div>
 
-          {flipped ? (
-            <>
-              {/* Родня — сразу под ответом: она важнее запоминалки, поэтому не спрятана. */}
-              <WordKin word={w} />
+          <div className={`card-rest${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
+            {/* Родня — сразу под ответом: она важнее запоминалки, поэтому не спрятана. */}
+            <WordKin word={w} />
 
-              {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
+            {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
 
-              {view.example && w.example && (
-                <div>
-                  <div className="lbl">Пример</div>
-                  <Text className="block example">
-                    <i>{w.example}</i>
-                  </Text>
-                </div>
-              )}
+            {view.example && w.example && (
+              <div>
+                <div className="lbl">Пример</div>
+                <Text className="block example">
+                  <i>{w.example}</i>
+                </Text>
+              </div>
+            )}
 
-              <WordForms word={w} />
+            <WordForms word={w} />
 
-              {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
-              {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
-              {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
+            {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
+            {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
+            {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
 
-              {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
-              {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
-            </>
-          ) : (
-            <>
-              {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}
-              {!enRu && view.explanation && w.meaningHint && <Text className="hint">{w.meaningHint}</Text>}
-              <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
-            </>
-          )}
+            {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
+            {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
+          </div>
         </div>
+
+        {/* Подсказка висит поверх низа карточки: в потоке она сдвигала бы содержимое при открытии. */}
+        {!flipped && (
+          <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
+        )}
       </motion.div>
 
       {flipped && (
