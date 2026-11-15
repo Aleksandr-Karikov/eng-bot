@@ -4,7 +4,7 @@ import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
 import { editWord, getWord, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
-import { transcription, USEFULNESS } from "./format";
+import { transcription, usefulnessIcon } from "./format";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
 
 function play(id: number, accent: "uk" | "us") {
@@ -82,8 +82,9 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
     <List>
       <div className="word-head">
         <Title level="1" weight="2">
-          {word.term} {word.usefulness ? USEFULNESS[word.usefulness] : ""}
+          {word.term} {usefulnessIcon(word.usefulness)}
         </Title>
+        {word.usefulness == null && <Text className="hint">❔ Полезность пока не оценена</Text>}
         {transcription(word) && <Text className="hint">{transcription(word)}</Text>}
         <Title level="2" weight="2" className="answer">
           {word.translation}

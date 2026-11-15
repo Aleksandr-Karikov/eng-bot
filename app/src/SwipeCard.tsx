@@ -6,7 +6,7 @@ import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
 import { pictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
-import { transcription, USEFULNESS } from "./format";
+import { transcription, usefulnessIcon } from "./format";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
 
@@ -92,7 +92,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
 
         <div className="front">
           <Title level="1" weight="2">
-            {enRu ? w.term : w.translation} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
+            {enRu ? w.term : w.translation} {usefulnessIcon(w.usefulness)}
           </Title>
           {enRu && view.transcription && transcription(w) && <Text className="hint">{transcription(w)}</Text>}
           {/* RU → EN: смысл сразу, чтобы среди синонимов было ясно, какое слово спрашивают. */}

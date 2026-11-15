@@ -34,8 +34,8 @@ describe("transcription display", () => {
 
   it("puts the transcription in the draft and visibly on the card front", () => {
     const word = { term: "bank", translation: "берег", explanation: "", example: "", transcriptionUk: "/bæŋk/", transcriptionUs: "/bæŋk/" };
-    expect(draftText(word)).toBe("<b>bank</b> — берег\n🇬🇧🇺🇸 /bæŋk/");
-    expect(cardText(word)).toMatch(/^<b>bank<\/b>\n🇬🇧🇺🇸 \/bæŋk\/\n\n<tg-spoiler>/);
+    expect(draftText(word)).toBe("<b>bank</b> — берег\n🇬🇧🇺🇸 /bæŋk/\n❔ Полезность пока не оценена");
+    expect(cardText(word)).toMatch(/^<b>bank<\/b> ❔\n🇬🇧🇺🇸 \/bæŋk\/\n\n<tg-spoiler>/);
   });
 });
 

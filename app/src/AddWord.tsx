@@ -4,7 +4,7 @@ import { Button, Input, List, Section, Spinner, Text, Textarea, Title } from "@t
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addWord, prepareWord, type WordDraft } from "./api";
 import { useBottomButtons } from "./bottomButtons";
-import { transcription, USEFULNESS } from "./format";
+import { transcription, usefulnessIcon } from "./format";
 import { haptic, notify, useBackButton } from "./telegram";
 
 /**
@@ -76,7 +76,7 @@ export function AddWord({ onExit }: { onExit: () => void }) {
         <Section header="Проверь и добавь">
           <div className="word-head">
             <Title level="1" weight="2">
-              {draft.term} {draft.usefulness ? USEFULNESS[draft.usefulness] : ""}
+              {draft.term} {usefulnessIcon(draft.usefulness)}
             </Title>
             {transcription({ transcriptionUk: draft.transcriptionUk ?? "", transcriptionUs: draft.transcriptionUs ?? "" }) && (
               <Text className="hint">{transcription({ transcriptionUk: draft.transcriptionUk ?? "", transcriptionUs: draft.transcriptionUs ?? "" })}</Text>

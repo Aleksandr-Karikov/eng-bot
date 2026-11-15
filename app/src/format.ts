@@ -11,3 +11,5 @@ export function transcription(w: { transcriptionUk: string; transcriptionUs: str
   if (uk && uk === us) return uk;
   return [uk && `🇬🇧 ${uk}`, us && `🇺🇸 ${us}`].filter(Boolean).join("  ·  ");
 }
+
+export const usefulnessIcon = (level: number | null | undefined) => level ? USEFULNESS[level] ?? "❔" : "❔";

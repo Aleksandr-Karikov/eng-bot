@@ -1,3 +1,4 @@
+import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { InlineQueryResult } from "grammy/types";
 import { findInlineWords, looksLikeWord } from "../../services/inline";
@@ -119,12 +120,15 @@ async function addTranslatedWord(ctx: BotContext, deps: Deps, query: string): Pr
   if (!e?.translation) return void (await sendToUser(ctx, "Не получилось перевести, попробуй ещё раз"));
 
   const term = e.term || query;
+  const [rated] = await rateUsefulness([{ ...e, term }], deps.frequency);
   const room = await ensurePersonalRoom(deps.db, ctx.user.id, deps.now());
   const saved = await saveWord(deps.db, {
     roomId: room.id,
     addedBy: ctx.user.id,
     now: deps.now(),
     draft: {
+      usefulness: rated.usefulness,
+      usefulnessNote: rated.usefulnessNote,
       term,
       translation: e.translation,
       explanation: e.explanation ?? "",

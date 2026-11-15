@@ -1,3 +1,4 @@
+import { baseForms } from "./usefulness";
 import { RetryLater } from "./retry-later";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
@@ -13,9 +14,9 @@ const tokens = (s: string) => s.toLowerCase().replace(/[’‘`]/g, "'").split(/
  * для draw up вариант draw подсказан заголовком «Какое слово подходит к draw up?».
  */
 export function validQuiz(quiz: NonNullable<Collocations["quiz"]>, term: string): boolean {
-  const termWords = new Set(tokens(term));
+  const termWords = new Set(tokens(term).flatMap(baseForms));
   const answer = tokens(quiz.options[quiz.correct] ?? "");
-  return answer.length > 0 && !answer.some((w) => termWords.has(w));
+  return answer.length > 0 && !answer.some((w) => baseForms(w).some((form) => termWords.has(form)));
 }
 
 /** Сохранённые сочетания слова; undefined — ещё не готовили. Негодный вопрос отбрасывается (в том числе у старых слов). */

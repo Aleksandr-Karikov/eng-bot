@@ -32,7 +32,7 @@ describe("callbacks", () => {
 describe("texts", () => {
   it("escapes HTML in user content", () => {
     expect(esc("R&D <3")).toBe("R&amp;D &lt;3");
-    expect(draftText({ term: "<b>", translation: "R&D", explanation: "", example: "" })).toBe("<b>&lt;b&gt;</b> — R&amp;D");
+    expect(draftText({ term: "<b>", translation: "R&D", explanation: "", example: "" })).toBe("<b>&lt;b&gt;</b> — R&amp;D\n❔ Полезность пока не оценена");
   });
   it("pluralizes in Russian", () => {
     expect([1, 2, 5, 11, 21, 22].map((n) => plural(n, "слово", "слова", "слов"))).toEqual([

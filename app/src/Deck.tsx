@@ -5,7 +5,7 @@ import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { transcription, USEFULNESS } from "./format";
+import { transcription, usefulnessIcon } from "./format";
 
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
@@ -83,7 +83,7 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
 
         <div className="front">
           <Title level="1" weight="2">
-            {w.term} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
+            {w.term} {usefulnessIcon(w.usefulness)}
           </Title>
           {transcription(w) && <Text className="hint">{transcription(w)}</Text>}
           <Text className={`triage-translation${revealed ? "" : " hidden"}`} onClick={() => setRevealed(true)}>

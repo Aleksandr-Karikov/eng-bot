@@ -355,8 +355,9 @@ describe("инлайн переводит новое слово", () => {
     expect(calls).toEqual(["gauge"]);
   });
 
-  it("кнопка «Добавить в словарь» кладёт слово в личный словарь", async () => {
+  it("кнопка «Добавить в словарь» сохраняет слово с оценкой полезности (#17)", async () => {
     const h = botHarness({ enricher: fastEnricher([]) });
+    h.deps.frequency = { zipf: async () => new Map([["ubiquitous", 3.7]]) };
     const user = await makeUser(h.db, 100);
 
     await h.bot.handleUpdate(h.callback(100, "in:ubiquitous"));
@@ -364,6 +365,7 @@ describe("инлайн переводит новое слово", () => {
     await vi.waitFor(async () => expect(await findInlineWords(h.db, user.id, "ubiquitous")).toHaveLength(1));
     const hits = await findInlineWords(h.db, user.id, "ubiquitous");
     expect(hits[0].word.translation).toBe("вездесущий");
+    expect(hits[0].word.usefulness).toBe(2);
   });
 
   it("нажатие кнопки не ждёт модель: бот отвечает сразу, а перевод идёт в фоне", async () => {

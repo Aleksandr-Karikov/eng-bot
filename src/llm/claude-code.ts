@@ -26,6 +26,8 @@ import {
 import {
   buildClozePrompt,
   buildDrillPrompt,
+  buildDrillReviewPrompt,
+  parseDrillReview,
   buildJudgePrompt,
   buildSentencePrompt,
   buildStoryPrompt,
@@ -213,7 +215,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async drill(profile: string, count: number, avoid: string[] = []): Promise<DrillQuestion[]> {
-    return parseDrill(await this.ask(buildDrillPrompt(profile, count, avoid, currentLang()), Math.max(this.opts.timeoutMs, 60_000)));
+    const timeout = Math.max(this.opts.timeoutMs, 60_000);
+    const questions = parseDrill(await this.ask(buildDrillPrompt(profile, count, avoid, currentLang()), timeout));
+    if (!questions.length) return [];
+    return parseDrillReview(await this.ask(buildDrillReviewPrompt(questions, currentLang()), timeout, this.checker), questions);
   }
 
   /** Запоминалки — более сильной моделью (по умолчанию sonnet): придумывать ассоциации Haiku умеет плохо. */

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getWords, type WordItem, type WordStatus } from "./api";
 import { WordPage } from "./WordPage";
 import { AddWord } from "./AddWord";
-import { USEFULNESS } from "./format";
+import { usefulnessIcon } from "./format";
 import { haptic, useBackButton } from "./telegram";
 
 const STATUS_LABEL: Record<WordStatus, string> = {
@@ -124,7 +124,7 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
               setOpen(w.id);
             }}
           >
-            {w.term} {w.usefulness ? USEFULNESS[w.usefulness] : ""}
+            {w.term} {usefulnessIcon(w.usefulness)}
           </Cell>
         ))}
       </Section>

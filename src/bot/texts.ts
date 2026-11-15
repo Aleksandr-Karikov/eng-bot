@@ -57,7 +57,7 @@ function collocationsLine(collocations: string): string {
 }
 
 /** Кружок полезности рядом со словом на карточке — без подписи; пояснение — только в черновике при добавлении. */
-const usefulnessIcon = (d: { usefulness?: number | null }) => (d.usefulness ? ` ${{ 3: "🟢", 2: "🟡", 1: "⚪️" }[d.usefulness] ?? ""}` : "");
+const usefulnessIcon = (d: { usefulness?: number | null }) => (d.usefulness ? ` ${{ 3: "🟢", 2: "🟡", 1: "⚪️" }[d.usefulness] ?? "❔"}` : " ❔");
 
 /** «📍 …» — исходное предложение, само слово в нём жирным. */
 /** Реплика, где встретилось слово; само слово в ней — жирным. */
@@ -88,10 +88,10 @@ const USEFULNESS_LABELS: Record<number, string> = {
   1: "⚪️ Необязательное — учим только на узнавание",
 };
 
-/** «🟢 Очень полезное — частое в разговоре»; "" — не оценено. */
+/** Оценка или явное отсутствие данных. */
 export function usefulnessLine(d: { usefulness?: number | null; usefulnessNote?: string }): string {
   const label = d.usefulness ? USEFULNESS_LABELS[d.usefulness] : undefined;
-  if (!label) return "";
+  if (!label) return "❔ Полезность пока не оценена";
   return d.usefulnessNote ? `${label}: ${esc(d.usefulnessNote)}` : label;
 }
 
@@ -286,24 +286,10 @@ export function batchDoneText(words: Array<{ term: string }>): string {
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */
-const HINT_STOPWORDS = new Set(["the", "and", "for", "you", "your", "his", "her", "its", "our", "their", "with", "from", "into", "out", "off", "not", "are", "was", "has", "have", "one", "someone", "something", "smth", "sb", "sth"]);
-
-/**
- * Подсказка смысла для карточки RU → EN: русское объяснение слова, чтобы среди синонимов с одинаковым переводом
- * было понятно, какое имеется в виду (баг #10: «благоразумие» — prudence или discretion?). Пусто, если
- * объяснение выдаёт само слово (встречается его основа).
- */
+/** Объяснение до ответа — только по-русски: slay тоже выдаёт slain, хотя основы не совпадают. */
 export function reverseHint(word: Pick<WordDraft, "term" | "explanation">): string {
-  const explanation = word.explanation?.trim();
-  if (!explanation) return "";
-  const text = explanation.toLowerCase();
-  const stems = word.term
-    .toLowerCase()
-    .split(/[^\p{L}]+/u)
-    .filter((w) => w.length >= 3 && !HINT_STOPWORDS.has(w))
-    // Основа без окончания: discretion → discreti, prudent → prude.
-    .map((w) => (w.length > 5 ? w.slice(0, -2) : w));
-  return stems.some((s) => text.includes(s)) ? "" : explanation;
+  const explanation = word.explanation?.trim() ?? "";
+  return currentLang().script.test(explanation) ? "" : explanation;
 }
 
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
