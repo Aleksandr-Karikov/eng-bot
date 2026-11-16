@@ -324,14 +324,42 @@ export interface Boss {
   byUser: Array<{ name: string; count: number }>;
 }
 
+/** 🪙 Монеты недели и уровень усиления: монеты — это снятые HP, тратятся на +10% урона за уровень. */
+export interface Coins {
+  coins: number;
+  level: number;
+  /** Цена следующего уровня; null — потолок. */
+  price: number | null;
+}
+
+/** 🏆 Трофей: `count` — сколько раз получен, нет в earned — ещё не получен. */
+export interface Trophy {
+  kind: string;
+  emoji: string;
+  title: string;
+  how: string;
+}
+
+export interface Trophies {
+  all: Trophy[];
+  earned: Array<{ kind: string; count: number; lastWeek: string }>;
+  total: number;
+  of: number;
+}
+
 export interface BossState {
   enabled: boolean;
   boss?: Boss;
   hits: BossHit[];
   total: number;
+  coins?: Coins;
+  trophies?: Trophies;
 }
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
+
+/** 🪙 Купить усиление; в ответ приходит новое состояние босса. */
+export const buyUpgrade = () => post<BossState & { ok: true }>("/api/boss/upgrade", {});
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
 export interface WordDraft {

@@ -29,7 +29,8 @@ describe("📊 progress", () => {
     expect(r.forecast).toHaveLength(7);
     // Ответили на две карточки — в прогнозе только они, третья (новая) не считается.
     expect(r.forecast.reduce((a, d) => a + d.count, 0)).toBe(2);
-    expect(r.goal).toMatchObject({ room: "R", done: 2 });
+    // Вклад в HP: «Помню» 2 + «Забыл» 1 — «Забыл» тоже удар, а не ноль.
+    expect(r.goal).toMatchObject({ room: "R", done: 3 });
     expect(r.topics).toEqual([
       { category: "артикли", count: 2, streak: 1 },
       { category: "предлоги", count: 1, streak: 0 },

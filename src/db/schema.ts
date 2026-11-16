@@ -29,6 +29,11 @@ export const users = sqliteTable("users", {
    * По умолчанию включено — иначе режим никто не увидит, а выключить можно одной кнопкой.
    */
   modeBoss: integer("mode_boss", { mode: "boolean" }).notNull().default(true),
+  /** 🐉 Уровень усиления: каждый даёт +10% к урону. Куплен за монеты, остаётся навсегда. */
+  upgradeDamage: integer("upgrade_damage").notNull().default(0),
+  /** Сколько монет потрачено на этой неделе и на какой — монеты недели сгорают в воскресенье. */
+  coinsSpent: integer("coins_spent").notNull().default(0),
+  coinsPeriod: text("coins_period"),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
   /**
@@ -68,7 +73,7 @@ export const rooms = sqliteTable("rooms", {
   lastDigestDate: text("last_digest_date"),
   /** Локальная дата последнего «слова дня» в группе. */
   lastWordOfDayDate: text("last_word_of_day_date"),
-  /** Цель комнаты на неделю (повторений); 0 — подбирается сама по прошлой неделе. */
+  /** Цель комнаты на неделю в HP: HP босса и цель — одно число. 0 — подбирается сама по прошлой неделе. */
   weeklyGoal: integer("weekly_goal").notNull().default(0),
   /** Начало недели (дата дайджеста), за которую уже поздравили с выполненной целью. */
   goalReachedWeek: text("goal_reached_week"),
@@ -214,6 +219,32 @@ export const duelPoints = sqliteTable("duel_points", {
   userId: integer("user_id").notNull().references(() => users.id),
   createdAt: createdAt(),
 });
+
+/**
+ * 🏆 Трофей: постоянная запись о достижении. Хранится отдельно от review_logs, потому что deleteRoom
+ * стирает историю комнаты — а коллекцию терять нельзя.
+ *
+ * Неделя записана строкой "2026-10-18" (дата воскресенья), `count` считает повторы трофея:
+ * «Добил» ×3 — это три добитых босса.
+ */
+export const trophies = sqliteTable("trophies", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  /** Ключ трофея из TROPHIES (services/trophies.ts). */
+  kind: text("kind").notNull(),
+  /** Неделя, за которую получен: "2026-10-18". */
+  week: text("week").notNull(),
+  /** Комната и её название на тот момент — комната может исчезнуть, а трофей останется. */
+  roomId: integer("room_id"),
+  roomName: text("room_name").notNull().default(""),
+  /** Сколько HP снято этим трофеем (для «Добил ×3» и подписи). */
+  value: integer("value").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [
+  index("trophies_user_idx").on(t.userId),
+  // Один и тот же трофей за одну и ту же неделю выдаём один раз — повторный тик напоминаний не должен дублировать.
+  uniqueIndex("trophies_user_kind_week_idx").on(t.userId, t.kind, t.week),
+]);
 
 export const reviewLogs = sqliteTable("review_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),

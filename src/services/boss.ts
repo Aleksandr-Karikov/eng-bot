@@ -62,9 +62,9 @@ const WEEK_MS = 7 * 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 
 /** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты (воскресенье 20:00). */
-export async function bossOf(db: Db, room: Room, now: Date): Promise<BossState> {
+export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Promise<BossState> {
   const weekStart = latestDigestMoment(now).at;
-  const progress = await goalProgress(db, room, now, weekStart);
+  const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
   const damage = progress.target > 0 ? progress.done / progress.target : 0;
@@ -162,3 +162,72 @@ export const BOSS_TITLES: Record<BossPhase, string> = {
   furious: "Босс в ярости",
   dead: "Босс повержен",
 };
+
+/**
+ * 🪙 Монеты и усиление.
+ *
+ * Монеты — это нанесённый урон: не отдельный счётчик, а то же число. Поэтому они не конкурируют
+ * с весами (диктант даёт больше и урона, и монет) и не дают второго способа получить силу.
+ *
+ * Тратятся на уровни усиления: каждый +10% к урону навсегда. Монеты недели сгорают в воскресенье —
+ * копилки нет, иначе игра превращается в накопление.
+ */
+
+/** Сколько монет стоит следующий уровень. Дорожает: 100, 200, 400… */
+export function upgradePrice(level: number): number {
+  return 100 * 2 ** level;
+}
+
+/** Урон с учётом уровня: +10% за уровень, к целому вниз (нельзя получить пол-HP). */
+export function boostedDamage(hp: number, level: number): number {
+  return Math.floor(hp * (1 + 0.1 * level));
+}
+
+/** Период монет — неделя комнаты (дата воскресенья), чтобы сгорание совпало со сменой босса. */
+export function coinsPeriod(now: Date): string {
+  return latestDigestMoment(now).date;
+}
+
+export interface CoinState {
+  /** Монет на этой неделе (ещё не потрачено). */
+  coins: number;
+  level: number;
+  /** Цена следующего уровня; null — дальше некуда. */
+  price: number | null;
+}
+
+/** Начало лимита уровней: без потолка к концу года босс дох бы от одного взгляда. */
+export const MAX_UPGRADE = 10;
+
+export function coinState(done: number, user: { upgradeDamage: number; coinsSpent: number; coinsPeriod: string | null }, now: Date): CoinState {
+  // Потраченное на прошлой неделе не переносится: период не тот — счёт с нуля.
+  const spent = user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0;
+  const level = user.upgradeDamage;
+  return {
+    coins: Math.max(0, done - spent),
+    level,
+    price: level < MAX_UPGRADE ? upgradePrice(level) : null,
+  };
+}
+
+/**
+ * Купить следующий уровень усиления за монеты этой недели.
+ * undefined — не хватает монет или потолок; строка "ok" — куплено.
+ */
+export async function buyUpgrade(db: Db, userId: number, done: number, now: Date): Promise<"ok" | "poor" | "max"> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) return "poor";
+  const state = coinState(done, user, now);
+  if (state.price === null) return "max";
+  if (state.coins < state.price) return "poor";
+  await db
+    .update(users)
+    .set({
+      upgradeDamage: state.level + 1,
+      // Трата пишется с периодом недели: в воскресенье монеты обнулятся вместе с боссом.
+      coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + state.price,
+      coinsPeriod: coinsPeriod(now),
+    })
+    .where(eq(users.id, userId));
+  return "ok";
+}

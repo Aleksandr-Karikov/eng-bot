@@ -1,8 +1,8 @@
-import { Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
+import { Button, Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { getBoss, type Boss, type BossState } from "./api";
-import { useBackButton } from "./telegram";
+import { buyUpgrade, getBoss, type Boss, type BossState, type Coins, type Trophies } from "./api";
+import { haptic, notify, useBackButton } from "./telegram";
 
 /**
  * 🐉 Вкладка босса — картина боя, а не ещё одна кнопка «учиться».
@@ -46,6 +46,7 @@ function hitTime(iso: string): string {
 export function BossScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<BossState>();
   const [error, setError] = useState<string>();
+  const [buying, setBuying] = useState(false);
   useBackButton(onExit);
 
   useEffect(() => {
@@ -53,6 +54,21 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
+
+  /** Покупка подтверждается сервером: монеты с телефона не считаются. В ответ — свежее состояние. */
+  const buy = async () => {
+    if (buying) return;
+    setBuying(true);
+    try {
+      setData(await buyUpgrade());
+      haptic.done(true);
+    } catch (err) {
+      haptic.done(false);
+      notify(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBuying(false);
+    }
+  };
 
   if (error) return <Placeholder header="Не получилось загрузить" description={error} />;
   if (!data) {
@@ -70,10 +86,28 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       />
     );
   }
-  return <BossView boss={data.boss} hits={data.hits} total={data.total} />;
+  return (
+    <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies} onBuy={buy} buying={buying} />
+  );
 }
 
-function BossView({ boss, hits, total }: { boss: Boss; hits: BossState["hits"]; total: number }) {
+function BossView({
+  boss,
+  hits,
+  total,
+  coins,
+  trophies,
+  onBuy,
+  buying,
+}: {
+  boss: Boss;
+  hits: BossState["hits"];
+  total: number;
+  coins?: Coins;
+  trophies?: Trophies;
+  onBuy: () => void;
+  buying: boolean;
+}) {
   const face = FACE[boss.phase];
   const percent = Math.min(100, Math.round(boss.damage * 100));
   const dead = boss.phase === "dead";
@@ -158,7 +192,65 @@ function BossView({ boss, hits, total }: { boss: Boss; hits: BossState["hits"]; 
         </div>
       )}
 
+      {coins && (
+        <div className="boss-members">
+          <div className="boss-member">
+            <span>🪙 Монеты недели</span>
+            <Text className="hint">{coins.coins}</Text>
+          </div>
+          <div className="boss-member">
+            <span>⚔️ Усиление</span>
+            <Text className="hint">
+              +{coins.level * 10}%{coins.price !== null ? ` · следующий ${coins.price}` : " · максимум"}
+            </Text>
+          </div>
+          {coins.price !== null && (
+            <Button mode="bezeled" size="m" stretched loading={buying} disabled={coins.coins < coins.price} onClick={onBuy}>
+              {coins.coins < coins.price ? `Нужно ${coins.price - coins.coins} ещё` : `Усилить за ${coins.price}`}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
+
       <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить — ⚙️.</Text>
+    </div>
+  );
+}
+
+/**
+ * 🏆 Полка трофеев: полученные цветные, остальные серым с подсказкой «как». Коллекция без «как получить»
+ * — просто картинки; с условием — цель, к которой идут.
+ */
+function TrophyShelf({ trophies }: { trophies: Trophies }) {
+  const byKind = new Map(trophies.earned.map((e) => [e.kind, e]));
+  const earned = trophies.all.filter((t) => byKind.has(t.kind));
+  const rest = trophies.all.filter((t) => !byKind.has(t.kind));
+  return (
+    <div className="boss-members">
+      <Text weight="2">
+        🏆 Трофеи · {trophies.total} из {trophies.of}
+      </Text>
+      {earned.length === 0 && <Text className="hint">Пока пусто. Первый появится в воскресенье — за эту неделю.</Text>}
+      <div className="trophy-grid">
+        {earned.map((t) => {
+          const e = byKind.get(t.kind)!;
+          return (
+            <div className="trophy" key={t.kind} title={t.how}>
+              <span className="trophy-emoji">{t.emoji}</span>
+              <span>{t.title}</span>
+              {e.count > 1 && <Text className="hint">×{e.count}</Text>}
+            </div>
+          );
+        })}
+        {rest.map((t) => (
+          <div className="trophy locked" key={t.kind} title={t.how}>
+            <span className="trophy-emoji">🔒</span>
+            <span>{t.title}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

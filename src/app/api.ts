@@ -12,7 +12,8 @@ import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecis
 import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
-import { bossEnabled, bossFeed, bossOf } from "../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState } from "../services/boss";
+import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
@@ -355,9 +356,20 @@ export async function appBoss(deps: Deps, user: User) {
   if (!enabled) return { enabled, boss: undefined, hits: [], total: 0 };
   if (!room) return { enabled, boss: undefined };
   const now = deps.now();
-  const [boss, feed] = await Promise.all([bossOf(deps.db, room, now), bossFeed(deps.db, room, now, 20)]);
+  const [boss, feed] = await Promise.all([bossOf(deps.db, room, now, user.id), bossFeed(deps.db, room, now, 20)]);
+  // 🪙 Монеты — личный урон этой недели: усиление своё, чужой урон монет не даёт.
+  const coins = coinState(boss.mine ?? 0, user, now);
+  const collection = await userTrophies(deps.db, user.id);
   return {
     enabled,
+    coins,
+    trophies: {
+      // Отдаём весь каталог: вкладка показывает и то, чего ещё нет, — иначе коллекция не коллекция.
+      all: TROPHIES.map((t) => ({ kind: t.kind, emoji: t.emoji, title: t.title, how: t.how })),
+      earned: collection.earned.map((e) => ({ kind: e.def.kind, count: e.count, lastWeek: e.lastWeek })),
+      total: collection.total,
+      of: collection.of,
+    },
     boss: {
       room: boss.room,
       damage: boss.damage,
@@ -428,4 +440,17 @@ export async function appSetDecide(deps: Deps, user: User, body: { itemId?: unkn
 export async function setItemForAudio(deps: Deps, itemId: number) {
   const [item] = await deps.db.select().from(setItems).where(eq(setItems.id, itemId));
   return item ? { id: `set${item.id}`, term: item.term } : undefined;
+}
+
+/** 🪙 Покупка усиления: проверяем монеты на сервере — доверять числу с телефона нельзя. */
+export async function appBuyUpgrade(deps: Deps, user: User) {
+  const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+  if (!room) return { status: 400, body: { ok: false as const, error: "Нет комнаты" } };
+  const now = deps.now();
+  const boss = await bossOf(deps.db, room, now, user.id);
+  const result = await buyUpgrade(deps.db, user.id, boss.mine ?? 0, now);
+  if (result === "max") return { status: 400, body: { ok: false as const, error: "Дальше усиление не растёт" } };
+  if (result === "poor") return { status: 400, body: { ok: false as const, error: "Пока не хватает монет — снятых HP этой недели" } };
+  // Обновлённый пользователь: ответ должен показывать новый уровень, а не тот, что был на входе.
+  return { status: 200, body: { ok: true as const }, user: (await getUserByTelegramId(deps.db, user.telegramId)) ?? user };
 }

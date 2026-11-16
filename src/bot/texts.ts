@@ -271,21 +271,31 @@ export function weeklyReportText(r: WeeklyReport): string {
 export function goalText(roomName: string, g: GoalProgress): string {
   const percent = Math.round((g.done / Math.max(1, g.target)) * 100);
   const lines = [
-    `🎯 <b>Цель «${esc(roomName)}» на неделю</b>: ${g.done}/${g.target} повторений${g.done >= g.target ? " ✅" : ""}`,
+    `🎯 <b>Цель «${esc(roomName)}» на неделю</b>: ${g.done}/${g.target} HP${g.done >= g.target ? " ✅" : ""}`,
     `${progressBar(g.done, g.target)} ${percent}%`,
   ];
   if (g.byUser.length) lines.push(`Вклад: ${g.byUser.map((u) => `${esc(u.name)} ${u.count}`).join(" · ")}`);
   lines.push(
     "",
-    g.auto ? "Цель подобрана по прошлой неделе (+10%). Своя — /goal 300" : "Вернуть автоцель — /goal auto",
+    g.auto ? "Цель подобрана по прошлой неделе (+10%). Своя — /goal 600" : "Вернуть автоцель — /goal auto",
     "Неделя заканчивается в воскресенье в 20:00.",
   );
   return lines.join("\n");
 }
 
+/**
+ * 🏆 «Ты получил трофеи» — в личку в воскресенье. Список короткий: три-четыре трофея,
+ * и у каждого — как он достался, иначе непонятно, за что.
+ */
+export function trophiesText(earned: Array<{ emoji: string; title: string; how: string }>): string {
+  const lines = earned.map((t) => `${t.emoji} <b>${esc(t.title)}</b> — ${esc(t.how)}`);
+  const head = earned.length === 1 ? "🏆 <b>Новый трофей</b>" : `🏆 <b>Новые трофеи: ${earned.length}</b>`;
+  return [head, "", ...lines, "", "Вся коллекция — в приложении на вкладке 🐉"].join("\n");
+}
+
 export function goalReachedText(roomName: string, g: GoalProgress): string {
   const top = g.byUser[0] ? ` Больше всех — ${esc(g.byUser[0].name)} (${g.byUser[0].count})` : "";
-  return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} повторений!${top}`;
+  return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} HP!${top}`;
 }
 
 /**
@@ -771,6 +781,7 @@ export function welcomeText(): string {
       "• Слово дня по утрам, 👏 когда кто-то употребил слово из словаря в переписке",
       "• /goal — общая цель комнаты на неделю, /stats — прогресс",
       "• 🐉 /boss — босс недели: та же цель, но боем. Каждая повторённая карточка — удар, в приложении есть вкладка с боссом. Выключается в /settings",
+      "• 🪙 /upgrade — усиление за монеты недели: монеты это твой урон, каждый уровень даёт +10%. Сгорают в воскресенье",
       "• По воскресеньям — итоги недели в группе и личный итог в личку",
     ]),
     section("⚙️ Настройки", [

@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
 import { currentLang } from "../../lang";
-import { bossEnabled, bossFeed, bossOf } from "../../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState } from "../../services/boss";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
 import { personalStats, roomLeaderboard } from "../../services/stats";
@@ -52,7 +52,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const arg = ctx.match.trim().toLowerCase();
     if (arg) {
       const goal = arg === "auto" ? 0 : Number(arg);
-      if (!Number.isInteger(goal) || goal < 0 || goal > 10_000) return void (await ctx.reply("Формат: /goal 300 — повторений за неделю, или /goal auto"));
+      if (!Number.isInteger(goal) || goal < 0 || goal > 100_000) return void (await ctx.reply("Формат: /goal 600 — цель в HP на неделю, или /goal auto"));
       await setWeeklyGoal(deps.db, room.id, goal);
     }
     const fresh = (await getRoom(deps.db, room.id)) ?? room;
@@ -79,6 +79,24 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const own = bossEnabled(ctx.user, deps.bossEnabled);
     const hint = own ? "" : "\n\n<i>Режим выключен в /settings → 🎯 Упражнения. Включи, чтобы босс был и в приложении.</i>";
     await ctx.reply(bossText(boss, feed) + hint, { ...HTML, reply_markup: bossKeyboard(own) });
+  });
+
+  /** 🪙 /upgrade — купить усиление из бота, не открывая приложение. */
+  bot.command("upgrade", async (ctx) => {
+    if (deps.bossEnabled === false) return void (await ctx.reply("🐉 Босс сейчас выключен целиком. Включить — BOSS_ENABLED=1 в .env и перезапуск."));
+    const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
+    if (!room) return void (await ctx.reply("Сначала создай комнату — /room"));
+    const now = deps.now();
+    const boss = await bossOf(deps.db, room, now, ctx.user.id);
+    const state = coinState(boss.mine ?? 0, ctx.user, now);
+    if (state.price === null) return void (await ctx.reply(`⚔️ Усиление уже максимальное: +${state.level * 10}% к урону.`));
+    if (state.coins < state.price) {
+      return void (await ctx.reply(
+        `🪙 Монет на этой неделе: ${state.coins}, а следующий уровень стоит ${state.price}.\nСнимай HP карточками в /learn — монеты это и есть твой урон.`,
+      ));
+    }
+    await buyUpgrade(deps.db, ctx.user.id, boss.mine ?? 0, now);
+    await ctx.reply(`⚔️ Куплено! Усиление +${(state.level + 1) * 10}% к урону. Монеты недели сгорают в воскресенье — трать до конца недели.`);
   });
 
   bot.callbackQuery(/^bh$/, async (ctx) => {

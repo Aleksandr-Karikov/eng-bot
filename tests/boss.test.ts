@@ -42,9 +42,10 @@ describe("🐉 boss of the week", () => {
     }
     const boss = await bossOf(h.db, fresh, nsk("2026-10-19T12:00"));
     expect(boss.target).toBe(10);
-    expect(boss.done).toBe(4);
-    expect(boss.hp).toBe(6);
-    expect(boss.damage).toBeCloseTo(0.4);
+    // «Помню» весит 2 HP, поэтому 4 ответа — это 8 урона из 10.
+    expect(boss.done).toBe(8);
+    expect(boss.hp).toBe(2);
+    expect(boss.damage).toBeCloseTo(0.8);
   });
 
   it("phases go fresh → angry → furious → dead, and dead wins over everything", () => {
@@ -120,7 +121,8 @@ describe("🐉 /boss in the bot", () => {
 
     await h.bot.handleUpdate(h.message(100, "/boss"));
     const text = String(h.calls.filter((c) => c.method === "sendMessage").at(-1)?.payload.text);
-    expect(text).toContain("HP: 9 из 10");
+    // Один ответ «Помню» — 2 HP: остаток 8 из 10.
+    expect(text).toContain("HP: 8 из 10");
     expect(text).toContain("Удары: User100 1");
     expect(buttonData(h.calls, "⚔️")).toBe("bh");
   });
@@ -175,7 +177,7 @@ describe("🐉 boss tab in the Mini App", () => {
     await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(HOUR) });
     const body = await (await app.request("/api/boss", { headers })).json();
     expect(body.enabled).toBe(true);
-    expect(body.boss).toMatchObject({ room: "R", hp: 9, target: 10, done: 1, phase: "fresh" });
+    expect(body.boss).toMatchObject({ room: "R", hp: 8, target: 10, done: 2, phase: "fresh" });
     expect(body.hits[0]).toMatchObject({ name: "Alice", damage: 1 });
   });
 
@@ -198,7 +200,7 @@ describe("🐉 boss line under «Готово»", () => {
     await h.bot.handleUpdate(h.message(100, "/learn"));
     const text = String(h.calls.filter((c) => c.method === "sendMessage").at(-1)?.payload.text);
     expect(text).toContain("🐉 Босс недели");
-    expect(text).toContain("осталось 9 HP");
+    expect(text).toContain("осталось 8 HP");
   });
 
   it("stays away when the mode is off", async () => {
@@ -273,5 +275,79 @@ describe("🐉 BOSS_ENABLED — рубильник всего режима", () 
     const body = await (await app.request("/api/boss", { headers })).json();
     expect(body.enabled).toBe(false);
     expect(body.boss).toBeUndefined();
+  });
+});
+
+describe("⚖️ weighted damage and upgrades", () => {
+  it("weighs answers: easy 3, good and hard 2, again 1, and doubles the hard exercises", async () => {
+    const { answerWeight } = await import("../src/services/goals");
+    expect(answerWeight("easy")).toBe(3);
+    expect(answerWeight("good")).toBe(2);
+    expect(answerWeight("hard")).toBe(2);
+    // «Забыл» — не ноль: иначе выгодно врать себе «помню», чтобы босс дох.
+    expect(answerWeight("again")).toBe(1);
+    expect(answerWeight("good", "listen")).toBe(4);
+    expect(answerWeight("again", "app_cloze")).toBe(2);
+  });
+
+  it("grows personal damage with the upgrade level, never past whole HP", async () => {
+    const { answerWeight } = await import("../src/services/goals");
+    expect(answerWeight("good", undefined, 0)).toBe(2);
+    expect(answerWeight("good", undefined, 1)).toBe(2); // 2.2 → 2
+    expect(answerWeight("good", undefined, 5)).toBe(3); // 3.0
+    expect(answerWeight("easy", undefined, 10)).toBe(6); // 3 × 2.0
+  });
+
+  it("prices upgrades 100, 200, 400 and stops at the cap", async () => {
+    const { upgradePrice, MAX_UPGRADE, coinState } = await import("../src/services/boss");
+    expect(upgradePrice(0)).toBe(100);
+    expect(upgradePrice(1)).toBe(200);
+    expect(upgradePrice(2)).toBe(400);
+    const now = nsk("2026-10-20T12:00");
+    const user = { upgradeDamage: MAX_UPGRADE, coinsSpent: 0, coinsPeriod: null };
+    expect(coinState(10_000, user, now).price).toBeNull();
+    expect(coinState(50, { upgradeDamage: 0, coinsSpent: 0, coinsPeriod: null }, now)).toMatchObject({ coins: 50, level: 0, price: 100 });
+  });
+
+  it("forgets last week's coins: the period changed, so spending starts from zero", async () => {
+    const { coinState, coinsPeriod } = await import("../src/services/boss");
+    const now = nsk("2026-10-20T12:00");
+    // Потрачено на прошлой неделе — на этой не считается.
+    expect(coinState(500, { upgradeDamage: 1, coinsSpent: 300, coinsPeriod: "2020-01-05" }, now).coins).toBe(500);
+    // Потрачено на этой — вычитается.
+    expect(coinState(500, { upgradeDamage: 1, coinsSpent: 300, coinsPeriod: coinsPeriod(now) }, now).coins).toBe(200);
+  });
+
+  it("gives coins only for your own damage, not the room's", async () => {
+    const { h, alice, bob, room } = await setup();
+    await updateUser(h.db, alice.id, { currentRoomId: room.id });
+    await setWeeklyGoal(h.db, room.id, 100);
+    // Bob бьёт много, Alice — мало.
+    for (let i = 0; i < 10; i++) {
+      await h.db.insert(reviewLogs).values({ userId: bob.id, cardId: 2, rating: "good", reviewedAt: at(i * 60_000) });
+    }
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(HOUR) });
+    const boss = await bossOf(h.db, room, at(HOUR), alice.id);
+    // Урон комнаты — общий (22), а «мой» — только её 2 HP: на нём считаются монеты.
+    expect(boss.done).toBe(22);
+    expect(boss.mine).toBe(2);
+  });
+
+  it("buys an upgrade once there are enough coins, and refuses without them", async () => {
+    const { h, alice, room, app, headers } = await bossTab();
+    await setWeeklyGoal(h.db, room.id, 1000);
+    // 50 ответов «Помню» = 100 HP = ровно цена первого уровня.
+    for (let i = 0; i < 50; i++) {
+      await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(i * 1000) });
+    }
+    const before = await (await app.request("/api/boss", { headers })).json();
+    expect(before.coins).toMatchObject({ coins: 100, level: 0, price: 100 });
+    const bought = await app.request("/api/boss/upgrade", { method: "POST", headers });
+    expect(bought.status).toBe(200);
+    expect((await bought.json()).coins).toMatchObject({ level: 1, price: 200 });
+    // Второй раз без новых монет — отказ, а не второй уровень бесплатно.
+    const again = await app.request("/api/boss/upgrade", { method: "POST", headers });
+    expect(again.status).toBe(400);
+    expect((await again.json()).error).toContain("не хватает");
   });
 });

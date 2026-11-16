@@ -38,7 +38,8 @@ describe("🎯 room goal for the week", () => {
     await review(alice.id, nsk("2026-10-19T09:00"), 3);
     await review(bob.id, nsk("2026-10-19T10:00"), 5);
     const now = nsk("2026-10-19T12:00");
-    expect(await goalProgress(h.db, room, now)).toEqual({ target: 70, done: 8, auto: true, byUser: [{ name: "Bob", count: 5 }, { name: "Alice", count: 3 }] });
+    // Цель и урон — в HP: 70 ответов прошлой недели × базовый вес 2. «Помню» тоже весит 2.
+    expect(await goalProgress(h.db, room, now)).toEqual({ target: 140, done: 16, auto: true, byUser: [{ name: "Bob", count: 10 }, { name: "Alice", count: 6 }] });
     await setWeeklyGoal(h.db, room.id, 8);
     const fresh = (await getRoom(h.db, room.id))!;
     expect((await goalProgress(h.db, fresh, now)).target).toBe(8);
@@ -52,10 +53,10 @@ describe("🎯 room goal for the week", () => {
     await setup(h.db);
     await h.bot.handleUpdate(h.message(100, "/goal 300"));
     const text = String(h.calls.filter((c) => c.method === "sendMessage").at(-1)?.payload.text);
-    expect(text).toContain("/300 повторений");
+    expect(text).toContain("/300 HP");
     expect(text).toContain("░░░░░░░░░░");
     await h.bot.handleUpdate(h.message(100, "/goal много"));
-    expect(String(h.calls.at(-1)?.payload.text)).toContain("Формат: /goal 300");
+    expect(String(h.calls.at(-1)?.payload.text)).toContain("Формат: /goal 600");
   });
 
   it("the digest tells whether the goal was reached", () => {

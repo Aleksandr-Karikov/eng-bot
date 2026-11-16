@@ -11,39 +11,80 @@ const AUTO_GROWTH = 1.1;
 export interface GoalProgress {
   target: number;
   done: number;
+  /** Урон конкретного человека, если спросили про него: на нём считаются монеты (усиление личное). */
+  mine?: number;
   /** Цель задана сама, по прошлой неделе. */
   auto: boolean;
-  /** Вклад участников, больше — выше. */
+  /** Вклад участников в HP, больше — выше. */
   byUser: Array<{ name: string; count: number }>;
 }
 
-/** Ответы на карточки слов комнаты в [from, to), по участникам. */
-async function roomReviews(db: Db, roomId: number, from: Date, to: Date): Promise<Map<string, number>> {
+/**
+ * Базовая цена ответа: «Помню» засчитывается как 2 HP.
+ *
+ * Отсюда множитель для цели: человек, отвечающий ровно «Помню», добивает босса ровно тогда же,
+ * когда дотягивал до цели при подсчёте по одному ответу, — игра ничего не сдвинула. «Легко»
+ * и сложные упражнения ускоряют, «Забыл» замедляет, и это единственный способ получить силу.
+ */
+export const BASE_WEIGHT = 2;
+
+/**
+ * Вес ответа в HP. «Забыл» — тоже 1, а не 0: ноль наказывал бы за честность, и стало бы выгодно
+ * врать себе «помню», чтобы босс дох. Признался — уже работа.
+ */
+export function answerWeight(rating: string, stage?: string | null, level = 0): number {
+  const base = rating === "easy" ? 3 : rating === "hard" ? 2 : rating === "good" ? 2 : 1;
+  // Сложное упражнение — вдвое: человек не узнал слово, а воспроизвёл.
+  const hard = stage === "cloze" || stage === "sentence" || stage === "listen" || stage === "app_cloze" || stage === "app_sentence" || stage === "app_listen";
+  // +10% за уровень усиления — личное, поэтому применяется к своим ответам, а не к комнате целиком.
+  return Math.floor((hard ? base * 2 : base) * (1 + 0.1 * level));
+}
+
+/**
+ * Ответы на карточки слов комнаты в [from, to): сырое число и HP, по участникам.
+ *
+ * Считаем по userId, а не по имени: усиление личное, поэтому урон каждого свой, и два тёзки в одной
+ * комнате не должны сливаться в одного — раньше сливались, хотя вклад в цель это искажало.
+ */
+async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   const rows = await db
-    .select({ name: users.firstName })
+    .select({ userId: users.id, name: users.firstName, rating: reviewLogs.rating, stage: reviewLogs.stage, level: users.upgradeDamage })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
     .innerJoin(users, eq(reviewLogs.userId, users.id))
     .where(and(eq(words.roomId, roomId), gte(reviewLogs.reviewedAt, from), lt(reviewLogs.reviewedAt, to)));
-  const counts = new Map<string, number>();
-  for (const r of rows) counts.set(r.name, (counts.get(r.name) ?? 0) + 1);
-  return counts;
+  const raw = new Map<number, number>();
+  const hp = new Map<number, number>();
+  const names = new Map<number, string>();
+  for (const r of rows) {
+    names.set(r.userId, r.name);
+    raw.set(r.userId, (raw.get(r.userId) ?? 0) + 1);
+    hp.set(r.userId, (hp.get(r.userId) ?? 0) + answerWeight(r.rating, r.stage, r.level));
+  }
+  return { raw, hp, names };
 }
 
-const total = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+const total = (m: Map<number, number>) => [...m.values()].reduce((a, b) => a + b, 0);
 
 export function autoGoal(lastWeek: number): number {
   return Math.max(MIN_AUTO_GOAL, Math.ceil(Math.round(lastWeek * AUTO_GROWTH) / 10) * 10);
 }
 
-/** Прогресс недели, которая начинается в weekStart (по умолчанию — текущей). */
-export async function goalProgress(db: Db, room: Room, now: Date, weekStart = latestDigestMoment(now).at): Promise<GoalProgress> {
+/**
+ * Цель недели в HP. Считается от **числа ответов** прошлой недели, а не от нанесённого урона:
+ * иначе усиление раздувало бы следующего босса и обесценивало себя.
+ */
+export async function goalProgress(db: Db, room: Room, now: Date, weekStart = latestDigestMoment(now).at, userId?: number): Promise<GoalProgress> {
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
-  const counts = await roomReviews(db, room.id, weekStart, weekEnd);
-  const target = room.weeklyGoal > 0 ? room.weeklyGoal : autoGoal(total(await roomReviews(db, room.id, new Date(weekStart.getTime() - WEEK_MS), weekStart)));
-  const byUser = [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-  return { target, done: total(counts), auto: room.weeklyGoal <= 0, byUser };
+  const current = await roomReviews(db, room.id, weekStart, weekEnd);
+  const prev = await roomReviews(db, room.id, new Date(weekStart.getTime() - WEEK_MS), weekStart);
+  // Цель — в HP и хранится в HP: одно число в /goal, дайджесте и на вкладке босса.
+  const target = room.weeklyGoal > 0 ? room.weeklyGoal : autoGoal(total(prev.raw)) * BASE_WEIGHT;
+  const byUser = [...current.hp.entries()]
+    .map(([userId, count]) => ({ name: current.names.get(userId) ?? "?", count }))
+    .sort((a, b) => b.count - a.count);
+  return { target, done: total(current.hp), auto: room.weeklyGoal <= 0, byUser, ...(userId !== undefined ? { mine: current.hp.get(userId) ?? 0 } : {}) };
 }
 
 /** Прогресс недели, которая только что закончилась (для воскресного дайджеста). */

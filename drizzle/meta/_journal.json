@@ -330,6 +330,20 @@
       "when": 1794813989105,
       "tag": "0046_fine_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794819922165,
+      "tag": "0047_worthless_night_thrasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794820395193,
+      "tag": "0048_typical_roulette",
+      "breakpoints": true
     }
   ]
 }

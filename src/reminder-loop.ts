@@ -1,9 +1,10 @@
 import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
-import { digestText, dueNoticeText, goalReachedText, reminderText, weeklyReportText, wordOfDayText } from "./bot/texts";
+import { digestText, dueNoticeText, goalReachedText, reminderText, trophiesText, weeklyReportText, wordOfDayText } from "./bot/texts";
 import { collectWeeklyReports } from "./services/weekly-report";
 import { collectGoalsReached, lastWeekProgress } from "./services/goals";
+import { collectTrophies } from "./services/trophies";
 import { collectWordsOfDay } from "./services/word-of-day";
 import { collectDigests } from "./services/digest";
 import { listMembers } from "./services/rooms";
@@ -87,6 +88,22 @@ export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
   }
 }
 
+/**
+ * 🏆 Трофеи за закрытую неделю — каждому в личку, кто что-то получил.
+ * В том же тике, что дайджест: неделя уже закрыта, значит считать есть что. Идемпотентно само по себе.
+ */
+export async function sendTrophies(deps: DigestDeps): Promise<void> {
+  for (const { user, earned } of await collectTrophies(deps.db, deps.now())) {
+    if (earned.length === 0) continue;
+    const text = trophiesText(earned);
+    try {
+      await deps.notifier.dm(user, text, HTML);
+    } catch (err) {
+      console.error("Trophy message failed", user.telegramId, err);
+    }
+  }
+}
+
 /** Личный итог недели — каждому в личку. */
 export async function sendWeeklyReports(deps: DigestDeps): Promise<void> {
   for (const { user, report } of await collectWeeklyReports(deps.db, deps.now())) {
@@ -117,6 +134,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
       await sendDigests(deps);
       await sendGoalsReached(deps);
       await sendWeeklyReports(deps);
+      await sendTrophies(deps);
       await sendWordsOfDay(deps);
     } catch (err) {
       console.error("Reminder tick failed", err);
