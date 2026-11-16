@@ -158,9 +158,7 @@ function BossView({ boss, hits, total }: { boss: Boss; hits: BossState["hits"]; 
         </div>
       )}
 
-      <Text className="hint boss-footnote">
-        Каждая повторённая карточка — удар. Урон не надо набивать тапом: учись в «Учить», босс считает сам. Выключить босса — ⚙️.
-      </Text>
+      <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить — ⚙️.</Text>
     </div>
   );
 }
