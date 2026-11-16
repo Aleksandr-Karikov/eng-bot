@@ -4,6 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>WordBoss</title>
+    <!-- Ярлык на главном экране: манифест и иконки. Сейчас запуск с ярлыка упирается в авторизацию
+         (нужен initData от Telegram), поэтому пока это только оформление. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#2481cc" />
+    <link rel="icon" href="favicon.png" type="image/png" />
+    <!-- iOS не читает manifest для иконки: ему нужен apple-touch-icon и свой режим. -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="WordBoss" />
   </head>
   <body>
     <div id="root"></div>
