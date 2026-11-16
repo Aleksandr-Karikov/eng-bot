@@ -285,7 +285,8 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
   if (screen === "modes") {
     const kb = new InlineKeyboard();
     for (const [stage, label, field] of MODE_LABELS) kb.text(`${user[field] ? "✅" : "⬜️"} ${label}`, encodeCb({ k: "mode", stage })).row();
-    kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Вопросы по ошибкам в /learn`, encodeCb({ k: "drillMode" }));
+    kb.text(`${user.modeDrill ? "✅" : "⬜️"} 🧠 Вопросы по ошибкам в /learn`, encodeCb({ k: "drillMode" })).row();
+    kb.text(`${user.modeBoss ? "✅" : "⬜️"} 🐉 Босс недели`, encodeCb({ k: "bossMode" }));
     return back(kb);
   }
   if (screen === "voice") {
@@ -332,6 +333,12 @@ export function mistakesKeyboard(): InlineKeyboard {
     .text(`🇷🇺→${currentLang().flag} Перевод`, encodeCb({ k: "mistakesGo", to: "translate" }))
     .row()
     .text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
+}
+
+/** Под боссом: лента свежих ударов и (если режим выключен) напоминание, где включить. */
+export function bossKeyboard(enabled: boolean): InlineKeyboard {
+  return new InlineKeyboard().text("⚔️ Лента ударов", encodeCb({ k: "bossHits" })).row()
+    .text(enabled ? "🐉 Босс включён" : "⬜️ Выключен", encodeCb({ k: "bossMode" }));
 }
 
 /** Под запоминалкой: нарисовать (или показать уже нарисованную) картинку — если картинки включены. */

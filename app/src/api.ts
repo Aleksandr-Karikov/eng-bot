@@ -59,6 +59,8 @@ export interface Me {
   voice: VoiceAccent | null;
   /** Сколько новых слов от друзей ждут разбора. */
   triage: number;
+  /** 🐉 Режим «босс недели» включён: без него вкладка не показывается. */
+  boss?: boolean;
   /** Изучаемый язык текущей комнаты. */
   language?: StudyLanguage;
 }
@@ -206,6 +208,8 @@ export interface Settings {
   weeklyReport: boolean;
   modes: Toggle[];
   drill: boolean;
+  /** 🐉 Босс недели — режим-игра поверх цели комнаты. Нет поля — режим выключен целиком (BOSS_ENABLED=0). */
+  boss?: boolean;
   card: Toggle[];
   /** 🗣 Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
   voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
@@ -218,6 +222,7 @@ export type SettingChange =
   | { notifyDue: boolean }
   | { weeklyReport: boolean }
   | { drill: boolean }
+  | { boss: boolean }
   | { mode: string; on: boolean }
   | { cardPart: string; on: boolean }
   /** Повторный выбор того же варианта и "off" — выключить. */
@@ -297,6 +302,36 @@ export interface Progress {
 }
 
 export const getProgress = () => call<Progress & { ok: true }>("/api/progress");
+
+/** 🐉 Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
+export interface BossHit {
+  name: string;
+  damage: number;
+  /** ISO-время удара. */
+  at: string;
+}
+
+export interface Boss {
+  room: string;
+  /** 0…1+, больше 1 — добит с запасом. */
+  damage: number;
+  hp: number;
+  target: number;
+  done: number;
+  phase: "fresh" | "angry" | "furious" | "dead";
+  pace: "ahead" | "on-time" | "behind";
+  daysLeft: number;
+  byUser: Array<{ name: string; count: number }>;
+}
+
+export interface BossState {
+  enabled: boolean;
+  boss?: Boss;
+  hits: BossHit[];
+  total: number;
+}
+
+export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
 export interface WordDraft {

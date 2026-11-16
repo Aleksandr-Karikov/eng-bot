@@ -23,6 +23,12 @@ export const users = sqliteTable("users", {
   modeListen: integer("mode_listen", { mode: "boolean" }).notNull().default(true),
   modeCollocation: integer("mode_collocation", { mode: "boolean" }).notNull().default(true),
   modeDrill: integer("mode_drill", { mode: "boolean" }).notNull().default(true),
+  /**
+   * 🐉 Босс недели: цель комнаты, показанная как бой (services/boss.ts). Выключено — везде остаются
+   * те же числа, только без боя. Личное, а не комнатное: в общей комнате вкусы бывают разные.
+   * По умолчанию включено — иначе режим никто не увидит, а выключить можно одной кнопкой.
+   */
+  modeBoss: integer("mode_boss", { mode: "boolean" }).notNull().default(true),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
   /**

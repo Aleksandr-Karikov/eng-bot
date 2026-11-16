@@ -17,6 +17,8 @@ import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
+import { bossEnabled, bossOf } from "../../services/boss";
+import { getRoom } from "../../services/rooms";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
 import { sendWordVoice, wordVoice } from "./audio";
@@ -299,6 +301,8 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     // Пустой словарь — не «всё повторил»: новичку надо предложить набор, а не «появятся сами».
     const { total } = await personalStats(deps.db, ctx.user, deps.now());
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
+    // 🐉 Босс — там же, где «Готово»: человек уходит с мыслью «снял столько-то HP», а не с сухим отчётом.
+    text += await bossLine(ctx, deps);
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
     replyMarkup = addUndoRow(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length), undo);
     sessionCountsOf(deps).delete(ctx.user.id);
@@ -348,6 +352,20 @@ async function showPractice(ctx: BotContext, deps: Deps, mode: PresentMode): Pro
   const view = cardView(ctx.user);
   const text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
   await present(ctx, PRACTICE_HEADER + text, { ...HTML, reply_markup: practiceKeyboard(card.id, word.id, view.audio) }, mode);
+}
+
+/**
+ * Строка босса под «Готово»: одна-две строки, ничего не ломает при выключенном режиме и без комнаты.
+ * Именно здесь, а не только во вкладке приложения: вкладку ещё надо не забыть открыть, а «Готово» видит каждый.
+ */
+async function bossLine(ctx: BotContext, deps: Deps): Promise<string> {
+  if (!bossEnabled(ctx.user, deps.bossEnabled) || ctx.user.currentRoomId == null) return "";
+  const room = await getRoom(deps.db, ctx.user.currentRoomId);
+  if (!room) return "";
+  const boss = await bossOf(deps.db, room, deps.now());
+  const percent = Math.round(Math.min(1, boss.damage) * 100);
+  if (boss.phase === "dead") return `\n\n🐉 Босс недели повержен — ${boss.done} из ${boss.target} 💀 Реванш в воскресенье.`;
+  return `\n\n🐉 Босс недели: ${percent}% · осталось ${boss.hp} HP — /boss`;
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {

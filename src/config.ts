@@ -16,6 +16,11 @@ export interface Config {
   imageStyle?: string;
   /** Рисовать картинки заранее в фоне (если картинки включены). IMAGES_BACKGROUND=0 — только по кнопке. */
   imagesBackground: boolean;
+  /**
+   * 🐉 Босс недели — целиком. BOSS_ENABLED=0 выключает режим всем и сразу, не трогая личные настройки:
+   * вернули 1 — у всех снова как было. Это рубильник на случай, если игра не пойдёт.
+   */
+  bossEnabled: boolean;
   /** Python с youtube-transcript-api для субтитров YouTube; нет файла — ссылки на YouTube не разбираются. */
   youtubePython: string;
   /** Порт Mini App (наружу — через ngrok); 0 — выключить. */
@@ -77,6 +82,9 @@ export function loadConfig(
     ...(env.IMAGE_STYLE ? { imageStyle: env.IMAGE_STYLE } : {}),
     imagesBackground:
       env.IMAGES_ENABLED === "1" && env.IMAGES_BACKGROUND !== "0",
+    // Включён, пока явно не выключили: режим новый, и «нет переменной» не должно значить «нет босса» у тех,
+    // кто его не настраивал.
+    bossEnabled: env.BOSS_ENABLED !== "0",
     youtubePython: env.YOUTUBE_PYTHON || "tools/youtube/.venv/bin/python",
     capturePort: Number(env.CAPTURE_PORT ?? 8787),
     wordfreqPython: env.WORDFREQ_PYTHON || "tools/wordfreq/.venv/bin/python",

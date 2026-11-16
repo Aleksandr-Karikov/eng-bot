@@ -10,7 +10,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
-import { QUEUE_MODES, appAnswer, appAudio, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -82,6 +82,8 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user"), accent) });
   });
   app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
+  // 🐉 Вкладка босса: цель комнаты, показанная боем (services/boss.ts).
+  app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
   // 🧠 Ответ на вопрос по ошибкам из очереди.
   app.post("/api/drill", async (c) => {
     const r = await appDrillAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));

@@ -1,5 +1,6 @@
 import type { Bot } from "grammy";
 import { currentLang } from "../../lang";
+import { bossEnabled, bossFeed, bossOf } from "../../services/boss";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
 import { personalStats, roomLeaderboard } from "../../services/stats";
@@ -9,8 +10,8 @@ import { updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
-import { settingsKeyboard } from "../keyboards";
-import { goalText, settingsText, statsText } from "../texts";
+import { bossKeyboard, settingsKeyboard } from "../keyboards";
+import { bossHitsText, bossText, goalText, settingsText, statsText } from "../texts";
 import type { Stage } from "../../services/exercises";
 import type { User } from "../../db/schema";
 
@@ -58,6 +59,43 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.reply(goalText(fresh.name, await goalProgress(deps.db, fresh, deps.now())), HTML);
   });
 
+  /**
+   * 🐉 /boss — босс недели своими словами: HP, темп, кто сколько снял и кнопка ленты ударов.
+   * Тот же расчёт, что /goal, поэтому режим ничего не «зарабатывает» и не может разойтись с целью.
+   */
+  bot.command("boss", async (ctx) => {
+    // Рубильник выключен — режима нет ни у кого, и /boss честно об этом говорит вместо пустого боя.
+    if (deps.bossEnabled === false) return void (await ctx.reply("🐉 Босс сейчас выключен целиком. Включить — BOSS_ENABLED=1 в .env и перезапуск."));
+    const room =
+      ctx.chat.type !== "private"
+        ? await findRoomByChat(deps.db, ctx.chat.id)
+        : ctx.user.currentRoomId != null
+          ? await getRoom(deps.db, ctx.user.currentRoomId)
+          : undefined;
+    if (!room) return void (await ctx.reply(ctx.chat.type !== "private" ? "Эта группа ещё не привязана к комнате — /link" : "Сначала создай комнату — /room"));
+    // Выключенный режим — не прячем команду совсем: говорим, где включить, и всё равно показываем бой.
+    const boss = await bossOf(deps.db, room, deps.now());
+    const feed = await bossFeed(deps.db, room, deps.now(), 3);
+    const own = bossEnabled(ctx.user, deps.bossEnabled);
+    const hint = own ? "" : "\n\n<i>Режим выключен в /settings → 🎯 Упражнения. Включи, чтобы босс был и в приложении.</i>";
+    await ctx.reply(bossText(boss, feed) + hint, { ...HTML, reply_markup: bossKeyboard(own) });
+  });
+
+  bot.callbackQuery(/^bh$/, async (ctx) => {
+    const room =
+      ctx.chat?.type === "private"
+        ? ctx.user.currentRoomId != null
+          ? await getRoom(deps.db, ctx.user.currentRoomId)
+          : undefined
+        : ctx.chat
+          ? await findRoomByChat(deps.db, ctx.chat.id)
+          : undefined;
+    if (!room) return void (await ctx.answerCallbackQuery({ text: "Нет комнаты" }));
+    const feed = await bossFeed(deps.db, room, deps.now(), 10);
+    await ctx.answerCallbackQuery();
+    await ctx.reply(bossHitsText(feed.hits, ctx.user.timezone), HTML);
+  });
+
   bot.command("settings", async (ctx) => {
     const arg = ctx.match.trim();
     if (arg) {
@@ -92,6 +130,13 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^md$/, async (ctx) => {
     const user = await updateUser(deps.db, ctx.user.id, { modeDrill: !ctx.user.modeDrill });
     await ctx.answerCallbackQuery({ text: user.modeDrill ? "Включено" : "Выключено" });
+    await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "modes") });
+  });
+
+  // 🐉 Босс недели — такой же личный режим, как вопросы по ошибкам: выключил, и остаются обычные числа.
+  bot.callbackQuery(/^bm$/, async (ctx) => {
+    const user = await updateUser(deps.db, ctx.user.id, { modeBoss: !ctx.user.modeBoss });
+    await ctx.answerCallbackQuery({ text: user.modeBoss ? "Босс включён" : "Босс выключен" });
     await ctx.editMessageReplyMarkup({ reply_markup: settingsKeyboard(user, "modes") });
   });
 

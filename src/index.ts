@@ -167,6 +167,8 @@ const deps: Deps = {
   youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
   images,
   pictures,
+  // 🐉 Рубильник режима: BOSS_ENABLED=0 выключает босса всем сразу, не трогая личные настройки.
+  bossEnabled: config.bossEnabled,
   botUsername: bot.botInfo.username,
   // Собрано здесь, где всё известно, и только из того, что можно показывать: в `config` лежат ключи.
   status: {
@@ -196,6 +198,7 @@ const deps: Deps = {
       urlSet: Boolean(config.appUrl),
       ...(config.capturePort ? { capturePort: config.capturePort } : {}),
     },
+    games: { boss: config.bossEnabled },
   },
 };
 let captureServer: Server | undefined;

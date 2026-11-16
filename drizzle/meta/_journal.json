@@ -323,6 +323,13 @@
       "when": 1794765680753,
       "tag": "0045_fast_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1794813989105,
+      "tag": "0046_fine_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

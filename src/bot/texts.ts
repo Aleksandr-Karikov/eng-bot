@@ -5,6 +5,7 @@ import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, Sent
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { GoalProgress } from "../services/goals";
+import type { BossPace, BossPhase, BossState } from "../services/boss";
 import type { WeeklyReport } from "../services/weekly-report";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
@@ -288,6 +289,51 @@ export function goalReachedText(roomName: string, g: GoalProgress): string {
 }
 
 /**
+ * 🐉 Босс недели в /goal и /boss. Тот же расчёт, что у цели, но показан боем: HP, фаза, кто сколько снял.
+ *
+ * Порядок строк — от «что сейчас» к «что делать»: сначала босс и его HP, потом темп, потом люди.
+ * Подпись босса меняется от фазы: он должен выглядеть живым, иначе это прогресс-бар с ушами.
+ */
+export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; damage: number }> }): string {
+  const percent = Math.round(Math.min(1, b.damage) * 100);
+  const role: Record<BossPhase, string> = {
+    fresh: "🐉 <b>Босс недели</b> — пока только проснулся",
+    angry: "🐲 <b>Босс злится</b> — дело пошло",
+    furious: "🔥 <b>Босс в ярости</b> — ещё немного",
+    dead: "💀 <b>Босс повержен</b>",
+  };
+  const pace: Record<BossPace, string> = {
+    ahead: "опережаете график 👍",
+    "on-time": "идёте в темпе",
+    behind: "отстаёте от графика",
+  };
+  const lines = [
+    role[b.phase],
+    `${progressBar(b.done, b.target)} ${percent}%`,
+    b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Неделя закрыта, следующий босс — в воскресенье.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
+  ];
+  if (b.phase !== "dead") {
+    lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")}.` : "Последний день недели — добиваем сегодня.");
+  }
+  const byUser = feed?.byUser.length ? feed.byUser : b.byUser.map((u) => ({ name: u.name, damage: u.count }));
+  if (byUser.length) lines.push("", `Удары: ${byUser.map((u) => `${esc(u.name)} ${u.damage}`).join(" · ")}`);
+  lines.push("", "Каждая повторённая карточка — удар. Учить — /learn. Выключить босса — /settings.");
+  return lines.join("\n");
+}
+
+/**
+ * Лента ударов: «Александр нанёс 12 урона». Своё в ленте тоже показываем — так видно, что удар засчитан.
+ */
+export function bossHitsText(hits: Array<{ name: string; damage: number; at: Date }>, timeZone: string): string {
+  if (hits.length === 0) return "🐉 Пока тихо. Первый удар — любая карточка в /learn.";
+  const lines = hits.slice(0, 10).map((h) => {
+    const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone }).format(h.at);
+    return `⚔️ <b>${esc(h.name)}</b> нанёс ${h.damage} ${plural(h.damage, "удар", "удара", "ударов")} в ${time}`;
+  });
+  return lines.join("\n");
+}
+
+/**
  * Экран «Готово». `empty` — у человека вообще нет слов, и это совсем другой случай, чем «всё повторил».
  *
  * Без этого различия новичок, открывший `/learn` с пустым словарём, читал «появятся сами — бот напомнит»
@@ -315,7 +361,7 @@ export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow
     lines.push("", `🏠 <b>${esc(roomName)}</b> — за неделю`);
     board.forEach((r, i) => lines.push(`${i + 1}. ${esc(r.name)} — ${r.reviews7d} повт., ${r.learned} выуч.`));
   }
-  if (goal) lines.push("", `🎯 Цель недели: ${goal.done}/${goal.target} ${progressBar(goal.done, goal.target)} — /goal`);
+  if (goal) lines.push("", `🎯 Цель недели: ${goal.done}/${goal.target} ${progressBar(goal.done, goal.target)} — /goal · босс — /boss`);
   return lines.join("\n");
 }
 
@@ -724,6 +770,7 @@ export function welcomeText(): string {
       "• /duel — дуэль в группе: кто быстрее переведёт",
       "• Слово дня по утрам, 👏 когда кто-то употребил слово из словаря в переписке",
       "• /goal — общая цель комнаты на неделю, /stats — прогресс",
+      "• 🐉 /boss — босс недели: та же цель, но боем. Каждая повторённая карточка — удар, в приложении есть вкладка с боссом. Выключается в /settings",
       "• По воскресеньям — итоги недели в группе и личный итог в личку",
     ]),
     section("⚙️ Настройки", [

@@ -178,6 +178,8 @@ export async function appSettings(deps: Deps, user: User) {
     weeklyReport: user.weeklyReport,
     modes: MODE_LABELS.map(([key, label, field]) => ({ key, label, on: Boolean(user[field]) })),
     drill: user.modeDrill,
+    // 🐉 Рубильник выключен — переключателя нет вовсе: настройка, которая ничего не меняет, только путает.
+    ...(deps.bossEnabled === false ? {} : { boss: user.modeBoss }),
     card: CARD_PART_LABELS.map(([key, label]) => ({ key, label, on: view[key] })),
     // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
     voice: { accent: autoVoice(user) ?? null, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
@@ -195,6 +197,11 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
   } else if (typeof body.notifyDue === "boolean") patch = { notifyDue: body.notifyDue };
   else if (typeof body.weeklyReport === "boolean") patch = { weeklyReport: body.weeklyReport };
   else if (typeof body.drill === "boolean") patch = { modeDrill: body.drill };
+  else if (typeof body.boss === "boolean") {
+    // Рубильник выключен — личную настройку не меняем: включать то, что всё равно не показывается, странно.
+    if (deps.bossEnabled === false) return { ok: false, error: "Босс сейчас выключен целиком" };
+    patch = { modeBoss: body.boss };
+  }
   else if (typeof body.mode === "string" && typeof body.on === "boolean") {
     const entry = MODE_LABELS.find(([key]) => key === body.mode);
     if (!entry) return { ok: false, error: "Нет такого режима" };

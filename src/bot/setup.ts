@@ -45,6 +45,7 @@ export const COMMANDS = [
   { command: "talk", description: "Поговорить по-английски с разбором" },
   { command: "pron", description: "Проверить произношение голосовым" },
   { command: "stats", description: "Прогресс твой и друзей" },
+  { command: "boss", description: "Босс недели: цель комнаты боем" },
   { command: "sets", description: "Готовые наборы слов по уровням и темам" },
   { command: "lang", description: "Язык: английский или корейский" },
   { command: "settings", description: "Настройки" },

@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `mode_boss` integer DEFAULT true NOT NULL;

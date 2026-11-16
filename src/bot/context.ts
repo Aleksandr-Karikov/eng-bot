@@ -71,6 +71,8 @@ export interface BotStatus {
   tools: { tts: string; stt: boolean; youtube: boolean; frequency: boolean };
   /** Внешние поверхности: без APP_URL кнопки «Учить» нет, без ADMIN_TELEGRAM_ID нет /bug админу. */
   app: { port?: number; urlSet: boolean; capturePort?: number };
+  /** 🐉 Игровые режимы: выключенный рубильником режим не показывается никому. Не задано — включено. */
+  games?: { boss: boolean };
 }
 
 export interface Deps {
@@ -102,6 +104,12 @@ export interface Deps {
   pendingMistakes: PendingMistakesStore;
   /** Случайность выбора упражнения (Math.random; в тестах — подменяется). */
   random: () => number;
+  /**
+   * 🐉 Включён ли босс недели целиком (BOSS_ENABLED). false — режим не показывается никому, личные
+   * настройки при этом не трогаются. Не задано — считается включённым: в тестах и скриптах депс собирают
+   * без конфига, и «нет поля» не должно значить «нет режима» посреди работы.
+   */
+  bossEnabled?: boolean;
   /** Дополнительно к `enricher`/`tutor`: смена LLM-провайдера на лету и его текущее имя (нет — только Claude Code). */
   llm?: LlmSwitch;
   practice: PracticeStore;

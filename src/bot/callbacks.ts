@@ -27,6 +27,8 @@ export type Cb =
   | { k: "mode"; stage: Stage }
   | { k: "drillPick"; qid: number; index: number }
   | { k: "drillMode" }
+  | { k: "bossMode" }
+  | { k: "bossHits" }
   | { k: "notifyDue" }
   | { k: "weeklyReport" }
   | { k: "cardPart"; part: CardPart }
@@ -140,6 +142,8 @@ export function encodeCb(cb: Cb): string {
     case "mode": return `m:${cb.stage}`;
     case "drillPick": return `q:${cb.qid}:${cb.index}`;
     case "drillMode": return "md";
+    case "bossMode": return "bm";
+    case "bossHits": return "bh";
     case "notifyDue": return "nd";
     case "weeklyReport": return "wr";
     case "cardPart": return `cv:${cb.part}`;
@@ -251,6 +255,8 @@ export function decodeCb(data: string): Cb | null {
       return qid !== null && index !== null ? { k: "drillPick", qid, index } : null;
     }
     case "md": return { k: "drillMode" };
+    case "bm": return { k: "bossMode" };
+    case "bh": return { k: "bossHits" };
     case "nd": return { k: "notifyDue" };
     case "wr": return { k: "weeklyReport" };
     case "cv": return (CARD_PARTS as readonly string[]).includes(a ?? "") ? { k: "cardPart", part: a as CardPart } : null;

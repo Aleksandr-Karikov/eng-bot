@@ -3,6 +3,7 @@ import { setStudyLanguage } from "./language";
 
 import { settingsButton } from "@telegram-apps/sdk-react";
 import { useCallback, useEffect, useState } from "react";
+import { BossScreen } from "./Boss";
 import { Learn } from "./Learn";
 import { ProgressScreen } from "./Progress";
 import { Sets } from "./Sets";
@@ -11,12 +12,12 @@ import { Triage } from "./Triage";
 import { Words } from "./Words";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets";
+type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "settings", "triage", "progress", "sets"];
+  const pages: Page[] = ["words", "settings", "triage", "progress", "sets", "boss"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -40,10 +41,13 @@ export function App() {
   const back = useCallback(() => setPage("learn"), []);
   // Изучаемый язык нужен и страницам, открытым сразу по ссылке (?tab=), не только карточкам.
   const [, setLanguageLoaded] = useState(false);
+  /** 🐉 Режим босса включён. Пока не знаем — считаем выключенным: лишняя кнопка хуже, чем её отсутствие на секунду. */
+  const [bossOn, setBossOn] = useState(false);
   useEffect(() => {
     getMe()
       .then((me) => {
         setStudyLanguage(me.language);
+        setBossOn(Boolean(me.boss));
         setLanguageLoaded(true);
       })
       .catch(() => {});
@@ -66,12 +70,18 @@ export function App() {
   if (page === "triage") return <Triage onExit={back} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
   if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
+  if (page === "boss") return <BossScreen onExit={back} />;
   return (
     <Learn
       onTriage={() => open("triage")}
       onSets={openSets}
       corner={
         <div className="corner">
+          {bossOn && (
+            <button className="corner-button" aria-label="Босс недели" onClick={() => open("boss")}>
+              🐉
+            </button>
+          )}
           <button className="corner-button" aria-label="Прогресс" onClick={() => open("progress")}>
             📊
           </button>

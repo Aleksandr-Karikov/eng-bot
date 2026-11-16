@@ -5,7 +5,7 @@ import { setStudyLanguage, studyLanguage } from "./language";
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { type QueueMode, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
+import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
 import { LessonButton } from "./LessonButton";
@@ -326,6 +326,17 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
 function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: number) => void }) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
+  /**
+   * 🐉 Урон этого захода. Показываем именно здесь, на «Готово»: человек уходит с мыслью «я снял 12 HP»,
+   * а не с сухим отчётом. Вкладку босса ещё надо не забыть открыть — экран «Готово» забыть нельзя.
+   */
+  const [boss, setBoss] = useState<Boss>();
+  useEffect(() => {
+    if (!me?.boss) return;
+    getBoss()
+      .then((state) => setBoss(state.boss))
+      .catch(() => {});
+  }, [me?.boss]);
 
   if (starter && done === 0) {
     return (
@@ -354,7 +365,11 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
   return (
     <Placeholder
       header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
-      description="Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
+      description={
+        boss
+          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен 💀" : `, осталось ${boss.hp}`}. Новые слова и повторения появятся сами — бот напомнит.`
+          : "Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
+      }
       action={
         <div className="actions">
           <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>

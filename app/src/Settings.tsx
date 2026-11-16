@@ -65,6 +65,9 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
       <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">
         {toggles(settings.modes, (t) => ({ mode: t.key, on: !t.on }))}
         <SwitchCell label="🧠 Вопросы по ошибкам в /learn" on={settings.drill} onChange={() => void change({ drill: !settings.drill })} />
+        {settings.boss !== undefined && (
+          <SwitchCell label="🐉 Босс недели" on={settings.boss} onChange={() => void change({ boss: !settings.boss })} />
+        )}
       </Section>
 
       <Section header="🃏 Карточка" footer="Что показывать на обороте карточки.">

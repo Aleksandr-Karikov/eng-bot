@@ -12,6 +12,7 @@ import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecis
 import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
+import { bossEnabled, bossFeed, bossOf } from "../services/boss";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
@@ -105,6 +106,8 @@ export async function appMe(deps: Deps, user: User) {
     // 🗣 Каким произношением озвучивать карточку самим: null — озвучка выключена (как было всегда).
     voice: autoVoice(user) ?? null,
     triage: await triageCount(deps.db, user.id),
+    // 🐉 Вкладка босса: личный режим И общий рубильник. Выключено — приложение не рисует кнопку вовсе.
+    boss: bossEnabled(user, deps.bossEnabled),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
     language: {
       code: currentLang().code,
@@ -337,6 +340,39 @@ export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown
 export async function appProgress(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
   return progressReport(deps.db, user, room, deps.now());
+}
+
+/**
+ * 🐉 Вкладка босса: состояние боя и лента ударов.
+ *
+ * `enabled: false` — человек выключил режим: приложение тогда не показывает вкладку вовсе, но данные
+ * отдаём, чтобы включение не требовало перезагрузки. Считается всё тем же `goalProgress`, что у /goal.
+ */
+export async function appBoss(deps: Deps, user: User) {
+  const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
+  const enabled = bossEnabled(user, deps.bossEnabled);
+  // Рубильник или личный режим выключены — состояния не считаем: приложение всё равно ничего не покажет.
+  if (!enabled) return { enabled, boss: undefined, hits: [], total: 0 };
+  if (!room) return { enabled, boss: undefined };
+  const now = deps.now();
+  const [boss, feed] = await Promise.all([bossOf(deps.db, room, now), bossFeed(deps.db, room, now, 20)]);
+  return {
+    enabled,
+    boss: {
+      room: boss.room,
+      damage: boss.damage,
+      hp: boss.hp,
+      target: boss.target,
+      done: boss.done,
+      phase: boss.phase,
+      pace: boss.pace,
+      daysLeft: boss.daysLeft,
+      // Показываем коротким форматом: вкладке нужно «сколько мне снимать», а не весь отчёт.
+      byUser: boss.byUser,
+    },
+    hits: feed.hits.map((hit) => ({ name: hit.name, damage: hit.damage, at: hit.at.toISOString() })),
+    total: feed.total,
+  };
 }
 
 /** 📦 Наборы: список с прогрессом, следующие слова набора, решение по слову (или его отмена). */

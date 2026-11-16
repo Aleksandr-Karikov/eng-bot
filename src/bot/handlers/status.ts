@@ -86,6 +86,12 @@ function render(s: BotStatus, now: Date, imagesToday?: number, quotas?: Array<{ 
     }
   }
 
+  // 🐉 Игра: рубильник BOSS_ENABLED. Отдельной строкой, потому что это единственный способ
+  // выключить режим всем сразу — и по /status видно, в каком состоянии он сейчас.
+  lines.push("");
+  lines.push("<b>Игра: босс недели</b>");
+  lines.push(s.games?.boss === false ? "Выключен целиком (BOSS_ENABLED=0)." : "Включён: показывается тем, у кого он не выключен в /settings.");
+
   lines.push("");
   lines.push("<b>Ключи</b>");  lines.push(`OpenRouter: ${yes(s.secrets.openRouter)}`);
   lines.push(`Рисовалка: ${yes(s.secrets.imageApi)}`);

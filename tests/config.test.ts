@@ -21,6 +21,8 @@ describe("loadConfig", () => {
       ttsPython: "tools/tts/.venv/bin/python",
       sttPython: "tools/stt/.venv/bin/python",
       appPort: 8788,
+      // 🐉 Режим включён, пока его не выключили явно: пустая переменная не значит «нет босса».
+      bossEnabled: true,
       llmProvider: "claude-code",
       llmProviderFile: "data/llm-provider",
     });
