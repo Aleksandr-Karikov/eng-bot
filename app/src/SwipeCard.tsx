@@ -267,12 +267,42 @@ function WordForms({ word }: { word: { forms?: Array<{ form: string; label: stri
   );
 }
 
+/**
+ * Открытые блоки помним на устройстве по заголовку: кто привык читать запоминалку каждый раз,
+ * не должен раскрывать её заново на каждой карточке. Ключ общий для всех слов — состояние
+ * привязано к виду сведений, а не к слову.
+ */
+const FOLD_KEY = "wordboss-card-folds";
+
+function savedFolds(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(FOLD_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : undefined;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberFold(title: string, open: boolean): void {
+  try {
+    localStorage.setItem(FOLD_KEY, JSON.stringify({ ...savedFolds(), [title]: open }));
+  } catch {
+    // хранилище недоступно — блок просто не запомнится
+  }
+}
+
 /** Свёрнутый блок: заголовок в одну строку, содержимое — по тапу. Долгие тексты не растягивают карточку. */
 function Fold({ title, text, italic }: { title: string; text: string; italic?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => savedFolds()[title] ?? false);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    rememberFold(title, next);
+  };
   return (
     <div className="fold">
-      <button type="button" className="fold-head" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={toggle}>
         <span>{title}</span>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className={open ? "fold-icon open" : "fold-icon"}>
           <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
