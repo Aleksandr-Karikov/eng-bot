@@ -1,7 +1,7 @@
 import { Button, Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { buyUpgrade, getBoss, type Boss, type BossState, type Coins, type Trophies } from "./api";
+import { buyUpgrade, getBoss, type Boss, type BossState, type Coins, type Trophies, type UpgradeKind } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
 
 /**
@@ -46,7 +46,7 @@ function hitTime(iso: string): string {
 export function BossScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<BossState>();
   const [error, setError] = useState<string>();
-  const [buying, setBuying] = useState(false);
+  const [buying, setBuying] = useState<UpgradeKind>();
   useBackButton(onExit);
 
   useEffect(() => {
@@ -56,17 +56,17 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   }, []);
 
   /** Покупка подтверждается сервером: монеты с телефона не считаются. В ответ — свежее состояние. */
-  const buy = async () => {
+  const buy = async (kind: UpgradeKind) => {
     if (buying) return;
-    setBuying(true);
+    setBuying(kind);
     try {
-      setData(await buyUpgrade());
+      setData(await buyUpgrade(kind));
       haptic.done(true);
     } catch (err) {
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
     } finally {
-      setBuying(false);
+      setBuying(undefined);
     }
   };
 
@@ -105,8 +105,8 @@ function BossView({
   total: number;
   coins?: Coins;
   trophies?: Trophies;
-  onBuy: () => void;
-  buying: boolean;
+  onBuy: (kind: UpgradeKind) => void;
+  buying: UpgradeKind | undefined;
 }) {
   const face = FACE[boss.phase];
   const percent = Math.min(100, Math.round(boss.damage * 100));
@@ -199,21 +199,25 @@ function BossView({
             <span>🪙 Монеты недели</span>
             <Text className="hint">{coins.coins}</Text>
           </div>
-          <div className="boss-member">
-            <span>⚔️ Усиление</span>
-            <Text className="hint">
-              +{coins.level * 10}%{coins.price !== null ? ` · следующий ${coins.price}` : " · максимум"}
-            </Text>
-          </div>
-          {coins.price !== null && (
-            <Button mode="bezeled" size="m" stretched loading={buying} disabled={coins.coins < coins.price} onClick={onBuy}>
-              {coins.coins < coins.price ? `Нужно ${coins.price - coins.coins} ещё` : `Усилить за ${coins.price}`}
-            </Button>
-          )}
+          <Text weight="2" className="upgrade-title">🛍 Магазин усилений</Text>
+          {coins.offers.map((offer) => (
+            <div className="upgrade-offer" key={offer.kind}>
+              <div className="boss-member">
+                <Text weight="2" className="upgrade-title">{offer.title}</Text>
+                <Text className="hint">Ур. {offer.level} · +{offer.level * offer.bonus}%</Text>
+              </div>
+              <Text className="hint">{offer.description}</Text>
+              {offer.price === null ? <Text className="hint">Максимальный уровень</Text> : (
+                <Button mode="bezeled" size="m" stretched loading={buying === offer.kind} disabled={Boolean(buying) || coins.coins < offer.price} onClick={() => onBuy(offer.kind)}>
+                  {coins.coins < offer.price ? `Ещё ${Math.round((offer.price - coins.coins) * 10) / 10} 🪙 · цена ${offer.price}` : `Улучшить за ${offer.price} 🪙`}
+                </Button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по Новосибирску. Усиление остаётся навсегда и действует на новые ответы: каждый уровень добавляет 10% базового урона.</Text>}
+      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по Новосибирску. Усиления остаются навсегда и действуют на новые ответы. Бонусы «Силы» и навыка складываются от базового урона.</Text>}
       {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
 
       <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить — ⚙️.</Text>

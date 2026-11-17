@@ -353,3 +353,11 @@ body {
 .trophy-detail { min-width: 0; }
 .trophy-detail summary { cursor: pointer; }
 .trophy-detail.locked summary { opacity: 0.65; }
+
+.damage-bursts { position: fixed; right: 26px; top: 36%; z-index: 80; pointer-events: none; }
+.damage-burst { position: absolute; right: 0; width: max-content; font-size: 38px; font-weight: 900; color: #fbbf24; text-shadow: 0 2px 3px #181023, 0 0 22px #f59e0b80; font-variant-numeric: tabular-nums; }
+.damage-burst small { font-size: 16px; }
+.damage-burst-undo { color: #c4b5fd; text-shadow: 0 2px 3px #181023, 0 0 18px #8b5cf680; }
+.upgrade-offer { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--tg-theme-hint-color, #8884); }
+
+.upgrade-title { color: var(--tg-theme-text-color, #111318); }

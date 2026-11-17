@@ -1,6 +1,6 @@
 import { and, asc, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, users, words, type Room } from "../db/schema";
+import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
 import { latestDigestMoment } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
 
@@ -197,47 +197,53 @@ export async function personalDamage(db: Db, userId: number, now: Date): Promise
   return rows.reduce((sum, r) => sum + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)), 0) / 10;
 }
 
+export const UPGRADES = [
+  { kind: "damage", field: "upgradeDamage", title: "⚔️ Сила", description: "+10% базового урона всех ответов за уровень", bonus: 10 },
+  { kind: "listen", field: "upgradeListen", title: "🎧 Слух", description: "+20% базового урона диктантов за уровень", bonus: 20 },
+  { kind: "writing", field: "upgradeWriting", title: "✍️ Письмо", description: "+20% базового урона пропусков и своих предложений за уровень", bonus: 20 },
+] as const;
+export type UpgradeKind = typeof UPGRADES[number]["kind"];
+
 export interface CoinState {
-  /** Монет на этой неделе (ещё не потрачено). */
   coins: number;
+  /** Сила: прежние поля оставлены для /upgrade и старых клиентов. */
   level: number;
-  /** Цена следующего уровня; null — дальше некуда. */
   price: number | null;
+  offers: Array<{ kind: UpgradeKind; title: string; description: string; bonus: number; level: number; price: number | null }>;
 }
 
-/** Начало лимита уровней: без потолка к концу года босс дох бы от одного взгляда. */
 export const MAX_UPGRADE = 10;
+type Wallet = Pick<User, "upgradeDamage" | "coinsSpent" | "coinsPeriod"> & Partial<Pick<User, "upgradeListen" | "upgradeWriting">>;
 
-export function coinState(done: number, user: { upgradeDamage: number; coinsSpent: number; coinsPeriod: string | null }, now: Date): CoinState {
-  // Потраченное на прошлой неделе не переносится: период не тот — счёт с нуля.
+export function coinState(done: number, user: Wallet, now: Date): CoinState {
   const spent = user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0;
-  const level = user.upgradeDamage;
+  const offers = UPGRADES.map(({ field, ...offer }) => {
+    const level = user[field] ?? 0;
+    return { ...offer, level, price: level < MAX_UPGRADE ? upgradePrice(level) : null };
+  });
   return {
     coins: Math.max(0, Math.round((done - spent) * 10) / 10),
-    level,
-    price: level < MAX_UPGRADE ? upgradePrice(level) : null,
+    level: user.upgradeDamage,
+    price: offers[0].price,
+    offers,
   };
 }
 
-/**
- * Купить следующий уровень усиления за монеты этой недели.
- * undefined — не хватает монет или потолок; строка "ok" — куплено.
- */
-export async function buyUpgrade(db: Db, userId: number, done: number, now: Date): Promise<"ok" | "poor" | "max"> {
+/** Условное обновление общего кошелька не даёт двум покупкам потратить одни монеты. */
+export async function buyUpgrade(db: Db, userId: number, done: number, now: Date, kind: UpgradeKind = "damage"): Promise<"ok" | "poor" | "max"> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) return "poor";
+  const upgrade = UPGRADES.find((u) => u.kind === kind);
+  if (!upgrade) return "poor";
   const state = coinState(done, user, now);
-  if (state.price === null) return "max";
-  if (state.coins < state.price) return "poor";
-  const updated = await db
-    .update(users)
-    .set({
-      upgradeDamage: state.level + 1,
-      // Трата пишется с периодом недели: в воскресенье монеты обнулятся вместе с боссом.
-      coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + state.price,
-      coinsPeriod: coinsPeriod(now),
-    })
-    .where(and(eq(users.id, userId), eq(users.upgradeDamage, user.upgradeDamage), eq(users.coinsSpent, user.coinsSpent)))
+  const offer = state.offers.find((o) => o.kind === kind)!;
+  if (offer.price === null) return "max";
+  if (state.coins < offer.price) return "poor";
+  const updated = await db.update(users).set({
+    [upgrade.field]: offer.level + 1,
+    coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + offer.price,
+    coinsPeriod: coinsPeriod(now),
+  }).where(and(eq(users.id, userId), eq(users[upgrade.field], offer.level), eq(users.coinsSpent, user.coinsSpent)))
     .returning({ id: users.id });
   return updated.length ? "ok" : "poor";
 }

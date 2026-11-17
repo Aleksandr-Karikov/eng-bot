@@ -326,7 +326,9 @@ export interface Boss {
 }
 
 /** 🪙 Монеты недели и уровень усиления: монеты — это снятые HP, тратятся на +10% урона за уровень. */
+export type UpgradeKind = "damage" | "listen" | "writing";
 export interface Coins {
+  offers: Array<{ kind: UpgradeKind; title: string; description: string; bonus: number; level: number; price: number | null }>;
   coins: number;
   level: number;
   /** Цена следующего уровня; null — потолок. */
@@ -360,7 +362,7 @@ export interface BossState {
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 
 /** 🪙 Купить усиление; в ответ приходит новое состояние босса. */
-export const buyUpgrade = () => post<BossState & { ok: true }>("/api/boss/upgrade", {});
+export const buyUpgrade = (kind: UpgradeKind) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
 export interface WordDraft {

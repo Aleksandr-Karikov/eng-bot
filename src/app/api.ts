@@ -12,7 +12,7 @@ import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecis
 import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
-import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage } from "../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
@@ -443,12 +443,15 @@ export async function setItemForAudio(deps: Deps, itemId: number) {
 }
 
 /** 🪙 Покупка усиления: проверяем монеты на сервере — доверять числу с телефона нельзя. */
-export async function appBuyUpgrade(deps: Deps, user: User) {
+export async function appBuyUpgrade(deps: Deps, user: User, body: unknown = {}) {
+  const kind = body && typeof body === "object" && "kind" in body ? body.kind : "damage";
+  const upgrade = UPGRADES.find((u) => u.kind === kind);
+  if (!upgrade) return { status: 400, body: { ok: false as const, error: "Неизвестное усиление" } };
   if (!bossEnabled(user, deps.bossEnabled)) return { status: 400, body: { ok: false as const, error: "Босс выключен" } };
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
   if (!room) return { status: 400, body: { ok: false as const, error: "Нет комнаты" } };
   const now = deps.now();
-  const result = await buyUpgrade(deps.db, user.id, await personalDamage(deps.db, user.id, now), now);
+  const result = await buyUpgrade(deps.db, user.id, await personalDamage(deps.db, user.id, now), now, upgrade.kind);
   if (result === "max") return { status: 400, body: { ok: false as const, error: "Дальше усиление не растёт" } };
   if (result === "poor") return { status: 400, body: { ok: false as const, error: "Пока не хватает монет — снятых HP этой недели" } };
   // Обновлённый пользователь: ответ должен показывать новый уровень, а не тот, что был на входе.

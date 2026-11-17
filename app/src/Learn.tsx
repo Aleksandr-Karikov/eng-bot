@@ -2,6 +2,7 @@ import { CorrectionForm } from "./CorrectionForm";
 import { cardAudioPath, preloadAudio } from "./sound";
 import { setStudyLanguage, studyLanguage } from "./language";
 
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -49,11 +50,13 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
-  const [damage, setDamage] = useState(0);
-  const [lastDamage, setLastDamage] = useState(0);
+  const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number }>>([]);
+  const damageSequence = useRef(0);
+  const reducedMotion = useReducedMotion();
   const showDamage = useCallback((hp: number) => {
-    setLastDamage(hp);
-    setDamage((n) => Math.round((n + hp) * 10) / 10);
+    if (hp === 0) return;
+    const id = ++damageSequence.current;
+    setDamageBursts((bursts) => [...bursts, { id, hp }].slice(-6));
   }, []);
   /** Шапка с режимами свёрнута — на карточку уходит больше места. */
   const [headerFolded, setHeaderFolded] = useState(savedFolded);
@@ -235,9 +238,24 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     </header>
   );
 
-  const damageLine = me?.boss ? <Text className="hint" role="status" aria-live="polite">
-    ⚔️ {lastDamage > 0 ? `+${lastDamage} HP · ` : lastDamage < 0 ? `${lastDamage} HP · ` : ""}За сессию: {damage} HP
-  </Text> : null;
+  const damageEffect = me?.boss ? (
+    <div className="damage-bursts" role="status" aria-live="polite" aria-atomic="false">
+      <AnimatePresence>
+        {damageBursts.map(({ id, hp }) => (
+          <motion.div
+            key={id}
+            className={`damage-burst${hp < 0 ? " damage-burst-undo" : ""}`}
+            initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.65, y: reducedMotion ? 0 : 24 }}
+            animate={{ opacity: [0, 1, 1, 0], scale: reducedMotion ? 1 : [0.65, 1.18, 1, 1], y: reducedMotion ? 0 : [24, 0, -18, -70], x: reducedMotion ? 0 : ((id % 3) - 1) * 22 }}
+            transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
+            onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
+          >
+            <span aria-hidden="true">{hp > 0 ? "⚔️" : "↩️"}</span> {hp > 0 ? "+" : ""}{hp} <small>HP</small>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  ) : null;
 
   const count = (id: QueueMode) =>
     !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
@@ -267,7 +285,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       <div className="screen">
         {header}
         {modes}
-      {damageLine}
+      {damageEffect}
         {error ? (
           <Placeholder header="Не получилось загрузить" description={error} />
         ) : loading ? (
@@ -285,7 +303,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     <div className="screen">
       {header}
       {modes}
-      {damageLine}
+      {damageEffect}
       {mode === "hard" && <Text className="hint practice-note">🔁 Вне зачёта: ответы не сдвигают повторения</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (

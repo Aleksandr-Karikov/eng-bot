@@ -31,6 +31,8 @@ export const users = sqliteTable("users", {
   modeBoss: integer("mode_boss", { mode: "boolean" }).notNull().default(true),
   /** 🐉 Уровень усиления: каждый даёт +10% к урону. Куплен за монеты, остаётся навсегда. */
   upgradeDamage: integer("upgrade_damage").notNull().default(0),
+  upgradeListen: integer("upgrade_listen").notNull().default(0),
+  upgradeWriting: integer("upgrade_writing").notNull().default(0),
   /** Сколько монет потрачено на этой неделе и на какой — монеты недели сгорают в воскресенье. */
   coinsSpent: integer("coins_spent").notNull().default(0),
   coinsPeriod: text("coins_period"),

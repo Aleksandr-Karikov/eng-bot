@@ -78,8 +78,8 @@ const snapshotOf = (card: CardRow) =>
   JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
 
 async function reviewDamageDeci(db: Db, userId: number, answer: Answer, stage?: string): Promise<number> {
-  const [user] = await db.select({ level: users.upgradeDamage }).from(users).where(eq(users.id, userId));
-  return Math.round(answerWeight(answer, stage, user?.level ?? 0) * 10);
+  const [user] = await db.select({ level: users.upgradeDamage, listen: users.upgradeListen, writing: users.upgradeWriting }).from(users).where(eq(users.id, userId));
+  return Math.round(answerWeight(answer, stage, user?.level ?? 0, user?.listen ?? 0, user?.writing ?? 0) * 10);
 }
 
 async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date, stage?: string): Promise<void> {

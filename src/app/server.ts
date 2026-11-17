@@ -86,7 +86,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
   // 🪙 Купить уровень усиления за монеты недели.
   app.post("/api/boss/upgrade", async (c) => {
-    const r = await appBuyUpgrade(deps, c.get("user"));
+    const r = await appBuyUpgrade(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json({ ...r.body, ...(r.status === 200 && r.user ? await appBoss(deps, r.user) : {}) }, r.status as 200 | 400);
   });
   // 🧠 Ответ на вопрос по ошибкам из очереди.

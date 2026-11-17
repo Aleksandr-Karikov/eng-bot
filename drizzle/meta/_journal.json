@@ -351,6 +351,13 @@
       "when": 1794937830516,
       "tag": "0049_condemned_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1794938674365,
+      "tag": "0050_noisy_fallen_one",
+      "breakpoints": true
     }
   ]
 }

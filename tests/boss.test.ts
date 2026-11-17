@@ -398,3 +398,44 @@ describe("boss damage and rewards stay consistent", () => {
     expect(results.sort()).toEqual(["ok", "poor"]);
   });
 });
+
+describe("boss shop with a choice of upgrades", () => {
+  it("sells a chosen skill, keeps strength, validates kind, and uses the same wallet", async () => {
+    const { users } = await import("../src/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { recordAnswer } = await import("../src/services/review");
+    const { h, alice, app, headers } = await bossTab();
+    await h.db.update(users).set({ upgradeDamage: 1 }).where(eq(users.id, alice.id));
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 3000, reviewedAt: T0 });
+    const shop = await (await app.request("/api/boss", { headers })).json();
+    expect(shop.coins.offers.map((o: { kind: string }) => o.kind)).toEqual(["damage", "listen", "writing"]);
+    expect(shop.coins.offers[0]).toMatchObject({ level: 1, price: 200 });
+    const buy = (kind: unknown) => app.request("/api/boss/upgrade", { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ kind }) });
+    expect((await buy("upgradeDamage")).status).toBe(400);
+    const bought = await (await buy("listen")).json();
+    expect(bought.coins).toMatchObject({ coins: 200, level: 1 });
+    expect(bought.coins.offers[1]).toMatchObject({ level: 1, price: 200 });
+    const written = await (await buy("writing")).json();
+    expect(written.coins).toMatchObject({ coins: 100 });
+    expect(written.coins.offers[2]).toMatchObject({ level: 1, price: 200 });
+    expect((await buy("damage")).status).toBe(400);
+    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", stage: "app_listen", now: T0 })).toEqual({ result: "ok", damage: 5.2 });
+  });
+
+  it("specialist bonuses apply only to the matching exercises and add to strength", async () => {
+    const { answerWeight } = await import("../src/services/goals");
+    expect(answerWeight("good", "app_listen", 1, 1, 1)).toBe(5.2);
+    expect(answerWeight("good", "listen", 0, 1, 0)).toBe(4.8);
+    expect(answerWeight("good", "app_cloze", 0, 0, 1)).toBe(4.8);
+    expect(answerWeight("good", "sentence", 0, 0, 1)).toBe(4.8);
+    expect(answerWeight("good", "en_ru", 1, 10, 10)).toBe(2.2);
+    expect(answerWeight("good", "app_listen", 0, 0, 10)).toBe(4);
+  });
+
+  it("concurrent purchases of different skills cannot spend the same coins", async () => {
+    const { buyUpgrade } = await import("../src/services/boss");
+    const { h, alice } = await setup();
+    const results = await Promise.all([buyUpgrade(h.db, alice.id, 100, T0, "listen"), buyUpgrade(h.db, alice.id, 100, T0, "writing")]);
+    expect(results.sort()).toEqual(["ok", "poor"]);
+  });
+});
