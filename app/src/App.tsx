@@ -76,23 +76,53 @@ export function App() {
       onTriage={() => open("triage")}
       onSets={openSets}
       corner={
-        <div className="corner">
-          {bossOn && (
-            <button className="corner-button" aria-label="Босс недели" onClick={() => open("boss")}>
-              🐉
-            </button>
-          )}
-          <button className="corner-button" aria-label="Прогресс" onClick={() => open("progress")}>
-            📊
-          </button>
-          <button className="corner-button" aria-label="Слова" onClick={() => open("words")}>
-            📖
-          </button>
-          <button className="corner-button" aria-label="Настройки" onClick={() => open("settings")}>
-            ⚙️
-          </button>
-        </div>
+        // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
+        // а по отдельности они не действия, а навигация.
+        <CornerMenu
+          items={[
+            ...(bossOn ? [{ label: "🐉 Босс недели", onPick: () => open("boss") }] : []),
+            { label: "📊 Прогресс", onPick: () => open("progress") },
+            { label: "📖 Слова", onPick: () => open("words") },
+            { label: "⚙️ Настройки", onPick: () => open("settings") },
+          ]}
+        />
       }
     />
+  );
+}
+
+/**
+ * ☰ Угол экрана: одно меню вместо стопки кнопок.
+ *
+ * Навигация в шапке competes с карточкой за место: до появления босса хватало двух иконок,
+ * а с 📊 и 🐉 их стало четыре, и название комнаты сжималось в «…». Действия с самой карточкой
+ * (↩️ отменить, ✏️ исправить, 🆕 разобрать) остаются в шапке — они нужны в один тап, а выбор раздела нет.
+ */
+function CornerMenu({ items }: { items: Array<{ label: string; onPick: () => void }> }) {
+  const [open, setOpen] = useState(false);
+  const pick = (item: { onPick: () => void }) => {
+    haptic.select();
+    setOpen(false);
+    item.onPick();
+  };
+  return (
+    <div className="corner-menu">
+      <button className="corner-button" aria-label="Меню" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {open ? "✕" : "☰"}
+      </button>
+      {open && (
+        <>
+          {/* Тап мимо меню закрывает его — иначе оно висит над карточкой. */}
+          <div className="corner-scrim" onClick={() => setOpen(false)} />
+          <div className="corner-list">
+            {items.map((item) => (
+              <button key={item.label} className="corner-item" onClick={() => pick(item)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
