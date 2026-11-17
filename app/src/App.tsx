@@ -51,7 +51,7 @@ export function App() {
         setLanguageLoaded(true);
       })
       .catch(() => {});
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     let off: (() => void) | undefined;

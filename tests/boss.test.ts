@@ -81,14 +81,14 @@ describe("🐉 boss of the week", () => {
     const feed = await bossFeed(h.db, room, nsk("2026-10-19T12:00"));
     expect(feed.total).toBe(5);
     expect(feed.byUser).toEqual([
-      { name: "Alice", damage: 3 },
-      { name: "Bob", damage: 2 },
+      { name: "Alice", damage: 6 },
+      { name: "Bob", damage: 3 },
     ]);
     // Свежие сверху; «Забыл» тоже урон — босса бьют любым ответом.
     expect(feed.hits.map((hit) => [hit.name, hit.damage])).toEqual([
       ["Bob", 1],
-      ["Bob", 1],
-      ["Alice", 3],
+      ["Bob", 2],
+      ["Alice", 6],
     ]);
   });
 
@@ -123,7 +123,7 @@ describe("🐉 /boss in the bot", () => {
     const text = String(h.calls.filter((c) => c.method === "sendMessage").at(-1)?.payload.text);
     // Один ответ «Помню» — 2 HP: остаток 8 из 10.
     expect(text).toContain("HP: 8 из 10");
-    expect(text).toContain("Удары: User100 1");
+    expect(text).toContain("Удары: User100 2");
     expect(buttonData(h.calls, "⚔️")).toBe("bh");
   });
 
@@ -153,7 +153,7 @@ describe("🐉 /boss in the bot", () => {
     // Alice пришла через middleware (имя из Telegram — User100), Bob создан прямо в базе как «Bob».
     expect(text).toContain("User100");
     expect(text).toContain("Bob");
-    expect(text).toContain("удар");
+    expect(text).toContain("2 HP урона");
   });
 });
 
@@ -178,7 +178,7 @@ describe("🐉 boss tab in the Mini App", () => {
     const body = await (await app.request("/api/boss", { headers })).json();
     expect(body.enabled).toBe(true);
     expect(body.boss).toMatchObject({ room: "R", hp: 8, target: 10, done: 2, phase: "fresh" });
-    expect(body.hits[0]).toMatchObject({ name: "Alice", damage: 1 });
+    expect(body.hits[0]).toMatchObject({ name: "Alice", damage: 2 });
   });
 
   it("reports the mode as off so the tab can hide itself", async () => {
@@ -293,7 +293,7 @@ describe("⚖️ weighted damage and upgrades", () => {
   it("grows personal damage with the upgrade level, never past whole HP", async () => {
     const { answerWeight } = await import("../src/services/goals");
     expect(answerWeight("good", undefined, 0)).toBe(2);
-    expect(answerWeight("good", undefined, 1)).toBe(2); // 2.2 → 2
+    expect(answerWeight("good", undefined, 1)).toBe(2.2); // бонус действует сразу
     expect(answerWeight("good", undefined, 5)).toBe(3); // 3.0
     expect(answerWeight("easy", undefined, 10)).toBe(6); // 3 × 2.0
   });
@@ -349,5 +349,52 @@ describe("⚖️ weighted damage and upgrades", () => {
     const again = await app.request("/api/boss/upgrade", { method: "POST", headers });
     expect(again.status).toBe(400);
     expect((await again.json()).error).toContain("не хватает");
+  });
+});
+
+describe("boss damage and rewards stay consistent", () => {
+  it("freezes damage at the answer, including the first upgrade, and undo removes it", async () => {
+    const { recordAnswer, undoAnswer } = await import("../src/services/review");
+    const { users } = await import("../src/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { h, alice, room } = await setup();
+    const now = nsk("2026-10-19T12:00");
+    await h.db.update(users).set({ upgradeDamage: 1 }).where(eq(users.id, alice.id));
+    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", now })).toEqual({ result: "ok", damage: 2.2 });
+    await h.db.update(users).set({ upgradeDamage: 10 }).where(eq(users.id, alice.id));
+    expect((await bossOf(h.db, room, now, alice.id)).mine).toBe(2.2);
+    expect((await bossFeed(h.db, room, now)).byUser[0].damage).toBe(2.2);
+    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "easy", now })).toEqual({ result: "stale", damage: 0 });
+    await undoAnswer(h.db, { userId: alice.id, cardId: 1 });
+    expect((await bossOf(h.db, room, now)).done).toBe(0);
+  });
+
+  it("dry run writes nothing, weekly backfill skips one-off rewards, and an idle member can be carried", async () => {
+    const { collectTrophies, weekFacts } = await import("../src/services/trophies");
+    const { trophies } = await import("../src/db/schema");
+    const { h, alice, bob, room } = await setup();
+    await setWeeklyGoal(h.db, room.id, 4);
+    const fresh = (await getRoom(h.db, room.id))!;
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 44, reviewedAt: nsk("2026-10-19T10:00") });
+    const now = nsk("2026-10-25T20:00");
+    const facts = await weekFacts(h.db, fresh, now);
+    expect(facts.killer).toBe(alice.id);
+    expect(facts.damage.get(alice.id)).toBe(4.4);
+    expect(facts.hpBeforeKill).toBe(4);
+    const dry = await collectTrophies(h.db, now, { dryRun: true });
+    expect(dry.find((r) => r.user.id === bob.id)?.earned.map((t) => t.kind)).toContain("carried");
+    expect(await h.db.select().from(trophies)).toEqual([]);
+    await collectTrophies(h.db, now, { weeklyOnly: true });
+    expect((await h.db.select().from(trophies)).every((t) => t.kind !== "carried")).toBe(true);
+    const live = await collectTrophies(h.db, now);
+    expect(live.find((r) => r.user.id === bob.id)?.earned.map((t) => t.kind)).toContain("carried");
+    expect(await collectTrophies(h.db, now)).toEqual([]);
+  });
+
+  it("does not sell the same upgrade twice when purchases race", async () => {
+    const { buyUpgrade } = await import("../src/services/boss");
+    const { h, alice } = await setup();
+    const results = await Promise.all([buyUpgrade(h.db, alice.id, 100, T0), buyUpgrade(h.db, alice.id, 100, T0)]);
+    expect(results.sort()).toEqual(["ok", "poor"]);
   });
 });

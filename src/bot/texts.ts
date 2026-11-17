@@ -320,7 +320,7 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
   const lines = [
     role[b.phase],
     `${progressBar(b.done, b.target)} ${percent}%`,
-    b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Неделя закрыта, следующий босс — в воскресенье.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
+    b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Следующий босс — в воскресенье, монеты ещё начисляются.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
   ];
   if (b.phase !== "dead") {
     lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")}.` : "Последний день недели — добиваем сегодня.");
@@ -338,7 +338,7 @@ export function bossHitsText(hits: Array<{ name: string; damage: number; at: Dat
   if (hits.length === 0) return "🐉 Пока тихо. Первый удар — любая карточка в /learn.";
   const lines = hits.slice(0, 10).map((h) => {
     const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone }).format(h.at);
-    return `⚔️ <b>${esc(h.name)}</b> нанёс ${h.damage} ${plural(h.damage, "удар", "удара", "ударов")} в ${time}`;
+    return `⚔️ <b>${esc(h.name)}</b> нанёс ${h.damage} HP урона в ${time}`;
   });
   return lines.join("\n");
 }

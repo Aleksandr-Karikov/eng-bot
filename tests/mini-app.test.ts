@@ -42,8 +42,8 @@ describe("📚 Mini App API", () => {
     const { cards: queue } = await (await app.request("/api/queue", { headers: auth })).json();
     expect(queue).toMatchObject([{ isNew: true, stage: "en_ru", word: { term: "bank", translation: "берег", usefulness: 3 } }]);
     const answer = (body: object) => app.request("/api/answer", { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify(body) });
-    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "good", stage: "en_ru" })).json()).toEqual({ ok: true, result: "ok" });
-    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "good", stage: "en_ru" })).json()).toEqual({ ok: true, result: "stale" });
+    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "good", stage: "en_ru" })).json()).toEqual({ ok: true, result: "ok", damage: 2 });
+    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "good", stage: "en_ru" })).json()).toEqual({ ok: true, result: "stale", damage: 0 });
     expect((await h.db.select().from(reviewLogs)).map((l) => l.stage)).toEqual(["app_en_ru"]);
     expect((await answer({ cardId: queue[0].cardId, reps: 1, answer: "hack" })).status).toBe(400);
     // ↩️ Отменить последний свайп — и ответить заново.
@@ -51,7 +51,7 @@ describe("📚 Mini App API", () => {
     expect((await undo()).status).toBe(200);
     expect(await h.db.select().from(reviewLogs)).toEqual([]);
     expect((await undo()).status).toBe(409);
-    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "again", stage: "en_ru" })).json()).toEqual({ ok: true, result: "ok" });
+    expect(await (await answer({ cardId: queue[0].cardId, reps: 0, answer: "again", stage: "en_ru" })).json()).toEqual({ ok: true, result: "ok", damage: 1 });
     void cards;
   });
 
@@ -223,7 +223,7 @@ describe("📚 Mini App API", () => {
         headers: { ...auth, "content-type": "application/json" },
         body: JSON.stringify({ cardId: hard[0].cardId, reps: hard[0].reps, answer: "again", stage: "en_ru", practice: true }),
       });
-      expect(await res.json()).toEqual({ ok: true, result: "practice" });
+      expect(await res.json()).toEqual({ ok: true, result: "practice", damage: 0 });
       expect(await h.db.select().from(reviewLogs)).toEqual([]);
     });
   });

@@ -2,13 +2,13 @@ import { and, asc, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room } from "../db/schema";
 import { latestDigestMoment } from "./digest";
-import { goalProgress, type GoalProgress } from "./goals";
+import { answerWeight, goalProgress, type GoalProgress } from "./goals";
 
 /**
  * 🐉 Босс недели — это цель комнаты, показанная как бой.
  *
- * Никаких очков, тапов и второй экономики: HP босса — `target` цели, урон — `done`, то есть обычные
- * повторения. Поэтому `bossOf` не считает ничего своего, а читает `goalProgress` (services/goals.ts).
+ * HP босса — `target` цели, урон — `done`: взвешенные ответы с усилением на момент ответа.
+ * `bossOf` читает тот же `goalProgress`, что и /goal. Монеты — личный урон за вычетом трат.
  * Это главное свойство режима: включил — видно бой, выключил — остались те же числа в /goal.
  */
 
@@ -71,7 +71,7 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   return {
     ...progress,
     room: room.name,
-    hp: Math.max(0, progress.target - progress.done),
+    hp: Math.max(0, Math.round((progress.target - progress.done) * 10) / 10),
     damage,
     phase: bossPhase(damage, progress.done, progress.target),
     pace: bossPace(progress.done, progress.target, elapsed),
@@ -96,7 +96,7 @@ export function bossEnabled(user: { modeBoss: boolean }, globalEnabled: boolean 
 /** Один удар — сколько повторений сделал человек за раз. */
 export interface BossHit {
   name: string;
-  /** Сколько ответов в этом ударе (для «нанёс 12 урона»). */
+  /** Суммарный урон серии в HP. */
   damage: number;
   at: Date;
   /** Своя ли это отметка: своё в ленте не новость, но полезно знать, что удар засчитан. */
@@ -121,7 +121,7 @@ export interface BossFeed {
 export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promise<BossFeed> {
   const weekStart = latestDigestMoment(now).at;
   const rows = await db
-    .select({ name: users.firstName, userId: users.id, at: reviewLogs.reviewedAt })
+    .select({ name: users.firstName, userId: users.id, at: reviewLogs.reviewedAt, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
@@ -131,19 +131,22 @@ export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promi
 
   const byUser = new Map<number, { name: string; damage: number }>();
   const hits: BossHit[] = [];
+  let lastUserId: number | undefined;
   for (const row of rows) {
+    const damage = (row.damageDeci ?? Math.round(answerWeight(row.rating, row.stage) * 10)) / 10;
     const total = byUser.get(row.userId) ?? { name: row.name, damage: 0 };
-    total.damage++;
+    total.damage = Math.round((total.damage + damage) * 10) / 10;
     byUser.set(row.userId, total);
 
     const last = hits.at(-1);
     // Та же серия: тот же человек и разрыв меньше минуты — удар растёт, а не добавляется новый.
-    if (last && last.name === row.name && row.at.getTime() - last.at.getTime() <= SAME_HIT_MS) {
-      last.damage++;
+    if (last && lastUserId === row.userId && row.at.getTime() - last.at.getTime() <= SAME_HIT_MS) {
+      last.damage = Math.round((last.damage + damage) * 10) / 10;
       last.at = row.at;
     } else {
-      hits.push({ name: row.name, damage: 1, at: row.at, own: false });
+      hits.push({ name: row.name, damage, at: row.at, own: false });
     }
+    lastUserId = row.userId;
   }
   return {
     hits: hits.slice(-limit).reverse(),
@@ -178,14 +181,20 @@ export function upgradePrice(level: number): number {
   return 100 * 2 ** level;
 }
 
-/** Урон с учётом уровня: +10% за уровень, к целому вниз (нельзя получить пол-HP). */
+/** Урон с учётом уровня: +10% за уровень. */
 export function boostedDamage(hp: number, level: number): number {
-  return Math.floor(hp * (1 + 0.1 * level));
+  return Math.round(hp * (10 + level)) / 10;
 }
 
 /** Период монет — неделя комнаты (дата воскресенья), чтобы сгорание совпало со сменой босса. */
 export function coinsPeriod(now: Date): string {
   return latestDigestMoment(now).date;
+}
+
+/** Личные монеты общие для комнат: смена комнаты не меняет кошелёк. */
+export async function personalDamage(db: Db, userId: number, now: Date): Promise<number> {
+  const rows = await db.select().from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, latestDigestMoment(now).at)));
+  return rows.reduce((sum, r) => sum + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)), 0) / 10;
 }
 
 export interface CoinState {
@@ -204,7 +213,7 @@ export function coinState(done: number, user: { upgradeDamage: number; coinsSpen
   const spent = user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0;
   const level = user.upgradeDamage;
   return {
-    coins: Math.max(0, done - spent),
+    coins: Math.max(0, Math.round((done - spent) * 10) / 10),
     level,
     price: level < MAX_UPGRADE ? upgradePrice(level) : null,
   };
@@ -220,7 +229,7 @@ export async function buyUpgrade(db: Db, userId: number, done: number, now: Date
   const state = coinState(done, user, now);
   if (state.price === null) return "max";
   if (state.coins < state.price) return "poor";
-  await db
+  const updated = await db
     .update(users)
     .set({
       upgradeDamage: state.level + 1,
@@ -228,6 +237,7 @@ export async function buyUpgrade(db: Db, userId: number, done: number, now: Date
       coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + state.price,
       coinsPeriod: coinsPeriod(now),
     })
-    .where(eq(users.id, userId));
-  return "ok";
+    .where(and(eq(users.id, userId), eq(users.upgradeDamage, user.upgradeDamage), eq(users.coinsSpent, user.coinsSpent)))
+    .returning({ id: users.id });
+  return updated.length ? "ok" : "poor";
 }

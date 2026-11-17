@@ -344,6 +344,13 @@
       "when": 1794820395193,
       "tag": "0048_typical_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794937830516,
+      "tag": "0049_condemned_reaper",
+      "breakpoints": true
     }
   ]
 }

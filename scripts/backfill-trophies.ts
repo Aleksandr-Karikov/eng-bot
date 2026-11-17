@@ -20,7 +20,7 @@
 import { createDb } from "../src/db/client";
 import { rooms } from "../src/db/schema";
 import { latestDigestMoment, WEEK_MS } from "../src/services/digest";
-import { TROPHY_BY_KIND, collectTrophies } from "../src/services/trophies";
+import { collectTrophies } from "../src/services/trophies";
 
 try {
   process.loadEnvFile(".env");
@@ -33,30 +33,21 @@ const weeksArg = process.argv.find((a) => a.startsWith("--weeks="))?.slice("--we
 const weeks = Number(weeksArg ?? 8);
 if (!Number.isInteger(weeks) || weeks < 1 || weeks > 52) throw new Error("--weeks=1..52");
 
+const now = new Date();
 const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite", { migrate: false });
 const allRooms = await db.select().from(rooms);
 console.log(`Rooms: ${allRooms.length}, weeks back: ${weeks}${dryRun ? " (dry run)" : ""}`);
 
-/**
- * Одноразовые трофеи в прошлое не переносим. Список — по repeat в каталоге, а не по имени:
- * добавили новый мемный трофей — он автоматически не попадёт в засев.
- */
-const backfillable = (kind: string) => TROPHY_BY_KIND.get(kind)?.repeat === "weekly";
-
 let written = 0;
-let skipped = 0;
-for (let back = weeks; back >= 1; back--) {
+for (let back = weeks - 1; back >= 0; back--) {
   // Момент «воскресенье 20:00» той недели, за которую засеваем.
-  const moment = new Date(latestDigestMoment(new Date(Date.now() - back * WEEK_MS)).at.getTime());
-  const collected = await collectTrophies(db, moment);
+  const moment = new Date(latestDigestMoment(new Date(now.getTime() - back * WEEK_MS)).at.getTime());
+  const collected = await collectTrophies(db, moment, { dryRun, weeklyOnly: true });
   for (const { user, earned } of collected) {
-    const keep = earned.filter((t) => backfillable(t.kind));
-    skipped += earned.length - keep.length;
-    if (keep.length === 0) continue;
-    written += keep.length;
-    if (dryRun) console.log(`  ${moment.toISOString().slice(0, 10)} ${user.firstName}: ${keep.map((t) => t.title).join(", ")}`);
+    written += earned.length;
+    if (dryRun) console.log(`  ${moment.toISOString().slice(0, 10)} ${user.firstName}: ${earned.map((t) => t.title).join(", ")}`);
   }
 }
 
-console.log(`${dryRun ? "[dry run] " : ""}trophies: ${written}, one-off skipped: ${skipped}`);
+console.log(`${dryRun ? "[dry run] " : ""}trophies: ${written}`);
 if (!dryRun) console.log("Готово. Коллекция в приложении: вкладка 🐉.");

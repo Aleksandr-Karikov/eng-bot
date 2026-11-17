@@ -251,6 +251,8 @@ export const reviewLogs = sqliteTable("review_logs", {
   userId: integer("user_id").notNull().references(() => users.id),
   cardId: integer("card_id").notNull().references(() => cards.id),
   rating: text("rating").notNull(),
+  /** Зафиксированный урон в десятых HP; null — старый ответ без усиления. */
+  damageDeci: integer("damage_deci"),
   /** На какой ступени был ответ: en_ru, ru_en, cloze или know («Знаю» из уведомления). Для анализа; null у старых записей. */
   stage: text("stage"),
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),

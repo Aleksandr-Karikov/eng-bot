@@ -124,7 +124,7 @@ function BossView({
       <div className="boss-head">
         <Text weight="2">{boss.room}</Text>
         <Text className="hint">
-          {dead ? "Неделя закрыта" : boss.daysLeft > 0 ? `${boss.daysLeft} ${plural(boss.daysLeft, "день", "дня", "дней")} до конца недели` : "Последний день"}
+          {boss.daysLeft > 0 ? `${boss.daysLeft} ${plural(boss.daysLeft, "день", "дня", "дней")} до конца недели` : "Последний день"}
         </Text>
       </div>
 
@@ -160,6 +160,7 @@ function BossView({
         </Text>
       </motion.div>
 
+      {dead && <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску. Продолжай учиться: монеты и трофеи ещё засчитываются.</Text>}
       <div className="boss-hits">
         <Text weight="2">⚔️ Свежие удары</Text>
         {hits.length === 0 && <Text className="hint">Пока тихо. Первый удар — любая карточка в «Учить».</Text>}
@@ -172,7 +173,7 @@ function BossView({
             transition={{ delay: i * 0.05 }}
           >
             <span>
-              <b>{hit.name}</b> нанёс {hit.damage} {plural(hit.damage, "удар", "удара", "ударов")}
+              <b>{hit.name}</b> нанёс {hit.damage} HP урона
             </span>
             <Text className="hint">{hitTime(hit.at)}</Text>
           </motion.div>
@@ -212,6 +213,7 @@ function BossView({
         </div>
       )}
 
+      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по Новосибирску. Усиление остаётся навсегда и действует на новые ответы: каждый уровень добавляет 10% базового урона.</Text>}
       {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
 
       <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить — ⚙️.</Text>
@@ -237,18 +239,18 @@ function TrophyShelf({ trophies }: { trophies: Trophies }) {
         {earned.map((t) => {
           const e = byKind.get(t.kind)!;
           return (
-            <div className="trophy" key={t.kind} title={t.how}>
+            <details className="trophy-detail" key={t.kind}><summary className="trophy">
               <span className="trophy-emoji">{t.emoji}</span>
               <span>{t.title}</span>
               {e.count > 1 && <Text className="hint">×{e.count}</Text>}
-            </div>
+            </summary><Text className="hint">{t.how}</Text></details>
           );
         })}
         {rest.map((t) => (
-          <div className="trophy locked" key={t.kind} title={t.how}>
+          <details className="trophy-detail locked" key={t.kind}><summary className="trophy">
             <span className="trophy-emoji">🔒</span>
             <span>{t.title}</span>
-          </div>
+          </summary><Text className="hint">{t.how}</Text></details>
         ))}
       </div>
     </div>

@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
 import { currentLang } from "../../lang";
-import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState } from "../../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage } from "../../services/boss";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
 import { personalStats, roomLeaderboard } from "../../services/stats";
@@ -87,15 +87,15 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
     if (!room) return void (await ctx.reply("Сначала создай комнату — /room"));
     const now = deps.now();
-    const boss = await bossOf(deps.db, room, now, ctx.user.id);
-    const state = coinState(boss.mine ?? 0, ctx.user, now);
+    const state = coinState(await personalDamage(deps.db, ctx.user.id, now), ctx.user, now);
     if (state.price === null) return void (await ctx.reply(`⚔️ Усиление уже максимальное: +${state.level * 10}% к урону.`));
     if (state.coins < state.price) {
       return void (await ctx.reply(
         `🪙 Монет на этой неделе: ${state.coins}, а следующий уровень стоит ${state.price}.\nСнимай HP карточками в /learn — монеты это и есть твой урон.`,
       ));
     }
-    await buyUpgrade(deps.db, ctx.user.id, boss.mine ?? 0, now);
+    const result = await buyUpgrade(deps.db, ctx.user.id, await personalDamage(deps.db, ctx.user.id, now), now);
+    if (result !== "ok") return void (await ctx.reply("Покупка не прошла. Проверь баланс и попробуй ещё раз."));
     await ctx.reply(`⚔️ Куплено! Усиление +${(state.level + 1) * 10}% к урону. Монеты недели сгорают в воскресенье — трать до конца недели.`);
   });
 

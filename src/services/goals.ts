@@ -37,7 +37,7 @@ export function answerWeight(rating: string, stage?: string | null, level = 0): 
   // Сложное упражнение — вдвое: человек не узнал слово, а воспроизвёл.
   const hard = stage === "cloze" || stage === "sentence" || stage === "listen" || stage === "app_cloze" || stage === "app_sentence" || stage === "app_listen";
   // +10% за уровень усиления — личное, поэтому применяется к своим ответам, а не к комнате целиком.
-  return Math.floor((hard ? base * 2 : base) * (1 + 0.1 * level));
+  return (hard ? base * 2 : base) * (10 + level) / 10;
 }
 
 /**
@@ -48,7 +48,7 @@ export function answerWeight(rating: string, stage?: string | null, level = 0): 
  */
 async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   const rows = await db
-    .select({ userId: users.id, name: users.firstName, rating: reviewLogs.rating, stage: reviewLogs.stage, level: users.upgradeDamage })
+    .select({ userId: users.id, name: users.firstName, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
@@ -60,12 +60,13 @@ async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   for (const r of rows) {
     names.set(r.userId, r.name);
     raw.set(r.userId, (raw.get(r.userId) ?? 0) + 1);
-    hp.set(r.userId, (hp.get(r.userId) ?? 0) + answerWeight(r.rating, r.stage, r.level));
+    hp.set(r.userId, (hp.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
   }
+  for (const [id, deci] of hp) hp.set(id, deci / 10);
   return { raw, hp, names };
 }
 
-const total = (m: Map<number, number>) => [...m.values()].reduce((a, b) => a + b, 0);
+const total = (m: Map<number, number>) => Math.round([...m.values()].reduce((a, b) => a + b, 0) * 10) / 10;
 
 export function autoGoal(lastWeek: number): number {
   return Math.max(MIN_AUTO_GOAL, Math.ceil(Math.round(lastWeek * AUTO_GROWTH) / 10) * 10);

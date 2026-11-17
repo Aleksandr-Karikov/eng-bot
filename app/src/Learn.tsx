@@ -49,12 +49,18 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
+  const [damage, setDamage] = useState(0);
+  const [lastDamage, setLastDamage] = useState(0);
+  const showDamage = useCallback((hp: number) => {
+    setLastDamage(hp);
+    setDamage((n) => Math.round((n + hp) * 10) / 10);
+  }, []);
   /** Шапка с режимами свёрнута — на карточку уходит больше места. */
   const [headerFolded, setHeaderFolded] = useState(savedFolded);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
-  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<unknown> }>>([]);
+  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<{ damage: number } | undefined> }>>([]);
 
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
@@ -122,12 +128,21 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
 
   /** Оценка карточки уходит в фоне; её можно отменить ↩️. */
   const rate = useCallback((card: Card, value: Answer) => {
-    const sent = sendAnswer(card, value).catch(() => {});
+    const sent = sendAnswer(card, value).then((r) => {
+      showDamage(r.damage);
+      if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
+      if (r.result === "stale") notify("Ответ уже учтён — повторный урон не начислен");
+      return r;
+    }).catch(() => {
+      setHistory((h) => h.filter((entry) => entry.sent !== sent));
+      notify("Ответ не сохранён. Карточка останется в очереди повторений.");
+      return undefined;
+    });
     pending.current.add(sent);
     void sent.finally(() => pending.current.delete(sent));
     // Вне зачёта отменять нечего — ответ и так не записан.
     if (!card.practice) setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
-  }, []);
+  }, [showDamage]);
 
   /** Свайп — сразу следующая карточка. */
   const answer = useCallback(
@@ -154,15 +169,16 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     setHistory((h) => h.slice(0, -1));
     haptic.tap("light");
     try {
-      await last.sent;
+      const recorded = await last.sent;
       await undoAnswer(last.card);
+      showDamage(-(recorded?.damage ?? 0));
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
       setDone((n) => Math.max(0, n - 1));
     } catch (err) {
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
     }
-  }, [history]);
+  }, [history, showDamage]);
 
   const card = queue[0];
   const total = done + queue.length;
@@ -219,6 +235,10 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     </header>
   );
 
+  const damageLine = me?.boss ? <Text className="hint" role="status" aria-live="polite">
+    ⚔️ {lastDamage > 0 ? `+${lastDamage} HP · ` : lastDamage < 0 ? `${lastDamage} HP · ` : ""}За сессию: {damage} HP
+  </Text> : null;
+
   const count = (id: QueueMode) =>
     !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
   // Свёрнутая шапка режимов не занимает места вовсе: это и есть выигрыш по высоте.
@@ -247,6 +267,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       <div className="screen">
         {header}
         {modes}
+      {damageLine}
         {error ? (
           <Placeholder header="Не получилось загрузить" description={error} />
         ) : loading ? (
@@ -264,6 +285,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     <div className="screen">
       {header}
       {modes}
+      {damageLine}
       {mode === "hard" && <Text className="hint practice-note">🔁 Вне зачёта: ответы не сдвигают повторения</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
@@ -279,7 +301,10 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           key={`${card.cardId}-${card.reps}`}
           card={card}
           // Оценил сервер при проверке — в историю для ↩️ (запрос уже прошёл).
-          onRated={() => !card.practice && setHistory((h) => [...h, { card, sent: Promise.resolve() }].slice(-UNDO_DEPTH))}
+          onRated={(hp) => {
+            showDamage(hp);
+            if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ damage: hp }) }].slice(-UNDO_DEPTH));
+          }}
           onRateSelf={(a) => rate(card, a)}
           onNext={advance}
         />

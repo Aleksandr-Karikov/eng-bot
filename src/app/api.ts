@@ -12,7 +12,7 @@ import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecis
 import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
-import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState } from "../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage } from "../services/boss";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
@@ -21,7 +21,7 @@ import { pickStage } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
-import { answerCard, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
+import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
@@ -257,9 +257,9 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   const stage = typeof body.stage === "string" && ["ru_en", "collocation", "cloze", "listen", "sentence"].includes(body.stage) ? body.stage : "en_ru";
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
   // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
-  if (body.practice === true) return { status: 200, body: { ok: true, result: "practice" } };
-  const result = await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
-  return { status: 200, body: { ok: true, result } };
+  if (body.practice === true) return { status: 200, body: { ok: true, result: "practice", damage: 0 } };
+  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
+  return { status: 200, body: { ok: true, ...result } };
 }
 
 /** Своё слово: только из карточек этого человека — чужие слова через API не достать. */
@@ -358,7 +358,7 @@ export async function appBoss(deps: Deps, user: User) {
   const now = deps.now();
   const [boss, feed] = await Promise.all([bossOf(deps.db, room, now, user.id), bossFeed(deps.db, room, now, 20)]);
   // 🪙 Монеты — личный урон этой недели: усиление своё, чужой урон монет не даёт.
-  const coins = coinState(boss.mine ?? 0, user, now);
+  const coins = coinState(await personalDamage(deps.db, user.id, now), user, now);
   const collection = await userTrophies(deps.db, user.id);
   return {
     enabled,
@@ -444,11 +444,11 @@ export async function setItemForAudio(deps: Deps, itemId: number) {
 
 /** 🪙 Покупка усиления: проверяем монеты на сервере — доверять числу с телефона нельзя. */
 export async function appBuyUpgrade(deps: Deps, user: User) {
+  if (!bossEnabled(user, deps.bossEnabled)) return { status: 400, body: { ok: false as const, error: "Босс выключен" } };
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
   if (!room) return { status: 400, body: { ok: false as const, error: "Нет комнаты" } };
   const now = deps.now();
-  const boss = await bossOf(deps.db, room, now, user.id);
-  const result = await buyUpgrade(deps.db, user.id, boss.mine ?? 0, now);
+  const result = await buyUpgrade(deps.db, user.id, await personalDamage(deps.db, user.id, now), now);
   if (result === "max") return { status: 400, body: { ok: false as const, error: "Дальше усиление не растёт" } };
   if (result === "poor") return { status: 400, body: { ok: false as const, error: "Пока не хватает монет — снятых HP этой недели" } };
   // Обновлённый пользователь: ответ должен показывать новый уровень, а не тот, что был на входе.

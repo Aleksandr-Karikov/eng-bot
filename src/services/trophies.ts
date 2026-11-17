@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, rooms, trophies, users, words, type Room, type User } from "../db/schema";
+import { cards, reviewLogs, rooms, roomMembers, trophies, users, words, type Room, type User } from "../db/schema";
 import { latestDigestMoment, WEEK_MS } from "./digest";
 import { localParts } from "../time";
 import { answerWeight, goalProgress } from "./goals";
@@ -36,7 +36,6 @@ export interface TrophyDef {
 export const TROPHIES: TrophyDef[] = [
   // ⚔️ Боевые
   { kind: "killer", emoji: "💀", title: "Добил", how: "твой ответ снял последние HP босса", repeat: "weekly" },
-  { kind: "execution", emoji: "🎯", title: "Казнь", how: "снял последние 10% HP одним заходом", repeat: "weekly" },
   { kind: "oneshot", emoji: "⚡", title: "Ваншот", how: "добил босса, у которого оставалось ≤10 HP", repeat: "weekly" },
   { kind: "overkill", emoji: "🔥", title: "С запасом", how: "урон ≥150% цели недели", repeat: "weekly" },
   { kind: "last-hour", emoji: "⏰", title: "В последний час", how: "босс добит за ≤3 часа до конца недели", repeat: "weekly" },
@@ -46,25 +45,17 @@ export const TROPHIES: TrophyDef[] = [
   // 🃏 Мемные — все одноразовые
   { kind: "pacifist", emoji: "🕊", title: "Пацифист", how: "меньше всех урона в комнате, но бил", repeat: "once", needsCompany: true },
   { kind: "carried", emoji: "🛌", title: "Тебя протащили", how: "сам не бил, а комнату добили", repeat: "once", needsCompany: true },
-  { kind: "bench", emoji: "🪑", title: "Скамейка", how: "не пришёл ни разу, пока комната добивала", repeat: "once", needsCompany: true },
   { kind: "night", emoji: "🌙", title: "Ночной охотник", how: "≥30% ответов между 00:00 и 05:00", repeat: "once" },
   { kind: "forgetful", emoji: "😭", title: "Забывчивый", how: "больше всех «Забыл» в комнате", repeat: "once", needsCompany: true },
-  { kind: "backwards", emoji: "🤡", title: "Пять шагов назад", how: "уронил слово, которое уже считалось выученным", repeat: "once" },
-  { kind: "revived", emoji: "🧟", title: "Восставший", how: "вернулся после ≥2 недель тишины", repeat: "once" },
-  { kind: "chicken", emoji: "🐔", title: "Труба пониже", how: "три раза за неделю бросал сессию на первом «Забыл»", repeat: "once" },
 
   // 💪 Упорство
   { kind: "iron-week", emoji: "🔥", title: "Железная неделя", how: "отвечал все 7 дней без пропуска", repeat: "weekly" },
-  { kind: "grew", emoji: "📈", title: "Вырос", how: "урон +50% к своей прошлой неделе", repeat: "weekly" },
   { kind: "early-bird", emoji: "🌅", title: "Ранняя птица", how: "≥50% ответов до 9 утра", repeat: "weekly" },
 
   // 🎓 Умения
   { kind: "listener", emoji: "🎧", title: "На слух", how: "≥20 диктантов за неделю", repeat: "weekly" },
   { kind: "writer", emoji: "✍️", title: "Писатель", how: "≥10 своих предложений за неделю", repeat: "weekly" },
-  { kind: "used", emoji: "🗣", title: "Употребил", how: "употребил слово комнаты в переписке", repeat: "weekly" },
   { kind: "sniper", emoji: "🎯", title: "Снайпер", how: "точность ≥90% при ≥100 ответах", repeat: "weekly" },
-  { kind: "resolver", emoji: "🧠", title: "Разобрался", how: "закрыл тему ошибок", repeat: "weekly" },
-  { kind: "duelist", emoji: "⚔️", title: "Дуэлянт", how: "выиграл раунд дуэли", repeat: "weekly" },
 ];
 
 export const TROPHY_BY_KIND = new Map(TROPHIES.map((t) => [t.kind, t]));
@@ -93,6 +84,7 @@ export interface WeekFacts {
   /** Кто добил босса и когда. */
   killer?: number;
   killedAt?: Date;
+  hpBeforeKill?: number;
   target: number;
   done: number;
   members: number;
@@ -105,12 +97,12 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
   const start = new Date(end.getTime() - WEEK_MS);
   const progress = await goalProgress(db, room, now, start);
   const rows = await db
-    .select({ userId: reviewLogs.userId, rating: reviewLogs.rating, stage: reviewLogs.stage, at: reviewLogs.reviewedAt })
+    .select({ userId: reviewLogs.userId, rating: reviewLogs.rating, stage: reviewLogs.stage, at: reviewLogs.reviewedAt, damageDeci: reviewLogs.damageDeci })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
     .where(and(eq(words.roomId, room.id), gte(reviewLogs.reviewedAt, start), lt(reviewLogs.reviewedAt, end)))
-    .orderBy(asc(reviewLogs.reviewedAt));
+    .orderBy(asc(reviewLogs.reviewedAt), asc(reviewLogs.id));
 
   const answers = new Map<number, Array<{ rating: string; stage: string | null; at: Date }>>();
   for (const r of rows) {
@@ -119,16 +111,20 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
     answers.set(r.userId, list);
   }
   const damage = new Map<number, number>();
-  for (const [userId, list] of answers) {
-    damage.set(userId, list.reduce((sum, a) => sum + answerWeight(a.rating, a.stage), 0));
+  for (const r of rows) {
+    damage.set(r.userId, (damage.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
   }
+  for (const [id, deci] of damage) damage.set(id, deci / 10);
   // Кто добил: последний ответ, после которого цель была пройдена. Считаем накопительно.
   let sum = 0;
   let killer: number | undefined;
   let killedAt: Date | undefined;
+  let hpBeforeKill: number | undefined;
   for (const r of rows) {
-    sum += answerWeight(r.rating, r.stage);
-    if (sum >= progress.target && killer === undefined) {
+    const before = progress.target - sum / 10;
+    sum += r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10);
+    if (sum >= progress.target * 10 && killer === undefined) {
+      hpBeforeKill = before;
       killer = r.userId;
       killedAt = r.at;
     }
@@ -140,9 +136,10 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
     answers,
     killer,
     killedAt,
+    hpBeforeKill,
     target: progress.target,
     done: progress.done,
-    members: damage.size,
+    members: (await db.select().from(roomMembers).where(eq(roomMembers.roomId, room.id))).length,
   };
 }
 
@@ -176,15 +173,15 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   // ⏰ Добил в последние три часа недели.
   if (facts.killedAt && facts.killer === userId && closeToEnd(facts.killedAt, facts.week)) add("last-hour");
   // ⚡ Мой удар добил босса, у которого оставалось не больше 10 HP.
-  if (facts.killer === userId && total - mine < Math.min(10, facts.target)) add("oneshot");
+  if (facts.killer === userId && facts.hpBeforeKill !== undefined && facts.hpBeforeKill <= 10) add("oneshot");
   // 🔥 Комната смела босса с запасом.
   if (total >= facts.target * 1.5) add("overkill");
 
   if (others.length) {
     if (mine > othersMax) add("top");
-    else if (others.length === 1 && othersMax - mine <= Math.max(1, facts.target * 0.05)) add("almost");
+    else if (others.filter(([, hp]) => hp > mine).length === 1 && othersMax - mine <= othersMax * 0.05) add("almost");
     // 🕊 Пацифист: меньше всех, но бил — шутка для того, кто еле приложился.
-    if (mine < othersMin && mine > 0 && facts.members >= 3) add("pacifist");
+    if (mine < othersMin && mine > 0) add("pacifist");
     // 😭 Забывчивый: больше всех «Забыл».
     const forgot = (id: number) => (facts.answers.get(id) ?? []).filter((a) => a.rating === "again").length;
     if (forgot(userId) > Math.max(...others.map(([id]) => forgot(id)))) add("forgetful", forgot(userId));
@@ -195,7 +192,7 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   if (mineAnswers.length >= 10 && night / mineAnswers.length >= 0.3) add("night", night);
 
   // 💪 Упорство
-  const days = new Set(mineAnswers.map((a) => a.at.toDateString()));
+  const days = new Set(mineAnswers.map((a) => new Date(`${localParts(TROPHY_TZ, a.at).date}T12:00:00Z`).getUTCDay()));
   if (days.size === 7) add("iron-week", 7);
   const morning = mineAnswers.filter((a) => hourIn(a.at) < 9).length;
   if (mineAnswers.length >= 10 && morning / mineAnswers.length >= 0.5) add("early-bird", morning);
@@ -219,7 +216,7 @@ function closeToEnd(killedAt: Date, week: string): boolean {
  * Выдать трофеи за только что закрытую неделю во всех комнатах.
  * Идемпотентно: уникальный индекс (userId, kind, week) не даёт выдать дважды.
  */
-export async function collectTrophies(db: Db, now: Date): Promise<Array<{ user: User; earned: TrophyDef[] }>> {
+export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boolean; weeklyOnly?: boolean } = {}): Promise<Array<{ user: User; earned: TrophyDef[] }>> {
   const week = weekKey(now);
   const already = await db.select({ userId: trophies.userId, kind: trophies.kind, week: trophies.week }).from(trophies);
   const onceHad = new Map<number, Set<string>>();
@@ -234,10 +231,18 @@ export async function collectTrophies(db: Db, now: Date): Promise<Array<{ user: 
   for (const room of await db.select().from(rooms)) {
     const facts = await weekFacts(db, room, now);
     if (facts.done === 0) continue;
-    for (const userId of facts.damage.keys()) {
-      const fresh = trophiesFor(facts, userId, onceHad.get(userId) ?? new Set()).filter((t) => !weeksThis.has(`${userId}:${t.kind}`));
+    const members = await db.select({ userId: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, room.id));
+    for (const userId of new Set([...facts.damage.keys(), ...members.map((m) => m.userId)])) {
+      const fresh = trophiesFor(facts, userId, onceHad.get(userId) ?? new Set()).filter((t) => !weeksThis.has(`${userId}:${t.kind}`) && (!options.weeklyOnly || TROPHY_BY_KIND.get(t.kind)?.repeat === "weekly"));
       if (fresh.length === 0) continue;
       for (const t of fresh) {
+        weeksThis.add(`${userId}:${t.kind}`);
+        if (TROPHY_BY_KIND.get(t.kind)?.repeat === "once") {
+          const had = onceHad.get(userId) ?? new Set<string>();
+          had.add(t.kind);
+          onceHad.set(userId, had);
+        }
+        if (options.dryRun) continue;
         await db
           .insert(trophies)
           .values({ userId, kind: t.kind, week, roomId: room.id, roomName: room.name, value: t.value, createdAt: now })

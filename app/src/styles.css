@@ -349,3 +349,7 @@ body {
   cursor: pointer;
 }
 .corner-item:active { background: var(--tg-theme-secondary-bg-color, #f1f1f4); }
+
+.trophy-detail { min-width: 0; }
+.trophy-detail summary { cursor: pointer; }
+.trophy-detail.locked summary { opacity: 0.65; }

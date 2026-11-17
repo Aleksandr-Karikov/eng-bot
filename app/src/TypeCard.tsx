@@ -26,7 +26,7 @@ function Marked({ text }: { text: string }) {
  * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для ↩️), onRateSelf —
  * проверить не вышло и человек оценил себя сам.
  */
-export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; onRated: () => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
+export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult>();
@@ -48,7 +48,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
         const r = await checkAnswer(card, answer, dunno);
         setResult(r);
         haptic.done(Boolean(r.correct));
-        if (!r.unchecked) onRated();
+        if (!r.unchecked) onRated(r.damage);
       } catch (err) {
         haptic.done(false);
         // Карточку уже оценили (например, в боте) — не застревать на ней.

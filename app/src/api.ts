@@ -137,7 +137,7 @@ export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: Answer) =>
-  post("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
+  post<{ result: "ok" | "stale" | "practice"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
 export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
 
 /** Новое слово друга в колоде на разбор. */
@@ -265,6 +265,7 @@ export const wordPictureUrl = (wordId: number) => cachedPicture(`word=${wordId}`
 
 /** Итог проверки ответа текстом. unchecked — проверить не вышло: человек оценивает себя сам. */
 export interface CheckResult {
+  damage: number;
   correct?: boolean;
   unchecked?: boolean;
   /** Диктант: exact — верно, close — с опечаткой (засчитано), wrong — нет. */

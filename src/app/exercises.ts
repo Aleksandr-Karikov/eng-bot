@@ -5,7 +5,7 @@ import { clozeSentences, type User } from "../db/schema";
 import { gradeDictation, isExactAnswer } from "../services/exercises";
 import { checkAndCount, type QuotaKind } from "../services/limits";
 import { recordMistakes } from "../services/mistakes";
-import { answerCard, getDueItemByCard } from "../services/review";
+import { recordAnswer, getDueItemByCard } from "../services/review";
 
 /**
  * Задания с ответом текстом в приложении — те же, что в /learn: ✍️ вставь по смыслу, 🎧 диктант, ✍️ своё предложение.
@@ -45,15 +45,19 @@ export async function appCheck(
   if (!item) return fail(404, "Это слово уже удалили");
   const { word } = item;
   // Вне зачёта (режим «Трудные») ответ проверяем, но карточку не оцениваем.
-  const rate = async (good: boolean) =>
-    body.practice === true ||
-    (await answerCard(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` })) === "ok";
+  let damage = 0;
+  const rate = async (good: boolean) => {
+    if (body.practice === true) return true;
+    const recorded = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` });
+    damage = recorded.damage;
+    return recorded.result === "ok";
+  };
   const reveal = { term: word.term, translation: word.translation, transcriptionUk: word.transcriptionUk, transcriptionUs: word.transcriptionUs, example: word.example };
 
   if (stage === "listen") {
     const grade = dunno ? "wrong" : gradeDictation(answer, word.term);
     if (!(await rate(grade !== "wrong"))) return fail(409, "Уже учтено");
-    return { status: 200, body: { ok: true, correct: grade !== "wrong", grade, ...reveal } };
+    return { status: 200, body: { ok: true, damage, correct: grade !== "wrong", grade, ...reveal } };
   }
 
   if (stage === "cloze") {
@@ -62,7 +66,7 @@ export async function appCheck(
     const base = { filled: gapParts(s.sentence, s.answer), translation: s.translation };
     if (dunno || isExactAnswer(answer, { answer: s.answer, term: word.term })) {
       if (!(await rate(!dunno))) return fail(409, "Уже учтено");
-      return { status: 200, body: { ok: true, correct: !dunno, ...base, ...reveal } };
+      return { status: 200, body: { ok: true, damage, correct: !dunno, ...base, ...reveal } };
     }
     const denied = await allowModelCheck(deps, user, "check");
     if (denied) return denied;
@@ -71,16 +75,16 @@ export async function appCheck(
       judgement = await deps.tutor.judge({ sentence: s.sentence, expected: s.answer, term: word.term, translation: word.translation, answer });
     } catch (err) {
       console.error("App cloze judge failed", err);
-      return { status: 200, body: { ok: true, unchecked: true, ...base, ...reveal } };
+      return { status: 200, body: { ok: true, damage, unchecked: true, ...base, ...reveal } };
     }
     if (!(await rate(judgement.correct))) return fail(409, "Уже учтено");
-    return { status: 200, body: { ok: true, correct: judgement.correct, explanation: judgement.explanation, tip: judgement.tip, ...base, ...reveal } };
+    return { status: 200, body: { ok: true, damage, correct: judgement.correct, explanation: judgement.explanation, tip: judgement.tip, ...base, ...reveal } };
   }
 
   // Своё предложение: модель смотрит, верно ли употреблено слово (это и оценка), и правит остальное.
   if (dunno) {
     if (!(await rate(false))) return fail(409, "Уже учтено");
-    return { status: 200, body: { ok: true, correct: false, ...reveal } };
+    return { status: 200, body: { ok: true, damage, correct: false, ...reveal } };
   }
   const denied = await allowModelCheck(deps, user, "check");
   if (denied) return denied;
@@ -89,7 +93,7 @@ export async function appCheck(
     review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });
   } catch (err) {
     console.error("App sentence review failed", err);
-    return { status: 200, body: { ok: true, unchecked: true, ...reveal } };
+    return { status: 200, body: { ok: true, damage, unchecked: true, ...reveal } };
   }
   if (!(await rate(review.usesWord))) return fail(409, "Уже учтено");
   const real = review.fixes.filter((f) => !f.slip);
@@ -97,7 +101,7 @@ export async function appCheck(
   const mistakesId = real.length ? deps.pendingMistakes.create({ authorUserId: user.id, callerUserId: user.id, fixes: real, baseText: "" }) : undefined;
   return {
     status: 200,
-    body: { ok: true, correct: review.usesWord, verdict: review.verdict, corrected: review.corrected, fixes: review.fixes, natural: review.natural, mistakesId, ...reveal },
+    body: { ok: true, damage, correct: review.usesWord, verdict: review.verdict, corrected: review.corrected, fixes: review.fixes, natural: review.natural, mistakesId, ...reveal },
   };
 }
 

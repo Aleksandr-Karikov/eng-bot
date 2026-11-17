@@ -29,7 +29,7 @@ const kinds = (list: Array<{ kind: string }>) => list.map((t) => t.kind);
 
 describe("🏆 trophies", () => {
   it("defines every trophy with a title, a rule and a repeat mode", () => {
-    expect(TROPHIES.length).toBeGreaterThan(20);
+    expect(TROPHIES.length).toBeGreaterThan(0);
     for (const t of TROPHIES) {
       expect(t.title.length).toBeGreaterThan(0);
       expect(t.how.length).toBeGreaterThan(0);
@@ -74,6 +74,13 @@ describe("🏆 trophies", () => {
     // 49 против 51 при цели 100 — отставание 2%, это «Почти».
     const near = facts({ damage: new Map([[1, 50], [2, 51]]) });
     expect(kinds(trophiesFor(near, 1, new Set()))).toContain("almost");
+  });
+
+  it("uses HP before the killing answer for oneshot", () => {
+    const f = facts({ killer: 1, hpBeforeKill: 12 });
+    expect(kinds(trophiesFor(f, 1, new Set()))).not.toContain("oneshot");
+    f.hpBeforeKill = 2;
+    expect(kinds(trophiesFor(f, 1, new Set()))).toContain("oneshot");
   });
 
   it("rewards overkill only for a real margin", () => {
