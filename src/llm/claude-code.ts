@@ -4,9 +4,11 @@ import { Limiter } from "./limiter";
 import type { LlmBackend } from "./backend";
 import {
   buildCheckPrompt,
+  buildExampleTranslationPrompt,
   dictionaryFormPrompt,
   buildCorrectionPrompt,
   parseCorrection,
+  parseExampleTranslation,
   type CorrectionWord,
   type WordCorrection,
   buildExtractPrompt,
@@ -169,6 +171,13 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async correctWord(word: CorrectionWord, instruction: string): Promise<WordCorrection> {
     return parseCorrection(await this.ask(buildCorrectionPrompt(word, instruction, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+  }
+
+  /** Перевод примера — обычной моделью: перевести готовое предложение ей хватает. */
+  async translateExample(example: string, term: string): Promise<string> {
+    const translation = parseExampleTranslation(await this.ask(buildExampleTranslationPrompt(example, term, currentLang()), Math.max(this.opts.timeoutMs, 30_000)));
+    if (!translation) throw new Error("Empty example translation");
+    return translation;
   }
 
   /**

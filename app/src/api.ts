@@ -30,6 +30,8 @@ export interface Card {
     /** Для RU → EN: смысл под переводом; пусто — не показывать. */
     meaningHint?: string;
     example: string;
+    /** Перевод примера, если его уже спрашивали тапом; "" — ещё нет. */
+    exampleTranslation?: string;
     context: string;
     mnemonic: string;
     transcriptionUk: string;
@@ -384,6 +386,10 @@ export const addWord = (draft: WordDraft) => post<{ id: number }>("/api/words", 
 export type LessonAccent = "uk" | "us" | "mix";
 export const requestLesson = (accent: LessonAccent) =>
   post<{ status: "started" | "busy" | "empty" }>("/api/lesson", { accent }).then((r) => r.status);
+
+/** 🇷🇺 Перевод примера с карточки: модель спрашивается один раз на слово, дальше ответ приходит из базы. */
+export const exampleTranslation = (id: number) =>
+  post<{ translation: string }>(`/api/words/${id}/example`).then((r) => r.translation);
 
 /** 💡 Другая запоминалка (для всей комнаты). */
 export const newMnemonic = (id: number) => post<{ mnemonic: string }>(`/api/words/${id}/mnemonic`).then((r) => r.mnemonic);

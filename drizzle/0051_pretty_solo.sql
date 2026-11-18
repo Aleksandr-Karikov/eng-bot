@@ -1,0 +1,1 @@
+ALTER TABLE `words` ADD `example_translation` text DEFAULT '' NOT NULL;

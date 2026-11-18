@@ -115,6 +115,8 @@ export const words = sqliteTable(
     translation: text("translation").notNull(),
     explanation: text("explanation").notNull().default(""),
     example: text("example").notNull().default(""),
+    /** Перевод примера на русский — готовится моделью по тапу в карточке приложения, чтобы пример не терял смысл. "" — ещё не переводили. */
+    exampleTranslation: text("example_translation").notNull().default(""),
     transcriptionUk: text("transcription_uk").notNull().default(""),
     transcriptionUs: text("transcription_us").notNull().default(""),
     /** Telegram file_id готовой озвучки — чтобы не синтезировать заново. */

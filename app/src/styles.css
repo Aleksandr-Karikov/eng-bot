@@ -266,6 +266,9 @@ body {
 .small { font-size: 14px; line-height: 1.45; }
 .pre { white-space: pre-line; }
 .example { font-size: 14px; line-height: 1.45; margin-top: 3px; }
+/* Пример: тап по предложению показывает перевод, пунктир говорит, что по нему можно нажать. */
+.example.tap-example { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.example.muted { color: var(--tg-theme-hint-color, #9aa0aa); }
 
 /* Формы — чипами в строку: одна-две штуки не должны занимать абзац. */
 .forms { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

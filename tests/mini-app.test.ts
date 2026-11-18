@@ -62,6 +62,20 @@ describe("📚 Mini App API", () => {
     expect(res.headers.get("location")).toBe("/app/");
   });
 
+  it("🇷🇺 translates the example on tap and keeps it — the model is asked once per word", async () => {
+    const { h, app, auth } = await setup();
+    const translateExample = vi.fn(async () => "Мы сидели на берегу реки.");
+    h.deps.enricher = { ...h.deps.enricher, translateExample };
+    const ask = (id: number) => app.request(`/api/words/${id}/example`, { method: "POST", headers: auth });
+    // У слова из setup примера нет — переводить нечего.
+    expect((await ask(1)).status).toBe(404);
+    await h.db.update(words).set({ example: "We sat on the river bank." });
+    expect(await (await ask(1)).json()).toEqual({ ok: true, translation: "Мы сидели на берегу реки." });
+    expect(await (await ask(1)).json()).toEqual({ ok: true, translation: "Мы сидели на берегу реки." });
+    expect(translateExample).toHaveBeenCalledTimes(1);
+    expect((await getWord(h.db, 1))?.exampleTranslation).toBe("Мы сидели на берегу реки.");
+  });
+
   it("serves audio only for your own cards", async () => {
     const { app, auth } = await setup();
     expect((await app.request("/api/audio?card=999&accent=uk", { headers: auth })).status).toBe(404);

@@ -5,7 +5,7 @@ import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
+import { exampleTranslation, pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
 import { transcription, usefulnessIcon } from "./format";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
@@ -38,6 +38,10 @@ export function SwipeCard({
 }) {
   const [flipped, setFlipped] = useState(false);
   const [picture, setPicture] = useState<string>();
+  // Перевод примера — по тапу: ученик не всегда понимает предложение, и тогда теряется весь смысл примера.
+  const [exampleRu, setExampleRu] = useState(card.word.exampleTranslation ?? "");
+  const [exampleOpen, setExampleOpen] = useState(false);
+  const [exampleBusy, setExampleBusy] = useState(false);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const knowOpacity = useTransform(x, [20, SWIPE_PX], [0, 1]);
@@ -66,6 +70,19 @@ export function SwipeCard({
     [x, onAnswer],
   );
   const good = useCallback(() => fling("good", 1), [fling]);
+  const tapExample = useCallback(() => {
+    if (exampleOpen) return setExampleOpen(false);
+    if (exampleRu) return setExampleOpen(true);
+    if (exampleBusy) return;
+    setExampleBusy(true);
+    void exampleTranslation(card.word.id)
+      .then((text) => {
+        setExampleRu(text);
+        setExampleOpen(Boolean(text));
+      })
+      .catch(() => {})
+      .finally(() => setExampleBusy(false));
+  }, [card.word.id, exampleOpen, exampleRu, exampleBusy]);
   const again = useCallback(() => fling("again", -1), [fling]);
   /**
    * Ответ показан — озвучиваем выбранным вариантом, чтобы слово ещё и услышать. Не успели загрузиться —
@@ -140,9 +157,12 @@ export function SwipeCard({
             {view.example && w.example && (
               <div>
                 <div className="lbl">Пример</div>
-                <Text className="block example">
+                {/* Тап по предложению — перевод под ним; повторный тап убирает, чтобы не занимал место. */}
+                <Text className="block example tap-example" onClick={tapExample}>
                   <i>{w.example}</i>
                 </Text>
+                {exampleBusy && <Text className="block example muted">Перевожу…</Text>}
+                {exampleOpen && exampleRu && <Text className="block example">{exampleRu}</Text>}
               </div>
             )}
 

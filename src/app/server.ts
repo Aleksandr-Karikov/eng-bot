@@ -10,6 +10,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
+import { exampleTranslation } from "../services/words";
 import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
@@ -190,6 +191,17 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const r = await appApplyCorrection(deps, draft);
     if (r.status === 200 && corrections.get(user.id)?.id === draft.id) corrections.delete(user.id);
     return c.json(r.body, r.status as 200 | 409);
+  });
+  // 🇷🇺 Перевод примера в карточке — по тапу; готовый хранится в слове, модель спрашиваем один раз.
+  app.post("/api/words/:id/example", async (c) => {
+    const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
+    if (!word?.example) return c.json({ ok: false, error: "У этого слова нет примера" }, 404);
+    try {
+      return c.json({ ok: true, translation: await exampleTranslation(deps.db, deps.enricher, word) });
+    } catch (err) {
+      console.error("Example translation failed", word.id, err instanceof Error ? err.name : "unknown error");
+      return c.json({ ok: false, error: "Не получилось перевести пример — попробуй ещё раз" }, 502);
+    }
   });
   app.post("/api/words/:id/mnemonic", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));

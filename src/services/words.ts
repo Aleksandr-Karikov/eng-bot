@@ -1,8 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
-import { isLangCode, type LangCode } from "../lang";
+import { isLangCode, withLang, type LangCode } from "../lang";
 import { createCards } from "./cards";
+import type { WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
 
 export interface WordDraft {
@@ -222,6 +223,8 @@ export async function updateWord(
       ...(termNormalized !== word.termNormalized ? { audioUkFileId: null, audioUsFileId: null } : {}),
       // Запоминалка писалась под старое значение.
       ...(meaningChanged ? { mnemonic: "", imageFileId: null, leechHelp: "", collocations: "" } : {}),
+      // Перевод примера — перевод прежнего предложения: поменяли пример — переведём заново.
+      ...(patch.example.trim() !== word.example.trim() ? { exampleTranslation: "" } : {}),
       // Формы, родня, часть речи и уровень относятся к самому слову: при его смене готовятся заново.
       ...(termNormalized !== word.termNormalized ? { partOfSpeech: "", cefr: "", forms: "[]", synonyms: "[]", antonyms: "[]" } : {}),
       ...(patch.mnemonic !== undefined ? { mnemonic: patch.mnemonic } : {}),
@@ -258,4 +261,18 @@ export async function setMnemonic(db: Db, wordId: number, mnemonic: string): Pro
 
 export async function setImageFileId(db: Db, wordId: number, fileId: string): Promise<void> {
   await db.update(words).set({ imageFileId: fileId }).where(eq(words.id, wordId));
+}
+
+/**
+ * Перевод примера для карточки: готовый — из базы, иначе один запрос к модели и сохранение.
+ * Слово общее для комнаты, поэтому и перевод общий: второй человек получает его мгновенно.
+ */
+export async function exampleTranslation(db: Db, enricher: WordEnricher, word: Pick<Word, "id" | "term" | "example" | "exampleTranslation">): Promise<string> {
+  if (word.exampleTranslation || !word.example) return word.exampleTranslation;
+  const translate = enricher.translateExample;
+  if (!translate) return "";
+  const translation = await withLang(await wordLanguage(db, word.id), () => translate.call(enricher, word.example, word.term));
+  // Пока модель думала, пример могли поменять — тогда перевод уже не к нему.
+  await db.update(words).set({ exampleTranslation: translation }).where(and(eq(words.id, word.id), eq(words.example, word.example), eq(words.exampleTranslation, "")));
+  return translation;
 }

@@ -64,6 +64,8 @@ export interface AppCard {
     /** Для RU → EN: смысл под переводом (объяснение, если не выдаёт слово), иначе пусто. */
     meaningHint: string;
     example: string;
+    /** Перевод примера, если его уже спрашивали тапом; "" — ещё нет. */
+    exampleTranslation: string;
     context: string;
     mnemonic: string;
     transcriptionUk: string;
@@ -206,6 +208,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
         explanation: word.explanation,
         meaningHint: reverseHint(word),
         example: word.example,
+        exampleTranslation: word.exampleTranslation,
         context: word.context,
         mnemonic: word.mnemonic,
         transcriptionUk: word.transcriptionUk,

@@ -131,6 +131,10 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
     return this.active.correctWord(word, instruction);
   }
 
+  translateExample(example: string, term: string): Promise<string> {
+    return this.active.translateExample(example, term);
+  }
+
   enrich(term: string, translationHint?: string, context?: string): Promise<Enrichment> {
     return this.active.enrich(term, translationHint, context);
   }
