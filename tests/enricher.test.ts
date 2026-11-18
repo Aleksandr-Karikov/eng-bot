@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, parseEnrichment, parseExtraction } from "../src/llm/enricher";
+import { buildPrompt, parseEnrichment, parseExampleTranslation, parseExtraction } from "../src/llm/enricher";
 
 const ok = { translation: "счастливая случайность", explanation: "Удачное открытие.", example: "It was pure serendipity." };
 
@@ -24,6 +24,17 @@ it("drops extracted words whose translation is still English", () => {
     { term: "steady-handed", ...ok, translation: "steady-handed experts" },
     { term: "bank", ...ok, translation: "берег" },
   ])).map((w) => w.term)).toEqual(["bank"]);
+});
+
+describe("parseExampleTranslation", () => {
+  it("takes the translation out of the JSON the system prompt asks for, fence and quotes included", () => {
+    expect(parseExampleTranslation('```json\n{"translation": "Мы сидели на берегу реки."}\n```')).toBe("Мы сидели на берегу реки.");
+    expect(parseExampleTranslation('{"translation": "«Мы сидели на берегу реки.»"}')).toBe("Мы сидели на берегу реки.");
+  });
+
+  it("accepts a bare sentence from a model that ignored the JSON rule", () => {
+    expect(parseExampleTranslation("  Мы сидели на берегу реки.  ")).toBe("Мы сидели на берегу реки.");
+  });
 });
 
 describe("buildPrompt", () => {

@@ -162,7 +162,7 @@ export function SwipeCard({
                   <i>{w.example}</i>
                 </Text>
                 {exampleBusy && <Text className="block example muted">Перевожу…</Text>}
-                {exampleOpen && exampleRu && <Text className="block example">{exampleRu}</Text>}
+                {exampleOpen && exampleRu && <Text className="block example example-ru">{exampleRu}</Text>}
               </div>
             )}
 

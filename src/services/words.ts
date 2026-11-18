@@ -3,7 +3,7 @@ import type { Db } from "../db/client";
 import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
 import { isLangCode, withLang, type LangCode } from "../lang";
 import { createCards } from "./cards";
-import type { WordEnricher } from "../llm/enricher";
+import { parseExampleTranslation, type WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
 
 export interface WordDraft {
@@ -268,7 +268,8 @@ export async function setImageFileId(db: Db, wordId: number, fileId: string): Pr
  * Слово общее для комнаты, поэтому и перевод общий: второй человек получает его мгновенно.
  */
 export async function exampleTranslation(db: Db, enricher: WordEnricher, word: Pick<Word, "id" | "term" | "example" | "exampleTranslation">): Promise<string> {
-  if (word.exampleTranslation || !word.example) return word.exampleTranslation;
+  // Разбор и у сохранённого: в первые тапы в базу легла сырая JSON-обёртка ответа модели.
+  if (word.exampleTranslation || !word.example) return parseExampleTranslation(word.exampleTranslation);
   const translate = enricher.translateExample;
   if (!translate) return "";
   const translation = await withLang(await wordLanguage(db, word.id), () => translate.call(enricher, word.example, word.term));

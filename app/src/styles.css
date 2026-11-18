@@ -269,6 +269,8 @@ body {
 /* Пример: тап по предложению показывает перевод, пунктир говорит, что по нему можно нажать. */
 .example.tap-example { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .example.muted { color: var(--tg-theme-hint-color, #9aa0aa); }
+/* Перевод примера — не курсив и приглушённый: его не спутать с самим предложением. */
+.example.example-ru { font-style: normal; font-size: 13px; line-height: 1.4; color: var(--tg-theme-subtitle-text-color, #6b7785); }
 
 /* Формы — чипами в строку: одна-две штуки не должны занимать абзац. */
 .forms { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
