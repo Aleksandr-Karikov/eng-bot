@@ -1,4 +1,5 @@
 import { CorrectionForm } from "./CorrectionForm";
+import { CardPreview } from "./CardPreview";
 import { playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
@@ -18,10 +19,14 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
   const [picture, setPicture] = useState<string>();
   const [correcting, setCorrecting] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
-  // Одна кнопка «Назад» на экран: из правки — к слову, со слова — к списку.
-  const back = useCallback(() => (correcting ? undefined : editing ? setEditing(false) : onClose()), [correcting, editing, onClose]);
+  // Одна кнопка «Назад» на экран: из правки и предпросмотра — к слову, со слова — к списку.
+  const back = useCallback(
+    () => (previewing ? setPreviewing(false) : correcting ? undefined : editing ? setEditing(false) : onClose()),
+    [previewing, correcting, editing, onClose],
+  );
   useBackButton(back);
 
   const load = useCallback(async () => {
@@ -65,6 +70,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
     );
   }
   if (correcting) return <CorrectionForm word={word} onDone={(saved) => { setCorrecting(false); if (saved) void load(); }} />;
+  if (previewing) return <CardPreview word={word} onClose={() => setPreviewing(false)} />;
   if (editing) {
     return (
       <EditForm
@@ -191,6 +197,10 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
         <Cell className="danger" onClick={() => void act("delete")}>
           🗑 Удалить у всех
         </Cell>
+      </Section>
+
+      <Section header="Предпросмотр" footer="Как это слово выглядит в карточках при обучении — с учётом ⚙️ → 🃏 Карточка.">
+        <Cell onClick={() => setPreviewing(true)}>👀 Карточка при обучении</Cell>
       </Section>
     </List>
   );

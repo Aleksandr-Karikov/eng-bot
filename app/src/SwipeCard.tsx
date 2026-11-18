@@ -5,20 +5,37 @@ import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { pictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
+import { pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
 import { transcription, usefulnessIcon } from "./format";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
 
-function play(card: Card, accent: VoiceAccent): boolean {
-  return playAudio(cardAudioPath(card.cardId, accent));
+/**
+ * Путь озвучки: у карточки в обучении — по её id, в предпросмотре слова — по слову
+ * (карточки у человека может и не быть: слово убрано «🙈 не для меня»).
+ */
+function audioOf(card: Card, accent: VoiceAccent, preview?: boolean): string {
+  return preview ? `/api/audio?word=${card.word.id}&accent=${accent}` : cardAudioPath(card.cardId, accent);
 }
 
 /** Карточка: тап — перевернуть, свайп вправо — «помню», влево — «забыл». Кнопки — то же самое. */
 /** Пока настройки не пришли — показываем всё. */
 const ALL: CardView = { transcription: true, explanation: true, example: true, context: true, collocations: true, mnemonic: true, audio: true, picture: true };
 
-export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; view?: CardView; voice?: VoiceAccent | null; onAnswer: (a: Answer) => void }) {
+export function SwipeCard({
+  card,
+  view = ALL,
+  voice,
+  onAnswer,
+  preview,
+}: {
+  card: Card;
+  view?: CardView;
+  voice?: VoiceAccent | null;
+  onAnswer: (a: Answer) => void;
+  /** Предпросмотр со страницы слова: перевернуть можно, оценить нельзя — ответы никуда не уходят. */
+  preview?: boolean;
+}) {
   const [flipped, setFlipped] = useState(false);
   const [picture, setPicture] = useState<string>();
   const x = useMotionValue(0);
@@ -36,11 +53,11 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
   useEffect(() => {
     if (!withPicture) return;
     let alive = true;
-    void pictureUrl(card.cardId).then((url) => alive && setPicture(url));
+    void (preview ? wordPictureUrl(w.id) : pictureUrl(card.cardId)).then((url) => alive && setPicture(url));
     return () => {
       alive = false;
     };
-  }, [withPicture, card.cardId]);
+  }, [withPicture, card.cardId, w.id, preview]);
 
   const fling = useCallback(
     (answer: Answer, direction: number) => {
@@ -62,13 +79,12 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
     setFlipped(true);
     // Успело загрузиться — играем сразу (iOS разрешает play() только в самом нажатии).
     // Не успело — молчим: кнопки озвучки ниже есть всегда, и звук не заиграет сам второй раз.
-    if (withVoice && voice) playAudioIfReady(cardAudioPath(card.cardId, voice));
-  }, [card, voice, withVoice]);
+    if (withVoice && voice) playAudioIfReady(audioOf(card, voice, preview));
+  }, [card, voice, withVoice, preview]);
   // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
-  const native = useBottomButtons(
-    flipped ? { text: "😎 Помню", onClick: good } : { text: "Показать ответ", onClick: reveal },
-    flipped ? { text: "😵 Забыл", onClick: again } : undefined,
-  );
+  // В предпросмотре оценивать нечего: пустой вызов прячет нативные кнопки и свою панель не рисует.
+  const main = flipped ? { text: "😎 Помню", onClick: good } : { text: "Показать ответ", onClick: reveal };
+  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: "😵 Забыл", onClick: again } : undefined);
 
   return (
     <div className="deck">
@@ -83,7 +99,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
       <motion.div
         className="card"
         style={{ x, rotate }}
-        drag={flipped ? "x" : false}
+        drag={flipped && !preview ? "x" : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.9}
         onDragEnd={(_, info) => {
@@ -149,8 +165,8 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
 
       {flipped && (
         <div className="row">
-          {view.audio && <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />}
-          {card.isNew && (
+          {view.audio && <AudioButtons size="m" onPlay={(accent) => void playAudio(audioOf(card, accent, preview))} />}
+          {card.isNew && !preview && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
               ✅ Уже знаю
             </Button>
@@ -159,7 +175,7 @@ export function SwipeCard({ card, view = ALL, voice, onAnswer }: { card: Card; v
       )}
 
       {/* Без нативных кнопок (браузер, старый Telegram) — своя панель, закреплённая внизу. */}
-      {!native && (
+      {!native && !preview && (
         <div className="actions fixed">
           {flipped ? (
             <div className="row">
