@@ -245,9 +245,8 @@ body {
 .front .meta { text-align: center; }
 .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tg-theme-hint-color, #9aa0aa); }
 
-/* Тело одно на обе стороны: до открытия ответ и всё под ним не видны, но занимают место,
-   поэтому при открытии карточка не перестраивается. */
-.card-body { display: flex; flex-direction: column; gap: 10px; }
+/* Дымка занимает свободное место под вопросом, независимо от длины ответа. */
+.card-body { display: flex; flex: 1; flex-direction: column; gap: 10px; }
 /* Шапка в одну колонку: слово, справка, под ними ответ. В строку слово и перевод не помещались
    и переносились, поэтому двухколоночную раскладку убрал совсем. */
 .card-head { display: flex; flex-direction: column; gap: 4px; min-height: 62px; }
@@ -256,86 +255,45 @@ body {
    и на родителе его не перебить — оно на самом элементе с текстом. */
 .card-answer .answer { text-align: left; line-height: 1.25; font-weight: 700; letter-spacing: -0.2px; }
 
-/* Полотно скрытия фиксировано по высоте, чтобы его форма не выдавала длину ответа. */
-.card-reveal-zone {
-  position: relative;
-  --spoiler-height: clamp(176px, 40vh, 320px);
-  min-height: var(--spoiler-height);
-}
-.card-reveal-content { display: grid; gap: 12px; }
-.card-reveal-zone:not(.is-revealed) .card-reveal-content { visibility: hidden; user-select: none; }
+.card-reveal-zone { position: relative; flex: 1; min-height: 140px; }
+.card-reveal-content:not([hidden]) { display: grid; gap: 12px; }
 .card-spoiler {
+  --spoiler-ink: var(--tg-theme-text-color, var(--tgui--text_color, #273850));
   position: absolute;
   inset: 0 0 auto;
-  height: var(--spoiler-height);
+  height: 100%;
+  max-height: 55vh;
   width: 100%;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  isolation: isolate;
   padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 22%, transparent);
-  border-radius: 18px;
-  color: var(--tg-theme-text-color, var(--tgui--text_color, #17233c));
-  background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #edf1f8));
+  border: 0;
+  border-radius: 12px;
+  color: var(--tg-theme-hint-color, var(--tgui--subtitle_text_color, #667184));
+  background:
+    radial-gradient(ellipse 37% 32% at 38% 34%, color-mix(in srgb, var(--spoiler-ink) 14%, transparent), transparent 100%),
+    radial-gradient(ellipse 35% 34% at 64% 51%, color-mix(in srgb, var(--spoiler-ink) 12%, transparent), transparent 100%),
+    radial-gradient(ellipse 35% 28% at 42% 70%, color-mix(in srgb, var(--spoiler-ink) 10%, transparent), transparent 100%);
   font: inherit;
   cursor: pointer;
-}
-.card-spoiler::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -18px;
-  background:
-    radial-gradient(ellipse at 20% 22%, #a78bfa63, transparent 49%),
-    radial-gradient(ellipse at 80% 66%, #38bdf865, transparent 51%),
-    radial-gradient(ellipse at 48% 64%, #6080d75e, transparent 49%);
-  filter: blur(13px);
-}
-.card-spoiler::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  background:
-    radial-gradient(circle at 7px 10px, #ffffffb3 0.65px, transparent 1.5px) 0 0 / 19px 23px,
-    radial-gradient(circle at 11px 6px, #6b82c685 0.5px, transparent 1.1px) 0 0 / 17px 21px,
-    radial-gradient(circle at 3px 11px, #ffffff7a 0.4px, transparent 1.4px) 0 0 / 13px 17px;
-  mask-image: radial-gradient(ellipse, #000 42%, #0008);
 }
 .card-spoiler:focus-visible { outline: 2px solid var(--tg-theme-accent-text-color, #2481cc); outline-offset: 3px; }
 .card-spoiler-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 13px;
-  border-radius: 999px;
-  background: var(--tg-theme-bg-color, var(--tgui--bg_color, #fff));
   font-size: 13px;
   font-weight: 650;
-  box-shadow: 0 3px 12px #20376320;
 }
-@property --spoiler-wave {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0px;
-}
-.is-revealed .card-reveal-content { animation: card-answer-reveal .48s cubic-bezier(.18, .7, .25, 1); }
+/* У длинного ответа анимируется только видимая дымка, а не весь текст и картинки. */
 .is-revealed .card-spoiler {
   pointer-events: none;
-  mask-image: radial-gradient(circle at var(--reveal-x) var(--reveal-y), transparent calc(var(--spoiler-wave) - 18px), #000 calc(var(--spoiler-wave) + 12px));
-  animation: card-spoiler-dissolve .48s cubic-bezier(.18, .7, .25, 1) both;
-}
-@keyframes card-answer-reveal {
-  from { clip-path: circle(0 at var(--reveal-x) var(--reveal-y)); }
-  to { clip-path: circle(var(--reveal-radius) at var(--reveal-x) var(--reveal-y)); }
+  animation: card-spoiler-dissolve .24s ease-out forwards;
 }
 @keyframes card-spoiler-dissolve {
-  from { --spoiler-wave: 0px; opacity: 1; }
-  to { --spoiler-wave: calc(var(--reveal-radius) + 24px); opacity: 0; visibility: hidden; }
+  to { transform: scale(1.09); opacity: 0; visibility: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .is-revealed .card-reveal-content { animation: none; }
   .is-revealed .card-spoiler { animation: none; visibility: hidden; }
 }
 .card-rest { display: flex; flex-direction: column; gap: 10px; }

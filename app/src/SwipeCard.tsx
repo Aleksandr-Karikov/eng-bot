@@ -90,19 +90,15 @@ export function SwipeCard({
    * иначе тап по карточке после кнопки «Показать ответ» играл бы второй раз.
    */
   const revealed = useRef(false);
-  const revealZone = useRef<HTMLDivElement>(null);
+  const spoiler = useRef<HTMLButtonElement>(null);
   const reveal = useCallback((point?: { clientX: number; clientY: number }) => {
     if (revealed.current) return;
     revealed.current = true;
-    const zone = revealZone.current;
-    if (zone) {
-      const { left, top, width, height } = zone.getBoundingClientRect();
-      const originX = point ? Math.max(0, Math.min(width, point.clientX - left)) : width / 2;
-      const originY = point ? Math.max(0, Math.min(height, point.clientY - top)) : Math.min(height / 2, 120);
-      const radius = Math.ceil(Math.hypot(Math.max(originX, width - originX), Math.max(originY, height - originY)));
-      zone.style.setProperty("--reveal-x", `${originX}px`);
-      zone.style.setProperty("--reveal-y", `${originY}px`);
-      zone.style.setProperty("--reveal-radius", `${radius}px`);
+    if (point && spoiler.current) {
+      const { left, top, width, height } = spoiler.current.getBoundingClientRect();
+      const originX = Math.max(0, Math.min(width, point.clientX - left));
+      const originY = Math.max(0, Math.min(height, point.clientY - top));
+      spoiler.current.style.transformOrigin = `${originX}px ${originY}px`;
     }
     setFlipped(true);
     // Успело загрузиться — играем сразу (iOS разрешает play() только в самом нажатии).
@@ -140,8 +136,6 @@ export function SwipeCard({
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
         {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
         {w.usefulness ? <UsefulDot level={w.usefulness} className="useful-chip" /> : null}
-        {/* Карточка свёрстана целиком сразу: ответ просто не виден, пока не открыт. При открытии ничего
-            не сдвигается — ни слово, ни блоки под ним, — поэтому нет прыжка и переноса на две строки. */}
         <div className="card-body">
           <div className="card-head">
             <div className={`term ${sizeOf(question)}`}>{question}</div>
@@ -149,8 +143,8 @@ export function SwipeCard({
             <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
           </div>
 
-          <div className={`card-reveal-zone${flipped ? " is-revealed" : ""}`} ref={revealZone}>
-            <div className="card-reveal-content" aria-hidden={!flipped}>
+          <div className={`card-reveal-zone${flipped ? " is-revealed" : ""}`}>
+            <div className="card-reveal-content" hidden={!flipped}>
               <div className={`card-answer ${sizeOf(answerText)}`}>
                 <div className="answer">{answerText}</div>
                 {!enRu && view.transcription && transcription(w) && (
@@ -183,7 +177,7 @@ export function SwipeCard({
                 {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
               </div>
             </div>
-            <button type="button" className="card-spoiler" aria-label="Показать ответ" disabled={flipped} aria-hidden={flipped}>
+            <button ref={spoiler} type="button" className="card-spoiler" aria-label="Показать ответ" disabled={flipped} aria-hidden={flipped}>
               <span className="card-spoiler-label">
                 <IconEye size={19} />
                 Ответ скрыт
