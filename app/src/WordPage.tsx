@@ -5,14 +5,15 @@ import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
 import { editWord, getWord, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
-import { transcription, usefulnessIcon } from "./format";
+import { transcription } from "./format";
+import { UsefulDot } from "./icons";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
 
 function play(id: number, accent: "uk" | "us") {
   playAudio(`/api/audio?word=${id}&accent=${accent}`);
 }
 
-/** Страница слова: всё, что есть на карточке, и действия «⚙️ Управление словом» из бота. */
+/** Страница слова: всё, что есть на карточке, и действия «Управление словом» из бота. */
 export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
   const [word, setWord] = useState<WordDetails>();
   const [error, setError] = useState<string>();
@@ -88,9 +89,9 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
     <List>
       <div className="word-head">
         <Title level="1" weight="2">
-          {word.term} {usefulnessIcon(word.usefulness)}
+          {word.term} <UsefulDot level={word.usefulness} />
         </Title>
-        {word.usefulness == null && <Text className="hint">❔ Полезность пока не оценена</Text>}
+        {word.usefulness == null && <Text className="hint">Полезность пока не оценена</Text>}
         {transcription(word) && <Text className="hint">{transcription(word)}</Text>}
         {(word.partOfSpeech || word.cefr) && (
           <Text className="hint">{[word.partOfSpeech, word.cefr].filter(Boolean).join(" · ")}</Text>
@@ -178,35 +179,35 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
             }
           }}
         >
-          {thinking ? "💡 Придумываю… секунд 10" : word.mnemonic ? "💡 Придумать другую" : "💡 Придумать запоминалку"}
+          {thinking ? "Придумываю… секунд 10" : word.mnemonic ? "Придумать другую" : "Придумать запоминалку"}
         </Cell>
       </Section>
       {word.hasPicture && <div className="picture word-picture">{picture && <img src={picture} alt="" />}</div>}
 
       <Section header="Управление словом">
-        <Cell onClick={() => setCorrecting(true)}>✨ Исправить с ИИ</Cell>
-        <Cell onClick={() => setEditing(true)}>✏️ Изменить перевод и объяснение</Cell>
-        {word.usefulness === 1 && <Cell onClick={() => void act("promote")}>⭐ Сделать полезным — учить полностью</Cell>}
+        <Cell onClick={() => setCorrecting(true)}>Исправить с ИИ</Cell>
+        <Cell onClick={() => setEditing(true)}>Изменить перевод и объяснение</Cell>
+        {word.usefulness === 1 && <Cell onClick={() => void act("promote")}>Сделать полезным — учить полностью</Cell>}
         {word.mine ? (
           <Cell multiline description="У остальных участников слово останется" onClick={() => void act("drop")}>
-            🙈 Убрать только у меня
+            Убрать только у меня
           </Cell>
         ) : (
-          <Cell onClick={() => void act("restore")}>↩️ Вернуть в мои слова</Cell>
+          <Cell onClick={() => void act("restore")}>Вернуть в мои слова</Cell>
         )}
         <Cell className="danger" onClick={() => void act("delete")}>
-          🗑 Удалить у всех
+          Удалить у всех
         </Cell>
       </Section>
 
-      <Section header="Предпросмотр" footer="Как это слово выглядит в карточках при обучении — с учётом ⚙️ → 🃏 Карточка.">
-        <Cell onClick={() => setPreviewing(true)}>👀 Карточка при обучении</Cell>
+      <Section header="Предпросмотр" footer="Как это слово выглядит в карточках при обучении — с учётом настроек карточки.">
+        <Cell onClick={() => setPreviewing(true)}>Карточка при обучении</Cell>
       </Section>
     </List>
   );
 }
 
-/** ✏️ Перевод и объяснение. Само слово и пример не трогаем — прогресс у всех сохраняется. */
+/** Перевод и объяснение. Само слово и пример не трогаем — прогресс у всех сохраняется. */
 function EditForm({ word, onDone }: { word: WordDetails; onDone: (saved: boolean) => void }) {
   const [translation, setTranslation] = useState(word.translation);
   const [explanation, setExplanation] = useState(word.explanation);
@@ -228,7 +229,7 @@ function EditForm({ word, onDone }: { word: WordDetails; onDone: (saved: boolean
 
   return (
     <List>
-      <Section header={`✏️ ${word.term}`} footer="Если поменяешь перевод, запоминалка, картинка и сочетания подготовятся заново.">
+      <Section header={word.term} footer="Если поменяешь перевод, запоминалка, картинка и сочетания подготовятся заново.">
         <Input header="Перевод" value={translation} onChange={(e) => setTranslation(e.target.value)} />
         <Textarea header="Объяснение" value={explanation} onChange={(e) => setExplanation(e.target.value)} />
       </Section>

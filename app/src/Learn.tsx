@@ -12,6 +12,7 @@ import { TypeCard } from "./TypeCard";
 import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
+import { IconChevronDown, IconChevronUp, IconInbox, IconPencil, IconUndo } from "./icons";
 import { haptic, notify } from "./telegram";
 
 const MODES: Array<{ id: QueueMode; label: string }> = [
@@ -43,7 +44,7 @@ function savedMode(): QueueMode {
 /** Сколько последних свайпов можно отменить подряд. */
 const UNDO_DEPTH = 5;
 
-/** 📚 Карточки: очередь /learn со свайпами. */
+/** Карточки: очередь /learn со свайпами. */
 export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: (setId?: number) => void }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
@@ -109,7 +110,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     for (const next of queue.slice(0, 3)) if (next.kind === "card" && next.word.hasPicture) void pictureUrl(next.cardId);
   }, [queue, me]);
 
-  // Озвучка текущей и пары следующих — тоже заранее: тап по 🔊 (и диктант) играют сразу.
+  // Озвучка текущей и пары следующих — тоже заранее: тап по кнопке озвучки (и диктант) играют сразу.
   // Выбранный вариант озвучивается сам при показе ответа, поэтому его грузим первым.
   useEffect(() => {
     if (me?.view.audio === false) return;
@@ -129,7 +130,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     });
   }, [load]);
 
-  /** Оценка карточки уходит в фоне; её можно отменить ↩️. */
+  /** Оценка карточки уходит в фоне; её можно отменить. */
   const rate = useCallback((card: Card, value: Answer) => {
     const sent = sendAnswer(card, value).then((r) => {
       showDamage(r.damage);
@@ -157,15 +158,15 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     [rate, advance],
   );
 
-  /** 🧠 Ответ на вопрос по ошибкам: счёт темы — в разбор, если он что-то говорит. */
+  /** Ответ на вопрос по ошибкам: счёт темы — в разбор, если он что-то говорит. */
   const answerDrill = useCallback(async (item: DrillItem, correct: boolean) => {
     const progress = await sendDrillAnswer(item, correct).catch(() => null);
     if (!progress) return;
-    if (progress.resolved) return <Text className="block">🎉 Тема «{progress.category}» отработана — больше её не предлагаю.</Text>;
-    if (!correct) return <Text className="hint">🧠 Тема «{progress.category}»: счёт заново.</Text>;
+    if (progress.resolved) return <Text className="block">Тема «{progress.category}» отработана — больше её не предлагаю.</Text>;
+    if (!correct) return <Text className="hint">Тема «{progress.category}»: счёт заново.</Text>;
   }, []);
 
-  /** ↩️ Свайпнул не туда — ответ отменяется, карточка снова сверху. */
+  /** Свайпнул не туда — ответ отменяется, карточка снова сверху. */
   const undo = useCallback(async () => {
     const last = history.at(-1);
     if (!last) return;
@@ -206,7 +207,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           aria-expanded={!headerFolded}
           onClick={fold}
         >
-          {headerFolded ? "▾" : "▴"}
+          {headerFolded ? <IconChevronDown size={16} /> : <IconChevronUp size={16} />}
         </button>
       ) : null}
       <Text weight="2" className="top-title">
@@ -222,16 +223,19 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
         )}
         {history.length > 0 && (
           <button className="corner-button" aria-label="Отменить последний ответ" onClick={() => void undo()}>
-            ↩️
+            <IconUndo size={18} />
           </button>
         )}
         {me && me.triage > 0 && (
           <button className="corner-button corner-badge" aria-label="Новые слова от друзей" onClick={onTriage}>
-            🆕<span className="badge">{me.triage > 99 ? "99+" : me.triage}</span>
+            <IconInbox size={18} />
+            <span className="badge">{me.triage > 99 ? "99+" : me.triage}</span>
           </button>
         )}
         {card?.kind === "card" && (
-          <button className="corner-button" aria-label="Исправить слово с ИИ" onClick={() => setCorrecting(card.word)}>✏️</button>
+          <button className="corner-button" aria-label="Исправить слово с ИИ" onClick={() => setCorrecting(card.word)}>
+            <IconPencil size={18} />
+          </button>
         )}
         {corner}
       </div>
@@ -250,7 +254,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
             transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
             onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
           >
-            <span aria-hidden="true">{hp > 0 ? "⚔️" : "↩️"}</span> {hp > 0 ? "+" : ""}{hp} <small>HP</small>
+            {hp > 0 ? "+" : ""}{hp} <small>HP</small>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -304,12 +308,12 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       {header}
       {modes}
       {damageEffect}
-      {mode === "hard" && <Text className="hint practice-note">🔁 Вне зачёта: ответы не сдвигают повторения</Text>}
+      {mode === "hard" && <Text className="hint practice-note">Вне зачёта: ответы не сдвигают повторения</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
         <ChoiceCard
           key={card.id}
-          title={`🧠 Работа над ошибками · ${card.category}`}
+          title={`Работа над ошибками · ${card.category}`}
           quiz={card}
           onAnswer={(correct) => answerDrill(card, correct)}
           onNext={advance}
@@ -318,7 +322,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
         <TypeCard
           key={`${card.cardId}-${card.reps}`}
           card={card}
-          // Оценил сервер при проверке — в историю для ↩️ (запрос уже прошёл).
+          // Оценил сервер при проверке — в историю для отмены (запрос уже прошёл).
           onRated={(hp) => {
             showDamage(hp);
             if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ damage: hp }) }].slice(-UNDO_DEPTH));
@@ -331,7 +335,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           key={`${card.cardId}-${card.reps}`}
           title={
             <>
-              🔗 Какое слово подходит к <b>{card.word.term}</b>?
+              Какое слово подходит к <b>{card.word.term}</b>?
             </>
           }
           quiz={card.quiz}
@@ -370,7 +374,7 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
   /**
-   * 🐉 Урон этого захода. Показываем именно здесь, на «Готово»: человек уходит с мыслью «я снял 12 HP»,
+   * Урон этого захода. Показываем именно здесь, на «Готово»: человек уходит с мыслью «я снял 12 HP»,
    * а не с сухим отчётом. Вкладку босса ещё надо не забыть открыть — экран «Готово» забыть нельзя.
    */
   const [boss, setBoss] = useState<Boss>();
@@ -384,12 +388,12 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
   if (starter && done === 0) {
     return (
       <Placeholder
-        header="📦 Пока нечего учить"
+        header="Пока нечего учить"
         description={`Возьми готовый набор — «${starter.title}», ${starter.total} слов. Листаешь: знаю / учу / не для меня. Взятое сразу появится здесь.`}
         action={
           <div className="actions">
             <Button size="l" stretched onClick={() => onSets(starter.id)}>
-              📦 Начать с «{starter.title}»
+              Начать с «{starter.title}»
             </Button>
             <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
               Выбрать другой набор
@@ -407,16 +411,16 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
 
   return (
     <Placeholder
-      header={done ? `🎉 Готово! Повторено: ${done}` : "Сейчас нечего повторять 👌"}
+      header={done ? `Готово! Повторено: ${done}` : "Сейчас нечего повторять"}
       description={
         boss
-          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен 💀" : `, осталось ${boss.hp}`}. Новые слова и повторения появятся сами — бот напомнит.`
+          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. Новые слова и повторения появятся сами — бот напомнит.`
           : "Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
       }
       action={
         <div className="actions">
           <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
-            📦 Взять слова из готового набора
+            Взять слова из готового набора
           </Button>
           <LessonButton />
           {!native && (

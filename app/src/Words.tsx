@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getWords, type WordItem, type WordStatus } from "./api";
 import { WordPage } from "./WordPage";
 import { AddWord } from "./AddWord";
-import { usefulnessIcon } from "./format";
+import { ButtonIcon, IconBox, IconPlus, UsefulDot } from "./icons";
 import { haptic, useBackButton } from "./telegram";
 
 const STATUS_LABEL: Record<WordStatus, string> = {
@@ -31,7 +31,7 @@ function BackToCards({ onExit }: { onExit: () => void }) {
   return null;
 }
 
-/** 📖 Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
+/** Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
 export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => void }) {
   const [data, setData] = useState<{ room: string | null; words: WordItem[] }>();
   const [error, setError] = useState<string>();
@@ -84,17 +84,23 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
       </div>
     );
   }
-  if (!data.room) return <>{back}<Placeholder header="Нет комнаты" description="Выбери комнату в настройках (⚙️) или создай в боте: /newroom" /></>;
+  if (!data.room) return <>{back}<Placeholder header="Нет комнаты" description="Выбери комнату в настройках или создай в боте: /newroom" /></>;
 
   return (
     <List>
       {back}
       <div className="form-buttons add-word">
         <Button size="m" stretched mode="bezeled" onClick={() => setAdding(true)}>
-          ➕ Добавить слово
+          <ButtonIcon>
+            <IconPlus size={18} />
+            Добавить слово
+          </ButtonIcon>
         </Button>
         <Button size="m" stretched mode="bezeled" onClick={onSets}>
-          📦 Наборы слов
+          <ButtonIcon>
+            <IconBox size={18} />
+            Наборы слов
+          </ButtonIcon>
         </Button>
       </div>
       <Input placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -124,7 +130,7 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
               setOpen(w.id);
             }}
           >
-            {w.term} {usefulnessIcon(w.usefulness)}
+            {w.term} <UsefulDot level={w.usefulness} />
           </Cell>
         ))}
       </Section>

@@ -6,13 +6,14 @@ import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
 import { exampleTranslation, pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
-import { transcription, usefulnessIcon } from "./format";
+import { transcription } from "./format";
+import { UsefulDot } from "./icons";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
 
 /**
  * Путь озвучки: у карточки в обучении — по её id, в предпросмотре слова — по слову
- * (карточки у человека может и не быть: слово убрано «🙈 не для меня»).
+ * (карточки у человека может и не быть: слово убрано «не для меня»).
  */
 function audioOf(card: Card, accent: VoiceAccent, preview?: boolean): string {
   return preview ? `/api/audio?word=${card.word.id}&accent=${accent}` : cardAudioPath(card.cardId, accent);
@@ -100,8 +101,8 @@ export function SwipeCard({
   }, [card, voice, withVoice, preview]);
   // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
   // В предпросмотре оценивать нечего: пустой вызов прячет нативные кнопки и свою панель не рисует.
-  const main = flipped ? { text: "😎 Помню", onClick: good } : { text: "Показать ответ", onClick: reveal };
-  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: "😵 Забыл", onClick: again } : undefined);
+  const main = flipped ? { text: "Помню", onClick: good } : { text: "Показать ответ", onClick: reveal };
+  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: "Забыл", onClick: again } : undefined);
 
   return (
     <div className="deck">
@@ -128,7 +129,7 @@ export function SwipeCard({
       >
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
         {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
-        {w.usefulness ? <span className="useful-chip" title={`Полезность: ${w.usefulness} из 3`}>{usefulnessIcon(w.usefulness)}</span> : null}
+        {w.usefulness ? <UsefulDot level={w.usefulness} className="useful-chip" /> : null}
         {/* Карточка свёрстана целиком сразу: ответ просто не виден, пока не открыт. При открытии ничего
             не сдвигается — ни слово, ни блоки под ним, — поэтому нет прыжка и переноса на две строки. */}
         <div className="card-body">
@@ -188,7 +189,7 @@ export function SwipeCard({
           {view.audio && <AudioButtons size="m" onPlay={(accent) => void playAudio(audioOf(card, accent, preview))} />}
           {card.isNew && !preview && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
-              ✅ Уже знаю
+              Уже знаю
             </Button>
           )}
         </div>
@@ -200,10 +201,10 @@ export function SwipeCard({
           {flipped ? (
             <div className="row">
               <Button mode="gray" size="l" stretched onClick={again}>
-                😵 Забыл
+                Забыл
               </Button>
               <Button size="l" stretched onClick={good}>
-                😎 Помню
+                Помню
               </Button>
             </div>
           ) : (

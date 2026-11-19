@@ -4,11 +4,12 @@ import { Button, Input, List, Section, Spinner, Text, Textarea, Title } from "@t
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addWord, prepareWord, type WordDraft } from "./api";
 import { useBottomButtons } from "./bottomButtons";
-import { transcription, usefulnessIcon } from "./format";
+import { transcription } from "./format";
+import { UsefulDot } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
 /**
- * ➕ Новое слово: пишешь слово или фразу (можно по-русски — подберётся английское), бот готовит карточку,
+ * Новое слово: пишешь слово или фразу (можно по-русски — подберётся английское), бот готовит карточку,
  * перевод и объяснение можно поправить, «Добавить» — в комнату, друзьям приходит «знаешь?». Можно добавлять подряд.
  */
 export function AddWord({ onExit }: { onExit: () => void }) {
@@ -55,14 +56,14 @@ export function AddWord({ onExit }: { onExit: () => void }) {
   }, [busy, draft]);
 
   const native = useBottomButtons(
-    busy ? undefined : draft ? { text: "➕ Добавить", onClick: () => void save() } : { text: "Подготовить карточку", onClick: () => void prepare() },
+    busy ? undefined : draft ? { text: "Добавить", onClick: () => void save() } : { text: "Подготовить карточку", onClick: () => void prepare() },
     !busy && draft ? { text: "Отмена", onClick: () => setDraft(undefined) } : undefined,
   );
 
   return (
     <List>
       {!draft ? (
-        <Section header="➕ Новое слово" footer={studyLanguage().code === "en" ? "Слово или фразу, можно с переводом через тире: bank — берег. Можно по-русски — подберу английское." : `Слово или фразу, можно с переводом через тире. Можно по-русски — подберу ${studyLanguage().neut}.`}>
+        <Section header="Новое слово" footer={studyLanguage().code === "en" ? "Слово или фразу, можно с переводом через тире: bank — берег. Можно по-русски — подберу английское." : `Слово или фразу, можно с переводом через тире. Можно по-русски — подберу ${studyLanguage().neut}.`}>
           <Input
             ref={input}
             placeholder="Например: cut to the chase"
@@ -76,7 +77,7 @@ export function AddWord({ onExit }: { onExit: () => void }) {
         <Section header="Проверь и добавь">
           <div className="word-head">
             <Title level="1" weight="2">
-              {draft.term} {usefulnessIcon(draft.usefulness)}
+              {draft.term} <UsefulDot level={draft.usefulness} />
             </Title>
             {transcription({ transcriptionUk: draft.transcriptionUk ?? "", transcriptionUs: draft.transcriptionUs ?? "" }) && (
               <Text className="hint">{transcription({ transcriptionUk: draft.transcriptionUk ?? "", transcriptionUs: draft.transcriptionUs ?? "" })}</Text>
@@ -112,14 +113,14 @@ export function AddWord({ onExit }: { onExit: () => void }) {
             </Button>
           )}
           <Button size="l" stretched onClick={() => void (draft ? save() : prepare())}>
-            {draft ? "➕ Добавить" : "Подготовить карточку"}
+            {draft ? "Добавить" : "Подготовить карточку"}
           </Button>
         </div>
       )}
 
       {added.length > 0 && (
         <Section header="Добавлено сейчас">
-          <Text className="block draft-extra">✅ {added.join(", ")}</Text>
+          <Text className="block draft-extra">{added.join(", ")}</Text>
         </Section>
       )}
     </List>

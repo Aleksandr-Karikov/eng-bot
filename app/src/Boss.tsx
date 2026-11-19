@@ -2,10 +2,11 @@ import { Button, Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { buyUpgrade, getBoss, type Boss, type BossState, type Coins, type Trophies, type UpgradeKind } from "./api";
+import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
 /**
- * 🐉 Вкладка босса — картина боя, а не ещё одна кнопка «учиться».
+ * Вкладка босса — картина боя, а не ещё одна кнопка «учиться».
  *
  * Два правила этой вкладки:
  * 1. Тапать не надо ничего. Урон приходит из обычных карточек в /learn: босс смотрит на тренировку,
@@ -13,7 +14,10 @@ import { haptic, notify, useBackButton } from "./telegram";
  * 2. HP — это цель комнаты (services/boss.ts), ни очков, ни валюты. Полоска здесь и в /goal — одна.
  */
 
-/** Фигура босса по фазе: живой, а не прогресс-бар с ушами. */
+/**
+ * Фигура босса по фазе: живой, а не прогресс-бар с ушами. Эмодзи здесь — не украшение подписи,
+ * а сама картинка босса: другого портрета у него нет, и в тёмной теме он читается как надо.
+ */
 const FACE: Record<Boss["phase"], { emoji: string; title: string; color: string }> = {
   fresh: { emoji: "🐉", title: "Босс спокоен", color: "#7c8cf8" },
   angry: { emoji: "🐲", title: "Босс злится", color: "#f59e0b" },
@@ -22,7 +26,7 @@ const FACE: Record<Boss["phase"], { emoji: string; title: string; color: string 
 };
 
 const PACE: Record<Boss["pace"], string> = {
-  ahead: "опережаете график 👍",
+  ahead: "опережаете график",
   "on-time": "идёте в темпе",
   behind: "отстаёте от графика",
 };
@@ -81,7 +85,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   if (!data.boss) {
     return (
       <Placeholder
-        header="🐉 Боссу нужна комната"
+        header="Боссу нужна комната"
         description="Босс недели — это цель комнаты. Заведи комнату в боте (/room) и возвращайся: каждая повторённая карточка станет ударом."
       />
     );
@@ -162,7 +166,7 @@ function BossView({
 
       {dead && <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску. Продолжай учиться: монеты и трофеи ещё засчитываются.</Text>}
       <div className="boss-hits">
-        <Text weight="2">⚔️ Свежие удары</Text>
+        <Text weight="2">Свежие удары</Text>
         {hits.length === 0 && <Text className="hint">Пока тихо. Первый удар — любая карточка в «Учить».</Text>}
         {hits.slice(0, 8).map((hit, i) => (
           <motion.div
@@ -196,10 +200,10 @@ function BossView({
       {coins && (
         <div className="boss-members">
           <div className="boss-member">
-            <span>🪙 Монеты недели</span>
+            <span>Монеты недели</span>
             <Text className="hint">{coins.coins}</Text>
           </div>
-          <Text weight="2" className="upgrade-title">🛍 Магазин усилений</Text>
+          <Text weight="2" className="upgrade-title">Магазин усилений</Text>
           {coins.offers.map((offer) => (
             <div className="upgrade-offer" key={offer.kind}>
               <div className="boss-member">
@@ -209,7 +213,9 @@ function BossView({
               <Text className="hint">{offer.description}</Text>
               {offer.price === null ? <Text className="hint">Максимальный уровень</Text> : (
                 <Button mode="bezeled" size="m" stretched loading={buying === offer.kind} disabled={Boolean(buying) || coins.coins < offer.price} onClick={() => onBuy(offer.kind)}>
-                  {coins.coins < offer.price ? `Ещё ${Math.round((offer.price - coins.coins) * 10) / 10} 🪙 · цена ${offer.price}` : `Улучшить за ${offer.price} 🪙`}
+                  {coins.coins < offer.price
+                    ? `Не хватает ${Math.round((offer.price - coins.coins) * 10) / 10} (цена ${offer.price})`
+                    : `Улучшить за ${offer.price} ${plural(offer.price, "монету", "монеты", "монет")}`}
                 </Button>
               )}
             </div>
@@ -220,13 +226,13 @@ function BossView({
       {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по Новосибирску. Усиления остаются навсегда и действуют на новые ответы. Бонусы «Силы» и навыка складываются от базового урона.</Text>}
       {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
 
-      <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить — ⚙️.</Text>
+      <Text className="hint boss-footnote">Босс считает удары сам — из ответов на карточки. Выключить можно в настройках.</Text>
     </div>
   );
 }
 
 /**
- * 🏆 Полка трофеев: полученные цветные, остальные серым с подсказкой «как». Коллекция без «как получить»
+ * Полка трофеев: полученные цветные, остальные серым с подсказкой «как». Коллекция без «как получить»
  * — просто картинки; с условием — цель, к которой идут.
  */
 function TrophyShelf({ trophies }: { trophies: Trophies }) {
@@ -236,7 +242,7 @@ function TrophyShelf({ trophies }: { trophies: Trophies }) {
   return (
     <div className="boss-members">
       <Text weight="2">
-        🏆 Трофеи · {trophies.total} из {trophies.of}
+        Трофеи · {trophies.total} из {trophies.of}
       </Text>
       {earned.length === 0 && <Text className="hint">Пока пусто. Первый появится в воскресенье — за эту неделю.</Text>}
       <div className="trophy-grid">
@@ -252,7 +258,7 @@ function TrophyShelf({ trophies }: { trophies: Trophies }) {
         })}
         {rest.map((t) => (
           <details className="trophy-detail locked" key={t.kind}><summary className="trophy">
-            <span className="trophy-emoji">🔒</span>
+            <span className="trophy-emoji"><IconLock size={16} /></span>
             <span>{t.title}</span>
           </summary><Text className="hint">{t.how}</Text></details>
         ))}

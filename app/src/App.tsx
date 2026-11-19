@@ -10,6 +10,7 @@ import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Triage } from "./Triage";
 import { Words } from "./Words";
+import { IconClose, IconMenu } from "./icons";
 import { haptic } from "./telegram";
 
 type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss";
@@ -22,12 +23,12 @@ function startPage(): Page {
 }
 
 /**
- * Главное — карточки на весь экран. Слова и настройки — отдельные страницы: кнопки 📖 и ⚙️ в углу,
+ * Главное — карточки на весь экран. Слова и настройки — отдельные страницы: они в меню ☰ в углу,
  * настройки ещё и из штатного меню Telegram (⋮ → «Настройки»); назад — нативной кнопкой «Назад».
  */
 export function App() {
   const [page, setPage] = useState<Page>(startPage);
-  /** Набор, который надо открыть сразу в 📦: заполняет пустой `/learn`, когда у человека нет слов. */
+  /** Набор, который надо открыть сразу: заполняет пустой `/learn`, когда у человека нет слов. */
   const [startSetId, setStartSetId] = useState<number>();
   const open = useCallback((next: Page) => {
     haptic.select();
@@ -41,7 +42,7 @@ export function App() {
   const back = useCallback(() => setPage("learn"), []);
   // Изучаемый язык нужен и страницам, открытым сразу по ссылке (?tab=), не только карточкам.
   const [, setLanguageLoaded] = useState(false);
-  /** 🐉 Режим босса включён. Пока не знаем — считаем выключенным: лишняя кнопка хуже, чем её отсутствие на секунду. */
+  /** Режим босса включён. Пока не знаем — считаем выключенным: лишняя кнопка хуже, чем её отсутствие на секунду. */
   const [bossOn, setBossOn] = useState(false);
   useEffect(() => {
     getMe()
@@ -80,10 +81,10 @@ export function App() {
         // а по отдельности они не действия, а навигация.
         <CornerMenu
           items={[
-            ...(bossOn ? [{ label: "🐉 Босс недели", onPick: () => open("boss") }] : []),
-            { label: "📊 Прогресс", onPick: () => open("progress") },
-            { label: "📖 Слова", onPick: () => open("words") },
-            { label: "⚙️ Настройки", onPick: () => open("settings") },
+            ...(bossOn ? [{ label: "Босс недели", onPick: () => open("boss") }] : []),
+            { label: "Прогресс", onPick: () => open("progress") },
+            { label: "Слова", onPick: () => open("words") },
+            { label: "Настройки", onPick: () => open("settings") },
           ]}
         />
       }
@@ -95,8 +96,8 @@ export function App() {
  * ☰ Угол экрана: одно меню вместо стопки кнопок.
  *
  * Навигация в шапке competes с карточкой за место: до появления босса хватало двух иконок,
- * а с 📊 и 🐉 их стало четыре, и название комнаты сжималось в «…». Действия с самой карточкой
- * (↩️ отменить, ✏️ исправить, 🆕 разобрать) остаются в шапке — они нужны в один тап, а выбор раздела нет.
+ * а с прогрессом и боссом их стало четыре, и название комнаты сжималось в «…». Действия с самой
+ * карточкой (отменить, исправить, разобрать) остаются в шапке — они нужны в один тап, а выбор раздела нет.
  */
 function CornerMenu({ items }: { items: Array<{ label: string; onPick: () => void }> }) {
   const [open, setOpen] = useState(false);
@@ -108,7 +109,7 @@ function CornerMenu({ items }: { items: Array<{ label: string; onPick: () => voi
   return (
     <div className="corner-menu">
       <button className="corner-button" aria-label="Меню" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {open ? "✕" : "☰"}
+        {open ? <IconClose size={18} /> : <IconMenu size={18} />}
       </button>
       {open && (
         <>

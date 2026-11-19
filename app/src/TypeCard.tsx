@@ -22,8 +22,8 @@ function Marked({ text }: { text: string }) {
 }
 
 /**
- * Задание с ответом текстом: ✍️ вставь по смыслу, 🎧 диктант, ✍️ своё предложение. «Проверить» — нативной кнопкой,
- * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для ↩️), onRateSelf —
+ * Задание с ответом текстом: пропуск по смыслу, диктант, своё предложение. «Проверить» — нативной кнопкой,
+ * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для отмены), onRateSelf —
  * проверить не вышло и человек оценил себя сам.
  */
 export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
@@ -72,13 +72,13 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
       : checking
         ? undefined
         : { text: "Проверить", onClick: () => void submit() },
-    result || checking ? undefined : { text: "🤷 Не знаю", onClick: () => void submit(true) },
+    result || checking ? undefined : { text: "Не знаю", onClick: () => void submit(true) },
   );
 
   const task =
     card.stage === "cloze" && card.cloze ? (
       <>
-        <Text className="hint choice-title">✍️ Вставь пропущенное слово или фразу</Text>
+        <Text className="hint choice-title">Вставь пропущенное слово или фразу</Text>
         <Title level="2" weight="2" className="choice-question">
           {result?.filled ? (
             <>
@@ -91,19 +91,19 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
           )}
         </Title>
         <Text className="hint" style={{ textAlign: "center" }}>
-          🇷🇺 {card.cloze.translation}
+          {card.cloze.translation}
         </Text>
       </>
     ) : card.stage === "listen" ? (
       <>
-        <Text className="hint choice-title">🎧 Напиши, что услышал</Text>
+        <Text className="hint choice-title">Напиши, что услышал</Text>
         <div className="row">
           <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />
         </div>
       </>
     ) : (
       <>
-        <Text className="hint choice-title">✍️ Составь своё предложение со словом</Text>
+        <Text className="hint choice-title">Составь своё предложение со словом</Text>
         <Title level="2" weight="2" className="choice-question">
           {w.term}
         </Title>
@@ -144,10 +144,10 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
         {result?.unchecked && (
           <div className="row">
             <Button mode="gray" size="m" onClick={() => (onRateSelf("again"), onNext())}>
-              😵 Ошибся
+              Ошибся
             </Button>
             <Button size="m" onClick={() => (onRateSelf("good"), onNext())}>
-              😎 Был прав
+              Был прав
             </Button>
           </div>
         )}
@@ -156,7 +156,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
         <div className="actions fixed">
           <div className="row">
             <Button mode="gray" size="l" stretched onClick={() => void submit(true)}>
-              🤷 Не знаю
+              Не знаю
             </Button>
             <Button size="l" stretched onClick={() => void submit()}>
               Проверить
@@ -177,18 +177,18 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
 
 function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer: string; result: CheckResult; saved?: boolean; onSave: (s: boolean) => void }) {
   const verdict = r.unchecked
-    ? "Не получилось проверить 😔 Сравни сам:"
+    ? "Не получилось проверить. Сравни сам:"
     : r.grade === "close"
-      ? "✅ Почти! Пишется так:"
+      ? "Почти! Пишется так:"
       : r.correct
         ? card.stage === "sentence"
-          ? "✅ Слово употреблено верно"
-          : "✅ Верно!"
+          ? "Слово употреблено верно"
+          : "Верно!"
         : answer
           ? card.stage === "sentence"
-            ? "❌ Слово употреблено неверно"
-            : "❌ Не то"
-          : "🤷 Правильно так:";
+            ? "Слово употреблено неверно"
+            : "Не то"
+          : "Правильно так:";
   const real = (r.fixes ?? []).filter((f) => !f.slip);
   return (
     <div className="choice-review">
@@ -206,11 +206,11 @@ function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer
         </Text>
       )}
       {r.explanation && <Text className="block">{r.explanation}</Text>}
-      {r.tip && <Text className="block">💡 {r.tip}</Text>}
+      {r.tip && <Text className="block">Подсказка: {r.tip}</Text>}
       {r.verdict && <Text className="block">{r.verdict}</Text>}
       {r.corrected && real.length > 0 && (
         <Text className="block">
-          ✍️ <b>Исправлено:</b> <Marked text={r.corrected} />
+          <b>Исправлено:</b> <Marked text={r.corrected} />
         </Text>
       )}
       {real.map((f, i) => (
@@ -220,7 +220,7 @@ function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer
       ))}
       {r.natural && (
         <Text className="block">
-          💬 <b>Естественнее:</b> {r.natural}
+          <b>Естественнее:</b> {r.natural}
         </Text>
       )}
       {(card.stage === "sentence" || !r.correct) && r.example && (
@@ -240,7 +240,7 @@ function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer
                 void saveMistakes(r.mistakesId!, true).catch(() => {});
               }}
             >
-              🧠 Сохранить ошибки
+              Сохранить ошибки
             </Button>
             <Button
               size="m"
@@ -255,7 +255,7 @@ function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer
             </Button>
           </div>
         ) : (
-          <Text className="hint">{saved ? "🧠 Сохранено в работу над ошибками" : "Ошибки не сохранены"}</Text>
+          <Text className="hint">{saved ? "Сохранено в работу над ошибками" : "Ошибки не сохранены"}</Text>
         ))}
     </div>
   );

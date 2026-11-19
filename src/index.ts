@@ -45,6 +45,7 @@ import { TalkStore } from "./bot/talks";
 import { CollocationGenerator } from "./services/collocations";
 import { GrammarGenerator } from "./services/grammar";
 import { startReminderLoop } from "./reminder-loop";
+import { startMeetingPollLoop } from "./bot/meeting-poll-loop";
 import type { Deps } from "./bot/context";
 import { publishStory } from "./bot/handlers/story";
 
@@ -237,6 +238,7 @@ const stopReminders = startReminderLoop({
   now,
   story: async (room) => room.telegramChatId != null && publishStory(bot.api, deps, room.telegramChatId, room),
 });
+const stopMeetingPolls = startMeetingPollLoop(db, now, bot.api);
 const stopPainter =
   images && pictures && config.imagesBackground
     ? new BackgroundPainter({ db, images, pictures, onPower: onAcPower }).start()
@@ -245,6 +247,7 @@ const stopPainter =
 const shutdown = () => {
   clearInterval(heartbeatTimer);
   stopReminders();
+  stopMeetingPolls();
   stopPainter();
   if (englishSpeech instanceof KokoroSynth) englishSpeech.close();
   recognizer?.close();

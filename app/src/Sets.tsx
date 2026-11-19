@@ -3,12 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import { decideSetItem, getSetItems, getSets, type SetItem, type WordSetInfo } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { DeckCard, type DeckAction } from "./Deck";
+import { IconUndo } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
 const UNDO_DEPTH = 5;
 
 /**
- * 📦 Готовые наборы: по уровням и по темам. Набор разбирается колодой — знаю / учу / не для меня;
+ * Готовые наборы: по уровням и по темам. Набор разбирается колодой — знаю / учу / не для меня;
  * «учу» отправляет слово в личный словарь «Мои слова».
  *
  * `startSetId` открывает набор сразу, минуя список: так пустой `/learn` ведёт новичка в A1 одним
@@ -50,7 +51,7 @@ function SetList({ sets, error, onOpen, onExit }: { sets?: WordSetInfo[]; error?
       </div>
     );
   }
-  if (sets.length === 0) return <Placeholder header="Наборов пока нет" description="Скоро появятся 🙂" />;
+  if (sets.length === 0) return <Placeholder header="Наборов пока нет" description="Скоро появятся" />;
   const group = (kind: WordSetInfo["kind"]) => sets.filter((s) => s.kind === kind);
   const row = (s: WordSetInfo) => (
     <Cell
@@ -65,7 +66,7 @@ function SetList({ sets, error, onOpen, onExit }: { sets?: WordSetInfo[]; error?
           </span>
         </span>
       }
-      after={s.done >= s.total && s.total > 0 ? "✅" : undefined}
+      after={s.done >= s.total && s.total > 0 ? "✓" : undefined}
       onClick={() => {
         haptic.tap();
         onOpen(s.id);
@@ -153,13 +154,13 @@ function SetDeck({ id, onExit }: { id: number; onExit: () => void }) {
     <div className="screen">
       <header className="top">
         <Text weight="2" className="top-title">
-          📦 {title}
+          {title}
         </Text>
         <div className="top-right">
           {item && <Text className="hint top-count">осталось {remaining}</Text>}
           {history.length > 0 && (
             <button className="corner-button" aria-label="Отменить последнее решение" onClick={() => void undo()}>
-              ↩️
+              <IconUndo size={18} />
             </button>
           )}
         </div>
@@ -182,7 +183,7 @@ function SetDone({ learned, onExit }: { learned: number; onExit: () => void }) {
   const native = useBottomButtons({ text: "К наборам", onClick: onExit });
   return (
     <Placeholder
-      header="Набор разобран 👌"
+      header="Набор разобран"
       description={learned ? `${learned} слов добавлено в «Мои слова» — они придут в карточках.` : "Новых слов для тебя в нём не нашлось."}
       action={native ? undefined : <Button onClick={onExit}>К наборам</Button>}
     />

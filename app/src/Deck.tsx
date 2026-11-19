@@ -5,7 +5,8 @@ import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { transcription, usefulnessIcon } from "./format";
+import { transcription } from "./format";
+import { UsefulDot } from "./icons";
 
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
@@ -54,7 +55,7 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
   );
   const know = useCallback(() => fling("know"), [fling]);
   const learn = useCallback(() => fling("learn"), [fling]);
-  const native = useBottomButtons({ text: "✅ Знаю", onClick: know }, { text: "📚 Учу", onClick: learn });
+  const native = useBottomButtons({ text: "Знаю", onClick: know }, { text: "Учу", onClick: learn });
 
   return (
     <div className="deck">
@@ -83,7 +84,7 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
 
         <div className="front">
           <Title level="1" weight="2">
-            {w.term} {usefulnessIcon(w.usefulness)}
+            {w.term} <UsefulDot level={w.usefulness} />
           </Title>
           {transcription(w) && <Text className="hint">{transcription(w)}</Text>}
           <Text className={`triage-translation${revealed ? "" : " hidden"}`} onClick={() => setRevealed(true)}>
@@ -108,7 +109,7 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
       <div className="row">
         <AudioButtons size="m" onPlay={(accent) => void play(w, accent)} />
         <Button mode="plain" size="m" onClick={() => fling("drop")}>
-          🙈 Не для меня
+          Не для меня
         </Button>
       </div>
       <Text className="hint swipe-hint">→ знаю · ← учу · ↑ не для меня</Text>
@@ -117,10 +118,10 @@ export function DeckCard({ word: w, footer, onDecide }: { word: DeckWord; footer
         <div className="actions fixed">
           <div className="row">
             <Button mode="gray" size="l" stretched onClick={learn}>
-              📚 Учу
+              Учу
             </Button>
             <Button size="l" stretched onClick={know}>
-              ✅ Знаю
+              Знаю
             </Button>
           </div>
         </div>

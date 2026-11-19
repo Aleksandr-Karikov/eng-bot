@@ -55,13 +55,13 @@ export interface Me {
   total?: number;
   /** Набор, с которого начать: приходит только когда слов нет совсем. */
   starterSet?: { id: number; title: string; total: number };
-  /** Какие части карточки показывать (⚙️ → 🃏 Карточка). */
+  /** Какие части карточки показывать (настройки → «Карточка»). */
   view: CardView;
-  /** 🗣 Что играть самим при показе карточки: null — озвучка выключена. */
+  /** Что играть самим при показе карточки: null — озвучка выключена. */
   voice: VoiceAccent | null;
   /** Сколько новых слов от друзей ждут разбора. */
   triage: number;
-  /** 🐉 Режим «босс недели» включён: без него вкладка не показывается. */
+  /** Режим «босс недели» включён: без него вкладка не показывается. */
   boss?: boolean;
   /** Изучаемый язык текущей комнаты. */
   language?: StudyLanguage;
@@ -116,7 +116,7 @@ export function reportClientError(where: string, err: unknown): void {
   const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   void post("/api/client-error", { where, message, ua: navigator.userAgent }).catch(() => {});
 }
-/** 🧠 Вопрос по ошибкам между карточками. */
+/** Вопрос по ошибкам между карточками. */
 export interface DrillItem extends Quiz {
   kind: "drill";
   id: string;
@@ -155,7 +155,7 @@ export const getTriage = () => call<{ cards: TriageCard[] }>("/api/triage").then
 export const sendTriage = (card: TriageCard, action: TriageAction, undo = false) =>
   post("/api/triage", { cardId: card.cardId, wordId: card.word.id, action, undo });
 
-/** Как слово идёт у меня: dropped — убрал у себя («🙈 Не для меня»). */
+/** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";
 
 export interface WordItem {
@@ -210,10 +210,10 @@ export interface Settings {
   weeklyReport: boolean;
   modes: Toggle[];
   drill: boolean;
-  /** 🐉 Босс недели — режим-игра поверх цели комнаты. Нет поля — режим выключен целиком (BOSS_ENABLED=0). */
+  /** Босс недели — режим-игра поверх цели комнаты. Нет поля — режим выключен целиком (BOSS_ENABLED=0). */
   boss?: boolean;
   card: Toggle[];
-  /** 🗣 Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
+  /** Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
   voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
 }
 
@@ -306,7 +306,7 @@ export interface Progress {
 
 export const getProgress = () => call<Progress & { ok: true }>("/api/progress");
 
-/** 🐉 Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
+/** Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
 export interface BossHit {
   name: string;
   damage: number;
@@ -327,7 +327,7 @@ export interface Boss {
   byUser: Array<{ name: string; count: number }>;
 }
 
-/** 🪙 Монеты недели и уровень усиления: монеты — это снятые HP, тратятся на +10% урона за уровень. */
+/** Монеты недели и уровень усиления: монеты — это снятые HP, тратятся на +10% урона за уровень. */
 export type UpgradeKind = "damage" | "listen" | "writing";
 export interface Coins {
   offers: Array<{ kind: UpgradeKind; title: string; description: string; bonus: number; level: number; price: number | null }>;
@@ -337,7 +337,7 @@ export interface Coins {
   price: number | null;
 }
 
-/** 🏆 Трофей: `count` — сколько раз получен, нет в earned — ещё не получен. */
+/** Трофей: `count` — сколько раз получен, нет в earned — ещё не получен. */
 export interface Trophy {
   kind: string;
   emoji: string;
@@ -363,7 +363,7 @@ export interface BossState {
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 
-/** 🪙 Купить усиление; в ответ приходит новое состояние босса. */
+/** Купить усиление; в ответ приходит новое состояние босса. */
 export const buyUpgrade = (kind: UpgradeKind) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
@@ -382,19 +382,19 @@ export interface WordDraft {
 export const prepareWord = (text: string) => post<{ draft: WordDraft }>("/api/words/prepare", { text }).then((r) => r.draft);
 export const addWord = (draft: WordDraft) => post<{ id: number }>("/api/words", draft);
 
-/** 🎧 Аудиоурок придёт в чат с ботом: started — собирается, busy — уже собирается, empty — слушать пока нечего. */
+/** Аудиоурок придёт в чат с ботом: started — собирается, busy — уже собирается, empty — слушать пока нечего. */
 export type LessonAccent = "uk" | "us" | "mix";
 export const requestLesson = (accent: LessonAccent) =>
   post<{ status: "started" | "busy" | "empty" }>("/api/lesson", { accent }).then((r) => r.status);
 
-/** 🇷🇺 Перевод примера с карточки: модель спрашивается один раз на слово, дальше ответ приходит из базы. */
+/** Перевод примера с карточки: модель спрашивается один раз на слово, дальше ответ приходит из базы. */
 export const exampleTranslation = (id: number) =>
   post<{ translation: string }>(`/api/words/${id}/example`).then((r) => r.translation);
 
-/** 💡 Другая запоминалка (для всей комнаты). */
+/** Другая запоминалка (для всей комнаты). */
 export const newMnemonic = (id: number) => post<{ mnemonic: string }>(`/api/words/${id}/mnemonic`).then((r) => r.mnemonic);
 
-/** 📦 Готовый набор слов и сколько в нём уже разобрано. */
+/** Готовый набор слов и сколько в нём уже разобрано. */
 export interface WordSetInfo {
   id: number;
   title: string;

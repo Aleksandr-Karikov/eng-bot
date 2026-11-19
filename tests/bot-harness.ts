@@ -71,6 +71,7 @@ export function botHarness(opts: {
   voiceSamplesDir?: string;
   welcomeVideo?: string;
   adminTelegramId?: number;
+  chatOwnerId?: number;
   /** Управление LLM-провайдером (см. Deps.llm); не задано — команда /llm отвечает «не собрана». */
   llm?: LlmSwitch;
   /** Состояние для /status (см. Deps.status); не задано — команда отвечает «не собрано». */
@@ -84,6 +85,10 @@ export function botHarness(opts: {
     calls.push(call);
     const description = opts.fail?.(call);
     if (description) return { ok: false, error_code: 400, description } as never;
+    if (method === "getChatAdministrators") {
+      const result = opts.chatOwnerId === undefined ? [] : [{ status: "creator", user: { id: opts.chatOwnerId } }];
+      return { ok: true, result } as never;
+    }
     const message = { message_id: calls.length, date: 0, chat: { id: call.payload.chat_id, type: "private" } };
     const result =
       method === "sendMessage"

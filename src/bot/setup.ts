@@ -12,6 +12,7 @@ import { registerMnemonic } from "./handlers/mnemonic";
 import { registerEdit } from "./handlers/edit";
 import { registerLearn } from "./handlers/learn";
 import { registerRooms } from "./handlers/rooms";
+import { registerMeetingPoll } from "./handlers/meeting-poll";
 import { registerStats } from "./handlers/stats";
 import { registerStory } from "./handlers/story";
 import { registerSpotted } from "./handlers/spotted";
@@ -72,6 +73,7 @@ export const GROUP_COMMANDS = [
   { command: "story", description: "История из слов комнаты" },
   { command: "goal", description: "Цель комнаты на неделю" },
   { command: "link", description: "Комната группы и её язык" },
+  { command: "meetpoll", description: "Ежедневный опрос о встрече" },
   { command: "bug", description: "Сообщить об ошибке" },
   { command: "help", description: "Что умеет бот" },
 ];
@@ -117,6 +119,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   });
   registerSpotted(bot, deps);
   registerRooms(bot, deps);
+  registerMeetingPoll(bot, deps);
   registerAudio(bot, deps);
   registerMnemonic(bot, deps);
   registerLearn(bot, deps);

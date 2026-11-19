@@ -4,6 +4,9 @@ html, body, #root, #root > div { height: 100%; margin: 0; }
 body {
   font-family: var(--tgui--font-family, system-ui, -apple-system, BlinkMacSystemFont, "Roboto", "Helvetica Neue", sans-serif);
   background: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  /* Цвет текста по умолчанию — из темы. Без него всё, что не обёрнуто в Text telegram-ui
+     (иконки, подписи в своих блоках), красилось браузером в чёрный и пропадало в тёмной теме. */
+  color: var(--tg-theme-text-color, #1a1a1a);
   overscroll-behavior: none;
 }
 .center { height: 100%; display: grid; place-items: center; }
@@ -75,9 +78,9 @@ body {
 /* Предпросмотр карточки со страницы слова: постоянной панели кнопок нет — и место под неё не нужно. */
 .screen.preview { padding-bottom: 20px; }
 
-/* Кнопки 📖 и ⚙️ в углу — вместо вкладок, чтобы карточке оставалось место. */
+/* Кнопки в углу — вместо вкладок, чтобы карточке оставалось место. */
 .top { gap: 8px; }
-/* Кнопок в углу бывает до четырёх (↩️ 🆕 📖 ⚙️): название комнаты сжимается с «…», счётчик не переносится. */
+/* Кнопок в углу бывает до четырёх: название комнаты сжимается с «…», счётчик не переносится. */
 .top-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-count { white-space: nowrap; }
 .top-right { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -88,15 +91,19 @@ body {
   border: 0;
   border-radius: 50%;
   background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
+  /* Иконка в кнопке — currentColor: в тёмной теме белая, как и остальной текст. */
+  color: var(--tg-theme-text-color, #1a1a1a);
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
+  display: inline-grid;
+  place-items: center;
 }
 .corner-button:active { opacity: 0.6; }
 /* Кнопка сворачивания шапки — слева от названия комнаты и уже обычной: она служебная. */
 .fold-button { width: 26px; height: 26px; font-size: 13px; color: var(--tg-theme-hint-color, #8e8e93); }
 
-/* 📖 Слова */
+/* Слова */
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 16px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chips > * { flex: none; cursor: pointer; }
@@ -109,7 +116,7 @@ body {
 .danger { color: var(--tg-theme-destructive-text-color, #e53935); }
 .form-buttons { padding: 0 16px; }
 
-/* 🆕 Новые от друзей */
+/* Новые от друзей */
 .triage-card { touch-action: none; }
 /* По центру карточки: внизу она налезала на «Добавил(а) …». */
 .stamp-drop { left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-8deg); white-space: nowrap; color: var(--tg-theme-hint-color, #8e8e93); }
@@ -132,24 +139,26 @@ body {
   box-sizing: border-box;
 }
 
-/* 🔗 🧠 Вопросы с вариантами */
+/* Вопросы с вариантами */
 .choice-card { cursor: default; touch-action: auto; }
 .choice-title { text-align: center; }
 .choice-question { text-align: center; line-height: 1.35; padding: 8px 0 4px; }
 .gap { color: var(--tg-theme-hint-color, #8e8e93); letter-spacing: 2px; }
 .gap-right { color: #22c55e; }
 .choice-options { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* Верный и неверный вариант после ответа: иконка + текст в одну строку. */
+.option-mark { display: inline-flex; align-items: center; gap: 6px; }
 .option-wrong { color: #ef4444 !important; }
 .choice-review { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, rgba(127, 127, 127, 0.25)); padding-top: 12px; }
 .collocation-list { margin: 0; padding-left: 18px; line-height: 1.5; font: 15px/1.5 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-text-color, inherit); }
 
-/* ✍️ 🎧 Ответ текстом */
+/* Ответ текстом */
 .type-input { width: 100%; box-sizing: border-box; margin: 8px 0 0; }
 .type-input textarea { min-height: 72px; font-size: 17px; }
 .checking { flex-direction: column; gap: 8px; padding: 12px 0; display: flex; align-items: center; }
 .gap-answer { color: var(--tg-theme-accent-text-color, #2481cc); }
 
-/* 📊 Прогресс */
+/* Прогресс */
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px 4px; }
 .tile { padding: 12px 14px; border-radius: 14px; background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff)); }
 .tile-value { font: 700 24px/1.2 -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: var(--tg-theme-text-color, #000); }
@@ -176,13 +185,13 @@ body {
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tg-theme-secondary-bg-color, rgba(127, 127, 127, 0.25)); box-shadow: inset 0 0 0 1px var(--tg-theme-hint-color, #8e8e93); }
 .dot.on { background: #22c55e; box-shadow: none; }
 
-/* ➕ Новое слово */
+/* Новое слово */
 .add-word { padding-top: 12px; }
 .draft-extra { display: block; padding: 6px 16px 10px; }
 
 .lesson-row { padding-top: 8px; }
 
-/* 🎛 Режимы тренировки */
+/* Режимы тренировки */
 /* Четыре режима помещаются в одну строку и на узком экране. */
 .chips.modes { padding: 0; margin: 0 -2px; gap: 6px; }
 .chips.modes > * { padding: 4px 9px !important; min-height: 32px; }
@@ -192,7 +201,7 @@ body {
 .lesson .row { width: 100%; }
 .lesson-sent { display: block; text-align: center; }
 
-/* 📦 Наборы */
+/* Наборы */
 .set-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .set-progress > :first-child { flex: 1; }
 .add-word { display: flex; gap: 8px; }
@@ -250,8 +259,17 @@ body {
 .card-answer.size-s { font-size: 17px; }
 .card-answer.size-xs { font-size: 15px; }
 
+/* Точка полезности с подписью при наведении. */
+.useful-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; vertical-align: 1px; background: var(--tg-theme-hint-color, #8e8e93); }
+.useful-dot.u3 { background: #22c55e; }
+.useful-dot.u2 { background: #eab308; }
 /* Полезность — мелким чипом в левом верхнем углу: при заучивании нужна редко. */
-.useful-chip { position: absolute; top: 8px; left: 12px; font-size: 10px; line-height: 1; opacity: 0.5; pointer-events: none; }
+.useful-chip { position: absolute; top: 14px; left: 16px; margin-left: 0; opacity: 0.75; }
+
+/* Иконки (icons.tsx): рисуются currentColor, поэтому цвет задаёт родитель. */
+.icon { display: block; flex: none; }
+/* Иконка внутри кнопки telegram-ui — в одну строку с текстом, по центру. */
+.btn-label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 
 /* Синонимы и антонимы в две колонки: сравнение, а не ещё один список подряд. */
 /* minmax(0, 1fr), а не 1fr: колонка 1fr не сжимается меньше содержимого, и длинный антоним
@@ -284,7 +302,7 @@ body {
 .fold-icon { color: var(--tg-theme-hint-color, #9aa0aa); transition: transform 0.15s ease; }
 .fold-icon.open { transform: rotate(180deg); }
 
-/* 🐉 Вкладка босса: сцена, полоска HP и лента ударов. Цвета — из темы, чтобы работало в тёмной. */
+/* Вкладка босса: сцена, полоска HP и лента ударов. Цвета — из темы, чтобы работало в тёмной. */
 .boss-screen { gap: 16px; }
 .boss-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .boss-stage {
@@ -318,14 +336,14 @@ body {
 .boss-hit, .boss-member { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
 .boss-footnote { padding: 0 4px 8px; font-size: 13px; line-height: 1.45; }
 
-/* 🏆 Полка трофеев: полученные цветные, остальные приглушены — видно, что осталось собрать. */
+/* Полка трофеев: полученные цветные, остальные приглушены — видно, что осталось собрать. */
 .trophy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .trophy { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
 .trophy span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trophy-emoji { font-size: 18px; line-height: 1; flex: none; }
 .trophy.locked { opacity: 0.45; }
 
-/* ☰ Меню в углу вместо стопки кнопок: навигация нужна реже, чем место для карточки. */
+/* Меню в углу вместо стопки кнопок: навигация нужна реже, чем место для карточки. */
 .corner-menu { position: relative; display: flex; }
 /* Подложка ловит тап мимо меню — иначе оно висит поверх карточки и мешает. */
 .corner-scrim { position: fixed; inset: 0; z-index: 20; }

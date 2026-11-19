@@ -5,7 +5,7 @@ import { ClaudeCodeEnricher } from "../src/llm/claude-code";
 import type { LlmBackend } from "../src/llm/backend";
 import { parseDrillReview } from "../src/llm/tutor";
 import { storedCollocations, validQuiz } from "../src/services/collocations";
-import { usefulnessIcon } from "../app/src/format";
+import { usefulnessText } from "../app/src/format";
 
 const broken = { question: "She asked me what ___ favorite book was.", options: ["you", "your", "yours"], correct: 0, explanation: "Вопрос в косвенной речи", category: "Косвенная речь" };
 const good = { ...broken, correct: 1, explanation: "Your — притяжательное местоимение перед существительным." };
@@ -55,8 +55,9 @@ describe("bug #16: collocation answers cannot be forms of the heading", () => {
 describe("bug #17: missing usefulness has an explicit label", () => {
   it("does not pretend an unrated word is rare or useful", () => {
     expect(usefulnessLine({ usefulness: null })).toContain("не оценена");
-    expect(usefulnessIcon(null)).toBe("❔");
-    expect(usefulnessIcon(1)).toBe("⚪️");
-    expect(usefulnessIcon(3)).toBe("🟢");
+    // В приложении полезность — подпись, а рисуется точкой (app/src/icons.tsx): эмодзи-кружков там нет.
+    expect(usefulnessText(null)).toBe("пока не оценена");
+    expect(usefulnessText(1)).toBe("необязательное");
+    expect(usefulnessText(3)).toBe("очень полезное");
   });
 });

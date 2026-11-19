@@ -16,8 +16,8 @@ let current: StudyLanguage = {
   code: "en",
   flag: "🇬🇧",
   accents: [
-    { key: "uk", label: "🇬🇧 UK" },
-    { key: "us", label: "🇺🇸 US" },
+    { key: "uk", label: "UK" },
+    { key: "us", label: "US" },
   ],
   adv: "по-английски",
   neut: "английское",

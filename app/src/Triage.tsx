@@ -3,13 +3,14 @@ import { useCallback, useEffect, useState } from "react";
 import { getTriage, sendTriage, type TriageAction, type TriageCard } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { DeckCard } from "./Deck";
+import { IconUndo } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
 const UNDO_DEPTH = 5;
 
 /**
- * 🆕 Новые слова от друзей: про каждое — одним свайпом. Вправо — уже знаю, влево — учу (как «помню / забыл»
- * в карточках), вверх — не для меня. Решения уходят в фоне, последние можно отменить ↩️.
+ * Новые слова от друзей: про каждое — одним свайпом. Вправо — уже знаю, влево — учу (как «помню / забыл»
+ * в карточках), вверх — не для меня. Решения уходят в фоне, последние можно отменить.
  */
 export function Triage({ onExit }: { onExit: () => void }) {
   const [deck, setDeck] = useState<TriageCard[]>();
@@ -47,12 +48,12 @@ export function Triage({ onExit }: { onExit: () => void }) {
   const card = deck?.[0];
   const header = (
     <header className="top">
-      <Text weight="2">🆕 Новые от друзей</Text>
+      <Text weight="2">Новые от друзей</Text>
       <div className="top-right">
         {deck && card && <Text className="hint">{deck.length}</Text>}
         {history.length > 0 && (
           <button className="corner-button" aria-label="Отменить последнее решение" onClick={() => void undo()}>
-            ↩️
+            <IconUndo size={18} />
           </button>
         )}
       </div>
@@ -88,7 +89,7 @@ function AllDone({ onExit }: { onExit: () => void }) {
   const native = useBottomButtons({ text: "К карточкам", onClick: onExit });
   return (
     <Placeholder
-      header="Все новые слова разобраны 👌"
+      header="Все новые слова разобраны"
       description="Те, что учишь, придут в карточках."
       action={native ? undefined : <Button onClick={onExit}>К карточкам</Button>}
     />

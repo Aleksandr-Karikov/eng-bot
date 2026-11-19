@@ -6,12 +6,12 @@ import { requestLesson, type LessonAccent } from "./api";
 import { haptic, notify } from "./telegram";
 
 const ACCENTS: Array<{ id: LessonAccent; label: string }> = [
-  { id: "uk", label: "🇬🇧 UK" },
-  { id: "us", label: "🇺🇸 US" },
-  { id: "mix", label: "🔀 Оба" },
+  { id: "uk", label: "UK" },
+  { id: "us", label: "US" },
+  { id: "mix", label: "Оба" },
 ];
 
-/** 🎧 Аудиоурок в чат с выбором акцента: mp3 придёт от бота — его Telegram играет в фоне, с погасшим экраном. */
+/** Аудиоурок в чат с выбором акцента: mp3 придёт от бота — его Telegram играет в фоне, с погасшим экраном. */
 export function LessonButton() {
   const [sent, setSent] = useState(false);
   const ask = async (accent: LessonAccent) => {
@@ -28,12 +28,12 @@ export function LessonButton() {
       notify(err instanceof Error ? err.message : String(err));
     }
   };
-  if (sent) return <Text className="hint lesson-sent">🎧 Урок придёт в чат с ботом</Text>;
+  if (sent) return <Text className="hint lesson-sent">Урок придёт в чат с ботом</Text>;
   return (
     <div className="lesson">
-      <Text className="hint">{studyLanguage().accents.length === 1 ? "🎧 Аудиоурок в чат" : "🎧 Аудиоурок в чат — каким акцентом?"}</Text>
+      <Text className="hint">{studyLanguage().accents.length === 1 ? "Аудиоурок в чат" : "Аудиоурок в чат — каким акцентом?"}</Text>
       <div className="row">
-        {(studyLanguage().accents.length === 1 ? [{ id: studyLanguage().accents[0].key as LessonAccent, label: "🎧 Собрать урок" }] : ACCENTS).map((a) => (
+        {(studyLanguage().accents.length === 1 ? [{ id: studyLanguage().accents[0].key as LessonAccent, label: "Собрать урок" }] : ACCENTS).map((a) => (
           <Button key={a.id} mode="bezeled" size="m" stretched onClick={() => void ask(a.id)}>
             {a.label}
           </Button>

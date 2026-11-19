@@ -104,6 +104,14 @@ export const roomMembers = sqliteTable(
     index("room_members_user_idx").on(t.userId),primaryKey({ columns: [t.roomId, t.userId] })],
 );
 
+export const meetingPolls = sqliteTable("meeting_polls", {
+  chatId: integer("chat_id").primaryKey(),
+  time: text("time"),
+  timezone: text("timezone").notNull(),
+  options: text("options", { mode: "json" }).$type<string[]>().notNull(),
+  lastSentAt: integer("last_sent_at", { mode: "timestamp_ms" }),
+});
+
 export const words = sqliteTable(
   "words",
   {

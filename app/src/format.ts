@@ -1,7 +1,15 @@
 import { studyLanguage } from "./language";
 
-/** Кружок полезности — как в боте: 🟢 очень полезное, 🟡 полезное, ⚪️ необязательное. */
-export const USEFULNESS = { 3: "🟢", 2: "🟡", 1: "⚪️" } as Record<number, string>;
+/**
+ * Полезность слова — словами, а не эмодзи-кружком: в интерфейсе она рисуется точкой (icons.tsx),
+ * а в разборе правки нужен текст.
+ */
+export function usefulnessText(level: number | null | undefined): string {
+  if (level === 3) return "очень полезное";
+  if (level === 2) return "полезное";
+  if (level === 1) return "необязательное";
+  return "пока не оценена";
+}
 
 export function transcription(w: { transcriptionUk: string; transcriptionUs: string }): string {
   // Не английский: в слоте uk — романизация (사랑 → [sa-rang]).
@@ -9,7 +17,6 @@ export function transcription(w: { transcriptionUk: string; transcriptionUs: str
   const uk = w.transcriptionUk.trim();
   const us = w.transcriptionUs.trim();
   if (uk && uk === us) return uk;
-  return [uk && `🇬🇧 ${uk}`, us && `🇺🇸 ${us}`].filter(Boolean).join("  ·  ");
+  // Варианты подписаны коротко — UK и US, как на кнопках озвучки: флаги в тексте читались как эмодзи.
+  return [uk && `UK ${uk}`, us && `US ${us}`].filter(Boolean).join("  ·  ");
 }
-
-export const usefulnessIcon = (level: number | null | undefined) => level ? USEFULNESS[level] ?? "❔" : "❔";

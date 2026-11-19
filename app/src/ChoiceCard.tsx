@@ -2,10 +2,11 @@ import { Button, Text, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useState, type ReactNode } from "react";
 import type { Quiz } from "./api";
 import { useBottomButtons } from "./bottomButtons";
+import { IconCheck, IconCross } from "./icons";
 import { haptic } from "./telegram";
 
 /**
- * Вопрос с вариантами — 🔗 сочетания или 🧠 вопрос по ошибкам. Ответ — нажатием, разбор остаётся на экране
+ * Вопрос с вариантами — сочетания или вопрос по ошибкам. Ответ — нажатием, разбор остаётся на экране
  * до «Дальше»: даже после верного ответа в нём есть что прочитать (объяснение, сочетания). onAnswer может вернуть,
  * что ещё показать в разборе.
  */
@@ -72,9 +73,24 @@ export function ChoiceCard({
               stretched
               mode={!answered ? "bezeled" : i === quiz.correct ? "filled" : i === chosen ? "gray" : "plain"}
               className={answered && i === chosen && !right ? "option-wrong" : undefined}
+              aria-label={answered
+                ? i === quiz.correct ? `Верно: ${option}` : i === chosen ? `Неверно: ${option}` : undefined
+                : undefined}
               onClick={() => void pick(i)}
             >
-              {answered && i === quiz.correct ? `✅ ${option}` : answered && i === chosen ? `❌ ${option}` : option}
+              {answered && i === quiz.correct ? (
+                <span className="option-mark">
+                  <IconCheck size={16} />
+                  {option}
+                </span>
+              ) : answered && i === chosen ? (
+                <span className="option-mark">
+                  <IconCross size={16} />
+                  {option}
+                </span>
+              ) : (
+                option
+              )}
             </Button>
           ))}
         </div>

@@ -20,7 +20,7 @@ function plural(n: number, one: string, few: string, many: string): string {
   return many;
 }
 
-/** 📊 Прогресс: серия и итоги, календарь занятий, прогноз повторений, цель комнаты, темы ошибок. */
+/** Прогресс: серия и итоги, календарь занятий, прогноз повторений, цель комнаты, темы ошибок. */
 export function ProgressScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<Progress>();
   const [error, setError] = useState<string>();
@@ -44,10 +44,10 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
   return (
     <List>
       <div className="tiles">
-        <Tile value={stats.streak} label={plural(stats.streak, "день подряд", "дня подряд", "дней подряд")} icon="🔥" />
-        <Tile value={stats.learned} label="выучено" icon="✅" />
-        <Tile value={stats.learning} label="учу" icon="📚" />
-        <Tile value={stats.fresh} label="ещё не начато" icon="🆕" />
+        <Tile value={stats.streak} label={plural(stats.streak, "день подряд", "дня подряд", "дней подряд")} />
+        <Tile value={stats.learned} label="выучено" />
+        <Tile value={stats.learning} label="учу" />
+        <Tile value={stats.fresh} label="ещё не начато" />
       </div>
       <div className="form-buttons lesson-row">
         <LessonButton />
@@ -66,11 +66,11 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       </Section>
 
       {data.goal && (
-        <Section header={`🎯 Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель подобрана сама по прошлой неделе. Своя — /goal в группе." : undefined}>
+        <Section header={`Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель подобрана сама по прошлой неделе. Своя — /goal в группе." : undefined}>
           <div className="goal">
             <Text weight="2">
               {data.goal.done} / {data.goal.target} {plural(data.goal.target, "ответ", "ответа", "ответов")}
-              {data.goal.done >= data.goal.target ? " 🎉" : ""}
+              {data.goal.done >= data.goal.target ? " · цель выполнена" : ""}
             </Text>
             <Bar value={Math.min(100, (data.goal.done / Math.max(1, data.goal.target)) * 100)} />
           </div>
@@ -83,27 +83,25 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       )}
 
       <Section
-        header="🧠 Темы ошибок"
+        header="Темы ошибок"
         footer={`Тема отработана после ${data.resolveStreak} верных ответов подряд в вопросах по ошибкам.`}
       >
-        {data.topics.length === 0 && <Cell multiline>Открытых тем нет 👌 Ошибки собирает /check.</Cell>}
+        {data.topics.length === 0 && <Cell multiline>Открытых тем нет. Ошибки собирает /check.</Cell>}
         {data.topics.map((t) => (
           <Cell key={t.category} multiline subtitle={`${t.count} ${plural(t.count, "ошибка", "ошибки", "ошибок")}`} after={<Dots done={t.streak} of={data.resolveStreak} />}>
             {t.category}
           </Cell>
         ))}
-        {data.resolved.length > 0 && <Cell multiline description={data.resolved.join(", ")}>✅ Отработано недавно</Cell>}
+        {data.resolved.length > 0 && <Cell multiline description={data.resolved.join(", ")}>Отработано недавно</Cell>}
       </Section>
     </List>
   );
 }
 
-function Tile({ value, label, icon }: { value: number; label: string; icon: string }) {
+function Tile({ value, label }: { value: number; label: string }) {
   return (
     <div className="tile">
-      <div className="tile-value">
-        {icon} {value}
-      </div>
+      <div className="tile-value">{value}</div>
       <Text className="hint">{label}</Text>
     </div>
   );

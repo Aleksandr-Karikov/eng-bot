@@ -1,7 +1,7 @@
 import { Button, Cell, List, Section, Spinner, Text, Textarea } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
 import { applyCorrection, correctWord, getWord, invalidateWordMedia, wordPictureUrl, type CorrectionPreview, type WordDetails } from "./api";
-import { usefulnessIcon } from "./format";
+import { usefulnessText } from "./format";
 import { clearAudioCache } from "./sound";
 import { haptic, useBackButton } from "./telegram";
 
@@ -63,8 +63,8 @@ export function CorrectionForm({ word, onDone }: { word: { id: number; term: str
 
   return (
     <List>
-      <Section header={`✏️ ${word.term}`}>
-        <Cell multiline>{saved ? "✅ Исправление сохранено. Прогресс обучения сохранён." : "Карточка не изменится, пока ты не нажмёшь «Применить изменения». Правка будет общей для комнаты."}</Cell>
+      <Section header={word.term}>
+        <Cell multiline>{saved ? "Исправление сохранено. Прогресс обучения сохранён." : "Карточка не изменится, пока ты не нажмёшь «Применить изменения». Правка будет общей для комнаты."}</Cell>
       </Section>
       {messages.map((message, i) => (
         <Section key={i} header={i ? "Уточнение и ответ ИИ" : "Запрос и ответ ИИ"}>
@@ -99,7 +99,7 @@ function fields(word: WordDetails): Array<[string, string]> {
     ["Запоминалка", word.mnemonic], ["Разбор трудного слова", word.leechHelp],
     ["Сочетания", word.collocations.map((c) => `${c.phrase} — ${c.translation}`).join("\n")],
     ["Где встретилось", [word.context, ...word.moreContexts.map((c) => `${c.text}${c.title ? ` (${c.title})` : ""}`)].filter(Boolean).join("\n")],
-    ["Полезность", `${usefulnessIcon(word.usefulness)} ${word.usefulnessNote || (word.usefulness == null ? "Пока не оценена" : "")}`],
+    ["Полезность", [usefulnessText(word.usefulness), word.usefulnessNote].filter(Boolean).join(" · ")],
   ];
 }
 
