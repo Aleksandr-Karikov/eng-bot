@@ -31,7 +31,7 @@ function setupTelegram(): void {
 /** Тёмная или светлая — как тема Telegram, а не как система телефона (они могут не совпадать). */
 function appearance(): "dark" | "light" | undefined {
   try {
-    return themeParams.isDark() ? "dark" : "light";
+    if (themeParams.backgroundColor()) return themeParams.isDark() ? "dark" : "light";
   } catch {
     return undefined;
   }

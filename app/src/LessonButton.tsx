@@ -3,6 +3,7 @@ import { studyLanguage } from "./language";
 import { Button, Text } from "@telegram-apps/telegram-ui";
 import { useState } from "react";
 import { requestLesson, type LessonAccent } from "./api";
+import { ButtonIcon, IconHeadphones } from "./icons";
 import { haptic, notify } from "./telegram";
 
 const ACCENTS: Array<{ id: LessonAccent; label: string }> = [
@@ -31,7 +32,12 @@ export function LessonButton() {
   if (sent) return <Text className="hint lesson-sent">Урок придёт в чат с ботом</Text>;
   return (
     <div className="lesson">
-      <Text className="hint">{studyLanguage().accents.length === 1 ? "Аудиоурок в чат" : "Аудиоурок в чат — каким акцентом?"}</Text>
+      <Text weight="2">
+        <ButtonIcon>
+          <IconHeadphones size={18} />
+          {studyLanguage().accents.length === 1 ? "Аудиоурок в чат" : "Аудиоурок в чат — каким акцентом?"}
+        </ButtonIcon>
+      </Text>
       <div className="row">
         {(studyLanguage().accents.length === 1 ? [{ id: studyLanguage().accents[0].key as LessonAccent, label: "Собрать урок" }] : ACCENTS).map((a) => (
           <Button key={a.id} mode="bezeled" size="m" stretched onClick={() => void ask(a.id)}>

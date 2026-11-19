@@ -103,6 +103,38 @@ export const IconSpeaker = (p: IconProps) => (
   </Svg>
 );
 
+export const IconHeadphones = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
+    <rect x="4" y="13" width="4" height="6" rx="1.5" />
+    <rect x="16" y="13" width="4" height="6" rx="1.5" />
+  </Svg>
+);
+
+export const IconShield = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3zM12 8v7m-3-3h6" />
+  </Svg>
+);
+
+export const IconChart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 4v16h16M8 15v-3m5 3V8m5 7V5" />
+  </Svg>
+);
+
+export const IconBook = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 6c-2.5-2-5.5-2-9-1v13c3.5-1 6.5-1 9 1 2.5-2 5.5-2 9-1V5c-3.5-1-6.5-1-9 1v13" />
+  </Svg>
+);
+
+export const IconSettings = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 6h6m4 0h6M4 12h11m4 0h1M4 18h2m4 0h10M10 4v4m5 2v4m-9 2v4" />
+  </Svg>
+);
+
 /** Галочка — верно / сделано. */
 export const IconCheck = (p: IconProps) => (
   <Svg {...p}>

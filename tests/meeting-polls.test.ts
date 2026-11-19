@@ -26,7 +26,7 @@ describe("ежедневный опрос о встрече", () => {
     });
   });
 
-  it("публикует открытый опрос по времени группы и сохраняет отметку при перезапуске и перенастройке", async () => {
+  it("публикует открытый опрос с множественным выбором и сохраняет отметку при перезапуске и перенастройке", async () => {
     vi.useFakeTimers();
     const h = botHarness({ chatOwnerId: 1 });
     await h.bot.handleUpdate(h.groupMessage(1, CHAT, COMMAND));
@@ -41,9 +41,10 @@ describe("ежедневный опрос о встрече", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(polls().map(({ payload }) => payload)).toEqual([{
         chat_id: CHAT,
-        question: "Сможешь сегодня встретиться? Если да, во сколько? (19.11.2026)",
+        question: "Сможешь сегодня встретиться? Отметь все удобные варианты. (19.11.2026)",
         options: [{ text: "18:00" }, { text: "19:30" }, { text: "Не смогу" }],
         is_anonymous: false,
+        allows_multiple_answers: true,
       }]);
 
       stop();

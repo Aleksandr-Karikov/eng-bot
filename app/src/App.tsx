@@ -2,7 +2,7 @@ import { getMe } from "./api";
 import { setStudyLanguage } from "./language";
 
 import { settingsButton } from "@telegram-apps/sdk-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { BossScreen } from "./Boss";
 import { Learn } from "./Learn";
 import { ProgressScreen } from "./Progress";
@@ -10,7 +10,7 @@ import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Triage } from "./Triage";
 import { Words } from "./Words";
-import { IconClose, IconMenu } from "./icons";
+import { IconBook, IconChart, IconClose, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
 type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss";
@@ -81,10 +81,10 @@ export function App() {
         // а по отдельности они не действия, а навигация.
         <CornerMenu
           items={[
-            ...(bossOn ? [{ label: "Босс недели", onPick: () => open("boss") }] : []),
-            { label: "Прогресс", onPick: () => open("progress") },
-            { label: "Слова", onPick: () => open("words") },
-            { label: "Настройки", onPick: () => open("settings") },
+            ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
+            { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
+            { icon: <IconBook size={16} />, label: "Слова", onPick: () => open("words") },
+            { icon: <IconSettings size={16} />, label: "Настройки", onPick: () => open("settings") },
           ]}
         />
       }
@@ -99,7 +99,7 @@ export function App() {
  * а с прогрессом и боссом их стало четыре, и название комнаты сжималось в «…». Действия с самой
  * карточкой (отменить, исправить, разобрать) остаются в шапке — они нужны в один тап, а выбор раздела нет.
  */
-function CornerMenu({ items }: { items: Array<{ label: string; onPick: () => void }> }) {
+function CornerMenu({ items }: { items: Array<{ icon: ReactNode; label: string; onPick: () => void }> }) {
   const [open, setOpen] = useState(false);
   const pick = (item: { onPick: () => void }) => {
     haptic.select();
@@ -118,6 +118,7 @@ function CornerMenu({ items }: { items: Array<{ label: string; onPick: () => voi
           <div className="corner-list">
             {items.map((item) => (
               <button key={item.label} className="corner-item" onClick={() => pick(item)}>
+                <span className="corner-item-icon" aria-hidden="true">{item.icon}</span>
                 {item.label}
               </button>
             ))}

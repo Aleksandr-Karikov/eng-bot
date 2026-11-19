@@ -166,7 +166,7 @@ function BossView({
 
       {dead && <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску. Продолжай учиться: монеты и трофеи ещё засчитываются.</Text>}
       <div className="boss-hits">
-        <Text weight="2">Свежие удары</Text>
+        <Text weight="2">⚔️ Свежие удары</Text>
         {hits.length === 0 && <Text className="hint">Пока тихо. Первый удар — любая карточка в «Учить».</Text>}
         {hits.slice(0, 8).map((hit, i) => (
           <motion.div
@@ -200,10 +200,10 @@ function BossView({
       {coins && (
         <div className="boss-members">
           <div className="boss-member">
-            <span>Монеты недели</span>
+            <span>🪙 Монеты недели</span>
             <Text className="hint">{coins.coins}</Text>
           </div>
-          <Text weight="2" className="upgrade-title">Магазин усилений</Text>
+          <Text weight="2" className="upgrade-title">🛍 Магазин усилений</Text>
           {coins.offers.map((offer) => (
             <div className="upgrade-offer" key={offer.kind}>
               <div className="boss-member">
@@ -242,7 +242,7 @@ function TrophyShelf({ trophies }: { trophies: Trophies }) {
   return (
     <div className="boss-members">
       <Text weight="2">
-        Трофеи · {trophies.total} из {trophies.of}
+        🏆 Трофеи · {trophies.total} из {trophies.of}
       </Text>
       {earned.length === 0 && <Text className="hint">Пока пусто. Первый появится в воскресенье — за эту неделю.</Text>}
       <div className="trophy-grid">

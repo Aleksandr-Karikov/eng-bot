@@ -1,4 +1,4 @@
-import { Cell, List, Placeholder, Progress as Bar, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
+import { Cell, List, Placeholder, Progress as Bar, Section, Spinner, Text, Title } from "@telegram-apps/telegram-ui";
 import { useEffect, useState } from "react";
 import { getProgress, type Progress } from "./api";
 import { useBackButton } from "./telegram";
@@ -43,19 +43,20 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
   const { stats } = data;
   return (
     <List>
+      <Title Component="h1" level="1" weight="2" className="progress-heading">Прогресс</Title>
       <div className="tiles">
-        <Tile value={stats.streak} label={plural(stats.streak, "день подряд", "дня подряд", "дней подряд")} />
-        <Tile value={stats.learned} label="выучено" />
-        <Tile value={stats.learning} label="учу" />
-        <Tile value={stats.fresh} label="ещё не начато" />
-      </div>
-      <div className="form-buttons lesson-row">
-        <LessonButton />
+        <Tile icon="🔥" value={stats.streak} label={plural(stats.streak, "день подряд", "дня подряд", "дней подряд")} />
+        <Tile icon="✅" value={stats.learned} label="выучено" />
+        <Tile icon="📚" value={stats.learning} label="учу" />
+        <Tile icon="🆕" value={stats.fresh} label="ещё не начато" />
       </div>
       <Text className="hint week-line">
         За неделю: {stats.reviews7d} {plural(stats.reviews7d, "ответ", "ответа", "ответов")}, начато {data.started7d}{" "}
         {plural(data.started7d, "новое слово", "новых слова", "новых слов")}
       </Text>
+      <div className="form-buttons lesson-row">
+        <LessonButton />
+      </div>
 
       <Section header="Занятия за 12 недель">
         <Calendar days={data.calendar} />
@@ -66,7 +67,7 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       </Section>
 
       {data.goal && (
-        <Section header={`Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель подобрана сама по прошлой неделе. Своя — /goal в группе." : undefined}>
+        <Section header={`🎯 Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель подобрана сама по прошлой неделе. Своя — /goal в группе." : undefined}>
           <div className="goal">
             <Text weight="2">
               {data.goal.done} / {data.goal.target} {plural(data.goal.target, "ответ", "ответа", "ответов")}
@@ -83,7 +84,7 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       )}
 
       <Section
-        header="Темы ошибок"
+        header="🧠 Темы ошибок"
         footer={`Тема отработана после ${data.resolveStreak} верных ответов подряд в вопросах по ошибкам.`}
       >
         {data.topics.length === 0 && <Cell multiline>Открытых тем нет. Ошибки собирает /check.</Cell>}
@@ -98,10 +99,13 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
   );
 }
 
-function Tile({ value, label }: { value: number; label: string }) {
+function Tile({ icon, value, label }: { icon: string; value: number; label: string }) {
   return (
     <div className="tile">
-      <div className="tile-value">{value}</div>
+      <div className="tile-value">
+        <span className="tile-icon" aria-hidden="true">{icon}</span>
+        {value}
+      </div>
       <Text className="hint">{label}</Text>
     </div>
   );

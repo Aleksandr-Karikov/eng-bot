@@ -50,7 +50,7 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         ))}
       </Section>
 
-      <Section header="Напоминания">
+      <Section header="⏰ Напоминания">
         <Select header="Напоминать в" value={settings.reminderHour} onChange={(e) => void change({ reminderHour: Number(e.target.value) })}>
           {HOURS.map((h) => (
             <option key={h} value={h}>
@@ -62,7 +62,7 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         <SwitchCell label="Итог недели в воскресенье" on={settings.weeklyReport} onChange={() => void change({ weeklyReport: !settings.weeklyReport })} />
       </Section>
 
-      <Section header="Упражнения" footer="Хотя бы одно должно остаться включённым.">
+      <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">
         {toggles(settings.modes, (t) => ({ mode: t.key, on: !t.on }))}
         <SwitchCell label="Вопросы по ошибкам в /learn" on={settings.drill} onChange={() => void change({ drill: !settings.drill })} />
         {settings.boss !== undefined && (
@@ -70,11 +70,11 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         )}
       </Section>
 
-      <Section header="Карточка" footer="Что показывать на обороте карточки.">
+      <Section header="🃏 Карточка" footer="Что показывать на обороте карточки.">
         {toggles(settings.card, (t) => ({ cardPart: t.key, on: !t.on }))}
       </Section>
 
-      <Section header="Озвучка карточек" footer="В приложении выбранный вариант звучит сам, как только карточка показала ответ. В боте слово всегда по кнопке.">
+      <Section header="🔊 Озвучка карточек" footer="В приложении выбранный вариант звучит сам, как только карточка показала ответ. В боте слово всегда по кнопке.">
         {settings.voice.accents.map((a) => (
           <Cell key={a.key} after={settings.voice.accent === a.key ? "✓" : undefined} onClick={() => void change({ voice: a.key })}>
             {settings.voice.accents.length === 1 ? "Озвучка" : a.key.toUpperCase()}

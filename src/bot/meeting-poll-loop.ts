@@ -10,8 +10,9 @@ export function startMeetingPollLoop(db: Db, now: () => Date, api: Pick<Api, "se
     try {
       await sendMeetingPolls(db, now(), (chatId, date, options) => {
         const displayDate = date.split("-").reverse().join(".");
-        return api.sendPoll(chatId, `Сможешь сегодня встретиться? Если да, во сколько? (${displayDate})`, options, {
+        return api.sendPoll(chatId, `Сможешь сегодня встретиться? Отметь все удобные варианты. (${displayDate})`, options, {
           is_anonymous: false,
+          allows_multiple_answers: true,
         });
       });
     } catch (error) {
