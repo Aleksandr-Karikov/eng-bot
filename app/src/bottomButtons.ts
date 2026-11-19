@@ -43,11 +43,12 @@ export function useBottomButtons(main?: BottomButton, secondary?: BottomButton):
     };
     const ok =
       setup("main", () => {
-        mainButton.setParams({ text: main?.text ?? "", isVisible: Boolean(main), isEnabled: true });
+        // С пустым текстом SDK не отправляет команду скрытия в Telegram.
+        mainButton.setParams(main ? { text: main.text, isVisible: true, isEnabled: true } : { isVisible: false });
         if (main) offs.push(mainButton.onClick(main.onClick));
       }) &&
       setup("secondary", () => {
-        secondaryButton.setParams({ text: secondary?.text ?? "", isVisible: Boolean(secondary), isEnabled: true, position: "left" });
+        secondaryButton.setParams(secondary ? { text: secondary.text, isVisible: true, isEnabled: true, position: "left" } : { isVisible: false });
         if (secondary) offs.push(secondaryButton.onClick(secondary.onClick));
       });
     if (!ok) {
