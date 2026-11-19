@@ -11,7 +11,7 @@ import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
 import { exampleTranslation } from "../services/words";
-import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -85,6 +85,10 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
   // 🐉 Вкладка босса: цель комнаты, показанная боем (services/boss.ts).
   app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
+  app.post("/api/boss/combat", async (c) => {
+    const r = await appCombat(deps, c.get("user"), await c.req.json().catch(() => null));
+    return c.json(r.body, r.status);
+  });
   // 🪙 Купить уровень усиления за монеты недели.
   app.post("/api/boss/upgrade", async (c) => {
     const r = await appBuyUpgrade(deps, c.get("user"), await c.req.json().catch(() => ({})));

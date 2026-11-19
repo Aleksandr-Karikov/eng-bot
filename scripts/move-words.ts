@@ -8,6 +8,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { createDb } from "../src/db/client";
 import { cards, reviewLogs, roomMembers, words } from "../src/db/schema";
 import { createCards } from "../src/services/cards";
+import { removeReviewHistory } from "../src/services/combat-ledger";
 
 const arg = (name: string) => Number(process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1]);
 const [from, to, by] = [arg("from"), arg("to"), arg("by")];
@@ -27,7 +28,7 @@ console.log(`${ids.length} words: ${moved.map((w) => w.term).join(", ")}`);
 console.log(`cards to drop (not in room ${to}): ${drop.length}; members of room ${to}: ${members.join(", ")}`);
 if (dryRun || !ids.length) process.exit(0);
 if (drop.length) {
-  await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, drop));
+  await removeReviewHistory(db, inArray(reviewLogs.cardId, drop));
   await db.delete(cards).where(inArray(cards.id, drop));
 }
 await db.update(words).set({ roomId: to }).where(inArray(words.id, ids));

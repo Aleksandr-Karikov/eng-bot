@@ -319,6 +319,7 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
   };
   const lines = [
     role[b.phase],
+    esc(b.opponent.name),
     `${progressBar(b.done, b.target)} ${percent}%`,
     b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Следующий босс — в воскресенье, монеты ещё начисляются.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
   ];

@@ -63,6 +63,7 @@ export interface Me {
   triage: number;
   /** Режим «босс недели» включён: без него вкладка не показывается. */
   boss?: boolean;
+  bankDamage?: boolean;
   /** Изучаемый язык текущей комнаты. */
   language?: StudyLanguage;
 }
@@ -316,6 +317,8 @@ export interface BossHit {
 
 export interface Boss {
   room: string;
+  opponent?: { id: "dragon" | "sentinel"; name: string };
+  week?: string;
   /** 0…1+, больше 1 — добит с запасом. */
   damage: number;
   hp: number;
@@ -359,9 +362,20 @@ export interface BossState {
   total: number;
   coins?: Coins;
   trophies?: Trophies;
+  combat?: {
+    bank: boolean;
+    balance: number;
+    roomId: number;
+    week: string;
+    mobs: Array<{ id: "golem" | "ghost"; name: string; hp: number; reward: string; defeated: boolean }>;
+  };
 }
 
+export type CombatTarget = "boss" | "golem" | "ghost";
+
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
+export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
+  post<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
 /** Купить усиление; в ответ приходит новое состояние босса. */
 export const buyUpgrade = (kind: UpgradeKind) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });

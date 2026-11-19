@@ -29,6 +29,7 @@ export const users = sqliteTable("users", {
    * По умолчанию включено — иначе режим никто не увидит, а выключить можно одной кнопкой.
    */
   modeBoss: integer("mode_boss", { mode: "boolean" }).notNull().default(true),
+  bankDamage: integer("bank_damage", { mode: "boolean" }).notNull().default(false),
   /** 🐉 Уровень усиления: каждый даёт +10% к урону. Куплен за монеты, остаётся навсегда. */
   upgradeDamage: integer("upgrade_damage").notNull().default(0),
   upgradeListen: integer("upgrade_listen").notNull().default(0),
@@ -265,6 +266,7 @@ export const reviewLogs = sqliteTable("review_logs", {
   rating: text("rating").notNull(),
   /** Зафиксированный урон в десятых HP; null — старый ответ без усиления. */
   damageDeci: integer("damage_deci"),
+  banked: integer("banked", { mode: "boolean" }).notNull().default(false),
   /** На какой ступени был ответ: en_ru, ru_en, cloze или know («Знаю» из уведомления). Для анализа; null у старых записей. */
   stage: text("stage"),
   reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }).notNull(),
@@ -274,6 +276,28 @@ export const reviewLogs = sqliteTable("review_logs", {
   index("review_logs_user_time_idx").on(t.userId, t.reviewedAt),
   index("review_logs_card_idx").on(t.cardId),
 ]);
+
+export const combatSpends = sqliteTable("combat_spends", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  roomId: integer("room_id"),
+  target: text("target", { enum: ["boss", "golem", "ghost"] }).notNull(),
+  mobWeek: text("mob_week"),
+  requestId: text("request_id").notNull(),
+  damageDeci: integer("damage_deci").notNull(),
+  at: integer("at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [
+  uniqueIndex("combat_spends_mob_week_idx").on(t.userId, t.target, t.mobWeek),
+  uniqueIndex("combat_spends_request_idx").on(t.userId, t.requestId),
+  index("combat_spends_room_at_idx").on(t.roomId, t.at),
+]);
+
+/** Начисления сохраняются при удалении карточек и слов. */
+export const combatArchive = sqliteTable("combat_archive", {
+  reviewId: integer("review_id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  damageDeci: integer("damage_deci").notNull(),
+}, (t) => [index("combat_archive_user_idx").on(t.userId)]);
 
 /** Слово комнаты, употреблённое в разговоре в группе (👏) — для недельного итога. */
 export const wordUses = sqliteTable("word_uses", {

@@ -63,7 +63,7 @@ describe("🏆 trophies", () => {
   });
 
   it("hands 'carried' to someone who did not come at all", () => {
-    const f = facts({ damage: new Map([[1, 60], [2, 40]]), killer: 1, killedAt: new Date(`${WEEK}T15:00:00+07:00`) });
+    const f = facts({ damage: new Map([[1, 100]]), members: 2, killer: 1, killedAt: new Date(`${WEEK}T15:00:00+07:00`) });
     f.answers.set(2, []);
     expect(kinds(trophiesFor(f, 2, new Set()))).toContain("carried");
   });

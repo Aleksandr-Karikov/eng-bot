@@ -1,9 +1,11 @@
 import { answerWeight } from "./goals";
+import { damageBalanceDeci, mobClaims, withCombatLock } from "./combat-ledger";
+import { latestDigestMoment } from "./digest";
 import { inCurrentLanguage } from "./language";
-import { and, asc, count, desc, eq, lte, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, lte, ne, notExists } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, words, users, type CardRow, type Word } from "../db/schema";
+import { cards, combatArchive, reviewLogs, words, users, type CardRow, type Word } from "../db/schema";
 import { review, type Answer } from "../srs/srs";
 
 export interface DueItem {
@@ -77,19 +79,22 @@ async function usefulnessOf(db: Db, wordId: number): Promise<number | null> {
 const snapshotOf = (card: CardRow) =>
   JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
 
-async function reviewDamageDeci(db: Db, userId: number, answer: Answer, stage?: string): Promise<number> {
-  const [user] = await db.select({ level: users.upgradeDamage, listen: users.upgradeListen, writing: users.upgradeWriting }).from(users).where(eq(users.id, userId));
-  return Math.round(answerWeight(answer, stage, user?.level ?? 0, user?.listen ?? 0, user?.writing ?? 0) * 10);
-}
-
-async function applyAnswer(db: Db, card: CardRow, answer: Answer, now: Date, stage?: string): Promise<void> {
-  await db.update(cards).set(review(card.fsrs, answer, now, await usefulnessOf(db, card.wordId))).where(eq(cards.id, card.id));
-  await db.insert(reviewLogs).values({ userId: card.userId, cardId: card.id, rating: answer, damageDeci: await reviewDamageDeci(db, card.userId, answer, stage), stage: stage ?? null, reviewedAt: now, before: snapshotOf(card) });
+async function reviewDamage(db: Db, userId: number, answer: Answer, now: Date, stage?: string, enabled?: boolean) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const active = enabled !== false && user?.modeBoss === true;
+  const claims = active && (stage === "listen" || stage === "app_listen")
+    ? await mobClaims(db, userId, latestDigestMoment(now).date)
+    : [];
+  const listen = (user?.upgradeListen ?? 0) + Number(claims.some((claim) => claim.target === "ghost"));
+  return {
+    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, user?.upgradeWriting ?? 0) * 10),
+    banked: active && user.bankDamage,
+  };
 }
 
 export async function recordAnswer(
   db: Db,
-  input: { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string },
+  input: { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string; bossEnabled?: boolean },
 ): Promise<{ result: "ok" | "stale"; damage: number }> {
   const [card] = await db
     .select()
@@ -104,17 +109,17 @@ export async function recordAnswer(
     .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
     .returning({ id: cards.id });
   if (!updated) return { result: "stale", damage: 0 };
-  const damageDeci = await reviewDamageDeci(db, card.userId, input.answer, input.stage);
+  const damage = await reviewDamage(db, card.userId, input.answer, input.now, input.stage, input.bossEnabled);
   await db.insert(reviewLogs).values({
     userId: card.userId,
     cardId: card.id,
     rating: input.answer,
-    damageDeci,
+    ...damage,
     stage: input.stage ?? null,
     reviewedAt: input.now,
     before: snapshotOf(card),
   });
-  return { result: "ok", damage: damageDeci / 10 };
+  return { result: "ok", damage: damage.damageDeci / 10 };
 }
 
 export async function answerCard(db: Db, input: Parameters<typeof recordAnswer>[1]): Promise<"ok" | "stale"> {
@@ -126,6 +131,10 @@ export async function answerCard(db: Db, input: Parameters<typeof recordAnswer>[
  * Только если после него карточку больше не оценивали (иначе отмена перепутала бы историю). undefined — нечего отменять.
  */
 export async function undoAnswer(db: Db, input: { userId: number; cardId: number }): Promise<{ rating: Answer } | undefined> {
+  return withCombatLock(db, () => undoRecordedAnswer(db, input));
+}
+
+async function undoRecordedAnswer(db: Db, input: { userId: number; cardId: number }) {
   const [log] = await db
     .select()
     .from(reviewLogs)
@@ -133,11 +142,14 @@ export async function undoAnswer(db: Db, input: { userId: number; cardId: number
     .orderBy(desc(reviewLogs.id))
     .limit(1);
   if (!log?.before) return undefined;
+  if (log.banked && (await damageBalanceDeci(db, input.userId)) < (log.damageDeci ?? 0)) return undefined;
   const before = JSON.parse(log.before) as { due: number; state: number; reps: number; stability: number; fsrs: string };
   const [restored] = await db
     .update(cards)
     .set({ due: new Date(before.due), state: before.state, reps: before.reps, stability: before.stability, fsrs: before.fsrs })
-    .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId), eq(cards.reps, before.reps + 1)))
+    .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId), eq(cards.reps, before.reps + 1), notExists(
+      db.select({ id: combatArchive.reviewId }).from(combatArchive).where(eq(combatArchive.reviewId, log.id)),
+    )))
     .returning({ id: cards.id });
   if (!restored) return undefined;
   await db.delete(reviewLogs).where(eq(reviewLogs.id, log.id));
@@ -146,15 +158,16 @@ export async function undoAnswer(db: Db, input: { userId: number; cardId: number
 
 export async function markKnown(
   db: Db,
-  input: { userId: number; wordId: number; now: Date },
+  input: { userId: number; wordId: number; now: Date; bossEnabled?: boolean },
 ): Promise<"ok" | "stale"> {
   const [card] = await db
     .select()
     .from(cards)
     .where(and(eq(cards.wordId, input.wordId), eq(cards.userId, input.userId)));
   if (!card || card.state !== State.New || card.reps !== 0) return "stale";
-  await applyAnswer(db, card, "easy", input.now, "know");
-  return "ok";
+  return answerCard(db, {
+    userId: input.userId, cardId: card.id, expectedReps: 0, answer: "easy", now: input.now, stage: "know", bossEnabled: input.bossEnabled,
+  });
 }
 
 export async function nextReviewAt(db: Db, userId: number): Promise<Date | undefined> {

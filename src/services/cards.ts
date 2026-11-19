@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs } from "../db/schema";
 import { newCard } from "../srs/srs";
+import { removeReviewHistory } from "./combat-ledger";
 
 const CHUNK = 200;
 
@@ -19,7 +20,7 @@ export async function createCards(db: Db, userIds: number[], wordIds: number[], 
 export async function dropCard(db: Db, userId: number, wordId: number): Promise<boolean> {
   const [card] = await db.select({ id: cards.id }).from(cards).where(and(eq(cards.userId, userId), eq(cards.wordId, wordId)));
   if (!card) return false;
-  await db.delete(reviewLogs).where(eq(reviewLogs.cardId, card.id));
+  await removeReviewHistory(db, eq(reviewLogs.cardId, card.id));
   await db.delete(cards).where(eq(cards.id, card.id));
   return true;
 }

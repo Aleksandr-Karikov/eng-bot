@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
 import { bossFeed, bossOf, bossPace, bossPhase } from "../src/services/boss";
 import { setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
@@ -9,6 +10,10 @@ import { createApp } from "../src/app/server";
 import { botHarness, buttonData } from "./bot-harness";
 import { at, DAY, HOUR, makeUser, T0 } from "./helpers";
 import { getUserByTelegramId, updateUser } from "../src/services/users";
+import { latestDigestMoment } from "../src/services/digest";
+import { damageBalanceDeci } from "../src/services/combat-ledger";
+import { dropCard } from "../src/services/cards";
+import { trophiesFor, weekFacts } from "../src/services/trophies";
 
 // Новосибирск = UTC+7, неделя цели начинается в воскресенье 20:00.
 const nsk = (iso: string) => new Date(`${iso}+07:00`);
@@ -170,6 +175,68 @@ async function bossTab() {
     const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "Alice" } }, TOKEN, new Date())}` };
     return { h, alice, room, app, headers };
 }
+
+describe("урон из запаса", () => {
+  it("зачисляет ответ один раз, применяет ручной удар к боссу и защищает потраченный запас от отмены", async () => {
+    const { h, app, headers, room } = await bossTab();
+    await setWeeklyGoal(h.db, room.id, 2);
+    const post = async (path: string, body: object) => (await app.request(path, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    })).json();
+    const { combat, boss } = await post("/api/boss/combat", { bank: true });
+    expect(combat).toMatchObject({ bank: true, balance: 0, roomId: room.id });
+    expect(boss.hp).toBe(2);
+
+    const answer = { cardId: 1, reps: 0, answer: "good" };
+    expect(await post("/api/answer", answer)).toMatchObject({ result: "ok", damage: 2 });
+    expect(await post("/api/undo", { cardId: 1 })).toMatchObject({ ok: true });
+    expect(await post("/api/answer", answer)).toMatchObject({ result: "ok", damage: 2 });
+    expect(await post("/api/answer", answer)).toMatchObject({ result: "stale" });
+    expect(await (await app.request("/api/boss", { headers })).json()).toMatchObject({
+      combat: { balance: 2 }, boss: { hp: 2 }, hits: [],
+    });
+
+    const attack = { target: "boss", roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: 20 };
+    const result = await post("/api/boss/combat", attack);
+    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: 0 }, hits: [{ damage: 2 }] });
+    expect(await post("/api/boss/combat", attack)).toMatchObject({ notice: expect.any(String), combat: { balance: 0 } });
+    expect(await post("/api/undo", { cardId: 1 })).toMatchObject({ ok: false });
+  });
+
+  it("выдаёт награду моба один раз, сохраняет остаток при удалении карточки и меняет босса по неделям", async () => {
+    const { h, app, headers, alice, room } = await bossTab();
+    const { db } = h;
+    const bob = await makeUser(db, 200, "Bob");
+    await joinRoom(db, { roomId: room.id, userId: bob.id, now: T0, makeCurrent: true });
+    const post = async (path: string, body: object) => (await app.request(path, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    })).json();
+    const { combat, boss } = await post("/api/boss/combat", { bank: true });
+    await db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 520, banked: true });
+    const strike = (target: string, week = combat.week, requestId = randomUUID()) =>
+      post("/api/boss/combat", { target, roomId: room.id, week, requestId, maxDamageDeci: 520 });
+    expect(await strike("boss", latestDigestMoment(at(-7 * DAY)).date)).toMatchObject({ notice: expect.any(String), combat: { balance: 52 } });
+
+    const golems = await Promise.all([strike("golem"), strike("golem")]);
+    expect(golems.filter((result) => result.damage === 12)).toHaveLength(1);
+    expect(golems.find((result) => result.damage === 12)).toMatchObject({ coins: { coins: 4 }, combat: { balance: 40 }, boss: { hp: 10 } });
+    expect(await strike("ghost")).toMatchObject({ damage: 20, combat: { balance: 20 }, boss: { hp: 10 } });
+    expect(await post("/api/answer", { cardId: 1, reps: 0, answer: "good", stage: "listen" })).toMatchObject({ damage: 4.8 });
+
+    expect(await strike("boss")).toMatchObject({ damage: 10, combat: { balance: 14.8 }, boss: { hp: 0 } });
+    await dropCard(db, alice.id, 1);
+    expect(await damageBalanceDeci(db, alice.id)).toBe(148);
+
+    const next = at(7 * DAY);
+    const facts = await weekFacts(db, (await getRoom(db, room.id))!, next);
+    expect(trophiesFor(facts, alice.id, new Set()).map((trophy) => trophy.kind)).toContain("team-win");
+    h.setNow(next);
+    const state = await (await app.request("/api/boss", { headers })).json();
+    expect(state.boss.opponent.id).not.toBe(boss.opponent.id);
+    expect(state.combat.balance).toBe(14.8);
+    expect(state.combat.mobs.map((mob: { defeated: boolean }) => mob.defeated)).toEqual([false, false]);
+  });
+});
 
 describe("🐉 boss tab in the Mini App", () => {
   it("returns HP, phase and the hit feed", async () => {

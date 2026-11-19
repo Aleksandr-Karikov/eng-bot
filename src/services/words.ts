@@ -5,6 +5,7 @@ import { isLangCode, withLang, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { parseExampleTranslation, type WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
+import { removeReviewHistory } from "./combat-ledger";
 
 export interface WordDraft {
   term: string;
@@ -164,7 +165,7 @@ export async function deleteWord(db: Db, wordId: number): Promise<Word | undefin
   if (!word) return undefined;
   const cardIds = (await db.select({ id: cards.id }).from(cards).where(eq(cards.wordId, wordId))).map((c) => c.id);
   // Сначала все ссылки на слово (foreign_keys = ON): иначе удаление упадёт посередине и слово останется без карточек.
-  if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
+  if (cardIds.length) await removeReviewHistory(db, inArray(reviewLogs.cardId, cardIds));
   await db.delete(clozeSentences).where(eq(clozeSentences.wordId, wordId));
   await db.delete(wordUses).where(eq(wordUses.wordId, wordId));
   await db.delete(cards).where(eq(cards.wordId, wordId));

@@ -372,6 +372,13 @@
       "when": 1795053773987,
       "tag": "0052_daily_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795062202748,
+      "tag": "0053_perfect_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import { LANGUAGES, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { ROOM_LIMITS, ROOM_REFUSALS } from "./limits";
 import { getUser, parseLastRooms, updateUser } from "./users";
+import { removeReviewHistory } from "./combat-ledger";
 
 export async function createRoom(
   db: Db,
@@ -201,7 +202,7 @@ export async function deleteRoom(db: Db, roomId: number): Promise<void> {
   const wordIds = (await db.select({ id: words.id }).from(words).where(eq(words.roomId, roomId))).map((w) => w.id);
   if (wordIds.length) {
     const cardIds = (await db.select({ id: cards.id }).from(cards).where(inArray(cards.wordId, wordIds))).map((c) => c.id);
-    if (cardIds.length) await db.delete(reviewLogs).where(inArray(reviewLogs.cardId, cardIds));
+    if (cardIds.length) await removeReviewHistory(db, inArray(reviewLogs.cardId, cardIds));
     await db.delete(clozeSentences).where(inArray(clozeSentences.wordId, wordIds));
     await db.delete(wordUses).where(eq(wordUses.roomId, roomId));
     await db.delete(cards).where(inArray(cards.wordId, wordIds));

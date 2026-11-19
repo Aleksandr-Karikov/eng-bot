@@ -4,6 +4,7 @@ import { cards, reviewLogs, rooms, roomMembers, trophies, users, words, type Roo
 import { latestDigestMoment, WEEK_MS } from "./digest";
 import { localParts } from "../time";
 import { answerWeight, goalProgress } from "./goals";
+import { bossStrikes } from "./combat-ledger";
 
 /**
  * 🏆 Трофеи недели.
@@ -35,7 +36,8 @@ export interface TrophyDef {
 
 export const TROPHIES: TrophyDef[] = [
   // ⚔️ Боевые
-  { kind: "killer", emoji: "💀", title: "Добил", how: "твой ответ снял последние HP босса", repeat: "weekly" },
+  { kind: "killer", emoji: "💀", title: "Добил", how: "твой удар снял последние HP босса", repeat: "weekly" },
+  { kind: "team-win", emoji: "🏆", title: "Победа команды", how: "вместе с комнатой победил босса и внёс урон", repeat: "weekly", needsCompany: true },
   { kind: "oneshot", emoji: "⚡", title: "Ваншот", how: "добил босса, у которого оставалось ≤10 HP", repeat: "weekly" },
   { kind: "overkill", emoji: "🔥", title: "С запасом", how: "урон ≥150% цели недели", repeat: "weekly" },
   { kind: "last-hour", emoji: "⏰", title: "В последний час", how: "босс добит за ≤3 часа до конца недели", repeat: "weekly" },
@@ -97,7 +99,7 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
   const start = new Date(end.getTime() - WEEK_MS);
   const progress = await goalProgress(db, room, now, start);
   const rows = await db
-    .select({ userId: reviewLogs.userId, rating: reviewLogs.rating, stage: reviewLogs.stage, at: reviewLogs.reviewedAt, damageDeci: reviewLogs.damageDeci })
+    .select({ userId: reviewLogs.userId, rating: reviewLogs.rating, stage: reviewLogs.stage, at: reviewLogs.reviewedAt, damageDeci: reviewLogs.damageDeci, banked: reviewLogs.banked })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
@@ -110,9 +112,15 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
     list.push({ rating: r.rating, stage: r.stage, at: r.at });
     answers.set(r.userId, list);
   }
+  const strikes = [
+    ...rows.filter((row) => !row.banked).map((row) => ({
+      ...row, damageDeci: row.damageDeci ?? Math.round(answerWeight(row.rating, row.stage) * 10),
+    })),
+    ...await bossStrikes(db, room.id, start, end),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
   const damage = new Map<number, number>();
-  for (const r of rows) {
-    damage.set(r.userId, (damage.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
+  for (const r of strikes) {
+    damage.set(r.userId, (damage.get(r.userId) ?? 0) + r.damageDeci);
   }
   for (const [id, deci] of damage) damage.set(id, deci / 10);
   // Кто добил: последний ответ, после которого цель была пройдена. Считаем накопительно.
@@ -120,9 +128,9 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
   let killer: number | undefined;
   let killedAt: Date | undefined;
   let hpBeforeKill: number | undefined;
-  for (const r of rows) {
+  for (const r of strikes) {
     const before = progress.target - sum / 10;
-    sum += r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10);
+    sum += r.damageDeci;
     if (sum >= progress.target * 10 && killer === undefined) {
       hpBeforeKill = before;
       killer = r.userId;
@@ -157,7 +165,7 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
     found.push({ kind, value });
   };
 
-  if (mineAnswers.length === 0) {
+  if (mineAnswers.length === 0 && mine === 0) {
     // 🛌 «Тебя протащили» и 🪑 «Скамейка» — про тех, кто не пришёл, но это разные шутки.
     if (facts.members >= 2 && facts.killer !== undefined && facts.killer !== userId) add("carried", 0);
     return found;
@@ -169,6 +177,7 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   const total = facts.done;
 
   // ⚔️ Боевые
+  if (mine > 0 && facts.killer !== undefined) add("team-win");
   if (facts.killer === userId) add("killer");
   // ⏰ Добил в последние три часа недели.
   if (facts.killedAt && facts.killer === userId && closeToEnd(facts.killedAt, facts.week)) add("last-hour");

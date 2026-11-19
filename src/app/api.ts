@@ -13,6 +13,7 @@ import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
+import { attackWithReserve, combatState } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
@@ -25,7 +26,7 @@ import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard } from "../serv
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
-import { getUserByTelegramId } from "../services/users";
+import { getUserByTelegramId, updateUser } from "../services/users";
 import { wordLanguage } from "../services/words";
 import { currentLang, langForms, withLang } from "../lang";
 import type { Answer } from "../srs/srs";
@@ -111,6 +112,7 @@ export async function appMe(deps: Deps, user: User) {
     triage: await triageCount(deps.db, user.id),
     // 🐉 Вкладка босса: личный режим И общий рубильник. Выключено — приложение не рисует кнопку вовсе.
     boss: bossEnabled(user, deps.bossEnabled),
+    bankDamage: user.bankDamage && bossEnabled(user, deps.bossEnabled),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
     language: {
       code: currentLang().code,
@@ -261,7 +263,7 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
   // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
   if (body.practice === true) return { status: 200, body: { ok: true, result: "practice", damage: 0 } };
-  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
+  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}`, bossEnabled: deps.bossEnabled });
   return { status: 200, body: { ok: true, ...result } };
 }
 
@@ -336,7 +338,7 @@ export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown
   const now = deps.now();
   const ok = body.undo
     ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
-    : await triage(deps.db, { userId: user.id, cardId, action, now });
+    : await triage(deps.db, { userId: user.id, cardId, action, now, bossEnabled: deps.bossEnabled });
   return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
 }
 
@@ -359,12 +361,15 @@ export async function appBoss(deps: Deps, user: User) {
   if (!enabled) return { enabled, boss: undefined, hits: [], total: 0 };
   if (!room) return { enabled, boss: undefined };
   const now = deps.now();
-  const [boss, feed] = await Promise.all([bossOf(deps.db, room, now, user.id), bossFeed(deps.db, room, now, 20)]);
+  const [boss, feed, combat] = await Promise.all([
+    bossOf(deps.db, room, now, user.id), bossFeed(deps.db, room, now, 20), combatState(deps.db, user, now),
+  ]);
   // 🪙 Монеты — личный урон этой недели: усиление своё, чужой урон монет не даёт.
   const coins = coinState(await personalDamage(deps.db, user.id, now), user, now);
   const collection = await userTrophies(deps.db, user.id);
   return {
     enabled,
+    combat: { ...combat, roomId: room.id, week: boss.week },
     coins,
     trophies: {
       // Отдаём весь каталог: вкладка показывает и то, чего ещё нет, — иначе коллекция не коллекция.
@@ -375,6 +380,8 @@ export async function appBoss(deps: Deps, user: User) {
     },
     boss: {
       room: boss.room,
+      opponent: boss.opponent,
+      week: boss.week,
       damage: boss.damage,
       hp: boss.hp,
       target: boss.target,
@@ -388,6 +395,27 @@ export async function appBoss(deps: Deps, user: User) {
     hits: feed.hits.map((hit) => ({ name: hit.name, damage: hit.damage, at: hit.at.toISOString() })),
     total: feed.total,
   };
+}
+
+export async function appCombat(deps: Deps, user: User, input: {
+  bank?: unknown; target?: unknown; roomId?: unknown; week?: unknown; requestId?: unknown; maxDamageDeci?: unknown;
+} | null) {
+  if (!bossEnabled(user, deps.bossEnabled)) return { status: 400 as const, body: { ok: false, error: "Режим босса выключен" } };
+  if (typeof input?.bank === "boolean") {
+    const updated = await updateUser(deps.db, user.id, { bankDamage: input.bank });
+    return { status: 200 as const, body: { ok: true, ...await appBoss(deps, updated) } };
+  }
+  if ((input?.target !== "boss" && input?.target !== "golem" && input?.target !== "ghost")
+    || typeof input.roomId !== "number" || !Number.isSafeInteger(input.roomId) || typeof input.week !== "string"
+    || typeof input.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.requestId)
+    || typeof input.maxDamageDeci !== "number" || !Number.isSafeInteger(input.maxDamageDeci) || input.maxDamageDeci <= 0) {
+    return { status: 400 as const, body: { ok: false, error: "Выбери цель для удара" } };
+  }
+  const { target, roomId, week, requestId, maxDamageDeci } = input;
+  const damage = await attackWithReserve(deps.db, user.id, { target, roomId, week, requestId, maxDamageDeci }, deps.now);
+  const fresh = await getUserByTelegramId(deps.db, user.telegramId);
+  if (!fresh) return { status: 400 as const, body: { ok: false, error: "Пользователь недоступен" } };
+  return { status: 200 as const, body: { ok: true, ...(damage === undefined ? { notice: "Удар не прошёл. Проверь цель и запас." } : { damage }), ...await appBoss(deps, fresh) } };
 }
 
 /** 📦 Наборы: список с прогрессом, следующие слова набора, решение по слову (или его отмена). */

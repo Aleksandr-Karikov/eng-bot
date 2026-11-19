@@ -2,6 +2,7 @@ import { and, eq, gte, isNull, lt, ne, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, rooms, users, words, type Room } from "../db/schema";
 import { latestDigestMoment, WEEK_MS } from "./digest";
+import { bossStrikes } from "./combat-ledger";
 
 /** Автоцель не меньше этого — иначе после пустой недели цель стала бы нулевой. */
 const MIN_AUTO_GOAL = 50;
@@ -50,7 +51,7 @@ export function answerWeight(rating: string, stage?: string | null, level = 0, l
  */
 async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   const rows = await db
-    .select({ userId: users.id, name: users.firstName, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci })
+    .select({ userId: users.id, name: users.firstName, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci, banked: reviewLogs.banked })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
@@ -62,9 +63,8 @@ async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   for (const r of rows) {
     names.set(r.userId, r.name);
     raw.set(r.userId, (raw.get(r.userId) ?? 0) + 1);
-    hp.set(r.userId, (hp.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
+    if (!r.banked) hp.set(r.userId, (hp.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
   }
-  for (const [id, deci] of hp) hp.set(id, deci / 10);
   return { raw, hp, names };
 }
 
@@ -81,6 +81,11 @@ export function autoGoal(lastWeek: number): number {
 export async function goalProgress(db: Db, room: Room, now: Date, weekStart = latestDigestMoment(now).at, userId?: number): Promise<GoalProgress> {
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const current = await roomReviews(db, room.id, weekStart, weekEnd);
+  for (const strike of await bossStrikes(db, room.id, weekStart, weekEnd)) {
+    current.names.set(strike.userId, strike.name);
+    current.hp.set(strike.userId, (current.hp.get(strike.userId) ?? 0) + strike.damageDeci);
+  }
+  for (const [id, deci] of current.hp) current.hp.set(id, deci / 10);
   const prev = await roomReviews(db, room.id, new Date(weekStart.getTime() - WEEK_MS), weekStart);
   // Цель — в HP и хранится в HP: одно число в /goal, дайджесте и на вкладке босса.
   const target = room.weeklyGoal > 0 ? room.weeklyGoal : autoGoal(total(prev.raw)) * BASE_WEIGHT;

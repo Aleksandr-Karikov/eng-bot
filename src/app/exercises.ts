@@ -48,7 +48,7 @@ export async function appCheck(
   let damage = 0;
   const rate = async (good: boolean) => {
     if (body.practice === true) return true;
-    const recorded = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` });
+    const recorded = await recordAnswer(deps.db, { bossEnabled: deps.bossEnabled, userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` });
     damage = recorded.damage;
     return recorded.result === "ok";
   };

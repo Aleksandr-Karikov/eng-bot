@@ -254,7 +254,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
             transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
             onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
           >
-            {hp > 0 ? "+" : ""}{hp} <small>HP</small>
+            {hp > 0 ? "+" : ""}{hp} <small>{me.bankDamage ? "HP в запас" : "HP"}</small>
           </motion.div>
         ))}
       </AnimatePresence>

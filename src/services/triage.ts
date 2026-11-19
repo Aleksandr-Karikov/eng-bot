@@ -39,11 +39,11 @@ export async function markTriaged(db: Db, userId: number, wordId: number, now: D
 }
 
 /** Решение по карточке из колоды. false — карточки уже нет или по ней уже решили. */
-export async function triage(db: Db, input: { userId: number; cardId: number; action: TriageAction; now: Date }): Promise<boolean> {
+export async function triage(db: Db, input: { userId: number; cardId: number; action: TriageAction; now: Date; bossEnabled?: boolean }): Promise<boolean> {
   const [card] = await db.select().from(cards).where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.triagedAt) return false;
   if (input.action === "drop") return dropCard(db, input.userId, card.wordId);
-  if (input.action === "know" && (await markKnown(db, { userId: input.userId, wordId: card.wordId, now: input.now })) === "stale") return false;
+  if (input.action === "know" && (await markKnown(db, { userId: input.userId, wordId: card.wordId, now: input.now, bossEnabled: input.bossEnabled })) === "stale") return false;
   await db.update(cards).set({ triagedAt: input.now }).where(eq(cards.id, card.id));
   return true;
 }

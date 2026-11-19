@@ -1,8 +1,10 @@
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
 import { latestDigestMoment } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
+import { bossStrikes, mobClaims } from "./combat-ledger";
+import { MOBS } from "./combat";
 
 /**
  * 🐉 Босс недели — это цель комнаты, показанная как бой.
@@ -17,8 +19,15 @@ export type BossPhase = (typeof BOSS_PHASES)[number];
 
 export type BossPace = "ahead" | "on-time" | "behind";
 
+export const WEEKLY_BOSSES = [
+  { id: "dragon", name: "Дракон библиотеки" },
+  { id: "sentinel", name: "Страж обсерватории" },
+] as const;
+
 export interface BossState extends GoalProgress {
   room: string;
+  opponent: (typeof WEEKLY_BOSSES)[number];
+  week: string;
   /** Сколько HP осталось; больше нуля всегда, пока цель не выполнена. */
   hp: number;
   /** Доля снятого HP: 0…1, больше 1 — добит с запасом. */
@@ -63,7 +72,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 /** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты (воскресенье 20:00). */
 export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Promise<BossState> {
-  const weekStart = latestDigestMoment(now).at;
+  const { date: week, at: weekStart } = latestDigestMoment(now);
   const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
@@ -71,6 +80,8 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   return {
     ...progress,
     room: room.name,
+    opponent: WEEKLY_BOSSES[Math.floor(weekStart.getTime() / WEEK_MS) % WEEKLY_BOSSES.length],
+    week,
     hp: Math.max(0, Math.round((progress.target - progress.done) * 10) / 10),
     damage,
     phase: bossPhase(damage, progress.done, progress.target),
@@ -120,20 +131,25 @@ export interface BossFeed {
  */
 export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promise<BossFeed> {
   const weekStart = latestDigestMoment(now).at;
+  const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const rows = await db
     .select({ name: users.firstName, userId: users.id, at: reviewLogs.reviewedAt, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci })
     .from(reviewLogs)
     .innerJoin(cards, eq(reviewLogs.cardId, cards.id))
     .innerJoin(words, eq(cards.wordId, words.id))
     .innerJoin(users, eq(reviewLogs.userId, users.id))
-    .where(and(eq(words.roomId, room.id), gte(reviewLogs.reviewedAt, weekStart)))
+    .where(and(eq(words.roomId, room.id), eq(reviewLogs.banked, false), gte(reviewLogs.reviewedAt, weekStart), lt(reviewLogs.reviewedAt, weekEnd)))
     .orderBy(asc(reviewLogs.reviewedAt));
 
   const byUser = new Map<number, { name: string; damage: number }>();
   const hits: BossHit[] = [];
   let lastUserId: number | undefined;
-  for (const row of rows) {
-    const damage = (row.damageDeci ?? Math.round(answerWeight(row.rating, row.stage) * 10)) / 10;
+  const events = [
+    ...rows.map((row) => ({ ...row, damageDeci: row.damageDeci ?? Math.round(answerWeight(row.rating, row.stage) * 10) })),
+    ...await bossStrikes(db, room.id, weekStart, weekEnd),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
+  for (const row of events) {
+    const damage = row.damageDeci / 10;
     const total = byUser.get(row.userId) ?? { name: row.name, damage: 0 };
     total.damage = Math.round((total.damage + damage) * 10) / 10;
     byUser.set(row.userId, total);
@@ -151,7 +167,7 @@ export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promi
   return {
     hits: hits.slice(-limit).reverse(),
     byUser: [...byUser.values()].sort((a, b) => b.damage - a.damage),
-    total: rows.length,
+    total: events.length,
   };
 }
 
@@ -193,8 +209,11 @@ export function coinsPeriod(now: Date): string {
 
 /** Личные монеты общие для комнат: смена комнаты не меняет кошелёк. */
 export async function personalDamage(db: Db, userId: number, now: Date): Promise<number> {
-  const rows = await db.select().from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, latestDigestMoment(now).at)));
-  return rows.reduce((sum, r) => sum + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)), 0) / 10;
+  const week = latestDigestMoment(now);
+  const rows = await db.select().from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, week.at)));
+  const claims = await mobClaims(db, userId, week.date);
+  const rewards = MOBS.filter((mob) => claims.some((claim) => claim.target === mob.id)).reduce((sum, mob) => sum + mob.coins, 0);
+  return rewards + rows.reduce((sum, r) => sum + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)), 0) / 10;
 }
 
 export const UPGRADES = [
