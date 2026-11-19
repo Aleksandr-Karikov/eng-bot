@@ -156,7 +156,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
 
   return (
     <div ref={deck} className={`deck type-deck${keyboardOpen ? " keyboard-open" : ""}`}>
-      <div className="card choice-card type-card">
+      <div className={`card choice-card type-card${result ? " type-card-reviewed" : ""}`}>
         <div className="type-prompt">{task}</div>
         {!result && (
           <div className="type-field">
@@ -179,7 +179,7 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
           </div>
         )}
         {checking && (
-          <div className="center checking">
+          <div className="checking">
             <Spinner size="m" />
             <Text className="hint">{card.stage === "listen" ? "Проверяю…" : "Проверяю — пару секунд…"}</Text>
           </div>
