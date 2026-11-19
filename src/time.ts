@@ -1,5 +1,5 @@
-export function localParts(timeZone: string, now: Date): { date: string; time: string } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+export function localPartsFormatter(timeZone: string): (now: Date) => { date: string; time: string } {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -7,9 +7,15 @@ export function localParts(timeZone: string, now: Date): { date: string; time: s
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).formatToParts(now);
-  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
-  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  });
+  return (now) => {
+    const p = Object.fromEntries(formatter.formatToParts(now).map((x) => [x.type, x.value]));
+    return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  };
+}
+
+export function localParts(timeZone: string, now: Date): { date: string; time: string } {
+  return localPartsFormatter(timeZone)(now);
 }
 
 export function parseHHMM(input: string): string | null {

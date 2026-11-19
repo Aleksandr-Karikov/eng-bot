@@ -4,6 +4,7 @@ import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./co
 import { latestDigestMoment } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
+import { streakBuff } from "./streak-buff";
 import { inCurrentLanguage } from "./language";
 import { and, asc, count, desc, eq, lte, ne, notExists } from "drizzle-orm";
 import { State } from "ts-fsrs";
@@ -82,9 +83,10 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   const active = enabled !== false && user?.modeBoss === true;
   const skill = damageSkill(stage);
   const week = active && skill ? latestDigestMoment(now) : undefined;
-  const [weeks, claims] = await Promise.all([
+  const [weeks, claims, streak] = await Promise.all([
     active ? mobHuntWeeks(db, userId) : 0,
     week ? mobClaims(db, userId, week.date) : [],
+    active ? streakBuff(db, user, now, true) : undefined,
   ]);
   const bonus = claims.some((claim) => MOBS.some((mob) => mob.id === claim.target && mob.skill === skill));
   const listen = (user?.upgradeListen ?? 0) + Number(bonus && skill === "listen");
@@ -98,7 +100,7 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
     if (room && (await bossOf(db, room, now)).phase === "furious") dragonBonus = 20;
   }
   return {
-    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus) * 10),
+    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0)) * 10),
     banked: active && user.bankDamage,
   };
 }

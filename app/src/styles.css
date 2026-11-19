@@ -470,6 +470,21 @@ body {
 .boss-mechanic { display: grid; gap: 4px; font-size: 14px; }
 .boss-mechanic.ready { background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 12%, transparent); }
 .boss-victory h2 { margin: 0; font-size: 19px; }
+.streak-buff .hint { font-size: 13px; }
+.streak-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.streak-tiers > div {
+  display: grid;
+  gap: 3px;
+  padding: 7px 4px;
+  border-radius: 10px;
+  background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #f3f4f7));
+  text-align: center;
+  font-size: 12px;
+}
+.streak-tiers [aria-current="true"] {
+  color: var(--tg-theme-accent-text-color, var(--tgui--accent_text_color, #2481cc));
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 12%, transparent);
+}
 .combat-panel { gap: 12px; }
 .combat-balance { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .combat-toggle { align-items: center; cursor: pointer; }

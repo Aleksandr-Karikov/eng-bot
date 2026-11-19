@@ -182,6 +182,7 @@ function BossView({
 
   const top = boss.byUser.slice(0, 4);
   const rune = combat?.rune;
+  const streak = combat?.streak;
 
   return (
     <div className="screen boss-screen">
@@ -247,6 +248,28 @@ function BossView({
       )}
       {boss.opponent?.id === "dragon" && boss.phase === "furious" && (
         <div className="boss-mechanic ready"><b>Дракон в ярости</b><span>Диктанты в этой комнате дают +20% базового урона.</span></div>
+      )}
+      {streak && (
+        <section className="boss-members streak-buff" aria-label="Ударный режим">
+          <div className="boss-member">
+            <Text weight="2">🔥 Ударный режим</Text>
+            {streak.percent > 0 && <b className="combat-claim">+{streak.percent}% урона</b>}
+          </div>
+          <Text className="hint">
+            {streak.days > 0
+              ? `${streak.days}${streak.next ? "" : "+"} ${plural(streak.days, "день", "дня", "дней")} подряд`
+              : "Ответь на карточку, чтобы начать серию."}
+            {streak.days > 0 && streak.next && ` · следующий баф на ${streak.next.days}-й день`}
+          </Text>
+          <div className="streak-tiers">
+            {streak.tiers.map((tier) => (
+              <div key={tier.days} aria-current={tier.percent === streak.percent ? "true" : undefined}>
+                <span>{tier.days} {plural(tier.days, "день", "дня", "дней")}</span>
+                <b>+{tier.percent}%</b>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
       {actions}
       <div className="boss-hits">

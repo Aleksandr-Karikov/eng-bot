@@ -348,6 +348,42 @@ it("усиливает только диктанты и только во вре
   expect(await answer(3, "listen")).toMatchObject({ damage: 4 });
 });
 
+it("показывает баф ударного режима и начисляет его за серию местных дней", async () => {
+  const { h, app, headers, alice } = await bossTab();
+  h.setNow(nsk("2026-11-21T01:30"));
+  // Два разных дня в Новосибирске попали в один день UTC.
+  await h.db.insert(reviewLogs).values(["2026-11-19T23:55", "2026-11-20T00:10", "2026-11-20T23:50"].map((time) => ({
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: nsk(time),
+  })));
+  const state = async () => (await app.request("/api/boss", { headers })).json();
+  const answer = async (reps: number, practice = false) => (await app.request("/api/answer", {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ cardId: 1, reps, answer: "good", practice }),
+  })).json();
+  expect(await state()).toMatchObject({ combat: { streak: { days: 2, percent: 0, next: { days: 3, percent: 5 } } } });
+  expect(await answer(0, true)).toMatchObject({ result: "practice", damage: 0 });
+  expect(await state()).toMatchObject({ combat: { streak: { days: 2, percent: 0 } } });
+  expect(await answer(0)).toMatchObject({ damage: 2.1 });
+  expect(await state()).toMatchObject({ combat: { streak: { days: 3, percent: 5, next: { days: 7, percent: 10 } } } });
+  h.setNow(nsk("2026-11-22T11:00"));
+  expect(await state()).toMatchObject({ combat: { streak: { days: 3, percent: 5 } } });
+  h.setNow(nsk("2026-11-23T11:00"));
+  expect(await state()).toMatchObject({ combat: { streak: { days: 0, percent: 0 } } });
+  expect(await answer(1)).toMatchObject({ damage: 2 });
+});
+
+it("выбирает только самую высокую ступень бафа", async () => {
+  const { h, app, headers, alice } = await bossTab();
+  const addDays = (first: number) => h.db.insert(reviewLogs).values(Array.from({ length: 7 }, (_, i) => ({
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-(first + i) * DAY),
+  })));
+  const state = async () => (await app.request("/api/boss", { headers })).json();
+  await addDays(1);
+  expect(await state()).toMatchObject({ combat: { streak: { days: 7, percent: 10, next: { days: 14, percent: 15 } } } });
+  await addDays(8);
+  expect(await state()).toMatchObject({ combat: { streak: { days: 14, percent: 15, next: null } } });
+});
+
 describe("🐉 boss tab in the Mini App", () => {
   it("returns HP, phase and the hit feed", async () => {
     const { h, alice, app, headers } = await bossTab();

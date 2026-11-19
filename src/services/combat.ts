@@ -6,6 +6,7 @@ import { availableRune, coreUsed, damageBalanceDeci, mobClaims, mobHuntWeeks, wi
 import { latestDigestMoment } from "./digest";
 import { bossOf, RUNE_PRICE, type BossState } from "./boss";
 import { getRoom, isMember } from "./rooms";
+import { streakBuff } from "./streak-buff";
 
 export function isCombatTarget(target: unknown): target is CombatTarget {
   return target === "boss" || MOBS.some((mob) => mob.id === target);
@@ -37,9 +38,9 @@ function reserveHit(hpDeci: number, available: number, core: boolean, rune: bool
 }
 
 export async function combatState(db: Db, user: User, now: Date, roomId: number, boss: BossState) {
-  const [claims, weeks, balance, core, rune] = await Promise.all([
+  const [claims, weeks, balance, core, rune, streak] = await Promise.all([
     mobClaims(db, user.id, latestDigestMoment(now).date), mobHuntWeeks(db, user.id), damageBalanceDeci(db, user.id),
-    coreState(db, user.id, roomId, boss), availableRune(db, user),
+    coreState(db, user.id, roomId, boss), availableRune(db, user), streakBuff(db, user, now),
   ]);
   const hp = Math.round(boss.hp * 10);
   const unarmed = reserveHit(hp, balance, core === "ready", false);
@@ -56,6 +57,7 @@ export async function combatState(db: Db, user: User, now: Date, roomId: number,
       defeated: claims.some((claim) => claim.target === mob.id),
     })),
     hunt: { weeks, thisWeek: claims.length > 0, relics: HUNTER_RELICS },
+    streak,
     core,
     hit: { spend: hit.spend / 10, damage: hit.damage / 10 },
     rune: { price: RUNE_PRICE, owned: rune !== null, extra: (armed.damage - unarmed.damage) / 10, saved: (unarmed.spend - armed.spend) / 10 },

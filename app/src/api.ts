@@ -379,6 +379,12 @@ export interface BossState {
     week: string;
     mobs: Array<{ id: MobId; icon: string; name: string; hp: number; reward: string; defeated: boolean }>;
     hunt?: HunterState;
+    streak?: {
+      days: number;
+      percent: number;
+      next: { days: number; percent: number } | null;
+      tiers: Array<{ days: number; percent: number }>;
+    };
     core?: "closed" | "ready" | "spent" | null;
     hit?: { spend: number; damage: number };
     rune?: { price: number; owned: boolean; extra: number; saved: number };
