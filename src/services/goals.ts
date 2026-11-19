@@ -29,18 +29,22 @@ export interface GoalProgress {
  */
 export const BASE_WEIGHT = 2;
 
+export function damageSkill(stage?: string | null): "listen" | "writing" | undefined {
+  if (stage === "listen" || stage === "app_listen") return "listen";
+  if (stage === "cloze" || stage === "app_cloze" || stage === "sentence" || stage === "app_sentence") return "writing";
+}
+
 /**
  * Вес ответа в HP. «Забыл» — тоже 1, а не 0: ноль наказывал бы за честность, и стало бы выгодно
  * врать себе «помню», чтобы босс дох. Признался — уже работа.
  */
-export function answerWeight(rating: string, stage?: string | null, level = 0, listenLevel = 0, writingLevel = 0): number {
+export function answerWeight(rating: string, stage?: string | null, level = 0, listenLevel = 0, writingLevel = 0, relicPercent = 0): number {
   const base = rating === "easy" ? 3 : rating === "hard" ? 2 : rating === "good" ? 2 : 1;
   // Сложное упражнение — вдвое: человек не узнал слово, а воспроизвёл.
-  const hard = stage === "cloze" || stage === "sentence" || stage === "listen" || stage === "app_cloze" || stage === "app_sentence" || stage === "app_listen";
+  const skill = damageSkill(stage);
   // +10% за уровень усиления — личное, поэтому применяется к своим ответам, а не к комнате целиком.
-  const skill = stage === "listen" || stage === "app_listen" ? listenLevel
-    : stage === "cloze" || stage === "app_cloze" || stage === "sentence" || stage === "app_sentence" ? writingLevel : 0;
-  return (hard ? base * 2 : base) * (10 + level + 2 * skill) / 10;
+  const skillLevel = skill === "listen" ? listenLevel : skill === "writing" ? writingLevel : 0;
+  return (skill ? base * 2 : base) * (100 + 10 * level + 20 * skillLevel + relicPercent) / 100;
 }
 
 /**

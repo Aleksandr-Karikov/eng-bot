@@ -13,7 +13,7 @@ import { cards as cardsTable, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
-import { attackWithReserve, combatState } from "../services/combat";
+import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
@@ -405,7 +405,7 @@ export async function appCombat(deps: Deps, user: User, input: {
     const updated = await updateUser(deps.db, user.id, { bankDamage: input.bank });
     return { status: 200 as const, body: { ok: true, ...await appBoss(deps, updated) } };
   }
-  if ((input?.target !== "boss" && input?.target !== "golem" && input?.target !== "ghost")
+  if (!input || !isCombatTarget(input.target)
     || typeof input.roomId !== "number" || !Number.isSafeInteger(input.roomId) || typeof input.week !== "string"
     || typeof input.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.requestId)
     || typeof input.maxDamageDeci !== "number" || !Number.isSafeInteger(input.maxDamageDeci) || input.maxDamageDeci <= 0) {

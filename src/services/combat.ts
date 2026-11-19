@@ -1,24 +1,31 @@
 import { eq } from "drizzle-orm";
+import { HUNTER_RELICS, MOBS, type CombatTarget } from "../combat-mobs";
 import type { Db } from "../db/client";
 import { combatSpends, users, type User } from "../db/schema";
-import { damageBalanceDeci, mobClaims, withCombatLock } from "./combat-ledger";
+import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
 import { latestDigestMoment } from "./digest";
 import { goalProgress } from "./goals";
 import { getRoom, isMember } from "./rooms";
 
-export const MOBS = [
-  { id: "golem", name: "Каменный дозорный", hp: 12, reward: "+4 монеты", coins: 4 },
-  { id: "ghost", name: "Чернильный призрак", hp: 20, reward: "+20% базового урона диктантов до конца недели", coins: 0 },
-] as const;
-
-export type CombatTarget = "boss" | (typeof MOBS)[number]["id"];
+export function isCombatTarget(target: unknown): target is CombatTarget {
+  return target === "boss" || MOBS.some((mob) => mob.id === target);
+}
 
 export async function combatState(db: Db, user: User, now: Date) {
-  const claims = await mobClaims(db, user.id, latestDigestMoment(now).date);
+  const [claims, weeks, balance] = await Promise.all([
+    mobClaims(db, user.id, latestDigestMoment(now).date), mobHuntWeeks(db, user.id), damageBalanceDeci(db, user.id),
+  ]);
   return {
     bank: user.bankDamage,
-    balance: (await damageBalanceDeci(db, user.id)) / 10,
-    mobs: MOBS.map(({ coins, ...mob }) => ({ ...mob, defeated: claims.some((claim) => claim.target === mob.id) })),
+    balance: balance / 10,
+    mobs: MOBS.map(({ coins, skill, ...mob }) => ({
+      ...mob,
+      reward: skill
+        ? `${skill === "listen" ? "Диктанты" : "Пропуски и свои предложения"}: +20% базового урона до конца недели`
+        : `Монеты: +${coins}`,
+      defeated: claims.some((claim) => claim.target === mob.id),
+    })),
+    hunt: { weeks, thisWeek: claims.length > 0, relics: HUNTER_RELICS },
   };
 }
 
@@ -39,7 +46,7 @@ export function attackWithReserve(db: Db, userId: number, input: {
     let damageDeci: number;
     if (mob) {
       damageDeci = mob.hp * 10;
-      if (balance < damageDeci) return;
+      if (balance < damageDeci || input.maxDamageDeci !== damageDeci) return;
     } else {
       const boss = await goalProgress(db, room, at);
       damageDeci = Math.min(balance, input.maxDamageDeci, Math.round((boss.target - boss.done) * 10));

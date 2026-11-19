@@ -465,7 +465,7 @@ body {
 .combat-balance { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .combat-toggle { align-items: center; cursor: pointer; }
 .combat-mobs { border-top: 1px solid var(--tg-theme-section-separator-color, #a0a8b840); }
-.combat-mobs summary { min-height: 44px; padding: 11px 0; box-sizing: border-box; cursor: pointer; font-weight: 650; }
+.combat-mobs summary, .hunter-relics summary { min-height: 44px; padding: 11px 0; box-sizing: border-box; cursor: pointer; font-weight: 650; }
 .combat-mob {
   display: grid;
   gap: 8px;
@@ -476,6 +476,9 @@ body {
 }
 .combat-cost { flex: none; font-weight: 650; white-space: nowrap; }
 .combat-claim { color: var(--tg-theme-accent-text-color, #2481cc); font-weight: 650; }
+.hunter-relics { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--tg-theme-section-separator-color, #a0a8b840); }
+.hunter-progress { width: 100%; height: 10px; accent-color: var(--tg-theme-button-color, #2481cc); }
+.hunter-reward { display: grid; gap: 4px; padding: 8px 0; }
 
 /* Полка трофеев: полученные цветные, остальные приглушены — видно, что осталось собрать. */
 .trophy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }

@@ -1,5 +1,6 @@
-import { answerWeight } from "./goals";
-import { damageBalanceDeci, mobClaims, withCombatLock } from "./combat-ledger";
+import { HUNTER_RELICS, MOBS } from "../combat-mobs";
+import { answerWeight, damageSkill } from "./goals";
+import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
 import { latestDigestMoment } from "./digest";
 import { inCurrentLanguage } from "./language";
 import { and, asc, count, desc, eq, lte, ne, notExists } from "drizzle-orm";
@@ -82,12 +83,19 @@ const snapshotOf = (card: CardRow) =>
 async function reviewDamage(db: Db, userId: number, answer: Answer, now: Date, stage?: string, enabled?: boolean) {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   const active = enabled !== false && user?.modeBoss === true;
-  const claims = active && (stage === "listen" || stage === "app_listen")
-    ? await mobClaims(db, userId, latestDigestMoment(now).date)
-    : [];
-  const listen = (user?.upgradeListen ?? 0) + Number(claims.some((claim) => claim.target === "ghost"));
+  const skill = damageSkill(stage);
+  const [weeks, claims] = await Promise.all([
+    active ? mobHuntWeeks(db, userId) : 0,
+    active && skill ? mobClaims(db, userId, latestDigestMoment(now).date) : [],
+  ]);
+  const bonus = claims.some((claim) => MOBS.some((mob) => mob.id === claim.target && mob.skill === skill));
+  const listen = (user?.upgradeListen ?? 0) + Number(bonus && skill === "listen");
+  const writing = (user?.upgradeWriting ?? 0) + Number(bonus && skill === "writing");
+  const relicPercent = HUNTER_RELICS
+    .filter((relic) => weeks >= relic.weeks && (relic.skill === "all" || relic.skill === skill))
+    .reduce((sum, relic) => sum + relic.percent, 0);
   return {
-    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, user?.upgradeWriting ?? 0) * 10),
+    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent) * 10),
     banked: active && user.bankDamage,
   };
 }

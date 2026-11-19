@@ -4,7 +4,7 @@ import { bossFeed, bossOf, bossPace, bossPhase } from "../src/services/boss";
 import { setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
-import { reviewLogs } from "../src/db/schema";
+import { combatSpends, reviewLogs } from "../src/db/schema";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import { botHarness, buttonData } from "./bot-harness";
@@ -212,20 +212,29 @@ describe("урон из запаса", () => {
       method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
     })).json();
     const { combat, boss } = await post("/api/boss/combat", { bank: true });
-    await db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 520, banked: true });
-    const strike = (target: string, week = combat.week, requestId = randomUUID()) =>
-      post("/api/boss/combat", { target, roomId: room.id, week, requestId, maxDamageDeci: 520 });
-    expect(await strike("boss", latestDigestMoment(at(-7 * DAY)).date)).toMatchObject({ notice: expect.any(String), combat: { balance: 52 } });
+    expect(combat.mobs).toMatchObject([
+      { id: "golem", hp: 30 }, { id: "ghost", hp: 45 }, { id: "spider", hp: 70 },
+      { id: "mimic", hp: 100 }, { id: "chimera", hp: 150 },
+    ]);
+    await db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 2700, banked: true });
+    const strike = (target: string, hp: number, week = combat.week) =>
+      post("/api/boss/combat", { target, roomId: room.id, week, requestId: randomUUID(), maxDamageDeci: hp * 10 });
+    expect(await strike("boss", 10, latestDigestMoment(at(-7 * DAY)).date)).toMatchObject({ notice: expect.any(String), combat: { balance: 270 } });
+    expect(await strike("golem", 12)).toMatchObject({ notice: expect.any(String), combat: { balance: 270 } });
 
-    const golems = await Promise.all([strike("golem"), strike("golem")]);
-    expect(golems.filter((result) => result.damage === 12)).toHaveLength(1);
-    expect(golems.find((result) => result.damage === 12)).toMatchObject({ coins: { coins: 4 }, combat: { balance: 40 }, boss: { hp: 10 } });
-    expect(await strike("ghost")).toMatchObject({ damage: 20, combat: { balance: 20 }, boss: { hp: 10 } });
+    const golems = await Promise.all([strike("golem", 30), strike("golem", 30)]);
+    expect(golems.filter((result) => result.damage === 30)).toHaveLength(1);
+    expect(golems.find((result) => result.damage === 30)).toMatchObject({ coins: { coins: 4 }, combat: { balance: 240 }, boss: { hp: 10 } });
+    expect(await strike("ghost", 45)).toMatchObject({ damage: 45, combat: { balance: 195 }, boss: { hp: 10 } });
+    expect(await strike("spider", 70)).toMatchObject({ damage: 70, combat: { balance: 125 } });
+    expect(await strike("mimic", 100)).toMatchObject({ damage: 100, coins: { coins: 34 }, combat: { balance: 25 } });
+    expect(await strike("chimera", 150)).toMatchObject({ notice: expect.any(String), combat: { balance: 25 } });
     expect(await post("/api/answer", { cardId: 1, reps: 0, answer: "good", stage: "listen" })).toMatchObject({ damage: 4.8 });
+    expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good", stage: "sentence" })).toMatchObject({ damage: 4.8 });
 
-    expect(await strike("boss")).toMatchObject({ damage: 10, combat: { balance: 14.8 }, boss: { hp: 0 } });
+    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: 0 } });
     await dropCard(db, alice.id, 1);
-    expect(await damageBalanceDeci(db, alice.id)).toBe(148);
+    expect(await damageBalanceDeci(db, alice.id)).toBe(246);
 
     const next = at(7 * DAY);
     const facts = await weekFacts(db, (await getRoom(db, room.id))!, next);
@@ -233,9 +242,47 @@ describe("урон из запаса", () => {
     h.setNow(next);
     const state = await (await app.request("/api/boss", { headers })).json();
     expect(state.boss.opponent.id).not.toBe(boss.opponent.id);
-    expect(state.combat.balance).toBe(14.8);
-    expect(state.combat.mobs.map((mob: { defeated: boolean }) => mob.defeated)).toEqual([false, false]);
+    expect(state.combat.balance).toBe(24.6);
+    expect(state.combat.mobs.map((mob: { defeated: boolean }) => mob.defeated)).toEqual([false, false, false, false, false]);
   });
+});
+
+it("навсегда открывает реликвии за разные недели и складывает их с наградой моба текущей недели", async () => {
+  const { h, app, headers, alice, room } = await bossTab();
+  const post = async (path: string, body: object) => (await app.request(path, {
+    method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+  })).json();
+  const boss = async () => (await app.request("/api/boss", { headers })).json();
+  const pastWins = async (...weeksAgo: number[]) => h.db.insert(combatSpends).values(weeksAgo.map<typeof combatSpends.$inferInsert>((weeks, i) => {
+    const when = at(-weeks * 7 * DAY);
+    return {
+      userId: alice.id, target: i % 2 === 0 ? "golem" : "ghost", mobWeek: latestDigestMoment(when).date,
+      damageDeci: 450, requestId: randomUUID(), at: when,
+    };
+  }));
+  const answer = (reps: number, stage: string) => post("/api/answer", { cardId: 1, reps, answer: "good", stage });
+
+  await pastWins(1, 1);
+  await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 9000, banked: true });
+  const { combat } = await post("/api/boss/combat", { bank: true });
+  const strike = (target: string, hp: number) => post("/api/boss/combat", {
+    target, roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: hp * 10,
+  });
+  expect(combat.hunt).toMatchObject({ weeks: 1, thisWeek: false });
+  expect(await answer(0, "en_ru")).toMatchObject({ damage: 2 });
+  expect(await strike("golem", 30)).toMatchObject({ combat: { hunt: { weeks: 2, thisWeek: true } } });
+  expect(await answer(1, "en_ru")).toMatchObject({ damage: 2.1 });
+
+  await pastWins(3, 5);
+  expect(await boss()).toMatchObject({ combat: { hunt: { weeks: 4, thisWeek: true } } });
+  expect(await answer(2, "listen")).toMatchObject({ damage: 4.6 });
+
+  await pastWins(7, 9, 11, 13);
+  expect(await strike("spider", 70)).toMatchObject({ combat: { hunt: { weeks: 8, thisWeek: true } } });
+  expect(await answer(3, "sentence")).toMatchObject({ damage: 5.4 });
+  h.setNow(at(7 * DAY));
+  expect(await boss()).toMatchObject({ combat: { hunt: { weeks: 8, thisWeek: false } } });
+  expect(await answer(4, "sentence")).toMatchObject({ damage: 4.6 });
 });
 
 describe("🐉 boss tab in the Mini App", () => {

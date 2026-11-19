@@ -1,7 +1,7 @@
 import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { buyUpgrade, fight, getBoss, type Boss, type BossState, type Coins, type CombatTarget, type Trophies, type UpgradeKind } from "./api";
+import { buyUpgrade, fight, getBoss, type Boss, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies, type UpgradeKind } from "./api";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
@@ -88,13 +88,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const fightAction = async (action: CombatTarget | "bank") => {
     const combat = data?.combat;
     if (busy || !combat || !data.boss) return;
+    const damage = action === "boss"
+      ? Math.min(combat.balance, data.boss.hp)
+      : combat.mobs.find((mob) => mob.id === action)?.hp ?? 0;
     setFighting(action);
     try {
       const next = await fight(action === "bank"
         ? { bank: !combat.bank }
         : {
           target: action, roomId: combat.roomId, week: combat.week, requestId: crypto.randomUUID(),
-          maxDamageDeci: Math.round((action === "boss" ? Math.min(combat.balance, data.boss.hp) : combat.balance) * 10),
+          maxDamageDeci: Math.round(damage * 10),
         });
       setData(next);
       haptic.done(!next.notice);
@@ -318,19 +321,49 @@ function CombatPanel({ combat, hp, busy, fighting, onAction }: {
         {combat.mobs.map((mob) => (
           <div className="combat-mob" key={mob.id}>
             <div className="boss-member">
-              <Text weight="2"><span aria-hidden="true">{mob.id === "golem" ? "🪨" : "👻"}</span> {mob.name}</Text>
+              <Text weight="2"><span aria-hidden="true">{mob.icon}</span> {mob.name}</Text>
               <span className="combat-cost">{mob.hp} HP</span>
             </div>
             <Text className="hint">{mob.reward}</Text>
             {mob.defeated ? <Text className="combat-claim">Награда получена</Text> : (
               <Button size="m" mode="bezeled" stretched loading={fighting === mob.id} disabled={busy || combat.balance < mob.hp} onClick={() => onAction(mob.id)}>
-                {combat.balance < mob.hp ? `Нужно ${mob.hp} HP в запасе` : "Атаковать"}
+                {combat.balance < mob.hp ? `Не хватает ${hpFormat.format(mob.hp - combat.balance)} HP` : "Атаковать"}
               </Button>
             )}
           </div>
         ))}
       </details>
+      {combat.hunt && <HunterRelics hunt={combat.hunt} />}
     </div>
+  );
+}
+
+function HunterRelics({ hunt }: { hunt: HunterState }) {
+  const next = hunt.relics.find((relic) => relic.weeks > hunt.weeks);
+  const bonusFor = { all: "ко всему урону за ответы", listen: "к урону диктантов", writing: "к урону за пропуски и свои предложения" };
+  return (
+    <section className="hunter-relics" aria-label="Реликвии охотника">
+      <Text weight="2">Реликвии охотника</Text>
+      {next ? (
+        <>
+          <Text>До «{next.name}» {hunt.weeks} из {next.weeks} недель</Text>
+          <progress className="hunter-progress" value={hunt.weeks} max={next.weeks} aria-label={`Прогресс до реликвии «${next.name}»`} />
+        </>
+      ) : <Text>Все реликвии открыты</Text>}
+      {next && <Text className="hint">{hunt.thisWeek ? "Эта неделя уже засчитана." : "Победи любого моба, чтобы засчитать эту неделю."}</Text>}
+      <details>
+        <summary>Постоянные бонусы</summary>
+        {hunt.relics.map((relic) => (
+          <div className="hunter-reward" key={relic.weeks}>
+            <div className="boss-member">
+              <Text weight="2"><span aria-hidden="true">{relic.icon}</span> {relic.name}</Text>
+              <span className="combat-cost">{hunt.weeks >= relic.weeks ? "Открыта" : `${relic.weeks} ${plural(relic.weeks, "неделя", "недели", "недель")}`}</span>
+            </div>
+            <Text className="hint">+{relic.percent}% {bonusFor[relic.skill]}</Text>
+          </div>
+        ))}
+      </details>
+    </section>
   );
 }
 

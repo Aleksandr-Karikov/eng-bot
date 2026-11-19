@@ -1,5 +1,7 @@
 import type { StudyLanguage } from "./language";
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
+import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
+export type { CombatTarget } from "../../src/combat-mobs";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
 export interface Quiz {
@@ -355,6 +357,12 @@ export interface Trophies {
   of: number;
 }
 
+export interface HunterState {
+  weeks: number;
+  thisWeek: boolean;
+  relics: typeof HUNTER_RELICS;
+}
+
 export interface BossState {
   enabled: boolean;
   boss?: Boss;
@@ -367,11 +375,10 @@ export interface BossState {
     balance: number;
     roomId: number;
     week: string;
-    mobs: Array<{ id: "golem" | "ghost"; name: string; hp: number; reward: string; defeated: boolean }>;
+    mobs: Array<{ id: MobId; icon: string; name: string; hp: number; reward: string; defeated: boolean }>;
+    hunt?: HunterState;
   };
 }
-
-export type CombatTarget = "boss" | "golem" | "ghost";
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>

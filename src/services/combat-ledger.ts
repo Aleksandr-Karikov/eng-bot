@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, notExists, sql, type SQL } from "drizzle-orm";
+import { and, countDistinct, eq, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatArchive, combatSpends, reviewLogs, users } from "../db/schema";
 
@@ -51,4 +51,10 @@ export function bossStrikes(db: Db, roomId: number, from: Date, to: Date) {
 export function mobClaims(db: Db, userId: number, week: string) {
   return db.select({ target: combatSpends.target }).from(combatSpends)
     .where(and(eq(combatSpends.userId, userId), eq(combatSpends.mobWeek, week)));
+}
+
+export async function mobHuntWeeks(db: Db, userId: number): Promise<number> {
+  const [row] = await db.select({ weeks: countDistinct(combatSpends.mobWeek) }).from(combatSpends)
+    .where(and(eq(combatSpends.userId, userId), isNotNull(combatSpends.mobWeek)));
+  return row?.weeks ?? 0;
 }

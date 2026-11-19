@@ -1,4 +1,5 @@
 import { integer, primaryKey, real, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
+import type { CombatTarget } from "../combat-mobs";
 
 const createdAt = () => integer("created_at", { mode: "timestamp_ms" }).notNull();
 
@@ -281,7 +282,7 @@ export const combatSpends = sqliteTable("combat_spends", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id),
   roomId: integer("room_id"),
-  target: text("target", { enum: ["boss", "golem", "ghost"] }).notNull(),
+  target: text("target").$type<CombatTarget>().notNull(),
   mobWeek: text("mob_week"),
   requestId: text("request_id").notNull(),
   damageDeci: integer("damage_deci").notNull(),

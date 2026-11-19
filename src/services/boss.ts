@@ -4,7 +4,7 @@ import { cards, reviewLogs, users, words, type Room, type User } from "../db/sch
 import { latestDigestMoment } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
 import { bossStrikes, mobClaims } from "./combat-ledger";
-import { MOBS } from "./combat";
+import { MOBS } from "../combat-mobs";
 
 /**
  * 🐉 Босс недели — это цель комнаты, показанная как бой.
