@@ -334,6 +334,7 @@ export interface Boss {
 
 /** Монеты недели и уровень усиления: монеты — это снятые HP, тратятся на +10% урона за уровень. */
 export type UpgradeKind = "damage" | "listen" | "writing";
+export type BossPurchase = UpgradeKind | "rune";
 export interface Coins {
   offers: Array<{ kind: UpgradeKind; title: string; description: string; bonus: number; level: number; price: number | null }>;
   coins: number;
@@ -370,6 +371,7 @@ export interface BossState {
   total: number;
   coins?: Coins;
   trophies?: Trophies;
+  victory?: { finalBlow?: { name: string; at: string }; teamTrophy: boolean };
   combat?: {
     bank: boolean;
     balance: number;
@@ -377,6 +379,9 @@ export interface BossState {
     week: string;
     mobs: Array<{ id: MobId; icon: string; name: string; hp: number; reward: string; defeated: boolean }>;
     hunt?: HunterState;
+    core?: "closed" | "ready" | "spent" | null;
+    hit?: { spend: number; damage: number };
+    rune?: { price: number; owned: boolean; extra: number; saved: number };
   };
 }
 
@@ -385,7 +390,7 @@ export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId
   post<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
 /** Купить усиление; в ответ приходит новое состояние босса. */
-export const buyUpgrade = (kind: UpgradeKind) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });
+export const buyUpgrade = (kind: BossPurchase) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
 export interface WordDraft {

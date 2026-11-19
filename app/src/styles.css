@@ -365,6 +365,7 @@ body {
 }
 .boss-stage[data-phase="angry"] { --boss-accent: #ffbd74; }
 .boss-stage[data-phase="furious"] { --boss-accent: #ff8a80; }
+.boss-stage[data-core="ready"] { --boss-accent: #70e1d2; }
 .boss-stage[data-phase="dead"] { --boss-accent: #8ee3c0; }
 .boss-portrait {
   position: relative;
@@ -461,6 +462,14 @@ body {
   white-space: nowrap;
 }
 .boss-footnote { padding: 0 4px 8px; font-size: 13px; line-height: 1.45; }
+.boss-mechanic, .boss-victory {
+  padding: 12px 16px;
+  border: 1px solid var(--tg-theme-section-separator-color, #a0a8b840);
+  border-radius: 14px;
+}
+.boss-mechanic { display: grid; gap: 4px; font-size: 14px; }
+.boss-mechanic.ready { background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 12%, transparent); }
+.boss-victory h2 { margin: 0; font-size: 19px; }
 .combat-panel { gap: 12px; }
 .combat-balance { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .combat-toggle { align-items: center; cursor: pointer; }

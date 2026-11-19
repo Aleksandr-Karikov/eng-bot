@@ -285,6 +285,69 @@ it("навсегда открывает реликвии за разные не�
   expect(await answer(4, "sentence")).toMatchObject({ damage: 4.6 });
 });
 
+it("открывает ядро на половине HP, тратит руну один раз и показывает итоги командной победы", async () => {
+  const { h, app, headers, alice, room } = await bossTab();
+  const now = nsk("2026-11-19T12:00");
+  h.setNow(now);
+  await setWeeklyGoal(h.db, room.id, 100);
+  const bob = await makeUser(h.db, 200, "Bob");
+  await joinRoom(h.db, { roomId: room.id, userId: bob.id, now, makeCurrent: true });
+  const post = async (path: string, body: object) => (await app.request(path, {
+    method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+  })).json();
+  const state = async () => (await app.request("/api/boss", { headers })).json();
+  const credit = (damageDeci: number, banked: boolean) => h.db.insert(reviewLogs).values({
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: new Date(now.getTime() - 1000), damageDeci, banked,
+  });
+  expect(await state()).toMatchObject({ boss: { opponent: { id: "sentinel" }, hp: 100 }, combat: { core: "closed" } });
+  await credit(500, false);
+  await credit(300, true);
+  const before = await state();
+  expect(before).toMatchObject({ boss: { hp: 50 }, combat: { core: "ready", hit: { spend: 30, damage: 36 }, rune: { extra: 7.5, owned: false } } });
+
+  const buy = () => post("/api/boss/upgrade", { kind: "rune" });
+  const purchases = await Promise.all([buy(), buy()]);
+  expect(purchases.filter((result) => result.ok)).toHaveLength(1);
+  expect(await state()).toMatchObject({ coins: { coins: 40 }, combat: { hit: { spend: 30, damage: 43.5 }, rune: { owned: true } } });
+
+  const strike = (hp: number, requestId = randomUUID()) => post("/api/boss/combat", {
+    target: "boss", roomId: room.id, week: before.boss.week, requestId, maxDamageDeci: hp * 10,
+  });
+  const requestId = randomUUID();
+  expect(await strike(30, requestId)).toMatchObject({ damage: 43.5, boss: { hp: 6.5 }, combat: { balance: 0, core: "spent", rune: { owned: false } } });
+  await credit(60, true);
+  expect(await strike(30, requestId)).toMatchObject({ notice: expect.any(String), combat: { balance: 6 } });
+  expect(await strike(6)).toMatchObject({ damage: 6, boss: { hp: 0.5 } });
+  await credit(10, true);
+  expect(await strike(1)).toMatchObject({
+    damage: 0.5, boss: { hp: 0, byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
+    victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
+  });
+  expect(await buy()).toMatchObject({ combat: { rune: { owned: true } } });
+  h.setNow(nsk("2026-11-26T12:00"));
+  expect(await state()).toMatchObject({ boss: { phase: "fresh" }, combat: { rune: { owned: true } } });
+});
+
+it("усиливает только диктанты и только во время ярости Дракона", async () => {
+  const { h, app, headers, alice, room } = await bossTab();
+  const now = nsk("2026-11-26T12:00");
+  h.setNow(now);
+  await setWeeklyGoal(h.db, room.id, 100);
+  const credit = (damageDeci: number) => h.db.insert(reviewLogs).values({
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: new Date(now.getTime() - 1000), damageDeci,
+  });
+  const answer = async (reps: number, stage: string) => (await app.request("/api/answer", {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ cardId: 1, reps, answer: "good", stage }),
+  })).json();
+  await credit(650);
+  expect(await answer(0, "listen")).toMatchObject({ damage: 4 });
+  expect(await answer(1, "listen")).toMatchObject({ damage: 4.8 });
+  expect(await answer(2, "sentence")).toMatchObject({ damage: 4 });
+  await credit(300);
+  expect(await answer(3, "listen")).toMatchObject({ damage: 4 });
+});
+
 describe("🐉 boss tab in the Mini App", () => {
   it("returns HP, phase and the hit feed", async () => {
     const { h, alice, app, headers } = await bossTab();

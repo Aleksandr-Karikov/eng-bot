@@ -1,4 +1,4 @@
-import { and, countDistinct, eq, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
+import { and, asc, countDistinct, eq, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatArchive, combatSpends, reviewLogs, users } from "../db/schema";
 
@@ -43,9 +43,26 @@ export function removeReviewHistory(db: Db, filter: SQL) {
 }
 
 export function bossStrikes(db: Db, roomId: number, from: Date, to: Date) {
-  return db.select({ userId: users.id, name: users.firstName, damageDeci: combatSpends.damageDeci, at: combatSpends.at })
+  return db.select({
+    userId: users.id, name: users.firstName, at: combatSpends.at,
+    damageDeci: sql<number>`coalesce(${combatSpends.bossDamageDeci}, ${combatSpends.damageDeci})`,
+  })
     .from(combatSpends).innerJoin(users, eq(users.id, combatSpends.userId))
-    .where(and(eq(combatSpends.target, "boss"), eq(combatSpends.roomId, roomId), gte(combatSpends.at, from), lt(combatSpends.at, to)));
+    .where(and(eq(combatSpends.target, "boss"), eq(combatSpends.roomId, roomId), gte(combatSpends.at, from), lt(combatSpends.at, to)))
+    .orderBy(asc(combatSpends.at), asc(combatSpends.id));
+}
+
+export async function coreUsed(db: Db, userId: number, roomId: number, week: string): Promise<boolean> {
+  const [hit] = await db.select({ id: combatSpends.id }).from(combatSpends)
+    .where(and(eq(combatSpends.userId, userId), eq(combatSpends.roomId, roomId), eq(combatSpends.coreWeek, week))).limit(1);
+  return Boolean(hit);
+}
+
+export async function availableRune(db: Db, user: Pick<typeof users.$inferSelect, "id" | "runesBought">): Promise<number | null> {
+  if (user.runesBought === 0) return null;
+  const [hit] = await db.select({ id: combatSpends.id }).from(combatSpends)
+    .where(and(eq(combatSpends.userId, user.id), eq(combatSpends.runeSerial, user.runesBought))).limit(1);
+  return hit ? null : user.runesBought;
 }
 
 export function mobClaims(db: Db, userId: number, week: string) {

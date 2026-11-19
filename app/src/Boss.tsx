@@ -1,7 +1,7 @@
 import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { buyUpgrade, fight, getBoss, type Boss, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies, type UpgradeKind } from "./api";
+import { buyUpgrade, fight, getBoss, type Boss, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 
@@ -39,7 +39,7 @@ function hitTime(iso: string): string {
 export function BossScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<BossState>();
   const [error, setError] = useState<string>();
-  const [buying, setBuying] = useState<UpgradeKind>();
+  const [buying, setBuying] = useState<BossPurchase>();
   const [fighting, setFighting] = useState<CombatTarget | "bank">();
   const busy = Boolean(buying || fighting);
   useBackButton(onExit);
@@ -71,7 +71,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   }, [busy]);
 
   /** Покупка подтверждается сервером: монеты с телефона не считаются. В ответ — свежее состояние. */
-  const buy = async (kind: UpgradeKind) => {
+  const buy = async (kind: BossPurchase) => {
     if (busy) return;
     setBuying(kind);
     try {
@@ -89,7 +89,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     const combat = data?.combat;
     if (busy || !combat || !data.boss) return;
     const damage = action === "boss"
-      ? Math.min(combat.balance, data.boss.hp)
+      ? (combat.hit?.spend ?? Math.min(combat.balance, data.boss.hp))
       : combat.mobs.find((mob) => mob.id === action)?.hp ?? 0;
     setFighting(action);
     try {
@@ -128,7 +128,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   }
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
-      onBuy={buy} buying={buying} busy={busy}
+      victory={data.victory} combat={data.combat} onBuy={buy} buying={buying} busy={busy}
       actions={data.combat && <CombatPanel combat={data.combat} hp={data.boss.hp} busy={busy} fighting={fighting} onAction={(action) => void fightAction(action)} />} />
   );
 }
@@ -139,6 +139,8 @@ function BossView({
   total,
   coins,
   trophies,
+  victory,
+  combat,
   onBuy,
   buying,
   busy,
@@ -149,8 +151,10 @@ function BossView({
   total: number;
   coins?: Coins;
   trophies?: Trophies;
-  onBuy: (kind: UpgradeKind) => void;
-  buying: UpgradeKind | undefined;
+  victory?: BossState["victory"];
+  combat?: BossState["combat"];
+  onBuy: (kind: BossPurchase) => void;
+  buying: BossPurchase | undefined;
   busy: boolean;
   actions?: React.ReactNode;
 }) {
@@ -177,10 +181,11 @@ function BossView({
   }, [strike]);
 
   const top = boss.byUser.slice(0, 4);
+  const rune = combat?.rune;
 
   return (
     <div className="screen boss-screen">
-      <div className="boss-stage" data-phase={boss.phase} data-opponent={boss.opponent?.id}>
+      <div className="boss-stage" data-phase={boss.phase} data-opponent={boss.opponent?.id} data-core={combat?.core ?? undefined}>
         <div className="boss-portrait">
           <img src={`${import.meta.env.BASE_URL}${portrait}`} alt="" />
           <div className="boss-caption">
@@ -221,7 +226,28 @@ function BossView({
         </Text>
       </div>
 
-      {dead && <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску. Продолжай учиться: монеты и трофеи ещё засчитываются.</Text>}
+      {dead && (
+        <section className="boss-members boss-victory" aria-label="Итоги боя">
+          <h2>🏆 {victory?.teamTrophy ? "Победа команды" : "Босс повержен"}</h2>
+          {victory?.finalBlow && <Text>Добил <b>{victory.finalBlow.name}</b> <span className="hint">· {hitTime(victory.finalBlow.at)}</span></Text>}
+          {boss.byUser.map((player, i) => (
+            <div className="boss-member" key={i}><span>{player.name}</span><b>{hpFormat.format(player.count)} HP</b></div>
+          ))}
+          {victory?.teamTrophy && <Text className="hint">Трофей «Победа команды» получат все, кто внёс урон, при подведении итогов недели.</Text>}
+          <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску.</Text>
+        </section>
+      )}
+      {!dead && combat?.core && (
+        <div className={`boss-mechanic${combat.core === "ready" ? " ready" : ""}`}>
+          <b>{combat.core === "closed" ? "Ядро Стража закрыто" : "Ядро Стража открыто"}</b>
+          <span>{combat.core === "closed" ? "Откроется на половине здоровья."
+            : combat.core === "spent" ? "Ты уже использовал бонус ядра в этом бою."
+            : "Твой следующий ручной удар получит +20% урона."}</span>
+        </div>
+      )}
+      {boss.opponent?.id === "dragon" && boss.phase === "furious" && (
+        <div className="boss-mechanic ready"><b>Дракон в ярости</b><span>Диктанты в этой комнате дают +20% базового урона.</span></div>
+      )}
       {actions}
       <div className="boss-hits">
         <Text weight="2">⚔️ Свежие удары</Text>
@@ -244,7 +270,7 @@ function BossView({
         {total > hits.length && <Text className="hint">Удары и ответы за неделю: {total}.</Text>}
       </div>
 
-      {top.length > 1 && (
+      {!dead && top.length > 1 && (
         <div className="boss-members">
           <Text weight="2">Вклад команды</Text>
           {top.map((u, i) => (
@@ -263,6 +289,18 @@ function BossView({
             <Text className="hint">{coins.coins}</Text>
           </div>
           <Text weight="2" className="upgrade-title">🛍 Магазин усилений</Text>
+          {rune && (
+            <div className="upgrade-offer">
+              <Text weight="2">◇ Руна пробоя</Text>
+              <Text className="hint">+25% к следующему ручному удару по боссу, до +10 HP.</Text>
+              {rune.owned ? <Text className="combat-claim">Руна в запасе</Text> : (
+                <Button size="m" mode="bezeled" stretched loading={buying === "rune"} disabled={busy || coins.coins < rune.price} onClick={() => onBuy("rune")}>
+                  {coins.coins < rune.price ? `Нужно ${rune.price} монет` : `Купить за ${rune.price} монет`}
+                  {rune.extra > 0 ? ` · +${hpFormat.format(rune.extra)} HP` : rune.saved > 0 ? ` · сбережёт ${hpFormat.format(rune.saved)} HP` : ""}
+                </Button>
+              )}
+            </div>
+          )}
           {coins.offers.map((offer) => (
             <div className="upgrade-offer" key={offer.kind}>
               <div className="boss-member">
@@ -297,7 +335,7 @@ function CombatPanel({ combat, hp, busy, fighting, onAction }: {
   fighting?: CombatTarget | "bank";
   onAction: (action: CombatTarget | "bank") => void;
 }) {
-  const bossHit = Math.min(hp, combat.balance);
+  const hit = combat.hit ?? { spend: Math.min(hp, combat.balance), damage: Math.min(hp, combat.balance) };
   return (
     <div className="boss-members combat-panel">
       <div className="boss-member">
@@ -312,10 +350,11 @@ function CombatPanel({ combat, hp, busy, fighting, onAction }: {
         {combat.bank ? "Выбирай, на кого потратить запас. Он переносится между неделями." : "Новый урон сразу идёт в босса комнаты."}
       </Text>
       {hp > 0 && (
-        <Button size="m" stretched loading={fighting === "boss"} disabled={busy || bossHit <= 0} onClick={() => onAction("boss")}>
-          {bossHit > 0 ? `Ударить босса на ${hpFormat.format(bossHit)} HP` : "Ударить босса из запаса"}
+        <Button size="m" stretched loading={fighting === "boss"} disabled={busy || hit.spend <= 0} onClick={() => onAction("boss")}>
+          {hit.damage > 0 ? `Ударить босса на ${hpFormat.format(hit.damage)} HP` : "Ударить босса из запаса"}
         </Button>
       )}
+      {hit.damage > hit.spend && <Text className="hint">Из запаса спишется {hpFormat.format(hit.spend)} HP.</Text>}
       <details className="combat-mobs">
         <summary>Мобы недели</summary>
         {combat.mobs.map((mob) => (

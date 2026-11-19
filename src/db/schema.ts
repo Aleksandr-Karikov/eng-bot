@@ -38,6 +38,7 @@ export const users = sqliteTable("users", {
   /** Сколько монет потрачено на этой неделе и на какой — монеты недели сгорают в воскресенье. */
   coinsSpent: integer("coins_spent").notNull().default(0),
   coinsPeriod: text("coins_period"),
+  runesBought: integer("runes_bought").notNull().default(0),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),
   /**
@@ -286,10 +287,15 @@ export const combatSpends = sqliteTable("combat_spends", {
   mobWeek: text("mob_week"),
   requestId: text("request_id").notNull(),
   damageDeci: integer("damage_deci").notNull(),
+  bossDamageDeci: integer("boss_damage_deci"),
+  coreWeek: text("core_week"),
+  runeSerial: integer("rune_serial"),
   at: integer("at", { mode: "timestamp_ms" }).notNull(),
 }, (t) => [
   uniqueIndex("combat_spends_mob_week_idx").on(t.userId, t.target, t.mobWeek),
   uniqueIndex("combat_spends_request_idx").on(t.userId, t.requestId),
+  uniqueIndex("combat_spends_core_idx").on(t.userId, t.roomId, t.coreWeek),
+  uniqueIndex("combat_spends_rune_idx").on(t.userId, t.runeSerial),
   index("combat_spends_room_at_idx").on(t.roomId, t.at),
 ]);
 

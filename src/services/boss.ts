@@ -1,9 +1,9 @@
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
-import { latestDigestMoment } from "./digest";
+import { latestDigestMoment, WEEK_MS } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
-import { bossStrikes, mobClaims } from "./combat-ledger";
+import { availableRune, bossStrikes, mobClaims, withCombatLock } from "./combat-ledger";
 import { MOBS } from "../combat-mobs";
 
 /**
@@ -23,6 +23,10 @@ export const WEEKLY_BOSSES = [
   { id: "dragon", name: "Дракон библиотеки" },
   { id: "sentinel", name: "Страж обсерватории" },
 ] as const;
+
+export function weeklyOpponent(weekStart: Date) {
+  return WEEKLY_BOSSES[Math.floor(weekStart.getTime() / WEEK_MS) % WEEKLY_BOSSES.length];
+}
 
 export interface BossState extends GoalProgress {
   room: string;
@@ -67,7 +71,6 @@ export function bossPace(done: number, target: number, elapsed: number): BossPac
   return "behind";
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 
 /** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты (воскресенье 20:00). */
@@ -80,7 +83,7 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   return {
     ...progress,
     room: room.name,
-    opponent: WEEKLY_BOSSES[Math.floor(weekStart.getTime() / WEEK_MS) % WEEKLY_BOSSES.length],
+    opponent: weeklyOpponent(weekStart),
     week,
     hp: Math.max(0, Math.round((progress.target - progress.done) * 10) / 10),
     damage,
@@ -120,6 +123,7 @@ export interface BossFeed {
   byUser: Array<{ name: string; damage: number }>;
   /** Сколько всего ударов за неделю (для «бот пропустил 40 ударов, пока ты не смотрел»). */
   total: number;
+  finalBlow?: { name: string; at: Date };
 }
 
 /**
@@ -129,7 +133,7 @@ export interface BossFeed {
  * сорок раз подряд. Один человек, отвечающий подряд, — это одна серия, то есть один удар.
  * Границы серий считаются по времени: разрыв больше минуты — новый удар.
  */
-export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promise<BossFeed> {
+export async function bossFeed(db: Db, room: Room, now: Date, limit = 20, target?: number): Promise<BossFeed> {
   const weekStart = latestDigestMoment(now).at;
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const rows = await db
@@ -139,16 +143,20 @@ export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promi
     .innerJoin(words, eq(cards.wordId, words.id))
     .innerJoin(users, eq(reviewLogs.userId, users.id))
     .where(and(eq(words.roomId, room.id), eq(reviewLogs.banked, false), gte(reviewLogs.reviewedAt, weekStart), lt(reviewLogs.reviewedAt, weekEnd)))
-    .orderBy(asc(reviewLogs.reviewedAt));
+    .orderBy(asc(reviewLogs.reviewedAt), asc(reviewLogs.id));
 
   const byUser = new Map<number, { name: string; damage: number }>();
   const hits: BossHit[] = [];
   let lastUserId: number | undefined;
+  let remaining = target === undefined ? Infinity : Math.round(target * 10);
+  let finalBlow: BossFeed["finalBlow"];
   const events = [
     ...rows.map((row) => ({ ...row, damageDeci: row.damageDeci ?? Math.round(answerWeight(row.rating, row.stage) * 10) })),
     ...await bossStrikes(db, room.id, weekStart, weekEnd),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
   for (const row of events) {
+    if (remaining > 0 && remaining <= row.damageDeci) finalBlow = { name: row.name, at: row.at };
+    remaining -= row.damageDeci;
     const damage = row.damageDeci / 10;
     const total = byUser.get(row.userId) ?? { name: row.name, damage: 0 };
     total.damage = Math.round((total.damage + damage) * 10) / 10;
@@ -168,6 +176,7 @@ export async function bossFeed(db: Db, room: Room, now: Date, limit = 20): Promi
     hits: hits.slice(-limit).reverse(),
     byUser: [...byUser.values()].sort((a, b) => b.damage - a.damage),
     total: events.length,
+    ...(finalBlow ? { finalBlow } : {}),
   };
 }
 
@@ -232,6 +241,7 @@ export interface CoinState {
 }
 
 export const MAX_UPGRADE = 10;
+export const RUNE_PRICE = 40;
 type Wallet = Pick<User, "upgradeDamage" | "coinsSpent" | "coinsPeriod"> & Partial<Pick<User, "upgradeListen" | "upgradeWriting">>;
 
 export function coinState(done: number, user: Wallet, now: Date): CoinState {
@@ -248,6 +258,10 @@ export function coinState(done: number, user: Wallet, now: Date): CoinState {
   };
 }
 
+function walletSnapshot(user: Pick<User, "coinsSpent" | "coinsPeriod">) {
+  return and(eq(users.coinsSpent, user.coinsSpent), user.coinsPeriod === null ? isNull(users.coinsPeriod) : eq(users.coinsPeriod, user.coinsPeriod));
+}
+
 /** Условное обновление общего кошелька не даёт двум покупкам потратить одни монеты. */
 export async function buyUpgrade(db: Db, userId: number, done: number, now: Date, kind: UpgradeKind = "damage"): Promise<"ok" | "poor" | "max"> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
@@ -262,7 +276,26 @@ export async function buyUpgrade(db: Db, userId: number, done: number, now: Date
     [upgrade.field]: offer.level + 1,
     coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + offer.price,
     coinsPeriod: coinsPeriod(now),
-  }).where(and(eq(users.id, userId), eq(users[upgrade.field], offer.level), eq(users.coinsSpent, user.coinsSpent)))
+  }).where(and(eq(users.id, userId), eq(users[upgrade.field], offer.level), walletSnapshot(user)))
     .returning({ id: users.id });
   return updated.length ? "ok" : "poor";
+}
+
+export function buyPiercingRune(db: Db, userId: number, now: () => Date): Promise<"ok" | "poor" | "owned" | "stale"> {
+  return withCombatLock(db, async () => {
+    const at = now();
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user?.modeBoss) return "stale";
+    if (await availableRune(db, user) !== null) return "owned";
+    const period = coinsPeriod(at);
+    const done = await personalDamage(db, userId, at);
+    if (coinState(done, user, at).coins < RUNE_PRICE) return "poor";
+    const [updated] = await db.update(users).set({
+      runesBought: user.runesBought + 1,
+      coinsSpent: (user.coinsPeriod === period ? user.coinsSpent : 0) + RUNE_PRICE,
+      coinsPeriod: period,
+    }).where(and(eq(users.id, userId), eq(users.runesBought, user.runesBought), walletSnapshot(user)))
+      .returning({ id: users.id });
+    return updated ? "ok" : "stale";
+  });
 }

@@ -9,10 +9,10 @@ import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
 import { autoVoice } from "../services/voice";
 import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
-import { cards as cardsTable, setItems, wordSets } from "../db/schema";
+import { cards as cardsTable, roomMembers, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
-import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
 import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
@@ -361,16 +361,27 @@ export async function appBoss(deps: Deps, user: User) {
   if (!enabled) return { enabled, boss: undefined, hits: [], total: 0 };
   if (!room) return { enabled, boss: undefined };
   const now = deps.now();
-  const [boss, feed, combat] = await Promise.all([
-    bossOf(deps.db, room, now, user.id), bossFeed(deps.db, room, now, 20), combatState(deps.db, user, now),
+  const boss = await bossOf(deps.db, room, now, user.id);
+  const won = boss.phase === "dead";
+  const [feed, combat, earnedCoins, collection, members] = await Promise.all([
+    bossFeed(deps.db, room, now, 20, won ? boss.target : undefined),
+    combatState(deps.db, user, now, room.id, boss),
+    personalDamage(deps.db, user.id, now),
+    userTrophies(deps.db, user.id),
+    won ? deps.db.select({ id: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, room.id)).limit(2) : [],
   ]);
   // 🪙 Монеты — личный урон этой недели: усиление своё, чужой урон монет не даёт.
-  const coins = coinState(await personalDamage(deps.db, user.id, now), user, now);
-  const collection = await userTrophies(deps.db, user.id);
+  const coins = coinState(earnedCoins, user, now);
   return {
     enabled,
     combat: { ...combat, roomId: room.id, week: boss.week },
     coins,
+    ...(won ? {
+      victory: {
+        ...(feed.finalBlow ? { finalBlow: { name: feed.finalBlow.name, at: feed.finalBlow.at.toISOString() } } : {}),
+        teamTrophy: members.length > 1,
+      },
+    } : {}),
     trophies: {
       // Отдаём весь каталог: вкладка показывает и то, чего ещё нет, — иначе коллекция не коллекция.
       all: TROPHIES.map((t) => ({ kind: t.kind, emoji: t.emoji, title: t.title, how: t.how })),
@@ -477,14 +488,18 @@ export async function setItemForAudio(deps: Deps, itemId: number) {
 export async function appBuyUpgrade(deps: Deps, user: User, body: unknown = {}) {
   const kind = body && typeof body === "object" && "kind" in body ? body.kind : "damage";
   const upgrade = UPGRADES.find((u) => u.kind === kind);
-  if (!upgrade) return { status: 400, body: { ok: false as const, error: "Неизвестное усиление" } };
+  if (kind !== "rune" && !upgrade) return { status: 400, body: { ok: false as const, error: "Неизвестное усиление" } };
   if (!bossEnabled(user, deps.bossEnabled)) return { status: 400, body: { ok: false as const, error: "Босс выключен" } };
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
   if (!room) return { status: 400, body: { ok: false as const, error: "Нет комнаты" } };
   const now = deps.now();
-  const result = await buyUpgrade(deps.db, user.id, await personalDamage(deps.db, user.id, now), now, upgrade.kind);
+  const result = upgrade
+    ? await buyUpgrade(deps.db, user.id, await personalDamage(deps.db, user.id, now), now, upgrade.kind)
+    : await buyPiercingRune(deps.db, user.id, deps.now);
   if (result === "max") return { status: 400, body: { ok: false as const, error: "Дальше усиление не растёт" } };
   if (result === "poor") return { status: 400, body: { ok: false as const, error: "Пока не хватает монет — снятых HP этой недели" } };
+  if (result === "owned") return { status: 400, body: { ok: false as const, error: "Руна уже в запасе" } };
+  if (result === "stale") return { status: 400, body: { ok: false as const, error: "Покупка не прошла. Проверь баланс." } };
   // Обновлённый пользователь: ответ должен показывать новый уровень, а не тот, что был на входе.
   return { status: 200, body: { ok: true as const }, user: (await getUserByTelegramId(deps.db, user.telegramId)) ?? user };
 }

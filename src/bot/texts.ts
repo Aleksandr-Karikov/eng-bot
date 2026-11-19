@@ -325,6 +325,10 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
   ];
   if (b.phase !== "dead") {
     lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")}.` : "Последний день недели — добиваем сегодня.");
+    if (b.opponent.id === "sentinel" && b.hp <= b.target / 2) {
+      lines.push("Открыто ядро Стража. Один ручной удар из запаса за бой получает +20%.");
+    }
+    if (b.opponent.id === "dragon" && b.phase === "furious") lines.push("Диктанты дают +20% базового урона, пока Дракон в ярости.");
   }
   const byUser = feed?.byUser.length ? feed.byUser : b.byUser.map((u) => ({ name: u.name, damage: u.count }));
   if (byUser.length) lines.push("", `Удары: ${byUser.map((u) => `${esc(u.name)} ${u.damage}`).join(" · ")}`);
