@@ -1,6 +1,6 @@
 import { Button, Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
-import { motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { buyUpgrade, getBoss, type Boss, type BossState, type Coins, type Trophies, type UpgradeKind } from "./api";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
@@ -14,16 +14,14 @@ import { haptic, notify, useBackButton } from "./telegram";
  * 2. HP — это цель комнаты (services/boss.ts), ни очков, ни валюты. Полоска здесь и в /goal — одна.
  */
 
-/**
- * Фигура босса по фазе: живой, а не прогресс-бар с ушами. Эмодзи здесь — не украшение подписи,
- * а сама картинка босса: другого портрета у него нет, и в тёмной теме он читается как надо.
- */
-const FACE: Record<Boss["phase"], { emoji: string; title: string; color: string }> = {
-  fresh: { emoji: "🐉", title: "Босс спокоен", color: "#7c8cf8" },
-  angry: { emoji: "🐲", title: "Босс злится", color: "#f59e0b" },
-  furious: { emoji: "🔥", title: "Босс в ярости", color: "#ef4444" },
-  dead: { emoji: "💀", title: "Босс повержен", color: "#22c55e" },
+const PHASE: Record<Boss["phase"], { title: string; art: string }> = {
+  fresh: { title: "Спокоен", art: "boss-arena.webp" },
+  angry: { title: "Разозлён", art: "boss-arena.webp" },
+  furious: { title: "В ярости", art: "boss-furious.webp" },
+  dead: { title: "Повержен", art: "boss-defeated.webp" },
 };
+
+const hpFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
 
 const PACE: Record<Boss["pace"], string> = {
   ahead: "опережаете график",
@@ -54,10 +52,30 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   useBackButton(onExit);
 
   useEffect(() => {
-    getBoss()
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, []);
+    if (buying) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        if (document.visibilityState === "visible") {
+          const next = await getBoss();
+          if (active) {
+            setData(next);
+            setError(undefined);
+          }
+        }
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (active) timer = setTimeout(refresh, 30_000);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [buying]);
 
   /** Покупка подтверждается сервером: монеты с телефона не считаются. В ответ — свежее состояние. */
   const buy = async (kind: UpgradeKind) => {
@@ -74,7 +92,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  if (error) return <Placeholder header="Не получилось загрузить" description={error} />;
+  if (error && !data) return <Placeholder header="Не получилось загрузить" description={error} />;
   if (!data) {
     return (
       <div className="center">
@@ -112,57 +130,71 @@ function BossView({
   onBuy: (kind: UpgradeKind) => void;
   buying: UpgradeKind | undefined;
 }) {
-  const face = FACE[boss.phase];
-  const percent = Math.min(100, Math.round(boss.damage * 100));
+  const phase = PHASE[boss.phase];
+  const reducedMotion = useReducedMotion();
+  const percent = boss.target > 0 ? Math.min(100, (boss.hp / boss.target) * 100) : 0;
   const dead = boss.phase === "dead";
-  // Тряска — только когда бьют впервые: постоянное дрожание раздражает уже на второй минуте.
-  const [shake, setShake] = useState(0);
-  useEffect(() => {
-    if (!dead) setShake((n) => n + 1);
-  }, [hits.length, dead]);
+  const previous = useRef(boss);
+  const [strike, setStrike] = useState<{ damage: number; done: number }>();
 
-  const top = useMemo(() => boss.byUser.slice(0, 4), [boss.byUser]);
+  useEffect(() => {
+    const last = previous.current;
+    previous.current = boss;
+    if (last.room === boss.room && last.target === boss.target && boss.hp < last.hp) {
+      setStrike({ damage: last.hp - boss.hp, done: boss.done });
+    }
+  }, [boss]);
+
+  useEffect(() => {
+    if (!strike) return;
+    const timer = setTimeout(() => setStrike(undefined), 1400);
+    return () => clearTimeout(timer);
+  }, [strike]);
+
+  const top = boss.byUser.slice(0, 4);
 
   return (
     <div className="screen boss-screen">
+      <div className="boss-stage" data-phase={boss.phase}>
+        <div className="boss-portrait">
+          <img src={`${import.meta.env.BASE_URL}${phase.art}`} alt="" />
+          <div className="boss-caption">
+            <span className="boss-kicker">Босс недели</span>
+            <h1>Дракон библиотеки</h1>
+          </div>
+          <span className="boss-phase">{phase.title}</span>
+          <AnimatePresence>
+            {strike && (
+              <motion.span key={strike.done} className="boss-strike" aria-hidden="true"
+                initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reducedMotion ? undefined : { opacity: 0, y: -12 }}>
+                −{hpFormat.format(strike.damage)} HP
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
+        <div className="boss-hud">
+          <div className="boss-hp" aria-live="polite">
+            <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(boss.target)} HP
+          </div>
+          <div className={strike ? "boss-bar struck" : "boss-bar"} role="progressbar" aria-label="Здоровье босса"
+            aria-valuemin={0} aria-valuemax={boss.target} aria-valuenow={boss.hp}>
+            <div className="boss-bar-fill" style={{ width: `${percent}%` }} />
+          </div>
+          <div className="boss-meta">
+            <span>Снято {hpFormat.format(boss.done)} HP</span>
+            <span>{dead ? "Победа команды" : PACE[boss.pace]}</span>
+          </div>
+        </div>
+      </div>
+
       <div className="boss-head">
         <Text weight="2">{boss.room}</Text>
         <Text className="hint">
           {boss.daysLeft > 0 ? `${boss.daysLeft} ${plural(boss.daysLeft, "день", "дня", "дней")} до конца недели` : "Последний день"}
         </Text>
       </div>
-
-      <motion.div
-        className="boss-stage"
-        key={shake}
-        initial={dead ? undefined : { x: -6, rotate: -1 }}
-        animate={{ x: 0, rotate: 0 }}
-        transition={{ type: "spring", stiffness: 320, damping: 12 }}
-      >
-        <motion.div
-          className="boss-face"
-          style={{ filter: dead ? "grayscale(1) opacity(0.6)" : undefined }}
-          animate={dead ? { scale: [1, 1.15, 1], rotate: [0, -8, 8, 0] } : { y: [0, -6, 0] }}
-          transition={dead ? { duration: 0.9 } : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-        >
-          {face.emoji}
-        </motion.div>
-        <Text weight="2" style={{ color: face.color }}>
-          {face.title}
-        </Text>
-        <div className="boss-bar" aria-label={`Урон ${percent}%`}>
-          <motion.div
-            className="boss-bar-fill"
-            style={{ background: `linear-gradient(90deg, ${face.color}, ${face.color}88)` }}
-            initial={{ width: 0 }}
-            animate={{ width: `${percent}%` }}
-            transition={{ type: "spring", stiffness: 120, damping: 20 }}
-          />
-        </div>
-        <Text className="hint">
-          {dead ? `Урон: ${boss.done} из ${boss.target}` : `HP: ${boss.hp} из ${boss.target} · ${PACE[boss.pace]}`}
-        </Text>
-      </motion.div>
 
       {dead && <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску. Продолжай учиться: монеты и трофеи ещё засчитываются.</Text>}
       <div className="boss-hits">
@@ -172,26 +204,27 @@ function BossView({
           <motion.div
             key={`${hit.at}-${i}`}
             className="boss-hit"
-            initial={{ opacity: 0, y: 8 }}
+            initial={reducedMotion ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
           >
             <span>
-              <b>{hit.name}</b> нанёс {hit.damage} HP урона
+              <b>{hit.name}</b>
+              <span className="boss-hit-time">{hitTime(hit.at)}</span>
             </span>
-            <Text className="hint">{hitTime(hit.at)}</Text>
+            <span className="boss-hit-damage">−{hpFormat.format(hit.damage)} HP</span>
           </motion.div>
         ))}
-        {total > hits.length && <Text className="hint">Всего за неделю — {total} ударов.</Text>}
+        {total > hits.length && <Text className="hint">За неделю: {total} {plural(total, "ответ", "ответа", "ответов")}.</Text>}
       </div>
 
       {top.length > 1 && (
         <div className="boss-members">
-          <Text weight="2">Кто сколько снял</Text>
-          {top.map((u) => (
-            <div key={u.name} className="boss-member">
+          <Text weight="2">Вклад команды</Text>
+          {top.map((u, i) => (
+            <div key={i} className="boss-member">
               <span>{u.name}</span>
-              <Text className="hint">{u.count}</Text>
+              <Text className="hint">{hpFormat.format(u.count)} HP</Text>
             </div>
           ))}
         </div>

@@ -330,38 +330,115 @@ body {
 .fold-icon { color: var(--tg-theme-hint-color, #9aa0aa); transition: transform 0.15s ease; }
 .fold-icon.open { transform: rotate(180deg); }
 
-/* Вкладка босса: сцена, полоска HP и лента ударов. Цвета — из темы, чтобы работало в тёмной. */
-.boss-screen { gap: 16px; }
-.boss-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+/* Тёмная арена в обеих темах, панели под ней используют цвета Telegram. */
+.boss-screen { max-width: 620px; margin-inline: auto; gap: 14px; padding-bottom: 24px; }
+.boss-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 0 4px; }
+.boss-head .hint { font-size: 13px; }
 .boss-stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 18px 18px;
-  border-radius: 20px;
-  background: var(--tg-theme-bg-color, #fff);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  --boss-accent: #85d1ff;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid #344458;
+  border-radius: 24px;
+  background: #101723;
+  color: #f5f7ff;
+  box-shadow: 0 10px 28px #0c13272e;
 }
-/* Босс — эмодзи в большом кегле: не нужен ни FLUX, ни отдельная картинка в бандле. */
-.boss-face { font-size: 88px; line-height: 1; user-select: none; }
+.boss-stage[data-phase="angry"] { --boss-accent: #ffbd74; }
+.boss-stage[data-phase="furious"] { --boss-accent: #ff8a80; }
+.boss-stage[data-phase="dead"] { --boss-accent: #8ee3c0; }
+.boss-portrait {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #334561, #101723 80%);
+}
+.boss-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.boss-portrait::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #0b101c65, transparent 30%, transparent 48%, #101723 100%);
+  pointer-events: none;
+}
+.boss-stage[data-phase="angry"] img { filter: sepia(.2) saturate(1.28); }
+.boss-caption, .boss-phase, .boss-strike { position: relative; z-index: 1; }
+.boss-caption { padding: 16px 18px 4px; }
+.boss-caption h1 { margin: 4px 0 0; font-size: clamp(25px, 7vw, 38px); line-height: 1.08; letter-spacing: -.035em; }
+.boss-kicker { color: #d9e1f0; font-size: 11px; line-height: 1.2; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; }
+.boss-phase {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 1px solid color-mix(in srgb, var(--boss-accent) 55%, transparent);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #101723;
+  color: var(--boss-accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+.boss-strike {
+  position: absolute;
+  top: 18%;
+  left: 16px;
+  color: #ffe1a8;
+  font-size: 24px;
+  font-weight: 800;
+  text-shadow: 0 2px 12px #070711, 0 0 5px #070711;
+}
+.boss-hud {
+  padding: 8px 18px 16px;
+  display: grid;
+  gap: 9px;
+  background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--boss-accent) 11%, transparent), transparent 72%);
+}
+.boss-hp { color: #c2cfe0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.boss-hp strong { color: #f6f8ff; font-size: 32px; line-height: 1; letter-spacing: -.045em; }
 .boss-bar {
-  width: 100%;
-  height: 14px;
+  height: 10px;
   border-radius: 999px;
   overflow: hidden;
-  background: var(--tg-theme-secondary-bg-color, #eef2f7);
+  background: #2b3445;
 }
-.boss-bar-fill { height: 100%; border-radius: 999px; }
+.boss-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--boss-accent) 56%, #3c213e), var(--boss-accent));
+  transition: width .45s ease;
+}
+.boss-bar.struck { animation: boss-hit-flash .65s ease-out; }
+@keyframes boss-hit-flash {
+  35% { box-shadow: 0 0 14px var(--boss-accent); background: #e2ebf7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boss-bar.struck { animation: none; }
+  .boss-bar-fill { transition: none; }
+}
+.boss-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; color: #bcc9dc; font-size: 12px; }
 .boss-hits, .boss-members {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: var(--tg-theme-bg-color, #fff);
+  background: var(--tg-theme-section-bg-color, var(--tgui--bg_color, #fff));
 }
 .boss-hit, .boss-member { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.boss-hit { align-items: center; padding: 8px 0; border-top: 1px solid var(--tg-theme-section-separator-color, #a0a8b840); }
+.boss-hit > span:first-child { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.boss-hit-time { color: var(--tg-theme-subtitle-text-color, var(--tgui--subtitle_text_color, #69717f)); font-size: 12px; }
+.boss-hit-damage {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 13%, transparent);
+  color: var(--tg-theme-accent-text-color, var(--tgui--accent_text_color, #2481cc));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .boss-footnote { padding: 0 4px 8px; font-size: 13px; line-height: 1.45; }
 
 /* Полка трофеев: полученные цветные, остальные приглушены — видно, что осталось собрать. */
