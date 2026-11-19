@@ -36,9 +36,6 @@ body {
 .block { line-height: 1.45; }
 .picture { width: 100%; aspect-ratio: 1 / 1; max-height: 320px; border-radius: 14px; overflow: hidden; background: var(--tg-theme-secondary-bg-color, #eee); }
 .picture img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tap { text-align: center; }
-/* Сверху карточки подсказка нарисована абсолютно: в потоке она сдвигала содержимое при открытии. */
-.card > .tap { position: absolute; left: 0; right: 0; bottom: 18px; pointer-events: none; }
 .actions { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 8px; justify-content: center; }
 .stamp {
@@ -259,24 +256,88 @@ body {
    и на родителе его не перебить — оно на самом элементе с текстом. */
 .card-answer .answer { text-align: left; line-height: 1.25; font-weight: 700; letter-spacing: -0.2px; }
 
-/* До открытия поверх лежит размытая подделка: держит форму строки, но настоящий ответ не выдаёт.
-   Позиционируется в том же месте, поэтому ничего не сдвигает. */
-.card-answer .fake {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  filter: blur(5px);
-  opacity: 0.45;
-  user-select: none;
-  pointer-events: none;
-  color: var(--tg-theme-hint-color, #8e8e93);
+/* Полотно скрытия фиксировано по высоте, чтобы его форма не выдавала длину ответа. */
+.card-reveal-zone {
+  position: relative;
+  --spoiler-height: clamp(176px, 40vh, 320px);
+  min-height: var(--spoiler-height);
 }
-
-/* До открытия ответ и всё под ним не видны, но занимают своё место: вёрстка не меняется,
-   поэтому нет прыжка и переноса. visibility, а не display — место сохраняется; blur подсказывал
-   длину слова пятном, для этого не годится. */
-.veiled { opacity: 0; visibility: hidden; user-select: none; transition: opacity 0.15s ease; }
+.card-reveal-content { display: grid; gap: 12px; }
+.card-reveal-zone:not(.is-revealed) .card-reveal-content { visibility: hidden; user-select: none; }
+.card-spoiler {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--spoiler-height);
+  width: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--tg-theme-button-color, #2481cc) 22%, transparent);
+  border-radius: 18px;
+  color: var(--tg-theme-text-color, var(--tgui--text_color, #17233c));
+  background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #edf1f8));
+  font: inherit;
+  cursor: pointer;
+}
+.card-spoiler::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -18px;
+  background:
+    radial-gradient(ellipse at 20% 22%, #a78bfa63, transparent 49%),
+    radial-gradient(ellipse at 80% 66%, #38bdf865, transparent 51%),
+    radial-gradient(ellipse at 48% 64%, #6080d75e, transparent 49%);
+  filter: blur(13px);
+}
+.card-spoiler::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    radial-gradient(circle at 7px 10px, #ffffffb3 0.65px, transparent 1.5px) 0 0 / 19px 23px,
+    radial-gradient(circle at 11px 6px, #6b82c685 0.5px, transparent 1.1px) 0 0 / 17px 21px,
+    radial-gradient(circle at 3px 11px, #ffffff7a 0.4px, transparent 1.4px) 0 0 / 13px 17px;
+  mask-image: radial-gradient(ellipse, #000 42%, #0008);
+}
+.card-spoiler:focus-visible { outline: 2px solid var(--tg-theme-accent-text-color, #2481cc); outline-offset: 3px; }
+.card-spoiler-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: var(--tg-theme-bg-color, var(--tgui--bg_color, #fff));
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: 0 3px 12px #20376320;
+}
+@property --spoiler-wave {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.is-revealed .card-reveal-content { animation: card-answer-reveal .48s cubic-bezier(.18, .7, .25, 1); }
+.is-revealed .card-spoiler {
+  pointer-events: none;
+  mask-image: radial-gradient(circle at var(--reveal-x) var(--reveal-y), transparent calc(var(--spoiler-wave) - 18px), #000 calc(var(--spoiler-wave) + 12px));
+  animation: card-spoiler-dissolve .48s cubic-bezier(.18, .7, .25, 1) both;
+}
+@keyframes card-answer-reveal {
+  from { clip-path: circle(0 at var(--reveal-x) var(--reveal-y)); }
+  to { clip-path: circle(var(--reveal-radius) at var(--reveal-x) var(--reveal-y)); }
+}
+@keyframes card-spoiler-dissolve {
+  from { --spoiler-wave: 0px; opacity: 1; }
+  to { --spoiler-wave: calc(var(--reveal-radius) + 24px); opacity: 0; visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-revealed .card-reveal-content { animation: none; }
+  .is-revealed .card-spoiler { animation: none; visibility: hidden; }
+}
 .card-rest { display: flex; flex-direction: column; gap: 10px; }
 
 /* Кегль по длине текста: длинная фраза не должна уезжать за край карточки. */
@@ -316,7 +377,7 @@ body {
 .example.tap-example { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .example.muted { color: var(--tg-theme-hint-color, #9aa0aa); }
 /* Перевод примера — не курсив и приглушённый: его не спутать с самим предложением. */
-.example.example-ru { font-style: normal; font-size: 13px; line-height: 1.4; color: var(--tg-theme-subtitle-text-color, #6b7785); }
+.example.example-ru { display: block; font-style: normal; font-size: 13px; line-height: 1.4; color: var(--tg-theme-subtitle-text-color, #6b7785); }
 
 /* Формы — чипами в строку: одна-две штуки не должны занимать абзац. */
 .forms { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

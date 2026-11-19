@@ -1,13 +1,12 @@
 import { cardAudioPath, playAudio, playAudioIfReady } from "./sound";
 import { AudioButtons } from "./AudioButtons";
-import { studyLanguage } from "./language";
 import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
 import { exampleTranslation, pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
 import { transcription } from "./format";
-import { UsefulDot } from "./icons";
+import { IconEye, UsefulDot } from "./icons";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
 const SWIPE_PX = 110;
 
@@ -91,9 +90,20 @@ export function SwipeCard({
    * иначе тап по карточке после кнопки «Показать ответ» играл бы второй раз.
    */
   const revealed = useRef(false);
-  const reveal = useCallback(() => {
+  const revealZone = useRef<HTMLDivElement>(null);
+  const reveal = useCallback((point?: { clientX: number; clientY: number }) => {
     if (revealed.current) return;
     revealed.current = true;
+    const zone = revealZone.current;
+    if (zone) {
+      const { left, top, width, height } = zone.getBoundingClientRect();
+      const originX = point ? Math.max(0, Math.min(width, point.clientX - left)) : width / 2;
+      const originY = point ? Math.max(0, Math.min(height, point.clientY - top)) : Math.min(height / 2, 120);
+      const radius = Math.ceil(Math.hypot(Math.max(originX, width - originX), Math.max(originY, height - originY)));
+      zone.style.setProperty("--reveal-x", `${originX}px`);
+      zone.style.setProperty("--reveal-y", `${originY}px`);
+      zone.style.setProperty("--reveal-radius", `${radius}px`);
+    }
     setFlipped(true);
     // Успело загрузиться — играем сразу (iOS разрешает play() только в самом нажатии).
     // Не успело — молчим: кнопки озвучки ниже есть всегда, и звук не заиграет сам второй раз.
@@ -101,7 +111,7 @@ export function SwipeCard({
   }, [card, voice, withVoice, preview]);
   // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
   // В предпросмотре оценивать нечего: пустой вызов прячет нативные кнопки и свою панель не рисует.
-  const main = flipped ? { text: "Помню", onClick: good } : { text: "Показать ответ", onClick: reveal };
+  const main = flipped ? { text: "Помню", onClick: good } : { text: "Показать ответ", onClick: () => reveal() };
   const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: "Забыл", onClick: again } : undefined);
 
   return (
@@ -125,7 +135,7 @@ export function SwipeCard({
           else if (info.offset.x < -SWIPE_PX) fling("again", -1);
           else reveal();
         }}
-        onClick={reveal}
+        onClick={(event) => reveal(event.detail > 0 ? event : undefined)}
       >
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
         {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
@@ -137,51 +147,50 @@ export function SwipeCard({
             <div className={`term ${sizeOf(question)}`}>{question}</div>
             {/* Транскрипция — только когда вопрос на изучаемом языке. В RU → EN она выдала бы ответ. */}
             <div className="meta">{metaLine(w, enRu && view.transcription ? transcription(w) : "")}</div>
-            {/* Ответ всегда под словом, влево: в одну строку со словом он не помещался и переносился.
-                До открытия настоящий текст скрыт, но держит место, а поверх лежит размытая подделка:
-                так и высота не меняется, и по форме пятна ответ не угадать. */}
-            <div className={`card-answer ${sizeOf(answerText)}`} aria-hidden={!flipped}>
-              <div className="answer" style={flipped ? undefined : HIDDEN}>{answerText}</div>
-              {!enRu && view.transcription && transcription(w) && (
-                <div className="meta" style={flipped ? undefined : HIDDEN}>{transcription(w)}</div>
-              )}
-              {!flipped && <div className="answer fake" aria-hidden="true">{fakeText(answerText)}</div>}
-            </div>
           </div>
 
-          <div className={`card-rest${flipped ? "" : " veiled"}`} aria-hidden={!flipped}>
-            {/* Родня — сразу под ответом: она важнее запоминалки, поэтому не спрятана. */}
-            <WordKin word={w} />
-
-            {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
-
-            {view.example && w.example && (
-              <div>
-                <div className="lbl">Пример</div>
-                {/* Тап по предложению — перевод под ним; повторный тап убирает, чтобы не занимал место. */}
-                <Text className="block example tap-example" onClick={tapExample}>
-                  <i>{w.example}</i>
-                </Text>
-                {exampleBusy && <Text className="block example muted">Перевожу…</Text>}
-                {exampleOpen && exampleRu && <Text className="block example example-ru">{exampleRu}</Text>}
+          <div className={`card-reveal-zone${flipped ? " is-revealed" : ""}`} ref={revealZone}>
+            <div className="card-reveal-content" aria-hidden={!flipped}>
+              <div className={`card-answer ${sizeOf(answerText)}`}>
+                <div className="answer">{answerText}</div>
+                {!enRu && view.transcription && transcription(w) && (
+                  <div className="meta">{transcription(w)}</div>
+                )}
               </div>
-            )}
 
-            <WordForms word={w} />
+              <div className="card-rest">
+                <WordKin word={w} />
 
-            {/* Второстепенное — под аккордеоном: без раскрытия это одна строка, а не абзац. */}
-            {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
-            {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
+                {w.explanation && !(!enRu && view.explanation && w.meaningHint) && <Text className="block">{w.explanation}</Text>}
 
-            {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
-            {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
+                {view.example && w.example && (
+                  <div>
+                    <div className="lbl">Пример</div>
+                    <Text className="block example tap-example" onClick={tapExample}>
+                      <i>{w.example}</i>
+                    </Text>
+                    {exampleBusy && <Text className="block example muted">Перевожу…</Text>}
+                    {exampleOpen && exampleRu && <Text className="block example example-ru">{exampleRu}</Text>}
+                  </div>
+                )}
+
+                <WordForms word={w} />
+
+                {view.mnemonic && w.mnemonic && <Fold title="Запоминалка" text={w.mnemonic} />}
+                {view.context && w.context && <Fold title="Где встретилось" text={w.context} italic />}
+
+                {/* Место под картинку — заранее, чтобы при загрузке текст не прыгал. */}
+                {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
+              </div>
+            </div>
+            <button type="button" className="card-spoiler" aria-label="Показать ответ" disabled={flipped} aria-hidden={flipped}>
+              <span className="card-spoiler-label">
+                <IconEye size={19} />
+                Ответ скрыт
+              </span>
+            </button>
           </div>
         </div>
-
-        {/* Подсказка висит поверх низа карточки: в потоке она сдвигала бы содержимое при открытии. */}
-        {!flipped && (
-          <Text className="hint tap">Вспомни {enRu ? "перевод" : studyLanguage().adv} и нажми, чтобы проверить</Text>
-        )}
       </motion.div>
 
       {flipped && (
@@ -208,7 +217,7 @@ export function SwipeCard({
               </Button>
             </div>
           ) : (
-            <Button size="l" stretched onClick={reveal}>
+            <Button size="l" stretched onClick={() => reveal()}>
               Показать ответ
             </Button>
           )}
@@ -217,29 +226,6 @@ export function SwipeCard({
     </div>
   );
 }
-
-/**
- * Псевдотекст той же длины, что и ответ, но из чужих букв: под блюром он держит форму строки,
- * а угадать по нему настоящий ответ нельзя. Детерминированный — иначе мигал бы на каждом рендере.
- */
-function fakeText(text: string): string {
-  const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
-  let seed = 0;
-  for (const ch of text) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
-  let out = "";
-  for (const ch of text) {
-    if (!ch.trim()) {
-      out += ch;
-      continue;
-    }
-    seed = (seed * 1103515245 + 12345) >>> 0;
-    out += ALPHABET[seed % ALPHABET.length];
-  }
-  return out;
-}
-
-/** Прячем текст, не убирая его из потока: высота остаётся прежней, прыжка нет. */
-const HIDDEN = { visibility: "hidden" } as const;
 
 /**
  * Размер текста по длине: словами бывают и `mantelpiece`, и `something of a niggle regarding our business

@@ -103,6 +103,13 @@ export const IconSpeaker = (p: IconProps) => (
   </Svg>
 );
 
+export const IconEye = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z" />
+    <circle cx="12" cy="12" r="2.5" />
+  </Svg>
+);
+
 export const IconHeadphones = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
