@@ -1,6 +1,7 @@
 import { cardAudioPath, playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { studyLanguage } from "./language";
+import { viewport as telegramViewport } from "@telegram-apps/sdk-react";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
@@ -31,14 +32,54 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult>();
   const [saved, setSaved] = useState<boolean>();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const deck = useRef<HTMLDivElement>(null);
   const w = card.word;
 
-  // Диктант — сразу озвучить; ввод — сразу в фокусе.
   useEffect(() => {
     if (card.stage === "listen") void play(card, Math.random() < 0.5 ? "uk" : "us");
-    input.current?.focus();
   }, [card]);
+
+  useEffect(() => {
+    const panel = deck.current;
+    const field = input.current;
+    if (!panel || !field) return;
+    const viewport = window.visualViewport;
+    const visibleHeight = () => Math.min(
+      viewport?.height ?? window.innerHeight,
+      telegramViewport.stableHeight() || Infinity,
+    );
+    let restingHeight = visibleHeight();
+    let editing = false;
+    const fit = () => {
+      const height = visibleHeight();
+      const focused = document.activeElement === field;
+      if ((!focused && !editing) || height > restingHeight) restingHeight = height;
+      const open = (focused || editing) && restingHeight - height > 100;
+      // Тап по кнопке может снять фокус до закрытия клавиатуры.
+      editing = focused || open;
+      setKeyboardOpen(open);
+      if (open) {
+        panel.style.setProperty("--type-viewport-height", `${height}px`);
+        panel.style.setProperty("--type-viewport-top", `${viewport?.offsetTop ?? 0}px`);
+      }
+    };
+    field.addEventListener("focus", fit);
+    field.addEventListener("blur", fit);
+    window.addEventListener("resize", fit);
+    viewport?.addEventListener("resize", fit);
+    viewport?.addEventListener("scroll", fit);
+    const stopTelegram = telegramViewport.stableHeight.sub(fit);
+    return () => {
+      stopTelegram();
+      field.removeEventListener("focus", fit);
+      field.removeEventListener("blur", fit);
+      window.removeEventListener("resize", fit);
+      viewport?.removeEventListener("resize", fit);
+      viewport?.removeEventListener("scroll", fit);
+    };
+  }, []);
 
   const submit = useCallback(
     async (dunno = false) => {
@@ -65,14 +106,14 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
   );
 
   const native = useBottomButtons(
-    result
+    keyboardOpen ? undefined : result
       ? result.unchecked
         ? undefined
         : { text: "Дальше", onClick: onNext }
       : checking
         ? undefined
         : { text: "Проверить", onClick: () => void submit() },
-    result || checking ? undefined : { text: "Не знаю", onClick: () => void submit(true) },
+    keyboardOpen || result || checking ? undefined : { text: "Не знаю", onClick: () => void submit(true) },
   );
 
   const task =
@@ -114,25 +155,28 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
     );
 
   return (
-    <div className="deck">
-      <div className="card choice-card">
-        {task}
+    <div ref={deck} className={`deck type-deck${keyboardOpen ? " keyboard-open" : ""}`}>
+      <div className="card choice-card type-card">
+        <div className="type-prompt">{task}</div>
         {!result && (
-          <Textarea
-            ref={input}
-            className="type-input"
-            placeholder={card.stage === "sentence" ? `Твоё предложение ${studyLanguage().adv}` : "Ответ"}
-            value={answer}
-            disabled={checking}
-            onChange={(e) => setAnswer(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter — проверить (в предложении Shift+Enter — новая строка).
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-          />
+          <div className="type-field">
+            <Textarea
+              ref={input}
+              aria-label="Ответ"
+              className="type-input"
+              placeholder={card.stage === "sentence" ? `Твоё предложение ${studyLanguage().adv}` : "Ответ"}
+              value={answer}
+              disabled={checking}
+              onChange={(e) => setAnswer(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter — проверить (в предложении Shift+Enter — новая строка).
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+          </div>
         )}
         {checking && (
           <div className="center checking">
@@ -152,19 +196,19 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
           </div>
         )}
       </div>
-      {!native && !result && !checking && (
+      {(!native || keyboardOpen) && !result && !checking && (
         <div className="actions fixed">
           <div className="row">
-            <Button mode="gray" size="l" stretched onClick={() => void submit(true)}>
+            <Button mode="gray" size={keyboardOpen ? "m" : "l"} stretched onClick={() => void submit(true)}>
               Не знаю
             </Button>
-            <Button size="l" stretched onClick={() => void submit()}>
+            <Button size={keyboardOpen ? "m" : "l"} stretched onClick={() => void submit()}>
               Проверить
             </Button>
           </div>
         </div>
       )}
-      {!native && result && !result.unchecked && (
+      {(!native || keyboardOpen) && result && !result.unchecked && (
         <div className="actions fixed">
           <Button size="l" stretched onClick={onNext}>
             Дальше

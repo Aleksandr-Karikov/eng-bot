@@ -150,8 +150,30 @@ body {
 .collocation-list { margin: 0; padding-left: 18px; line-height: 1.5; font: 15px/1.5 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-text-color, inherit); }
 
 /* Ответ текстом */
+.type-prompt { display: flex; flex-direction: column; gap: 10px; overflow-wrap: anywhere; }
 .type-input { width: 100%; box-sizing: border-box; margin: 8px 0 0; }
 .type-input textarea { min-height: 72px; font-size: 17px; }
+/* При появлении клавиатуры задание и поле помещаются в видимую часть WebView. */
+.type-deck.keyboard-open {
+  position: fixed;
+  z-index: 12;
+  top: var(--type-viewport-top);
+  inset-inline: 0;
+  height: var(--type-viewport-height);
+  box-sizing: border-box;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #f1f1f4));
+}
+.keyboard-open .type-card { min-height: 0; padding: 12px; gap: 8px; }
+.keyboard-open .type-prompt { min-height: 0; gap: 6px; overflow-y: auto; overscroll-behavior: contain; }
+.keyboard-open .type-prompt .hint { font-size: 14px; line-height: 1.35; }
+.keyboard-open .choice-question { padding-block: 0; font-size: 20px; }
+.keyboard-open .type-field { flex-shrink: 0; }
+.keyboard-open .type-field > div { padding: 2px; }
+.keyboard-open .type-input { margin: 0; }
+.keyboard-open .type-input textarea { box-sizing: border-box; height: 60px; min-height: 60px; padding: 9px 12px; }
+.keyboard-open .actions.fixed { position: static; padding: 0; box-shadow: none; }
 .checking { flex-direction: column; gap: 8px; padding: 12px 0; display: flex; align-items: center; }
 .gap-answer { color: var(--tg-theme-accent-text-color, #2481cc); }
 
