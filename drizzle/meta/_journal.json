@@ -407,6 +407,13 @@
       "when": 1795167729155,
       "tag": "0057_numerous_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1795173561347,
+      "tag": "0058_majestic_bug",
+      "breakpoints": true
     }
   ]
 }

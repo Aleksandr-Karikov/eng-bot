@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { bossFeed, bossOf, bossPace, bossPhase, bossRound, roundHp, roundOpponent } from "../src/services/boss";
+import { bossFeed, bossOf, bossPace, bossPhase, bossRound, roundOpponent, tierHp, LADDER_BASE_HP, upgradePrice, MAX_UPGRADE } from "../src/services/boss";
 import { setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
@@ -202,7 +202,7 @@ describe("урон из запаса", () => {
     const attack = { target: "boss", roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: 20 };
     const result = await post("/api/boss/combat", attack);
     // Добили — и сразу следующий босс с полным HP, а не пустой экран до воскресенья.
-    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: 2.5, round: 2, kills: 1, progress: 0, bossHp: 2.5 }, hits: [{ damage: 2 }] });
+    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: tierHp(2, 1, 2), round: 2, kills: 1, progress: 0, bossHp: tierHp(2, 1, 2) }, hits: [{ damage: 2 }] });
     expect(await post("/api/boss/combat", attack)).toMatchObject({ notice: expect.any(String), combat: { balance: 0 } });
     expect(await post("/api/undo", { cardId: 1 })).toMatchObject({ ok: false });
   });
@@ -237,7 +237,7 @@ describe("урон из запаса", () => {
     expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good", stage: "sentence" })).toMatchObject({ damage: 4.8 });
 
     // Добили первого — на арене сразу второй, с полным HP.
-    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: 12.5, round: 2, kills: 1, bossHp: 12.5 } });
+    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: tierHp(2, 1, 10), round: 2, kills: 1, bossHp: tierHp(2, 1, 10) } });
     await dropCard(db, alice.id, 1);
     expect(await damageBalanceDeci(db, alice.id)).toBe(246);
 
@@ -326,7 +326,7 @@ it("открывает ядро на половине HP, тратит руну 
   await credit(10, true);
   expect(await strike(1)).toMatchObject({
     // Добили — сразу второй босс с полным HP; недельный вклад при этом остаётся недельным.
-    damage: 0.5, boss: { hp: 125, round: 2, kills: 1, bossHp: 125, byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
+    damage: 0.5, boss: { hp: tierHp(2, 1, 100), round: 2, kills: 1, bossHp: tierHp(2, 1, 100), byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
     victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
   });
   expect(await buy()).toMatchObject({ combat: { rune: { owned: true } } });
@@ -517,11 +517,16 @@ describe("⚖️ weighted damage and upgrades", () => {
     expect(answerWeight("easy", undefined, 10)).toBe(6); // 3 × 2.0
   });
 
-  it("prices upgrades 100, 200, 400 and stops at the cap", async () => {
+  it("prices upgrades 100, 150, 225 and stops at the cap", async () => {
     const { upgradePrice, MAX_UPGRADE, coinState } = await import("../src/services/boss");
     expect(upgradePrice(0)).toBe(100);
-    expect(upgradePrice(1)).toBe(200);
-    expect(upgradePrice(2)).toBe(400);
+    // Рост ×1.5, а не ×2: иначе верх лестницы недостижим при линейном доходе.
+    expect(upgradePrice(1)).toBe(150);
+    expect(upgradePrice(2)).toBe(225);
+    // Вся лестница достижима: сумма всех уровней обозрима, а не сотни недель дохода.
+    let total = 0;
+    for (let l = 0; l < MAX_UPGRADE; l++) total += upgradePrice(l);
+    expect(total).toBeLessThan(12_000);
     const now = nsk("2026-10-20T12:00");
     const user = { upgradeDamage: MAX_UPGRADE, coinsSpent: 0, coinsPeriod: null };
     expect(coinState(10_000, user, now).price).toBeNull();
@@ -563,7 +568,7 @@ describe("⚖️ weighted damage and upgrades", () => {
     expect(before.coins).toMatchObject({ coins: 100, level: 0, price: 100 });
     const bought = await app.request("/api/boss/upgrade", { method: "POST", headers });
     expect(bought.status).toBe(200);
-    expect((await bought.json()).coins).toMatchObject({ level: 1, price: 200 });
+    expect((await bought.json()).coins).toMatchObject({ level: 1, price: 150 });
     // Второй раз без новых монет — отказ, а не второй уровень бесплатно.
     const again = await app.request("/api/boss/upgrade", { method: "POST", headers });
     expect(again.status).toBe(400);
@@ -628,17 +633,24 @@ describe("boss shop with a choice of upgrades", () => {
     await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 3000, reviewedAt: T0 });
     const shop = await (await app.request("/api/boss", { headers })).json();
     expect(shop.coins.offers.map((o: { kind: string }) => o.kind)).toEqual(["damage", "listen", "writing"]);
-    expect(shop.coins.offers[0]).toMatchObject({ level: 1, price: 200 });
+    expect(shop.coins.offers[0]).toMatchObject({ level: 1, price: 150 });
     const buy = (kind: unknown) => app.request("/api/boss/upgrade", { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ kind }) });
     expect((await buy("upgradeDamage")).status).toBe(400);
     const bought = await (await buy("listen")).json();
     expect(bought.coins).toMatchObject({ coins: 200, level: 1 });
-    expect(bought.coins.offers[1]).toMatchObject({ level: 1, price: 200 });
+    expect(bought.coins.offers[1]).toMatchObject({ level: 1, price: 150 });
     const written = await (await buy("writing")).json();
     expect(written.coins).toMatchObject({ coins: 100 });
-    expect(written.coins.offers[2]).toMatchObject({ level: 1, price: 200 });
+    expect(written.coins.offers[2]).toMatchObject({ level: 1, price: 150 });
     expect((await buy("damage")).status).toBe(400);
-    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", stage: "app_listen", now: T0 })).toEqual({ result: "ok", damage: 5.2 });
+    // Урон считаем через формулу, а не числом: с ладдером на бонус Дракона влияет то, в какой фазе стоит
+    // текущий босс, и зашитое число поплыло бы при любой правке кривой.
+    const { answerWeight } = await import("../src/services/goals");
+    const replied = await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", stage: "app_listen", now: T0 });
+    expect(replied.result).toBe("ok");
+    // Усиления «Слух» 1 и «Сила» 1 дают +20% и +10% к базовому весу диктанта. Бонус Дракона добавляется
+    // сверху, только когда он в ярости, поэтому проверяем без него — тест про магазин, а не про боссов.
+    expect(replied.damage).toBeCloseTo(answerWeight("good", "app_listen", 1, 1, 0, 0), 1);
   });
 
   it("specialist bonuses apply only to the matching exercises and add to strength", async () => {
@@ -723,12 +735,16 @@ describe("🕐 boss follows the room's timezone", () => {
 describe("🐉 a new boss takes the arena right after a kill", () => {
   const TARGET = 100;
 
-  it("makes every next boss tougher than the one before", () => {
-    expect(roundHp(TARGET, 1)).toBe(TARGET);
-    expect(roundHp(TARGET, 2)).toBeGreaterThan(roundHp(TARGET, 1));
-    expect(roundHp(TARGET, 3)).toBeGreaterThan(roundHp(TARGET, 2));
-    // Рост не взрывается: пятый босс ещё обозрим, иначе комната упрётся в стену.
-    expect(roundHp(TARGET, 5)).toBeLessThan(TARGET * 3);
+  it("makes every next tier tougher, and the next cycle tougher still", () => {
+    // Первая ступень — база (по умолчанию одно число для всех: LADDER_BASE_HP).
+    expect(tierHp(1, 1, TARGET)).toBe(TARGET);
+    expect(tierHp(2, 1, TARGET)).toBeGreaterThan(tierHp(1, 1, TARGET));
+    expect(tierHp(3, 1, TARGET)).toBeGreaterThan(tierHp(2, 1, TARGET));
+    // Пройден весь круг — следующий начинается сильнее первого круга, а не повторяет его.
+    expect(tierHp(1, 2, TARGET)).toBeGreaterThan(tierHp(1, 1, TARGET));
+    expect(tierHp(2, 2, TARGET)).toBeGreaterThan(tierHp(2, 1, TARGET));
+    // Ладдер один на всех: по умолчанию база фиксирована.
+    expect(tierHp(1)).toBe(LADDER_BASE_HP);
   });
 
   it("puts a different opponent on the arena each round", () => {
@@ -746,10 +762,10 @@ describe("🐉 a new boss takes the arena right after a kill", () => {
     // Ровно цель — уже следующий босс с полным HP, а не «повержен и пусто».
     const afterOne = bossRound(TARGET, TARGET);
     expect(afterOne).toMatchObject({ round: 2, kills: 1, progress: 0 });
-    expect(afterOne.hp).toBe(roundHp(TARGET, 2));
+    expect(afterOne.hp).toBe(tierHp(2, 1, TARGET));
     // Перебор засчитывается: несколько раундов сразу.
     let toKillThree = 0;
-    for (const r of [1, 2, 3]) toKillThree += roundHp(TARGET, r);
+    for (const r of [1, 2, 3]) toKillThree += tierHp(r, 1, TARGET);
     expect(bossRound(toKillThree, TARGET)).toMatchObject({ round: 4, kills: 3, progress: 0 });
     // Чуть меньше — третий ещё стоит и почти добит.
     const almost = bossRound(toKillThree - 1, TARGET);
@@ -816,5 +832,45 @@ describe("🐉 a new boss takes the arena right after a kill", () => {
     // Арена не пустует: в чате видно счёт добитых и что бой идёт дальше.
     expect(text).toContain("Добито на этой неделе: 1");
     expect(text).not.toContain("реванш");
+  });
+});
+
+// 🎲 Рогалик: боссы каждую неделю одни и те же (ладдер фиксирован), а глубина растёт от прокачки.
+// Это главное свойство режима, поэтому оно проверяется отдельно от арифметики ступеней.
+describe("🎲 the ladder is the same every week, depth comes from power", () => {
+  /** Сколько боссов проходит сила `weekly` (урон за неделю) при базе ладдера. */
+  const depth = (weekly: number) => bossRound(weekly, LADDER_BASE_HP).kills;
+
+  it("does not make the first boss tougher for a stronger room", () => {
+    // Ступень 1 одна и та же для всех: первый босс недели не зависит от прошлой активности.
+    expect(tierHp(1)).toBe(LADDER_BASE_HP);
+    expect(tierHp(1)).toBe(tierHp(1, 1));
+  });
+
+  it("goes deeper as the room grows stronger", () => {
+    // Ровно то, ради чего режим: та же лесенка, но больше силы — больше пройдено.
+    expect(depth(200)).toBeGreaterThan(depth(40));
+    expect(depth(400)).toBeGreaterThan(depth(200));
+  });
+
+  it("makes the whole ladder reachable within the upgrade cap", () => {
+    // Прокачка ограничена ×2 (10 уровней по +10%). Если бы ладдер требовал больше, «доходить дальше»
+    // было бы недостижимо в принципе — верх лестницы просто не открылся бы никогда.
+    const maxPower = 200 * 2;
+    expect(depth(maxPower)).toBeGreaterThanOrEqual(5);
+  });
+
+  it("lets a beginner beat the first boss", () => {
+    // Новичок с двадцатью ответами за неделю (40 HP) должен увидеть победу, иначе режим не начат.
+    expect(depth(40)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the price of the whole ladder within a year of play", () => {
+    // Доход монет = недельный урон. Сумма цен всех уровней не должна требовать больше года игры,
+    // иначе верхние уровни недостижимы и прогрессия обрывается.
+    let total = 0;
+    for (let l = 0; l < MAX_UPGRADE; l++) total += upgradePrice(l);
+    const weeksAt200 = total / 200;
+    expect(weeksAt200).toBeLessThan(60);
   });
 });

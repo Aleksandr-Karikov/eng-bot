@@ -12,7 +12,7 @@ import { decide, listSets, nextSetItems, setSetTarget, setTarget, setTargetChoic
 import { cards as cardsTable, roomMembers, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
-import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, UPGRADES } from "../services/boss";
+import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, settledBank, UPGRADES } from "../services/boss";
 import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
@@ -365,6 +365,8 @@ export async function appBoss(deps: Deps, user: User) {
   // Победа — «на этой неделе комнату добивали», а не «сейчас добит»: добитый босс сразу уступает место
   // следующему, поэтому `phase === "dead"` в состоянии не наступает вовсе.
   const won = boss.kills > 0;
+  // Копилка до чтения монет: остаток прошлой недели переезжает в неё, иначе прокачка застынет навсегда.
+  await settledBank(deps.db, user.id, now);
   const [feed, combat, earnedCoins, collection, members] = await Promise.all([
     bossFeed(deps.db, room, now, 20, won ? boss.target : undefined),
     combatState(deps.db, user, now, room.id, boss),
@@ -406,8 +408,11 @@ export async function appBoss(deps: Deps, user: User) {
       round: boss.round,
       kills: boss.kills,
       progress: boss.progress,
-      // HP текущего босса: у второго он больше недельной цели, и полоска должна считать по нему.
+      // HP текущего босса: у второй ступени он толще первой, и полоска должна считать по нему.
       bossHp: boss.bossHp,
+      // Ступень ладдера и круг — из них видно, что боссы те же, а глубина растёт.
+      tier: boss.tier,
+      cycle: boss.cycle,
       // Пояс комнаты: клиент подписывает им время конца недели, а не зашитым «по Новосибирску».
       timeZone: boss.timeZone,
       // Показываем коротким форматом: вкладке нужно «сколько мне снимать», а не весь отчёт.

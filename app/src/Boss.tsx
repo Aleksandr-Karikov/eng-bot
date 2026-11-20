@@ -210,7 +210,9 @@ function BossView({
           <div className="boss-caption">
             <span className="boss-kicker">
               {/* Номер босса: добили — на арене следующий, и это видно сразу, а не по изменившемуся имени. */}
-              {(boss.round ?? 1) > 1 ? `Босс недели · ${boss.round}-й за неделю` : "Босс недели"}
+              {boss.tier && boss.tier > 1
+                ? `Босс недели · ступень ${boss.tier}${boss.cycle && boss.cycle > 1 ? ` · круг ${boss.cycle}` : ""}`
+                : "Босс недели"}
             </span>
             <h1>{boss.opponent?.name ?? "Дракон библиотеки"}</h1>
           </div>
@@ -257,7 +259,7 @@ function BossView({
           ))}
           {victory?.teamTrophy && <Text className="hint">Трофей «Победа команды» получат все, кто внёс урон, при подведении итогов недели.</Text>}
           {/* Арена не пустует: следующий стоит уже сейчас, а не в воскресенье. */}
-          <Text className="hint">Сейчас на арене {boss.round ?? 1}-й босс. Неделя кончается {weekEnd}.</Text>
+          <Text className="hint">Добито за неделю: {kills}. Неделя кончается {weekEnd} — в понедельник те же боссы, но ты сильнее.</Text>
         </section>
       )}
       {combat?.core && (

@@ -1,10 +1,11 @@
 import { and, asc, eq, gte, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
-import { FALLBACK_TZ, latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
+import { DIGEST_TIME, FALLBACK_TZ, latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
 import { availableRune, bossStrikes, mobClaims, withCombatLock } from "./combat-ledger";
 import { MOBS } from "../combat-mobs";
+import { localMoment } from "../time";
 
 /**
  * 🐉 Босс недели — это цель комнаты, показанная как бой.
@@ -63,6 +64,9 @@ export interface BossState extends GoalProgress {
   kills: number;
   /** Урон, снятый с текущего босса. */
   progress: number;
+  /** Ступень ладдера (1…LADDER_TIERS) и круг: пройден весь ладдер — дальше следующий, сильнее. */
+  tier: number;
+  cycle: number;
   /**
    * HP текущего босса. Растёт с раундом, поэтому у второго он больше недельной цели `target`.
    * Полоску и «осталось» считать по нему; монеты, трофеи и дайджест — по `target`.
@@ -94,48 +98,83 @@ export interface BossRound {
   kills: number;
   /** Урон по текущему боссу: сколько снято с него, а не за неделю. */
   progress: number;
-  /** Сколько HP у текущего босса: каждый следующий толще предыдущего. */
+  /** Сколько HP у текущего босса: каждая ступень толще предыдущей. */
   hp: number;
+  /** Ступень ладдера (1…LADDER_TIERS) и круг: пройден весь ладдер — начинается следующий, сильнее. */
+  tier: number;
+  cycle: number;
+}
+
+/** Ступеней в круге: пройдены все — начинается следующий круг, сильнее. */
+export const LADDER_TIERS = 8;
+/**
+ * Рост HP внутри круга. Подобран под то, что прокачка ограничена ×2 (10 уровней по +10%):
+ * при 1.35 стабильный игрок без прокачки берёт 3 босса, а на максимуме силы — 5. Круче (1.45) прокачка
+ * перестаёт двигать глубину, мягче (1.15) — ладдер кончается за пару недель.
+ */
+const LADDER_GROWTH = 1.3;
+/**
+ * HP первой ступени — одно число для всех комнат и всех недель.
+ *
+ * Это и есть «одни и те же боссы каждую неделю»: лесенка не пересчитывается от прошлой активности, иначе
+ * сильная комната получала бы более толстого первого босса и глубина не росла бы никогда (проверено
+ * симуляцией: цель уезжала вверх быстрее, чем прокачка). Фиксированная база = фиксированная игра, а
+ * глубина зависит только от силы комнаты — как в рогалике.
+ *
+ * 25 HP ≈ 12 ответов «Помню» за неделю — первый босс берётся почти сразу, чтобы новичок увидел победу.
+ * Подобрано по симуляции двух режимов: новичок с двадцатью ответами проходит 1 → 2 босса по мере
+ * прокачки, активный со ста — 4 → 6. Меньше база — ладдер кончается за пару недель, больше — новичок
+ * застревает на первом боссе и не видит прогресса.
+ */
+export const LADDER_BASE_HP = 25;
+/** Следующий круг целиком сильнее прошлого: пройденный ладдер не должен становиться копией. */
+const CYCLE_GROWTH = 1.5;
+
+/**
+ * HP босса на ступени `tier` круга `cycle`.
+ *
+ * Ладдер фиксированный, а не пересчитываемый от прошлой недели: рогалик тем и интересен, что путь один
+ * для всех, и глубина прохождения зависит только от силы комнаты. Поэтому у сильной комнаты первый босс
+ * не становится толще — она просто доходит дальше по той же лесенке.
+ */
+export function tierHp(tier: number, cycle = 1, base: number = LADDER_BASE_HP): number {
+  const inCycle = LADDER_GROWTH ** Math.max(0, tier - 1);
+  const cycleBonus = CYCLE_GROWTH ** Math.max(0, cycle - 1);
+  return Math.round(base * inCycle * cycleBonus * 10) / 10;
+}
+
+/** Сколько HP нужно снять, чтобы пройти `kills` боссов подряд, начиная с первой ступени. */
+function ladderSpent(kills: number, base: number): number {
+  let sum = 0;
+  for (let i = 0; i < kills; i++) sum += tierHp((i % LADDER_TIERS) + 1, Math.floor(i / LADDER_TIERS) + 1, base);
+  return sum;
 }
 
 /**
- * HP босса в раунде: следующий толще предыдущего.
+ * Где комната стоит на ладдере: сколько боссов добила, на какой ступени и что у текущего снято.
  *
- * Без роста второй босс недели ничем не отличается от первого, и «новый бой» превращается в повтор.
- * Рост 25% за раунд: третий босс — уже 1.56 цели, пятый — 2.44. Быстрее нельзя — комната, случайно
- * добившая двух, не должна упереться в стену на третьем; медленнее — раунды останутся клонами.
+ * `base` — обычный недельный урон комнаты без усилений (сколько HP она снимает за неделю). От него
+ * считается вся лесенка, поэтому ладдер один на всех, а глубина — своя у каждой комнаты.
+ *
+ * HP растут геометрически, поэтому остаток считается по накопленной сумме ступеней, а не «kills × цель»:
+ * иначе после второй ступени границы поехали бы.
  */
-export function roundHp(target: number, round: number): number {
-  return Math.round(target * 1.25 ** Math.max(0, round - 1) * 10) / 10;
-}
-
-/**
- * Какой по счёту босс сейчас на арене и сколько снято с него.
- *
- * Неделя — единица монет, трофеев и дайджеста, но не босса: комната, которая смела цель к среде, не должна
- * сидеть без боя до воскресенья. Поэтому урон недели нарезается на раунды, каждый следующий босс толще
- * (`roundHp`) и это другой противник (`roundOpponent`). Перебор засчитывается: добил с запасом — сразу
- * несколько раундов.
- *
- * HP растут геометрически, поэтому «остаток недельного урона» делится по накопленной сумме HP раундов,
- * а не по `kills * target`: иначе после второго раунда границы поехали бы.
- */
-export function bossRound(done: number, target: number): BossRound {
-  if (target <= 0) return { round: 1, kills: 0, progress: 0, hp: 0 };
+export function bossRound(done: number, base: number = LADDER_BASE_HP): BossRound {
+  if (base <= 0) return { round: 1, kills: 0, progress: 0, hp: 0, tier: 1, cycle: 1 };
   let kills = 0;
-  let spent = 0;
-  // Раундов не может быть больше, чем помещается в нанесённый урон: цикл ограничен самим `done`.
   // Допуск в одну десятую HP: урон хранится десятыми, и без него погрешность сложения дала бы
   // «99.99999999999 вместо 100».
-  while (done + 0.05 >= spent + roundHp(target, kills + 1)) {
-    spent += roundHp(target, kills + 1);
+  while (kills < 10_000) {
+    const next = ladderSpent(kills + 1, base);
+    if (done + 0.05 < next) break;
     kills += 1;
-    // Предохранитель от бесконечного цикла на вырожденных значениях.
-    if (kills > 10_000) break;
   }
-  const hp = roundHp(target, kills + 1);
+  const cycle = Math.floor(kills / LADDER_TIERS) + 1;
+  const tier = (kills % LADDER_TIERS) + 1;
+  const hp = tierHp(tier, cycle, base);
+  const spent = ladderSpent(kills, base);
   const progress = Math.max(0, Math.round((done - spent) * 10) / 10);
-  return { round: kills + 1, kills, progress, hp };
+  return { round: kills + 1, kills, progress, hp, tier, cycle };
 }
 
 /**
@@ -168,13 +207,18 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
-  const { round, kills, progress: current, hp: bossHp } = bossRound(progress.done, progress.target);
+  // База ладдера — цель комнаты, если её задали руками (/goal), иначе фиксированные LADDER_BASE_HP.
+  // Автоцель сюда НЕ идёт: она считается от прошлой активности и растёт на 10% в неделю, то есть
+  // база уезжала бы вверх вместе с прогрессом, и глубина не росла бы никогда. С фиксированной базой
+  // боссы каждую неделю одни и те же, а доходить дальше позволяет прокачка — как в рогалике.
+  const ladderBase = room.weeklyGoal > 0 ? room.weeklyGoal : LADDER_BASE_HP;
+  const { round, kills, progress: current, hp: bossHp, tier, cycle } = bossRound(progress.done, ladderBase);
   const hp = Math.max(0, Math.round((bossHp - current) * 10) / 10);
   const damage = bossHp > 0 ? Math.min(1, current / bossHp) : 0;
   return {
     ...progress,
     room: room.name,
-    // Свой противник у каждого раунда: второй босс недели — уже другой, а не тот же дракон.
+    // Свой противник у каждой ступени: второй босс недели — уже другой, а не тот же дракон.
     opponent: roundOpponent(weekStart, round),
     week,
     hp,
@@ -188,9 +232,11 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
     round,
     kills,
     progress: current,
-    // HP текущего босса: у второго он толще цели недели, и полоска должна показывать его, а не цель.
-    // `target` при этом остаётся недельным — на нём считаются монеты, трофеи и дайджест.
+    // HP текущего босса: у второй ступени он толще базы, и полоска должна показывать его, а не цель.
+    // `target` при этом остаётся базой комнаты — на нём считаются монеты, трофеи и дайджест.
     bossHp,
+    tier,
+    cycle,
   };
 }
 
@@ -307,9 +353,16 @@ export const BOSS_TITLES: Record<BossPhase, string> = {
  * копилки нет, иначе игра превращается в накопление.
  */
 
-/** Сколько монет стоит следующий уровень. Дорожает: 100, 200, 400… */
+/**
+ * Сколько монет стоит следующий уровень.
+ *
+ * Рост ×1.5, а не ×2: доход растёт линейно (монеты = недельный урон), поэтому удвоение цены делало
+ * верхние уровни недостижимыми — на L10 требовалось бы 512 недель дохода, и «доходить дальше по ладдеру»
+ * исчезло бы вместе с ними. При ×1.5 вся лестница (100…3844) проходится примерно за 57 недель дохода,
+ * то есть за год игры, и каждый уровень по-прежнему заметен.
+ */
 export function upgradePrice(level: number): number {
-  return 100 * 2 ** level;
+  return Math.round(100 * 1.5 ** level);
 }
 
 /** Урон с учётом уровня: +10% за уровень. */
@@ -335,10 +388,20 @@ export function coinsPeriod(now: Date, timeZone: string = FALLBACK_TZ): string {
  * Неделя — по поясу человека, как и `coinsPeriod`: награды мобов и накопленный урон должны считаться в
  * том же окне, что и кошелёк, иначе покупка «теряет» часть монет на стыке поясов.
  */
-export async function personalDamage(db: Db, userId: number, now: Date): Promise<number> {
+export async function personalDamage(db: Db, userId: number, now: Date, period?: string): Promise<number> {
   const [user] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  const week = latestDigestMoment(now, user?.timezone ?? FALLBACK_TZ);
-  const rows = await db.select().from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, week.at)));
+  const current = latestDigestMoment(now, user?.timezone ?? FALLBACK_TZ);
+  // `period` — посчитать за конкретную (уже закрытую) неделю: нужно при переносе остатка в копилку.
+  const closed = period !== undefined && period !== current.date;
+  const week = closed
+    ? { date: period, at: localMoment(user?.timezone ?? FALLBACK_TZ, period, DIGEST_TIME) }
+    : current;
+  const until = new Date(week.at.getTime() + WEEK_MS);
+  const rows = await db.select().from(reviewLogs).where(and(
+    eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, week.at),
+    // Закрытая неделя — ровно её окно; текущая — от начала недели до сейчас.
+    ...(closed ? [lt(reviewLogs.reviewedAt, until)] : []),
+  ));
   const claims = await mobClaims(db, userId, week.date);
   const rewards = MOBS.filter((mob) => claims.some((claim) => claim.target === mob.id)).reduce((sum, mob) => sum + mob.coins, 0);
   return rewards + rows.reduce((sum, r) => sum + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)), 0) / 10;
@@ -362,21 +425,29 @@ export interface CoinState {
 export const MAX_UPGRADE = 10;
 export const RUNE_PRICE = 40;
 type Wallet = Pick<User, "upgradeDamage" | "coinsSpent" | "coinsPeriod"> &
-  Partial<Pick<User, "upgradeListen" | "upgradeWriting" | "timezone">>;
+  Partial<Pick<User, "upgradeListen" | "upgradeWriting" | "timezone" | "coinsBankDeci">>;
 
 /** Период кошелька — неделя по поясу человека; без него — общий запасной пояс. */
 function walletPeriod(user: Pick<User, "coinsPeriod"> & Partial<Pick<User, "timezone">>, now: Date): string {
   return coinsPeriod(now, user.timezone ?? FALLBACK_TZ);
 }
 
+/**
+ * Сколько монет доступно: копилка прошлых недель плюс не потраченное на этой.
+ *
+ * Раньше это был только остаток текущей недели, и после воскресенья он обнулялся. Теперь неизрасходованное
+ * переезжает в копилку (`coinsBankDeci`), поэтому прокачка может копиться неделями — без этого ладдер
+ * боссов не даёт «доходить дальше»: цена уровня растёт вдвое, а недельный доход нет.
+ */
 export function coinState(done: number, user: Wallet, now: Date): CoinState {
   const spent = user.coinsPeriod === walletPeriod(user, now) ? user.coinsSpent : 0;
+  const bank = (user.coinsBankDeci ?? 0) / 10;
   const offers = UPGRADES.map(({ field, ...offer }) => {
     const level = user[field] ?? 0;
     return { ...offer, level, price: level < MAX_UPGRADE ? upgradePrice(level) : null };
   });
   return {
-    coins: Math.max(0, Math.round((done - spent) * 10) / 10),
+    coins: Math.max(0, Math.round((bank + done - spent) * 10) / 10),
     level: user.upgradeDamage,
     price: offers[0].price,
     offers,
@@ -385,6 +456,53 @@ export function coinState(done: number, user: Wallet, now: Date): CoinState {
 
 function walletSnapshot(user: Pick<User, "coinsSpent" | "coinsPeriod">) {
   return and(eq(users.coinsSpent, user.coinsSpent), user.coinsPeriod === null ? isNull(users.coinsPeriod) : eq(users.coinsPeriod, user.coinsPeriod));
+}
+
+/**
+ * 🪙 Перенести непотраченный остаток недели в копилку.
+ *
+ * Зовётся из фонового цикла, когда неделя сменилась: остаток считался бы сгоревшим, а теперь переезжает
+ * в `coinsBankDeci` и доступен для покупок в следующие недели. Без этого прокачка застывает — цена уровня
+ * растёт вдвое, недельный доход нет, и ладдер боссов не даёт «доходить дальше».
+ *
+ * Идемпотентно: `coinsPeriod` ставится в текущую неделю, поэтому второй вызов в той же неделе ничего не
+ * переносит — остаток уже обнулён и засчитан.
+ */
+/**
+ * Копилка «на чтение»: если неделя сменилась, остаток прошлой уже должен быть в копилке.
+ *
+ * Ленивый вариант переноса — вызывается там, где кошелёк показывают или тратят. Фоновый тик для этого не
+ * нужен и был бы хуже: он обходил бы всех пользователей каждую минуту ради события раз в неделю.
+ */
+export async function settledBank(db: Db, userId: number, now: Date): Promise<number> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) return 0;
+  const period = walletPeriod(user, now);
+  if (user.coinsPeriod === period) return (user.coinsBankDeci ?? 0) / 10;
+  // Неделя сменилась: считаем остаток ТОЙ недели и переносим.
+  const closed = user.coinsPeriod == null ? 0 : await personalDamage(db, userId, now, user.coinsPeriod);
+  await bankLeftoverCoins(db, userId, closed, now);
+  const [fresh] = await db.select({ bank: users.coinsBankDeci }).from(users).where(eq(users.id, userId));
+  return (fresh?.bank ?? 0) / 10;
+}
+
+export async function bankLeftoverCoins(db: Db, userId: number, done: number, now: Date): Promise<number> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) return 0;
+  const period = walletPeriod(user, now);
+  // Неделя ещё та же — переносить нечего, остаток ещё может быть потрачен.
+  if (user.coinsPeriod === period) return 0;
+  const leftover = Math.max(0, Math.round(done * 10) - user.coinsSpent);
+  if (leftover <= 0) {
+    await db.update(users).set({ coinsSpent: 0, coinsPeriod: period }).where(eq(users.id, userId));
+    return 0;
+  }
+  const updated = await db.update(users).set({
+    coinsSpent: 0,
+    coinsPeriod: period,
+    coinsBankDeci: (user.coinsBankDeci ?? 0) + leftover,
+  }).where(and(eq(users.id, userId), walletSnapshot(user))).returning({ id: users.id });
+  return updated.length ? leftover / 10 : 0;
 }
 
 /** Условное обновление общего кошелька не даёт двум покупкам потратить одни монеты. */
@@ -397,10 +515,18 @@ export async function buyUpgrade(db: Db, userId: number, done: number, now: Date
   const offer = state.offers.find((o) => o.kind === kind)!;
   if (offer.price === null) return "max";
   if (state.coins < offer.price) return "poor";
+  // Цена сначала гасит недельный остаток, и только излишек — копилку. Для человека это выгодно:
+  // недельный остаток иначе сгорел бы первым, а копилка осталась бы нетронутой.
+  const period = walletPeriod(user, now);
+  const spentThisWeek = user.coinsPeriod === period ? user.coinsSpent : 0;
+  const weekLeft = Math.max(0, Math.round((done - spentThisWeek) * 10) / 10);
+  const fromWeek = Math.min(weekLeft, offer.price);
+  const fromBank = Math.round((offer.price - fromWeek) * 10);
   const updated = await db.update(users).set({
     [upgrade.field]: offer.level + 1,
-    coinsSpent: (user.coinsPeriod === walletPeriod(user, now) ? user.coinsSpent : 0) + offer.price,
-    coinsPeriod: walletPeriod(user, now),
+    coinsSpent: spentThisWeek + fromWeek,
+    coinsPeriod: period,
+    coinsBankDeci: Math.max(0, (user.coinsBankDeci ?? 0) - fromBank),
   }).where(and(eq(users.id, userId), eq(users[upgrade.field], offer.level), walletSnapshot(user)))
     .returning({ id: users.id });
   return updated.length ? "ok" : "poor";
@@ -415,10 +541,15 @@ export function buyPiercingRune(db: Db, userId: number, now: () => Date): Promis
     const period = walletPeriod(user, at);
     const done = await personalDamage(db, userId, at);
     if (coinState(done, user, at).coins < RUNE_PRICE) return "poor";
+    // Как и усиление: сначала недельный остаток, потом копилка.
+    const spentThisWeek = user.coinsPeriod === period ? user.coinsSpent : 0;
+    const weekLeft = Math.max(0, Math.round((done - spentThisWeek) * 10) / 10);
+    const fromWeek = Math.min(weekLeft, RUNE_PRICE);
     const [updated] = await db.update(users).set({
       runesBought: user.runesBought + 1,
-      coinsSpent: (user.coinsPeriod === period ? user.coinsSpent : 0) + RUNE_PRICE,
+      coinsSpent: spentThisWeek + fromWeek,
       coinsPeriod: period,
+      coinsBankDeci: Math.max(0, (user.coinsBankDeci ?? 0) - Math.round((RUNE_PRICE - fromWeek) * 10)),
     }).where(and(eq(users.id, userId), eq(users.runesBought, user.runesBought), walletSnapshot(user)))
       .returning({ id: users.id });
     return updated ? "ok" : "stale";

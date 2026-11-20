@@ -35,9 +35,19 @@ export const users = sqliteTable("users", {
   upgradeDamage: integer("upgrade_damage").notNull().default(0),
   upgradeListen: integer("upgrade_listen").notNull().default(0),
   upgradeWriting: integer("upgrade_writing").notNull().default(0),
-  /** Сколько монет потрачено на этой неделе и на какой — монеты недели сгорают в воскресенье. */
+  /** Сколько монет потрачено на этой неделе и на какой — по этим полям считается непотраченный остаток недели. */
   coinsSpent: integer("coins_spent").notNull().default(0),
   coinsPeriod: text("coins_period"),
+  /**
+   * 🪙 Копилка: монеты, перенесённые с прошлых недель.
+   *
+   * Раньше монеты сгорали в воскресенье, и прокачка упиралась: цена уровня растёт вдвое, а недельный
+   * доход — нет, поэтому уровень застывал на втором навсегда. Без переноса «доходить дальше» в ладдере
+   * боссов невозможно в принципе, а с ним каждая неделя становится вкладом в следующую.
+   *
+   * Хранится в десятых монеты, как и урон: монеты — это нанесённый урон, а он дробный.
+   */
+  coinsBankDeci: integer("coins_bank_deci").notNull().default(0),
   runesBought: integer("runes_bought").notNull().default(0),
   /** Скрытые части карточки в /learn через запятую, см. services/card-view.ts. */
   cardHidden: text("card_hidden").notNull().default(""),

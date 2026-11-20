@@ -96,6 +96,9 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   const relicPercent = HUNTER_RELICS
     .filter((relic) => weeks >= relic.weeks && (relic.skill === "all" || relic.skill === skill))
     .reduce((sum, relic) => sum + relic.percent, 0);
+  // 🐉 Дракон усиливает диктанты, пока он в ярости. Фаза — про ТЕКУЩЕГО босса: с ладдером боёв за неделю
+  // несколько, и «ярость» наступает у каждого своя, поэтому бонус доступен в каждом раунде, а не только
+  // в первом. Противник берётся первого раунда недели — механика Дракона принадлежит неделе.
   let dragonBonus = 0;
   if (skill === "listen" && week && room) {
     if (weeklyOpponent(week.at).id === "dragon" && (await bossOf(db, room, now)).phase === "furious") dragonBonus = 20;

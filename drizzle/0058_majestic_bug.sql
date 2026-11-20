@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `coins_bank_deci` integer DEFAULT 0 NOT NULL;
