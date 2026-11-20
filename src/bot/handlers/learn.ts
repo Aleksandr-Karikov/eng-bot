@@ -364,8 +364,9 @@ async function bossLine(ctx: BotContext, deps: Deps): Promise<string> {
   if (!room) return "";
   const boss = await bossOf(deps.db, room, deps.now());
   const percent = Math.round(Math.min(1, boss.damage) * 100);
-  if (boss.phase === "dead") return `\n\n🐉 Босс недели повержен — ${boss.done} из ${boss.target} 💀 Реванш в воскресенье.`;
-  return `\n\n🐉 Босс недели: ${percent}% · осталось ${boss.hp} HP — /boss`;
+  // Добитый босс сразу уступает место следующему, поэтому «повержен» — это не конец, а счёт.
+  const killed = boss.kills > 0 ? ` 💀 Добито: ${boss.kills} — на арене ${boss.round}-й` : "";
+  return `\n\n🐉 Босс недели: ${percent}% · осталось ${boss.hp} HP${killed} — /boss`;
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {

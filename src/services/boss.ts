@@ -32,9 +32,9 @@ export interface BossState extends GoalProgress {
   room: string;
   opponent: (typeof WEEKLY_BOSSES)[number];
   week: string;
-  /** Сколько HP осталось; больше нуля всегда, пока цель не выполнена. */
+  /** Сколько HP осталось у ТЕКУЩЕГО босса; 0 не бывает — добитый сразу уступает место следующему. */
   hp: number;
-  /** Доля снятого HP: 0…1, больше 1 — добит с запасом. */
+  /** Доля снятого HP текущего босса: 0…1. Ровно 1 не держится: на добивании начинается новый раунд. */
   damage: number;
   phase: BossPhase;
   /** Успевает ли комната добить к концу недели при нынешнем темпе. */
@@ -43,6 +43,12 @@ export interface BossState extends GoalProgress {
   daysLeft: number;
   /** Пояс комнаты: в нём кончается неделя и по нему подписывается время. */
   timeZone: string;
+  /** Какой по счёту босс на этой неделе (1 — первый). */
+  round: number;
+  /** Сколько боссов комната уже добила за эту неделю. */
+  kills: number;
+  /** Урон, снятый с текущего босса. */
+  progress: number;
 }
 
 /**
@@ -51,12 +57,42 @@ export interface BossState extends GoalProgress {
  *
  * Границы такие, чтобы «злой» наступал не от первого ответа, а «в ярости» — не на самом финише,
  * когда успеть уже нельзя.
+ *
+ * `dead` остался ради совместимости и прямых вызовов, но в состоянии комнаты он больше не появляется:
+ * добитый босс тут же уступает место следующему (см. `bossRound`).
  */
 export function bossPhase(damage: number, done: number, target: number): BossPhase {
   if (done >= target) return "dead";
   if (damage >= 0.66) return "furious";
   if (damage >= 0.25) return "angry";
   return "fresh";
+}
+
+export interface BossRound {
+  /** Номер босса на этой неделе, с единицы. */
+  round: number;
+  /** Сколько боссов комната уже добила за эту неделю. */
+  kills: number;
+  /** Урон по текущему боссу: сколько снято с него, а не за неделю. */
+  progress: number;
+}
+
+/**
+ * Какой по счёту босс сейчас на арене и сколько снято с него.
+ *
+ * Неделя — единица монет, трофеев и дайджеста, но не босса: комната, которая смела цель к среде, не должна
+ * сидеть без боя до воскресенья. Поэтому урон недели нарезается на раунды по `target`, и каждый новый
+ * раунд — новый босс с полным HP. Перебор засчитывается: добил с запасом — сразу несколько раундов.
+ *
+ * Дробные HP приходят десятыми, поэтому сравнение идёт с допуском: 99.9999 не должно давать «почти добит».
+ */
+export function bossRound(done: number, target: number): BossRound {
+  if (target <= 0) return { round: 1, kills: 0, progress: 0 };
+  // Допуск в одну десятую HP: урон хранится с точностью до десятых, и без него погрешность сложения
+  // десяти чисел могла бы дать 99.99999999999 вместо 100.
+  const kills = Math.floor((done + 0.05) / target);
+  const progress = Math.max(0, Math.round((done - kills * target) * 10) / 10);
+  return { round: kills + 1, kills, progress };
 }
 
 /**
@@ -75,25 +111,39 @@ export function bossPace(done: number, target: number, elapsed: number): BossPac
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты: воскресенье 20:00 по её поясу. */
+/**
+ * Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты: воскресенье 20:00 по её поясу.
+ *
+ * HP, фаза и темп — про ТЕКУЩЕГО босса, а не про неделю: недельный урон нарезан на раунды (`bossRound`),
+ * поэтому комната, добившая цель в среду, в четверг получает следующего босса, а не пустой экран до
+ * воскресенья. Недельные числа (`done`, `byUser`, `mine`) остаются недельными — на них считаются монеты,
+ * трофеи и дайджест.
+ */
 export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Promise<BossState> {
   const timeZone = roomTimeZone(room);
   const { date: week, at: weekStart } = latestDigestMoment(now, timeZone);
   const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
-  const damage = progress.target > 0 ? progress.done / progress.target : 0;
+  const { round, kills, progress: current } = bossRound(progress.done, progress.target);
+  const hp = Math.max(0, Math.round((progress.target - current) * 10) / 10);
+  const damage = progress.target > 0 ? Math.min(1, current / progress.target) : 0;
   return {
     ...progress,
     room: room.name,
     opponent: weeklyOpponent(weekStart),
     week,
-    hp: Math.max(0, Math.round((progress.target - progress.done) * 10) / 10),
+    hp,
     damage,
-    phase: bossPhase(damage, progress.done, progress.target),
+    // Добитый босс сразу уступает место следующему, поэтому фаза считается по текущему раунду:
+    // ровно `done === target` не наступает, вместо него начинается раунд 2.
+    phase: bossPhase(damage, current, progress.target),
     pace: bossPace(progress.done, progress.target, elapsed),
     daysLeft: Math.max(0, Math.floor((end - now.getTime()) / DAY_MS)),
     timeZone,
+    round,
+    kills,
+    progress: current,
   };
 }
 
@@ -159,7 +209,12 @@ export async function bossFeed(db: Db, room: Room, now: Date, limit = 20, target
     ...await bossStrikes(db, room.id, weekStart, weekEnd),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
   for (const row of events) {
-    if (remaining > 0 && remaining <= row.damageDeci) finalBlow = { name: row.name, at: row.at };
+    // Добиваний за неделю может быть несколько: каждый раз, когда урон переходит через target,
+    // начинается следующий босс. `finalBlow` — последнее такое добивание, оно и есть «герой последнего боя».
+    if (remaining > 0 && remaining <= row.damageDeci) {
+      finalBlow = { name: row.name, at: row.at };
+      remaining += Math.round((target ?? 0) * 10);
+    }
     remaining -= row.damageDeci;
     const damage = row.damageDeci / 10;
     const total = byUser.get(row.userId) ?? { name: row.name, damage: 0 };

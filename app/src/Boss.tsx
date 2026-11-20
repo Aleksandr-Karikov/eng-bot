@@ -36,6 +36,19 @@ function hitTime(iso: string): string {
   return new Intl.DateTimeFormat("ru-RU", sameDay ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(at);
 }
 
+/** Время конца недели в поясе комнаты: «в воскресенье в 20:00 (UTC+03:00)». */
+function weekEndLabel(timeZone?: string): string {
+  if (!timeZone) return "в воскресенье в 20:00";
+  try {
+    const offset = new Intl.DateTimeFormat("ru-RU", { timeZone, timeZoneName: "shortOffset" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value;
+    return offset ? `в воскресенье в 20:00 (${offset})` : "в воскресенье в 20:00";
+  } catch {
+    return "в воскресенье в 20:00";
+  }
+}
+
 export function BossScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<BossState>();
   const [error, setError] = useState<string>();
@@ -162,7 +175,10 @@ function BossView({
   const portrait = boss.opponent?.id === "sentinel" ? "boss-sentinel.webp" : phase.art;
   const reducedMotion = useReducedMotion();
   const percent = boss.target > 0 ? Math.min(100, (boss.hp / boss.target) * 100) : 0;
-  const dead = boss.phase === "dead";
+  // Добитый босс сразу уступает место следующему, поэтому «мёртв» — это не экран, а счёт побед.
+  const kills = boss.kills ?? 0;
+  /** «20:00 (UTC+03:00)» — по поясу комнаты, а не зашитым «по Новосибирску». */
+  const weekEnd = weekEndLabel(boss.timeZone);
   const previous = useRef(boss);
   const [strike, setStrike] = useState<{ damage: number; done: number }>();
 
@@ -215,7 +231,7 @@ function BossView({
           </div>
           <div className="boss-meta">
             <span>Снято {hpFormat.format(boss.done)} HP</span>
-            <span>{dead ? "Победа команды" : PACE[boss.pace]}</span>
+            <span>{kills > 0 ? `Добито: ${kills}` : PACE[boss.pace]}</span>
           </div>
         </div>
       </div>
@@ -227,18 +243,19 @@ function BossView({
         </Text>
       </div>
 
-      {dead && (
+      {kills > 0 && (
         <section className="boss-members boss-victory" aria-label="Итоги боя">
-          <h2>🏆 {victory?.teamTrophy ? "Победа команды" : "Босс повержен"}</h2>
+          <h2>🏆 {kills === 1 ? "Босс повержен" : `Боссов повержено: ${kills}`}</h2>
           {victory?.finalBlow && <Text>Добил <b>{victory.finalBlow.name}</b> <span className="hint">· {hitTime(victory.finalBlow.at)}</span></Text>}
           {boss.byUser.map((player, i) => (
             <div className="boss-member" key={i}><span>{player.name}</span><b>{hpFormat.format(player.count)} HP</b></div>
           ))}
           {victory?.teamTrophy && <Text className="hint">Трофей «Победа команды» получат все, кто внёс урон, при подведении итогов недели.</Text>}
-          <Text className="hint">Следующий босс — в воскресенье в 20:00 по Новосибирску.</Text>
+          {/* Арена не пустует: следующий стоит уже сейчас, а не в воскресенье. */}
+          <Text className="hint">Сейчас на арене {boss.round ?? 1}-й босс. Неделя кончается {weekEnd}.</Text>
         </section>
       )}
-      {!dead && combat?.core && (
+      {combat?.core && (
         <div className={`boss-mechanic${combat.core === "ready" ? " ready" : ""}`}>
           <b>{combat.core === "closed" ? "Ядро Стража закрыто" : "Ядро Стража открыто"}</b>
           <span>{combat.core === "closed" ? "Откроется на половине здоровья."
@@ -293,7 +310,7 @@ function BossView({
         {total > hits.length && <Text className="hint">Удары и ответы за неделю: {total}.</Text>}
       </div>
 
-      {!dead && top.length > 1 && (
+      {top.length > 1 && (
         <div className="boss-members">
           <Text weight="2">Вклад команды</Text>
           {top.map((u, i) => (
@@ -343,7 +360,7 @@ function BossView({
         </div>
       )}
 
-      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по Новосибирску. Усиления остаются навсегда и действуют на новые ответы. Бонусы «Силы» и навыка складываются от базового урона.</Text>}
+      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по поясу кошелька. Усиления остаются навсегда и действуют на новые ответы. Бонусы «Силы» и навыка складываются от базового урона.</Text>}
       {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
 
       <Text className="hint boss-footnote">Урон начисляется за ответы на карточки. Режим босса можно выключить в настройках.</Text>

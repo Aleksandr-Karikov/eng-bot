@@ -362,7 +362,9 @@ export async function appBoss(deps: Deps, user: User) {
   if (!room) return { enabled, boss: undefined };
   const now = deps.now();
   const boss = await bossOf(deps.db, room, now, user.id);
-  const won = boss.phase === "dead";
+  // Победа — «на этой неделе комнату добивали», а не «сейчас добит»: добитый босс сразу уступает место
+  // следующему, поэтому `phase === "dead"` в состоянии не наступает вовсе.
+  const won = boss.kills > 0;
   const [feed, combat, earnedCoins, collection, members] = await Promise.all([
     bossFeed(deps.db, room, now, 20, won ? boss.target : undefined),
     combatState(deps.db, user, now, room.id, boss),
@@ -400,6 +402,12 @@ export async function appBoss(deps: Deps, user: User) {
       phase: boss.phase,
       pace: boss.pace,
       daysLeft: boss.daysLeft,
+      // Какой по счёту босс на этой неделе: добили — на арене сразу следующий, а не пустота.
+      round: boss.round,
+      kills: boss.kills,
+      progress: boss.progress,
+      // Пояс комнаты: клиент подписывает им время конца недели, а не зашитым «по Новосибирску».
+      timeZone: boss.timeZone,
       // Показываем коротким форматом: вкладке нужно «сколько мне снимать», а не весь отчёт.
       byUser: boss.byUser,
     },

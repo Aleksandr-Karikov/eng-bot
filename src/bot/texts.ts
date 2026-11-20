@@ -337,6 +337,11 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
     `${progressBar(b.done, b.target)} ${percent}%`,
     b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Следующий босс — в воскресенье, монеты ещё начисляются.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
   ];
+  // Добитые боссы на этой неделе: арена не пустует, следующий уже стоит.
+  if (b.kills > 0) {
+    const word = b.kills === 1 ? "босс" : "боссов";
+    lines.push(`🏆 Добито на этой неделе: ${b.kills} ${word}. Сейчас на арене — ${b.round}-й.`);
+  }
   if (b.phase !== "dead") {
     lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")} (${weekEndNote(b.timeZone)}).` : "Последний день недели — добиваем сегодня.");
     if (b.opponent.id === "sentinel" && b.hp <= b.target / 2) {
