@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { grammarExercises, grammarProgress, grammarTopics } from "../src/db/schema";
+import { combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes } from "../src/db/schema";
+import { createRoom } from "../src/services/rooms";
+import { goalProgress } from "../src/services/goals";
+import { updateUser } from "../src/services/users";
 import { answerExercise, isCorrect, listTopics, topicView } from "../src/services/grammar-topics";
 import { GRAMMAR_TOPICS } from "../src/grammar-content";
 import { botHarness } from "./bot-harness";
@@ -13,6 +16,7 @@ async function seed(h: ReturnType<typeof botHarness>, topic = GRAMMAR_TOPICS[0])
     title: topic.title,
     level: topic.level,
     language: "en",
+    category: topic.category,
     rule: topic.rule,
     examples: topic.examples.join("\n"),
     position: 0,
@@ -211,5 +215,74 @@ describe("📘 /grammar in the bot", () => {
       const sent = h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text));
       expect(sent.some((t) => t.includes("третьем лице"))).toBe(true);
     });
+  });
+});
+
+// 🔗 Грамматика не отдельная игра: промах идёт в общую работу над ошибками, ответ даёт урон боссу.
+describe("🔗 grammar is wired into mistakes and the boss", () => {
+  it("records a wrong answer in the shared mistake list with the topic's category", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const topic = await seed(h, GRAMMAR_TOPICS[2]); // артикли
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+
+    await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: "чушь", now: T0 });
+    const logged = await h.db.select().from(mistakes).where(eq(mistakes.userId, user.id));
+    expect(logged).toHaveLength(1);
+    // Категория — из тех же, что ставит /check, иначе слабые места копились бы в двух местах.
+    expect(logged[0].category).toBe("артикли");
+    expect(logged[0].right).toBe(first.answer);
+  });
+
+  it("does not record a correct answer as a mistake", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const topic = await seed(h);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0 });
+    expect(await h.db.select().from(mistakes).where(eq(mistakes.userId, user.id))).toHaveLength(0);
+  });
+
+  it("deals damage to the room's boss and never twice for the same exercise", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    const topic = await seed(h);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+
+    const once = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
+    // Верный ответ весит как сложное упражнение — 2 HP.
+    expect(once?.bossDamage).toBe(2);
+
+    // Повторное нажатие на то же упражнение урона не добавляет: requestId уникален в базе.
+    const twice = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
+    expect(twice?.bossDamage).toBe(0);
+    expect(await h.db.select().from(combatSpends).where(eq(combatSpends.roomId, room.id))).toHaveLength(1);
+  });
+
+  it("gives no damage when the boss mode is off", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    await updateUser(h.db, user.id, { modeBoss: false });
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    const topic = await seed(h);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
+    expect(result?.bossDamage).toBe(0);
+  });
+
+  it("counts grammar damage in the room's weekly progress", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    const topic = await seed(h);
+    const exercises = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    for (const exercise of exercises.slice(0, 2)) {
+      await answerExercise(h.db, { userId: user.id, exerciseId: exercise.id, answer: exercise.answer, now: T0, roomId: room.id });
+    }
+    // Два верных ответа по 2 HP — и они видны боссу как удары, а не лежат отдельно.
+    const progress = await goalProgress(h.db, room, T0);
+    expect(progress.done).toBeCloseTo(4, 1);
+    expect(progress.byUser[0]).toMatchObject({ name: "Alice", count: 4 });
   });
 });

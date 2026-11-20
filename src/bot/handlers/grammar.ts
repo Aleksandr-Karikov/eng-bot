@@ -73,7 +73,10 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
 
     const picked = exercise.options[cb.index];
     if (picked === undefined) return void (await ctx.answerCallbackQuery({ text: "Такого варианта нет" }));
-    const result = await answerExercise(deps.db, { userId: ctx.user.id, exerciseId: cb.exerciseId, answer: picked, now: deps.now() });
+    // Комната для урона — текущая: грамматика бьёт по боссу той комнаты, где человек учится.
+    const result = await answerExercise(deps.db, {
+      userId: ctx.user.id, exerciseId: cb.exerciseId, answer: picked, now: deps.now(), roomId: ctx.user.currentRoomId ?? undefined,
+    });
     if (!result) return void (await ctx.answerCallbackQuery({ text: "Упражнение не найдено" }));
     await ctx.answerCallbackQuery({ text: result.correct ? "Верно!" : "Мимо" });
 
@@ -200,6 +203,8 @@ function answerText(view: TopicView, exercise: ExerciseView, result: AnswerResul
     result.correct ? `<b>${esc(result.answer)}</b>` : `Ты: ${esc(picked)}\nПравильно: <b>${esc(result.answer)}</b>`,
   ];
   if (result.why) lines.push("", esc(result.why));
+  // Урон боссу: показываем только когда он начислен, чтобы не пугать выключивших режим.
+  if (result.bossDamage > 0) lines.push("", `🐉 Боссу: −${result.bossDamage} HP`);
   const left = result.total - result.done;
   lines.push(
     "",

@@ -454,6 +454,12 @@ export const grammarTopics = sqliteTable("grammar_topics", {
   title: text("title").notNull(),
   /** Уровень CEFR: A1…C1. По нему темы идут от простого к сложному. */
   level: text("level").notNull().default("A1"),
+  /**
+   * Категория ошибки в терминах /check («времена», «артикли», «предлоги»): по ней промах в упражнении
+   * попадает в ту же работу над ошибками, что и ошибки из переписки. Иначе слабые места копились бы
+   * в двух несвязанных местах и в карточки подмешивались бы только половина.
+   */
+  category: text("category").notNull().default("другое"),
   language: text("language").notNull().default("en"),
   /** Правило своими словами: что это и когда применять. Показывается перед упражнениями. */
   rule: text("rule").notNull().default(""),

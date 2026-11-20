@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "../src/db/client";
 import { grammarExercises, grammarProgress, grammarTopics } from "../src/db/schema";
 import { GRAMMAR_TOPICS, type ExerciseDraft, type TopicDraft } from "../src/grammar-content";
+import { MISTAKE_CATEGORIES } from "../src/llm/enricher";
 
 const dryRun = process.argv.includes("--dry-run");
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -25,6 +26,8 @@ function validate(topics: TopicDraft[]): string[] {
     if (slugs.has(topic.slug)) problems.push(`${topic.slug}: повторяющийся slug`);
     slugs.add(topic.slug);
     if (!topic.rule.trim()) problems.push(`${topic.slug}: пустое правило`);
+    // Категория должна совпадать с /check, иначе промахи темы не попадут в общую работу над ошибками.
+    if (!MISTAKE_CATEGORIES.includes(topic.category)) problems.push(`${topic.slug}: категория «${topic.category}» не из списка /check`);
     if (topic.exercises.length === 0) problems.push(`${topic.slug}: нет упражнений`);
     const prompts = new Set<string>();
     topic.exercises.forEach((exercise, i) => {
@@ -90,6 +93,7 @@ for (const [position, draft] of selected.entries()) {
     title: draft.title,
     level: draft.level,
     language: draft.language ?? "en",
+    category: draft.category,
     rule: draft.rule,
     examples: draft.examples.join("\n"),
     position,

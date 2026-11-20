@@ -1,0 +1,1 @@
+ALTER TABLE `grammar_topics` ADD `category` text DEFAULT 'другое' NOT NULL;

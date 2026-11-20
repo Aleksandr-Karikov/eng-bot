@@ -29,6 +29,11 @@ export interface TopicDraft {
   level: string;
   /** Язык темы; по умолчанию английский — корейские темы добавятся сюда же. */
   language?: "en" | "ko";
+  /**
+   * Категория ошибки в терминах /check (`MISTAKE_CATEGORIES`): по ней промах в упражнении попадает
+   * в общую работу над ошибками и подмешивается в карточки вместе с ошибками из переписки.
+   */
+  category: string;
   rule: string;
   examples: string[];
   exercises: ExerciseDraft[];
@@ -37,6 +42,7 @@ export interface TopicDraft {
 export const GRAMMAR_TOPICS: TopicDraft[] = [
   {
     slug: "present-simple",
+    category: "времена",
     title: "Present Simple: что делаю обычно",
     level: "A1",
     rule:
@@ -101,6 +107,7 @@ export const GRAMMAR_TOPICS: TopicDraft[] = [
   },
   {
     slug: "present-continuous",
+    category: "времена",
     title: "Present Continuous: что делаю сейчас",
     level: "A1",
     rule:
@@ -158,6 +165,7 @@ export const GRAMMAR_TOPICS: TopicDraft[] = [
   },
   {
     slug: "articles",
+    category: "артикли",
     title: "Артикли a / an / the",
     level: "A2",
     rule:
@@ -215,6 +223,7 @@ export const GRAMMAR_TOPICS: TopicDraft[] = [
   },
   {
     slug: "past-simple",
+    category: "времена",
     title: "Past Simple: что было",
     level: "A2",
     rule:
@@ -270,8 +279,303 @@ export const GRAMMAR_TOPICS: TopicDraft[] = [
       },
     ],
   },
+
+  {
+    slug: "plurals",
+    title: "Множественное число",
+    level: "A1",
+    category: "множественное число",
+    rule:
+      "Обычное множественное — прибавь -s: book → books. После -s, -ss, -sh, -ch, -x, -z добавляется -es: " +
+      "box → boxes. Согласная + y даёт -ies: city → cities, но гласная + y — просто -s: day → days. " +
+      "Есть неправильные: man → men, child → children, foot → feet, tooth → teeth, mouse → mice.",
+    examples: [
+      "I have two books — обычное -s.",
+      "Three boxes — после -x добавляется -es.",
+      "Many cities — согласная + y даёт -ies.",
+      "Two children — неправильная форма, не childs.",
+    ],
+    exercises: [
+      {
+        kind: "gap",
+        prompt: "I bought two ___ (box) of pencils.",
+        answer: "boxes",
+        why: "После -x добавляется -es: box → boxes.",
+      },
+      {
+        kind: "choice",
+        prompt: "There are many ___ in Russia.",
+        options: ["citys", "cities", "city"],
+        answer: "cities",
+        why: "Согласная + y: city → cities, y меняется на ies.",
+      },
+      {
+        kind: "choice",
+        prompt: "She has two ___ .",
+        options: ["childs", "children", "childes"],
+        answer: "children",
+        why: "Child — неправильное: children, не childs.",
+      },
+      {
+        kind: "gap",
+        prompt: "My ___ (tooth) hurt.",
+        answer: "teeth",
+        why: "Tooth → teeth, как foot → feet.",
+      },
+      {
+        kind: "choice",
+        prompt: "We rested for two ___ .",
+        options: ["days", "daies", "dayes"],
+        answer: "days",
+        why: "После гласной + y просто -s: day → days.",
+      },
+      {
+        kind: "order",
+        prompt: "Собери предложение: «У меня две сестры и три брата».",
+        options: ["I", "have", "two", "sisters", "and", "three", "brothers"],
+        answer: "I have two sisters and three brothers",
+        why: "Обычное множественное: sister → sisters, brother → brothers.",
+      },
+    ],
+  },
+  {
+    slug: "questions-do-does",
+    title: "Вопросы: do / does / did",
+    level: "A2",
+    category: "порядок слов",
+    rule:
+      "Вопрос в простом времени строится через вспомогательный глагол впереди: Do you work? Does she work? " +
+      "Did they work? После does и did смысловой глагол идёт в обычной форме, без -s и без -ed: " +
+      "Does she work (не works), Did he go (не went).",
+    examples: [
+      "Do you like coffee? — вопрос о привычке.",
+      "Does he live here? — с he/she/it берём does.",
+      "Did they arrive yesterday? — прошедшее время, did.",
+      "Where did you go? — вопрос с вопросительным словом: слово + did + подлежащее.",
+    ],
+    exercises: [
+      {
+        kind: "choice",
+        prompt: "___ she speak English?",
+        options: ["Do", "Does", "Is"],
+        answer: "Does",
+        why: "She — третье лицо, значит does.",
+      },
+      {
+        kind: "choice",
+        prompt: "Did he ___ to the party?",
+        options: ["go", "went", "goes"],
+        answer: "go",
+        why: "После did глагол в обычной форме: go, не went.",
+      },
+      {
+        kind: "gap",
+        prompt: "___ you like tea? (вопросительное слово не нужно)",
+        answer: "Do",
+        why: "You — не третье лицо, значит do.",
+      },
+      {
+        kind: "choice",
+        prompt: "Where ___ they live?",
+        options: ["do", "does", "did"],
+        answer: "do",
+        why: "They — множественное, значит do; did был бы про прошлое.",
+      },
+      {
+        kind: "order",
+        prompt: "Собери вопрос: «Ты говоришь по-французски?»",
+        options: ["Do", "you", "speak", "French"],
+        answer: "Do you speak French",
+        why: "Вопрос начинается со вспомогательного: Do + you + глагол.",
+      },
+      {
+        kind: "choice",
+        prompt: "___ it rain yesterday?",
+        options: ["Do", "Does", "Did"],
+        answer: "Did",
+        why: "Yesterday — прошлое, поэтому did.",
+      },
+    ],
+  },
+  {
+    slug: "comparatives",
+    title: "Сравнение: -er / more",
+    level: "A2",
+    category: "формы глаголов",
+    rule:
+      "Короткое слово (один слог) берёт -er: big → bigger, и сравнение идёт с than. Длинное (два слога и больше) " +
+      "берёт more: more interesting. Есть неправильные: good → better, bad → worse, far → further. " +
+      "Превосходная степень — the -est или the most.",
+    examples: [
+      "This box is bigger than that one — короткое слово, -er.",
+      "This book is more interesting — длинное слово, more.",
+      "She is better at chess than me — good → better.",
+      "It's the most expensive hotel — превосходная: the most.",
+    ],
+    exercises: [
+      {
+        kind: "choice",
+        prompt: "My car is ___ than yours.",
+        options: ["faster", "more fast", "fastest"],
+        answer: "faster",
+        why: "Fast — один слог, значит -er: faster than.",
+      },
+      {
+        kind: "choice",
+        prompt: "This film is ___ than the book.",
+        options: ["interestinger", "more interesting", "most interesting"],
+        answer: "more interesting",
+        why: "Interesting — длинное слово, сравнение через more.",
+      },
+      {
+        kind: "gap",
+        prompt: "Her English is ___ (good) than mine.",
+        answer: "better",
+        why: "Good — неправильное: better, не gooder.",
+      },
+      {
+        kind: "choice",
+        prompt: "Today the weather is ___ than yesterday.",
+        options: ["worse", "badder", "more bad"],
+        answer: "worse",
+        why: "Bad — неправильное: worse.",
+      },
+      {
+        kind: "gap",
+        prompt: "This is the ___ (expensive) restaurant in the city.",
+        answer: "most expensive",
+        why: "Превосходная степень длинного слова: the most expensive.",
+      },
+      {
+        kind: "order",
+        prompt: "Собери предложение: «Москва больше, чем Казань».",
+        options: ["Moscow", "is", "bigger", "than", "Kazan"],
+        answer: "Moscow is bigger than Kazan",
+        why: "Big → bigger (удвоение согласной), сравнение через than.",
+      },
+    ],
+  },
+  {
+    slug: "some-any",
+    title: "Some / any / no",
+    level: "A2",
+    category: "выбор слова",
+    rule:
+      "some — в утверждениях: I have some money. any — в вопросах и отрицаниях: Do you have any money? " +
+      "I don't have any money. some тоже бывает в вопросе, когда предлагаем или просим: Would you like some tea? " +
+      "no — не «не any», а сразу «нет»: There is no milk (сильнее, чем not any).",
+    examples: [
+      "I need some help — утверждение.",
+      "Do you have any questions? — вопрос.",
+      "There isn't any bread — отрицание.",
+      "Would you like some coffee? — предложение, поэтому some.",
+    ],
+    exercises: [
+      {
+        kind: "choice",
+        prompt: "I need ___ milk for the cake.",
+        options: ["some", "any", "no"],
+        answer: "some",
+        why: "Утверждение — some.",
+      },
+      {
+        kind: "choice",
+        prompt: "Do you have ___ brothers or sisters?",
+        options: ["some", "any", "no"],
+        answer: "any",
+        why: "Вопрос — any.",
+      },
+      {
+        kind: "gap",
+        prompt: "There isn't ___ sugar in the cupboard.",
+        answer: "any",
+        why: "Отрицание — any.",
+      },
+      {
+        kind: "choice",
+        prompt: "Would you like ___ tea?",
+        options: ["some", "any", "no"],
+        answer: "some",
+        why: "Предложение угощения — some, хотя это вопрос.",
+      },
+      {
+        kind: "choice",
+        prompt: "There is ___ time left, we must hurry.",
+        options: ["some", "any", "no"],
+        answer: "no",
+        why: "«Совсем нет» — сразу no, без not.",
+      },
+      {
+        kind: "order",
+        prompt: "Собери отрицание: «У нас нет денег».",
+        options: ["We", "don't", "have", "any", "money"],
+        answer: "We don't have any money",
+        why: "Отрицание через don't + any.",
+      },
+    ],
+  },
+  {
+    slug: "there-is-are",
+    title: "There is / there are",
+    level: "A1",
+    category: "согласование",
+    rule:
+      "There is — про одно: There is a cat. There are — про много: There are two cats. " +
+      "Глагол согласуется с тем, что идёт сразу после него. Вопрос — перестановкой: Is there a shop near here? " +
+      "Отрицание — через isn't / aren't.",
+    examples: [
+      "There is a shop on the corner — один магазин.",
+      "There are many people here — много людей.",
+      "Is there any milk? — вопрос с перестановкой.",
+      "There aren't any chairs — отрицание.",
+    ],
+    exercises: [
+      {
+        kind: "choice",
+        prompt: "___ a book on the table.",
+        options: ["There is", "There are", "It is"],
+        answer: "There is",
+        why: "A book — одно, значит there is.",
+      },
+      {
+        kind: "choice",
+        prompt: "___ many shops in this street.",
+        options: ["There is", "There are", "There have"],
+        answer: "There are",
+        why: "Many shops — множественное, there are.",
+      },
+      {
+        kind: "gap",
+        prompt: "___ there any milk in the fridge?",
+        answer: "Is",
+        why: "Milk неисчисляемое — единственное число, значит is.",
+      },
+      {
+        kind: "choice",
+        prompt: "___ two cats and a dog in the yard.",
+        options: ["There is", "There are", "There was"],
+        answer: "There are",
+        why: "Смотрим на первое существительное: two cats — множественное.",
+      },
+      {
+        kind: "order",
+        prompt: "Собери вопрос: «Есть ли здесь банк рядом?»",
+        options: ["Is", "there", "a", "bank", "near", "here"],
+        answer: "Is there a bank near here",
+        why: "Вопрос: Is + there + существительное.",
+      },
+      {
+        kind: "choice",
+        prompt: "There ___ any chairs in the room.",
+        options: ["isn't", "aren't", "not are"],
+        answer: "aren't",
+        why: "Chairs — множественное, отрицание aren't.",
+      },
+    ],
+  },
   {
     slug: "prepositions-time",
+    category: "предлоги",
     title: "Предлоги времени: in / on / at",
     level: "A2",
     rule:

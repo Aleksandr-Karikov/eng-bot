@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { grammarExercises, grammarProgress, grammarTopics, type GrammarExercise, type GrammarTopic, type User } from "../db/schema";
+import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic, type User } from "../db/schema";
+import { recordMistakes } from "./mistakes";
 
 /**
  * 📘 Грамматика: темы, упражнения и прогресс.
@@ -54,9 +55,38 @@ export interface AnswerResult {
   done: number;
   total: number;
   passed: boolean;
+  /** Урон боссу за этот ответ: 0, если режим выключен или ответ уже засчитан ранее. */
+  bossDamage: number;
 }
 
 const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * 💥 Урон боссу за ответ в грамматике — та же механика, что у ответов по карточкам.
+ *
+ * Пишется строкой `combat_spends` с `target = "boss"`: `bossStrikes` уже собирает урон босса из этой
+ * таблицы, поэтому грамматика попадает в цель комнаты и в ленту ударов без второй механики. `requestId`
+ * уникален (индекс по user+request), поэтому повторный ответ на то же упражнение не засчитается дважды —
+ * это и есть идемпотентность, за которую отвечает сама база, а не память процесса.
+ *
+ * Вес намеренно скромный: как у одной карточки. Грамматика — дополнение к словам, а не второй способ
+ * выиграть неделю в одиночку.
+ */
+async function creditBossDamage(db: Db, input: { userId: number; roomId: number; exerciseId: number; correct: boolean; now: Date }): Promise<number> {
+  const [user] = await db.select({ modeBoss: users.modeBoss }).from(users).where(eq(users.id, input.userId));
+  if (!user?.modeBoss) return 0;
+  // Верный ответ весит как сложное упражнение (2 HP), ошибка — 1 HP: признаться тоже работа.
+  const damageDeci = input.correct ? 20 : 10;
+  const [inserted] = await db.insert(combatSpends).values({
+    userId: input.userId,
+    roomId: input.roomId,
+    target: "boss",
+    requestId: `grammar:${input.userId}:${input.exerciseId}`,
+    damageDeci,
+    at: input.now,
+  }).onConflictDoNothing().returning({ id: combatSpends.id });
+  return inserted ? damageDeci / 10 : 0;
+}
 
 /**
  * Верный ли ответ. Для `choice` и `order` сравниваем нормализованные строки целиком, для `gap` —
@@ -135,7 +165,10 @@ export async function topic(db: Db, topicId: number): Promise<GrammarTopic | und
  * Упражнения идут по порядку `position`: верный ответ двигает `done` вперёд, ошибка сбрасывает `streak`,
  * но `done` не откатывает — прогресс не отнимается. Экзамен открыт, когда `done` дошёл до `total`.
  */
-export async function answerExercise(db: Db, input: { userId: number; exerciseId: number; answer: string; now: Date }): Promise<AnswerResult | undefined> {
+export async function answerExercise(
+  db: Db,
+  input: { userId: number; exerciseId: number; answer: string; now: Date; roomId?: number },
+): Promise<AnswerResult | undefined> {
   const [exercise] = await db.select().from(grammarExercises).where(eq(grammarExercises.id, input.exerciseId));
   if (!exercise) return undefined;
   const total = (await db.select({ id: grammarExercises.id }).from(grammarExercises).where(eq(grammarExercises.topicId, exercise.topicId))).length;
@@ -151,6 +184,18 @@ export async function answerExercise(db: Db, input: { userId: number; exerciseId
   const streak = correct ? (existing?.streak ?? 0) + 1 : 0;
   const passed = (existing?.passed ?? false) || done >= total;
 
+  // Промах попадает в ту же работу над ошибками, что и ошибки из /check: категория темы совпадает с
+  // названиями оттуда, поэтому в карточки подмешивается вместе с ними, а не отдельным списком.
+  if (!correct) {
+    const [topicRow] = await db.select().from(grammarTopics).where(eq(grammarTopics.id, exercise.topicId));
+    await recordMistakes(db, input.userId, [{
+      wrong: `${exercise.prompt} → ${input.answer}`,
+      right: correctAnswer,
+      why: exercise.why,
+      category: topicRow?.category,
+    }], input.now);
+  }
+
   if (existing) {
     await db.update(grammarProgress)
       .set({ done, streak, passed, updatedAt: input.now })
@@ -158,7 +203,11 @@ export async function answerExercise(db: Db, input: { userId: number; exerciseId
   } else {
     await db.insert(grammarProgress).values({ userId: input.userId, topicId: exercise.topicId, done, streak, passed, updatedAt: input.now });
   }
-  return { correct, answer: correctAnswer, why: exercise.why, done, total, passed };
+  // Урон боссу — в комнату, где человек сейчас учится: грамматика не должна открывать свою комнату.
+  const bossDamage = input.roomId !== undefined
+    ? await creditBossDamage(db, { userId: input.userId, roomId: input.roomId, exerciseId: exercise.id, correct, now: input.now })
+    : 0;
+  return { correct, answer: correctAnswer, why: exercise.why, done, total, passed, bossDamage };
 }
 
 /** Данные для подсказки модели: что спросить, когда человек нажал «почему так». */
