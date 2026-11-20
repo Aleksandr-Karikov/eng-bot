@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, users, type User } from "../db/schema";
+import { isTimeZone } from "../time";
 
 /** Пояс новых пользователей. В схеме default остался Europe/Moscow: менять его в SQLite — пересоздавать таблицу. */
 export const DEFAULT_TIMEZONE = "Asia/Novosibirsk";
@@ -14,7 +15,7 @@ export interface TgUser {
 export type UserPatch = Partial<
   Pick<
     User,
-    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "modeBoss" | "bankDamage" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "explainLimit" | "lastReportDate" | "lastDueNoticeAt"
+    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "modeBoss" | "bankDamage" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "explainLimit" | "lastReportDate" | "lastDueNoticeAt" | "timezone" | "timezoneFromDevice"
   >
 >;
 
@@ -69,6 +70,30 @@ export async function setSourceOnce(db: Db, userId: number, source: string, now:
   const [user] = await db.select({ sourceAt: users.sourceAt }).from(users).where(eq(users.id, userId));
   if (!user || user.sourceAt != null) return;
   await db.update(users).set({ source, sourceAt: now }).where(eq(users.id, userId));
+}
+
+/**
+ * Пояс с телефона: Telegram его не отдаёт, а при регистрации он угадан по умолчанию.
+ *
+ * Приложение знает настоящий пояс (`Intl.DateTimeFormat().resolvedOptions().timeZone`), поэтому присланное
+ * значение заменяет догадку — и продолжает заменять, если человек переехал. Флаг `timezoneFromDevice`
+ * отличает настоящее значение от угаданного.
+ *
+ * Вместе с поясом человека двигается и пояс комнат, которые он создал: иначе комнаты, заведённые до
+ * появления настоящего пояса, навсегда остались бы на догадке (у всех — Новосибирск), а их неделя босса
+ * кончалась бы не тогда, когда кончается неделя у автора. Комнаты, у которых пояс уже разошёлся с
+ * прежним поясом автора, не трогаем: значит его выбрали отдельно.
+ */
+export async function adoptDeviceTimeZone(db: Db, userId: number, timeZone: string): Promise<void> {
+  if (!isTimeZone(timeZone)) return;
+  const [user] = await db.select({ timezone: users.timezone, fromDevice: users.timezoneFromDevice }).from(users).where(eq(users.id, userId));
+  if (!user) return;
+  // Уже настоящий и не изменился — не пишем лишний раз на каждый запуск приложения.
+  if (user.fromDevice && user.timezone === timeZone) return;
+  await db.update(users).set({ timezone: timeZone, timezoneFromDevice: true }).where(eq(users.id, userId));
+  await db.update(rooms)
+    .set({ timezone: timeZone })
+    .where(and(eq(rooms.createdBy, userId), eq(rooms.timezone, user.timezone)));
 }
 
 /** {"en": 7, "ko": 12} — последняя комната каждого языка. */

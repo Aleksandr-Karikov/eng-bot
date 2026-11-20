@@ -25,7 +25,8 @@ export interface WeeklyReport {
 const HARDEST = 3;
 
 export async function weeklyReport(db: Db, user: User, now: Date): Promise<WeeklyReport> {
-  const end = latestDigestMoment(now).at;
+  // Личный итог — про человека, поэтому его собственный пояс, а не пояс комнаты.
+  const end = latestDigestMoment(now, user.timezone).at;
   const start = new Date(end.getTime() - WEEK_MS);
   const before = new Date(start.getTime() - WEEK_MS);
   const logs = await db
@@ -81,7 +82,7 @@ export async function collectWeeklyReports(db: Db, now: Date): Promise<Array<{ u
   const result: Array<{ user: User; report: WeeklyReport }> = [];
   const candidates = await db.select().from(users).where(and(eq(users.canDm, true), eq(users.weeklyReport, true))).orderBy(desc(users.id));
   for (const user of candidates) {
-    const date = digestDue({ lastDigestDate: user.lastReportDate }, now);
+    const date = digestDue({ lastDigestDate: user.lastReportDate, timezone: user.timezone }, now);
     if (!date) continue;
     await db.update(users).set({ lastReportDate: date }).where(eq(users.id, user.id));
     const report = await weeklyReport(db, user, now);

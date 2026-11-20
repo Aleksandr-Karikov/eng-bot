@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, rooms, roomMembers, trophies, users, words, type Room, type User } from "../db/schema";
-import { latestDigestMoment, WEEK_MS } from "./digest";
-import { localParts } from "../time";
+import { DIGEST_TIME, FALLBACK_TZ, latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
+import { localMoment, localParts } from "../time";
 import { answerWeight, goalProgress } from "./goals";
 import { bossStrikes } from "./combat-ledger";
 
@@ -63,12 +63,14 @@ export const TROPHIES: TrophyDef[] = [
 export const TROPHY_BY_KIND = new Map(TROPHIES.map((t) => [t.kind, t]));
 
 const HOUR_MS = 60 * 60_000;
-/** Пояс, в котором считаются «ночь» и «утро»: тот же, что у недели и дайджеста. */
-const TROPHY_TZ = "Asia/Novosibirsk";
-const hourIn = (at: Date) => Number(localParts(TROPHY_TZ, at).time.slice(0, 2));
+/**
+ * Час суток в поясе комнаты: «ночной охотник» и «ранняя птица» должны считаться там, где живёт комната,
+ * а не по общему поясу. Иначе у человека в Москве ночные ответы попадали бы в «утро».
+ */
+const hourIn = (at: Date, timeZone: string = FALLBACK_TZ) => Number(localParts(timeZone, at).time.slice(0, 2));
 
-/** Ключ недели — дата воскресенья, как у цели и дайджеста. */
-export const weekKey = (now: Date): string => latestDigestMoment(now).date;
+/** Ключ недели — дата воскресенья по поясу комнаты, как у цели и дайджеста. */
+export const weekKey = (now: Date, timeZone: string = FALLBACK_TZ): string => latestDigestMoment(now, timeZone).date;
 
 /** Найденный трофей до записи в базу. */
 export interface FoundTrophy {
@@ -90,11 +92,13 @@ export interface WeekFacts {
   target: number;
   done: number;
   members: number;
+  /** Пояс комнаты: в нём считаются «ночь», «утро» и «последний час» — там же, где кончается неделя. */
+  timeZone: string;
 }
 
 /** Собираем всё, что нужно трофеям за одну неделю, одним проходом по данным комнаты. */
 export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFacts> {
-  const week = latestDigestMoment(now);
+  const week = latestDigestMoment(now, roomTimeZone(room));
   const end = week.at;
   const start = new Date(end.getTime() - WEEK_MS);
   const progress = await goalProgress(db, room, now, start);
@@ -148,6 +152,7 @@ export async function weekFacts(db: Db, room: Room, now: Date): Promise<WeekFact
     target: progress.target,
     done: progress.done,
     members: (await db.select().from(roomMembers).where(eq(roomMembers.roomId, room.id))).length,
+    timeZone: roomTimeZone(room),
   };
 }
 
@@ -180,7 +185,7 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   if (mine > 0 && facts.killer !== undefined) add("team-win");
   if (facts.killer === userId) add("killer");
   // ⏰ Добил в последние три часа недели.
-  if (facts.killedAt && facts.killer === userId && closeToEnd(facts.killedAt, facts.week)) add("last-hour");
+  if (facts.killedAt && facts.killer === userId && closeToEnd(facts.killedAt, facts.week, facts.timeZone)) add("last-hour");
   // ⚡ Мой удар добил босса, у которого оставалось не больше 10 HP.
   if (facts.killer === userId && facts.hpBeforeKill !== undefined && facts.hpBeforeKill <= 10) add("oneshot");
   // 🔥 Комната смела босса с запасом.
@@ -197,13 +202,13 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   }
 
   // 🌙 Ночной охотник: треть ответов после полуночи.
-  const night = mineAnswers.filter((a) => hourIn(a.at) < 5).length;
+  const night = mineAnswers.filter((a) => hourIn(a.at, facts.timeZone) < 5).length;
   if (mineAnswers.length >= 10 && night / mineAnswers.length >= 0.3) add("night", night);
 
   // 💪 Упорство
-  const days = new Set(mineAnswers.map((a) => new Date(`${localParts(TROPHY_TZ, a.at).date}T12:00:00Z`).getUTCDay()));
+  const days = new Set(mineAnswers.map((a) => new Date(`${localParts(facts.timeZone, a.at).date}T12:00:00Z`).getUTCDay()));
   if (days.size === 7) add("iron-week", 7);
-  const morning = mineAnswers.filter((a) => hourIn(a.at) < 9).length;
+  const morning = mineAnswers.filter((a) => hourIn(a.at, facts.timeZone) < 9).length;
   if (mineAnswers.length >= 10 && morning / mineAnswers.length >= 0.5) add("early-bird", morning);
 
   // 🎓 Умения
@@ -216,17 +221,26 @@ export function trophiesFor(facts: WeekFacts, userId: number, alreadyOnce: Set<s
   return found;
 }
 
-/** Добит ли босс в последние три часа недели. */
-function closeToEnd(killedAt: Date, week: string): boolean {
-  return new Date(`${week}T20:00:00+07:00`).getTime() - killedAt.getTime() <= 3 * HOUR_MS;
+/**
+ * Добит ли босс в последние три часа недели — по поясу комнаты, а не по зашитому смещению.
+ *
+ * Границы с обеих сторон: удар должен быть ДО конца недели и не раньше чем за три часа. Без нижней
+ * границы удар, записанный после конца недели (в другой пояса это возможно на стыке), считался бы
+ * «последним часом» с отрицательной разницей.
+ */
+function closeToEnd(killedAt: Date, week: string, timeZone: string): boolean {
+  const left = localMoment(timeZone, week, DIGEST_TIME).getTime() - killedAt.getTime();
+  return left >= 0 && left <= 3 * HOUR_MS;
 }
 
 /**
  * Выдать трофеи за только что закрытую неделю во всех комнатах.
  * Идемпотентно: уникальный индекс (userId, kind, week) не даёт выдать дважды.
+ *
+ * Неделя считается по поясу каждой комнаты, поэтому отбор идёт внутри цикла, а не одним ключом на всех:
+ * у комнаты в Москве и в Новосибирске это разные даты воскресенья.
  */
 export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boolean; weeklyOnly?: boolean } = {}): Promise<Array<{ user: User; earned: TrophyDef[] }>> {
-  const week = weekKey(now);
   const already = await db.select({ userId: trophies.userId, kind: trophies.kind, week: trophies.week }).from(trophies);
   const onceHad = new Map<number, Set<string>>();
   for (const row of already) {
@@ -234,12 +248,20 @@ export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boo
     set.add(row.kind);
     onceHad.set(row.userId, set);
   }
-  const weeksThis = new Set(already.filter((r) => r.week === week).map((r) => `${r.userId}:${r.kind}`));
+  const mintedThisWeek = new Map<string, Set<string>>();
+  for (const row of already) {
+    const set = mintedThisWeek.get(row.week) ?? new Set<string>();
+    set.add(`${row.userId}:${row.kind}`);
+    mintedThisWeek.set(row.week, set);
+  }
 
   const result: Array<{ user: User; earned: TrophyDef[] }> = [];
   for (const room of await db.select().from(rooms)) {
     const facts = await weekFacts(db, room, now);
     if (facts.done === 0) continue;
+    const week = facts.week;
+    const weeksThis = mintedThisWeek.get(week) ?? new Set<string>();
+    mintedThisWeek.set(week, weeksThis);
     const members = await db.select({ userId: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, room.id));
     for (const userId of new Set([...facts.damage.keys(), ...members.map((m) => m.userId)])) {
       const fresh = trophiesFor(facts, userId, onceHad.get(userId) ?? new Set()).filter((t) => !weeksThis.has(`${userId}:${t.kind}`) && (!options.weeklyOnly || TROPHY_BY_KIND.get(t.kind)?.repeat === "weekly"));

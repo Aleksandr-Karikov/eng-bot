@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `timezone_from_device` integer DEFAULT false NOT NULL;

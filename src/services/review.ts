@@ -1,7 +1,7 @@
 import { HUNTER_RELICS, MOBS } from "../combat-mobs";
 import { answerWeight, damageSkill } from "./goals";
 import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
-import { latestDigestMoment } from "./digest";
+import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
 import { streakBuff } from "./streak-buff";
@@ -82,7 +82,9 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   const active = enabled !== false && user?.modeBoss === true;
   const skill = damageSkill(stage);
-  const week = active && skill ? latestDigestMoment(now) : undefined;
+  // Комната нужна и для недели (пояс комнаты), и для бонуса Дракона — читаем один раз.
+  const room = active && roomId != null ? await getRoom(db, roomId) : undefined;
+  const week = active && skill && room ? latestDigestMoment(now, roomTimeZone(room)) : undefined;
   const [weeks, claims, streak] = await Promise.all([
     active ? mobHuntWeeks(db, userId) : 0,
     week ? mobClaims(db, userId, week.date) : [],
@@ -95,9 +97,8 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
     .filter((relic) => weeks >= relic.weeks && (relic.skill === "all" || relic.skill === skill))
     .reduce((sum, relic) => sum + relic.percent, 0);
   let dragonBonus = 0;
-  if (skill === "listen" && week && roomId != null && weeklyOpponent(week.at).id === "dragon") {
-    const room = await getRoom(db, roomId);
-    if (room && (await bossOf(db, room, now)).phase === "furious") dragonBonus = 20;
+  if (skill === "listen" && week && room) {
+    if (weeklyOpponent(week.at).id === "dragon" && (await bossOf(db, room, now)).phase === "furious") dragonBonus = 20;
   }
   return {
     damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0)) * 10),

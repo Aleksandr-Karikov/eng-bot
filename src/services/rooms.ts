@@ -7,12 +7,15 @@ import { createCards } from "./cards";
 import { ROOM_LIMITS, ROOM_REFUSALS } from "./limits";
 import { getUser, parseLastRooms, updateUser } from "./users";
 import { removeReviewHistory } from "./combat-ledger";
+import { isTimeZone } from "../time";
 
 export async function createRoom(
   db: Db,
   input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean; language?: LangCode },
 ): Promise<Room> {
   const language = input.language ?? "en";
+  // Пояс комнаты — пояс автора на момент создания: по нему считаются границы недели и слово дня.
+  const author = await getUser(db, input.createdBy);
   const [room] = await db
     .insert(rooms)
     .values({
@@ -20,6 +23,7 @@ export async function createRoom(
       inviteCode: randomBytes(6).toString("base64url"),
       telegramChatId: input.telegramChatId ?? null,
       language,
+      ...(author?.timezone ? { timezone: author.timezone } : {}),
       personalOf: input.personal ? input.createdBy : null,
       // Английский личный словарь отмечаем и по-старому — чтобы код до появления языков (при откате) его видел.
       legacyPersonalOf: input.personal && language === "en" ? input.createdBy : null,
@@ -222,4 +226,16 @@ export async function deleteRoom(db: Db, roomId: number): Promise<void> {
 
 export async function renameRoom(db: Db, roomId: number, name: string): Promise<void> {
   await db.update(rooms).set({ name }).where(eq(rooms.id, roomId));
+}
+
+/**
+ * Сменить пояс комнаты. Меняет границу недели — босс, цель, монеты, трофеи и слово дня переедут вместе с ней.
+ *
+ * Пояс проверяется: неизвестное значение сделало бы неделю невычислимой. Вызывать только для владельца
+ * комнаты — это решение, затрагивающее всех участников.
+ */
+export async function updateRoomTimezone(db: Db, roomId: number, timeZone: string): Promise<boolean> {
+  if (!isTimeZone(timeZone)) return false;
+  await db.update(rooms).set({ timezone: timeZone }).where(eq(rooms.id, roomId));
+  return true;
 }

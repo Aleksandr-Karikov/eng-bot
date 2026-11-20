@@ -21,6 +21,8 @@ function facts(over: Partial<WeekFacts> & { damage?: Map<number, number> } = {})
     target: 100,
     done: [...damage.values()].reduce((a, b) => a + b, 0),
     members: damage.size,
+    // Часы трофеев считаются в поясе комнаты — в тестах он новосибирский, как WEEK выше.
+    timeZone: "Asia/Novosibirsk",
     ...over,
   };
 }
@@ -125,5 +127,46 @@ describe("🏆 trophies", () => {
     expect(kinds(trophiesFor(f, 1, new Set(["killer"])))).toContain("killer");
     expect(TROPHY_BY_KIND.get("killer")?.repeat).toBe("weekly");
     expect(TROPHY_BY_KIND.get("pacifist")?.repeat).toBe("once");
+  });
+});
+
+// Часы трофеев считаются в поясе комнаты. Раньше «ночь» и «утро» были зашиты на Новосибирск, и у человека
+// в Москве ответы в 23:00 попадали в «ночь», хотя по его часам это был вечер.
+describe("🕐 trophy hours use the room's zone", () => {
+  /** Ответы в одинаковое UTC-время, разный пояс комнаты. */
+  function at(hoursUtc: number, count: number) {
+    return Array.from({ length: count }, () => ({
+      rating: "good",
+      stage: null as string | null,
+      at: new Date(`2026-10-15T${String(hoursUtc).padStart(2, "0")}:00:00Z`),
+    }));
+  }
+
+  it("counts night by the room's clock, not the shared one", () => {
+    // 22:00 UTC — это 05:00 следующего дня по Новосибирску (граница «ночи», уже не ночь)
+    // и 01:00 по Москве (ночь). Один и тот же ответ даёт разный трофей.
+    const answers = at(22, 10);
+    const nsk: WeekFacts = { week: WEEK, room, damage: new Map([[1, 20]]), answers: new Map([[1, answers]]), target: 100, done: 20, members: 1, timeZone: "Asia/Novosibirsk" };
+    const msk: WeekFacts = { ...nsk, timeZone: "Europe/Moscow" };
+    expect(kinds(trophiesFor(msk, 1, new Set()))).toContain("night");
+    expect(kinds(trophiesFor(nsk, 1, new Set()))).not.toContain("night");
+  });
+
+  it("counts a morning by the room's clock", () => {
+    // 05:00 UTC — 12:00 по Новосибирску (не утро) и 08:00 по Москве (утро).
+    const answers = at(5, 10);
+    const nsk: WeekFacts = { week: WEEK, room, damage: new Map([[1, 20]]), answers: new Map([[1, answers]]), target: 100, done: 20, members: 1, timeZone: "Asia/Novosibirsk" };
+    const msk: WeekFacts = { ...nsk, timeZone: "Europe/Moscow" };
+    expect(kinds(trophiesFor(msk, 1, new Set()))).toContain("early-bird");
+    expect(kinds(trophiesFor(nsk, 1, new Set()))).not.toContain("early-bird");
+  });
+
+  it("measures the last hour against the room's week end", () => {
+    // Конец недели в Москве — 20:00 МСК = 17:00 UTC. Удар в 15:00 UTC — за два часа, «последний час».
+    const killedAt = new Date("2026-10-18T15:00:00Z");
+    const base: WeekFacts = { week: "2026-10-18", room, damage: new Map([[1, 100]]), answers: new Map([[1, [{ rating: "good", stage: null, at: killedAt }]]]), killer: 1, killedAt, target: 100, done: 100, members: 1, timeZone: "Europe/Moscow" };
+    expect(kinds(trophiesFor(base, 1, new Set()))).toContain("last-hour");
+    // В Новосибирске та же неделя кончилась в 13:00 UTC — удар был уже после конца, не «последний час».
+    expect(kinds(trophiesFor({ ...base, timeZone: "Asia/Novosibirsk" }, 1, new Set()))).not.toContain("last-hour");
   });
 });

@@ -2,35 +2,46 @@ import { wordUsesSince } from "./word-uses";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, words, type Room } from "../db/schema";
-import { localParts, previousDate } from "../time";
+import { localParts, localMoment, previousDate } from "../time";
 import { weeklyDuelPoints, type DuelScore } from "./duels";
 import { listMembers } from "./rooms";
 import { personalStats, roomLeaderboard } from "./stats";
 
-/** Дайджест — по воскресеньям в 20:00 по Новосибирску. */
-const DIGEST_TZ = "Asia/Novosibirsk";
-const DIGEST_TIME = "20:00";
+/** Дайджест и граница недели — по воскресеньям в 20:00 по поясу комнаты. */
+export const DIGEST_TIME = "20:00";
 export const WEEK_MS = 7 * 24 * 60 * 60_000;
 
-/** В Новосибирске нет перехода на летнее время — смещение постоянное. */
-const DIGEST_UTC_OFFSET = "+07:00";
 /** Если бот не работал в воскресенье вечером, дайджест догоняет в течение двух суток. */
 const CATCH_UP_MS = 48 * 60 * 60_000;
 
-/** Последний момент «воскресенье 20:00» по поясу дайджеста, не позже now — начало текущей недели комнаты. */
-export function latestDigestMoment(now: Date): { date: string; at: Date } {
-  let day = localParts(DIGEST_TZ, now).date;
+/** Пояс комнат, у которых свой не задан: старые строки до миграции 0055 и комнаты без автора. */
+export const FALLBACK_TZ = "Asia/Novosibirsk";
+
+/** Пояс комнаты. Единственное место, где решается, чей пояс считать «поясом недели». */
+export function roomTimeZone(room: { timezone?: string | null }): string {
+  return room.timezone && room.timezone.length > 0 ? room.timezone : FALLBACK_TZ;
+}
+
+/**
+ * Последний момент «воскресенье 20:00» по поясу комнаты, не позже now — начало текущей недели.
+ *
+ * Пояс — параметр, а не константа: в комнате, созданной в Москве, неделя должна кончаться в 20:00 МСК,
+ * а не в 20:00 по Новосибирску. Поэтому же здесь нет зашитого «+07:00»: смещение считается через
+ * `localMoment` и учитывает летнее время.
+ */
+export function latestDigestMoment(now: Date, timeZone: string = FALLBACK_TZ): { date: string; at: Date } {
+  let day = localParts(timeZone, now).date;
   for (let i = 0; i < 14; i++, day = previousDate(day)) {
     if (new Date(`${day}T12:00:00Z`).getUTCDay() !== 0) continue;
-    const at = new Date(`${day}T${DIGEST_TIME}:00${DIGEST_UTC_OFFSET}`);
+    const at = localMoment(timeZone, day, DIGEST_TIME);
     if (at.getTime() <= now.getTime()) return { date: day, at };
   }
   throw new Error("unreachable: a Sunday within two weeks");
 }
 
-/** Дата (воскресенье) дайджеста, который пора отправить, иначе null. */
-export function digestDue(room: { lastDigestDate: string | null }, now: Date): string | null {
-  const due = latestDigestMoment(now);
+/** Дата (воскресенье) дайджеста, который пора отправить, иначе null. Пояс — комнаты. */
+export function digestDue(room: { lastDigestDate: string | null; timezone?: string | null }, now: Date): string | null {
+  const due = latestDigestMoment(now, roomTimeZone(room));
   if (now.getTime() - due.at.getTime() > CATCH_UP_MS) return null;
   if ((room.lastDigestDate ?? "") >= due.date) return null;
   return due.date;
@@ -48,8 +59,15 @@ export interface DigestRow {
   used: number;
 }
 
-export async function weeklyDigest(db: Db, roomId: number, now: Date): Promise<DigestRow[]> {
-  const weekAgo = new Date(now.getTime() - WEEK_MS);
+/**
+ * Итоги за закрытую неделю комнаты.
+ *
+ * Неделя — от воскресенья 20:00 пояса комнаты до следующего, а не «последние 7 суток от now»: дайджест
+ * уходит в воскресенье вечером, и окно должно быть ровно той неделей, о которой он рассказывает.
+ */
+export async function weeklyDigest(db: Db, roomId: number, now: Date, timeZone: string = FALLBACK_TZ): Promise<DigestRow[]> {
+  const weekStart = latestDigestMoment(now, timeZone).at;
+  const weekAgo = new Date(weekStart.getTime() - WEEK_MS);
   const board = await roomLeaderboard(db, roomId, now);
   const recentWords = await db
     .select({ addedBy: words.addedBy })
@@ -83,7 +101,7 @@ export async function collectDigests(
     const date = digestDue(room, now);
     if (!date) continue;
     await db.update(rooms).set({ lastDigestDate: date }).where(eq(rooms.id, room.id));
-    const rows = await weeklyDigest(db, room.id, now);
+    const rows = await weeklyDigest(db, room.id, now, roomTimeZone(room));
     const duels = await weeklyDuelPoints(db, room.id, now);
     if (rows.some((r) => r.added > 0 || r.reviews7d > 0 || r.used > 0) || duels.length) result.push({ room, rows, duels });
   }

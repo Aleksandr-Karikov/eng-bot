@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, isNull, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
-import { latestDigestMoment, WEEK_MS } from "./digest";
+import { FALLBACK_TZ, latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
 import { answerWeight, goalProgress, type GoalProgress } from "./goals";
 import { availableRune, bossStrikes, mobClaims, withCombatLock } from "./combat-ledger";
 import { MOBS } from "../combat-mobs";
@@ -41,6 +41,8 @@ export interface BossState extends GoalProgress {
   pace: BossPace;
   /** Полных дней до конца недели (0 — добивать сегодня). */
   daysLeft: number;
+  /** Пояс комнаты: в нём кончается неделя и по нему подписывается время. */
+  timeZone: string;
 }
 
 /**
@@ -73,9 +75,10 @@ export function bossPace(done: number, target: number, elapsed: number): BossPac
 
 const DAY_MS = 24 * 60 * 60_000;
 
-/** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты (воскресенье 20:00). */
+/** Состояние босса комнаты на сейчас. Неделя — та же, что у цели комнаты: воскресенье 20:00 по её поясу. */
 export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Promise<BossState> {
-  const { date: week, at: weekStart } = latestDigestMoment(now);
+  const timeZone = roomTimeZone(room);
+  const { date: week, at: weekStart } = latestDigestMoment(now, timeZone);
   const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
@@ -90,6 +93,7 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
     phase: bossPhase(damage, progress.done, progress.target),
     pace: bossPace(progress.done, progress.target, elapsed),
     daysLeft: Math.max(0, Math.floor((end - now.getTime()) / DAY_MS)),
+    timeZone,
   };
 }
 
@@ -134,7 +138,7 @@ export interface BossFeed {
  * Границы серий считаются по времени: разрыв больше минуты — новый удар.
  */
 export async function bossFeed(db: Db, room: Room, now: Date, limit = 20, target?: number): Promise<BossFeed> {
-  const weekStart = latestDigestMoment(now).at;
+  const weekStart = latestDigestMoment(now, roomTimeZone(room)).at;
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const rows = await db
     .select({ name: users.firstName, userId: users.id, at: reviewLogs.reviewedAt, rating: reviewLogs.rating, stage: reviewLogs.stage, damageDeci: reviewLogs.damageDeci })
@@ -211,14 +215,27 @@ export function boostedDamage(hp: number, level: number): number {
   return Math.round(hp * (10 + level)) / 10;
 }
 
-/** Период монет — неделя комнаты (дата воскресенья), чтобы сгорание совпало со сменой босса. */
-export function coinsPeriod(now: Date): string {
-  return latestDigestMoment(now).date;
+/**
+ * Период личного кошелька — неделя по поясу **человека**, а не комнаты.
+ *
+ * Кошелёк общий для всех комнат, поэтому его граница обязана быть одна и та же, в какой бы комнате
+ * человек ни находился. Если брать пояс комнаты, то переход между комнатами с разными поясами сменил бы
+ * ключ периода, `coinsSpent` обнулился бы — и одни и те же монеты можно было бы потратить дважды.
+ * Пояс человека стабилен, поэтому граница не двигается под ногами.
+ */
+export function coinsPeriod(now: Date, timeZone: string = FALLBACK_TZ): string {
+  return latestDigestMoment(now, timeZone).date;
 }
 
-/** Личные монеты общие для комнат: смена комнаты не меняет кошелёк. */
+/**
+ * Личные монеты общие для комнат: смена комнаты не меняет кошелёк.
+ *
+ * Неделя — по поясу человека, как и `coinsPeriod`: награды мобов и накопленный урон должны считаться в
+ * том же окне, что и кошелёк, иначе покупка «теряет» часть монет на стыке поясов.
+ */
 export async function personalDamage(db: Db, userId: number, now: Date): Promise<number> {
-  const week = latestDigestMoment(now);
+  const [user] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
+  const week = latestDigestMoment(now, user?.timezone ?? FALLBACK_TZ);
   const rows = await db.select().from(reviewLogs).where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, week.at)));
   const claims = await mobClaims(db, userId, week.date);
   const rewards = MOBS.filter((mob) => claims.some((claim) => claim.target === mob.id)).reduce((sum, mob) => sum + mob.coins, 0);
@@ -242,10 +259,16 @@ export interface CoinState {
 
 export const MAX_UPGRADE = 10;
 export const RUNE_PRICE = 40;
-type Wallet = Pick<User, "upgradeDamage" | "coinsSpent" | "coinsPeriod"> & Partial<Pick<User, "upgradeListen" | "upgradeWriting">>;
+type Wallet = Pick<User, "upgradeDamage" | "coinsSpent" | "coinsPeriod"> &
+  Partial<Pick<User, "upgradeListen" | "upgradeWriting" | "timezone">>;
+
+/** Период кошелька — неделя по поясу человека; без него — общий запасной пояс. */
+function walletPeriod(user: Pick<User, "coinsPeriod"> & Partial<Pick<User, "timezone">>, now: Date): string {
+  return coinsPeriod(now, user.timezone ?? FALLBACK_TZ);
+}
 
 export function coinState(done: number, user: Wallet, now: Date): CoinState {
-  const spent = user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0;
+  const spent = user.coinsPeriod === walletPeriod(user, now) ? user.coinsSpent : 0;
   const offers = UPGRADES.map(({ field, ...offer }) => {
     const level = user[field] ?? 0;
     return { ...offer, level, price: level < MAX_UPGRADE ? upgradePrice(level) : null };
@@ -274,8 +297,8 @@ export async function buyUpgrade(db: Db, userId: number, done: number, now: Date
   if (state.coins < offer.price) return "poor";
   const updated = await db.update(users).set({
     [upgrade.field]: offer.level + 1,
-    coinsSpent: (user.coinsPeriod === coinsPeriod(now) ? user.coinsSpent : 0) + offer.price,
-    coinsPeriod: coinsPeriod(now),
+    coinsSpent: (user.coinsPeriod === walletPeriod(user, now) ? user.coinsSpent : 0) + offer.price,
+    coinsPeriod: walletPeriod(user, now),
   }).where(and(eq(users.id, userId), eq(users[upgrade.field], offer.level), walletSnapshot(user)))
     .returning({ id: users.id });
   return updated.length ? "ok" : "poor";
@@ -287,7 +310,7 @@ export function buyPiercingRune(db: Db, userId: number, now: () => Date): Promis
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user?.modeBoss) return "stale";
     if (await availableRune(db, user) !== null) return "owned";
-    const period = coinsPeriod(at);
+    const period = walletPeriod(user, at);
     const done = await personalDamage(db, userId, at);
     if (coinState(done, user, at).coins < RUNE_PRICE) return "poor";
     const [updated] = await db.update(users).set({

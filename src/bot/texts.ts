@@ -268,7 +268,7 @@ export function weeklyReportText(r: WeeklyReport): string {
   return lines.join("\n");
 }
 
-export function goalText(roomName: string, g: GoalProgress): string {
+export function goalText(roomName: string, g: GoalProgress, timeZone?: string): string {
   const percent = Math.round((g.done / Math.max(1, g.target)) * 100);
   const lines = [
     `🎯 <b>Цель «${esc(roomName)}» на неделю</b>: ${g.done}/${g.target} HP${g.done >= g.target ? " ✅" : ""}`,
@@ -278,9 +278,23 @@ export function goalText(roomName: string, g: GoalProgress): string {
   lines.push(
     "",
     g.auto ? "Цель подобрана по прошлой неделе (+10%). Своя — /goal 600" : "Вернуть автоцель — /goal auto",
-    "Неделя заканчивается в воскресенье в 20:00.",
+    weekEndNote(timeZone),
   );
   return lines.join("\n");
+}
+
+/**
+ * Когда кончается неделя — по поясу комнаты.
+ *
+ * Время в тексте подставляется из того же пояса, в котором считается граница: комната в Москве кончается
+ * в 20:00 МСК, и писать ей «20:00» без пояса значит обещать не то время, в которое закроется неделя.
+ */
+export function weekEndNote(timeZone?: string): string {
+  if (!timeZone) return "Неделя заканчивается в воскресенье в 20:00.";
+  const offset = new Intl.DateTimeFormat("ru-RU", { timeZone, timeZoneName: "shortOffset" })
+    .formatToParts(new Date())
+    .find((p) => p.type === "timeZoneName")?.value;
+  return `Неделя заканчивается в воскресенье в 20:00${offset ? ` (${offset})` : ""}.`;
 }
 
 /**
@@ -324,7 +338,7 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
     b.phase === "dead" ? `Урон: ${b.done} из ${b.target}. Следующий босс — в воскресенье, монеты ещё начисляются.` : `HP: ${b.hp} из ${b.target} · ${pace[b.pace]}`,
   ];
   if (b.phase !== "dead") {
-    lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")}.` : "Последний день недели — добиваем сегодня.");
+    lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")} (${weekEndNote(b.timeZone)}).` : "Последний день недели — добиваем сегодня.");
     if (b.opponent.id === "sentinel" && b.hp <= b.target / 2) {
       lines.push("Открыто ядро Стража. Один ручной удар из запаса за бой получает +20%.");
     }
@@ -780,7 +794,7 @@ export function welcomeText(): string {
       "• Тема закрывается после 3 верных ответов подряд. /mistakes — над чем работаем",
     ]),
     section("👥 Вместе с друзьями", [
-      "• Твои слова — в личном словаре «Мои слова». Учить с друзьями — в общей комнате: /room → «Комната для друзей», позови их ссылкой (или вступи по ссылке друга). /link в группе — привязать её к комнате или сменить комнату (и язык)",
+      "• Твои слова — в личном словаре «Мои слова». Учить с друзьями — в общей комнате: /room → «Комната для друзей», позови их ссылкой (или вступи по ссылке друга). /link в группе — привязать её к комнате или сменить комнату (и язык). /roomtz — часовой пояс комнаты: по нему кончается неделя босса",
       "• Новое слово друга приходит с вопросом «знаешь?»",
       "• /duel — дуэль в группе: кто быстрее переведёт",
       "• Слово дня по утрам, 👏 когда кто-то употребил слово из словаря в переписке",

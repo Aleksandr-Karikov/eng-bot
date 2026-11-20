@@ -5,6 +5,9 @@ import { setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
 import { combatSpends, reviewLogs } from "../src/db/schema";
+import { cards as cardsTable } from "../src/db/schema";
+import { eq } from "drizzle-orm";
+import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import { botHarness, buttonData } from "./bot-harness";
@@ -650,5 +653,63 @@ describe("boss shop with a choice of upgrades", () => {
     const { h, alice } = await setup();
     const results = await Promise.all([buyUpgrade(h.db, alice.id, 100, T0, "listen"), buyUpgrade(h.db, alice.id, 100, T0, "writing")]);
     expect(results.sort()).toEqual(["ok", "poor"]);
+  });
+});
+
+
+// 🕐 Неделя босса — по поясу комнаты, а не по общему. Комната, созданная в Москве, кончается в 20:00 МСК,
+// и её босс, лента и монеты должны переключаться именно там. Раньше смещение было зашито («+07:00»).
+describe("🕐 boss follows the room's timezone", () => {
+  const msk = (iso: string) => new Date(`${iso}+03:00`);
+
+  /** Комната в Москве с одним словом и карточкой у автора. */
+  async function moscowRoom() {
+    const h = botHarness();
+    const alice = await updateUser(h.db, (await makeUser(h.db, 1, "Alice")).id, { timezone: "Europe/Moscow" });
+    const room = await createRoom(h.db, { name: "Москва", createdBy: alice.id, now: msk("2026-10-12T10:00") });
+    await saveWord(h.db, {
+      roomId: room.id, addedBy: alice.id,
+      draft: { term: "bank", translation: "берег", explanation: "", example: "" },
+      now: msk("2026-10-12T10:00"),
+    });
+    return { h, alice, room };
+  }
+
+  it("keeps the author's zone on the room and reports it in the state", async () => {
+    const { h, room } = await moscowRoom();
+    // Пояс автора переехал в комнату: если автор потом передумает, неделя останется на месте.
+    expect(room.timezone).toBe("Europe/Moscow");
+    const boss = await bossOf(h.db, room, msk("2026-10-15T12:00"));
+    expect(boss.timeZone).toBe("Europe/Moscow");
+    // Неделя началась в воскресенье 20:00 МСК = 11 октября 17:00 UTC.
+    expect(boss.week).toBe("2026-10-11");
+  });
+
+  it("switches the week at 20:00 of the room's zone", async () => {
+    const { h, room } = await moscowRoom();
+    // За минуту до — ещё старая неделя (11-го), сразу после — новая (18-е).
+    expect((await bossOf(h.db, room, msk("2026-10-18T19:59"))).week).toBe("2026-10-11");
+    expect((await bossOf(h.db, room, msk("2026-10-18T20:00"))).week).toBe("2026-10-18");
+  });
+
+  it("defaults to the shared zone for rooms created before the column existed", async () => {
+    const { h, room } = await moscowRoom();
+    // Старая строка без пояса: не падаем и считаем по общему поясу — так же, как до правки.
+    const legacy = { ...room, timezone: "" };
+    expect((await bossOf(h.db, legacy, msk("2026-10-15T12:00"))).timeZone).toBe("Asia/Novosibirsk");
+  });
+
+  it("counts a strike in the week where it happened by the room's clock", async () => {
+    const { h, alice, room } = await moscowRoom();
+    const card = (await h.db.select().from(cardsTable).where(eq(cardsTable.userId, alice.id)))[0];
+    // Два ответа: один в прошлой неделе (вс 19:30 МСК), другой в новой (вс 20:30 МСК).
+    await answerCard(h.db, { userId: alice.id, cardId: card.id, expectedReps: card.reps, answer: "good", now: msk("2026-10-18T19:30") });
+    const afterFirst = await bossFeed(h.db, room, msk("2026-10-18T19:31"), 20);
+    expect(afterFirst.total).toBe(1);
+    const freshCard = (await h.db.select().from(cardsTable).where(eq(cardsTable.userId, alice.id)))[0];
+    await answerCard(h.db, { userId: alice.id, cardId: freshCard.id, expectedReps: freshCard.reps, answer: "good", now: msk("2026-10-18T20:30") });
+    // В новой неделе — только второй ответ: первый остался в прошлой.
+    const nextWeek = await bossFeed(h.db, room, msk("2026-10-18T20:31"), 20);
+    expect(nextWeek.total).toBe(1);
   });
 });

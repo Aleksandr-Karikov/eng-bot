@@ -40,8 +40,9 @@ console.log(`Rooms: ${allRooms.length}, weeks back: ${weeks}${dryRun ? " (dry ru
 
 let written = 0;
 for (let back = weeks - 1; back >= 0; back--) {
-  // Момент «воскресенье 20:00» той недели, за которую засеваем.
-  const moment = new Date(latestDigestMoment(new Date(now.getTime() - back * WEEK_MS)).at.getTime());
+  // Не подгоняем момент под одну границу: у каждой комнаты свой пояс, и collectTrophies сам возьмёт
+  // последнее «воскресенье 20:00» по поясу комнаты, не позже этой точки.
+  const moment = new Date(now.getTime() - back * WEEK_MS);
   const collected = await collectTrophies(db, moment, { dryRun, weeklyOnly: true });
   for (const { user, earned } of collected) {
     written += earned.length;

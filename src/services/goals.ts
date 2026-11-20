@@ -1,7 +1,7 @@
-import { and, eq, gte, isNull, lt, ne, or } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, rooms, users, words, type Room } from "../db/schema";
-import { latestDigestMoment, WEEK_MS } from "./digest";
+import { latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
 import { bossStrikes } from "./combat-ledger";
 
 /** Автоцель не меньше этого — иначе после пустой недели цель стала бы нулевой. */
@@ -81,8 +81,16 @@ export function autoGoal(lastWeek: number): number {
 /**
  * Цель недели в HP. Считается от **числа ответов** прошлой недели, а не от нанесённого урона:
  * иначе усиление раздувало бы следующего босса и обесценивало себя.
+ *
+ * Границы недели — по поясу комнаты (`roomTimeZone`): у комнаты в Москве неделя кончается в 20:00 МСК.
  */
-export async function goalProgress(db: Db, room: Room, now: Date, weekStart = latestDigestMoment(now).at, userId?: number): Promise<GoalProgress> {
+export async function goalProgress(
+  db: Db,
+  room: Room,
+  now: Date,
+  weekStart = latestDigestMoment(now, roomTimeZone(room)).at,
+  userId?: number,
+): Promise<GoalProgress> {
   const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
   const current = await roomReviews(db, room.id, weekStart, weekEnd);
   for (const strike of await bossStrikes(db, room.id, weekStart, weekEnd)) {
@@ -101,19 +109,25 @@ export async function goalProgress(db: Db, room: Room, now: Date, weekStart = la
 
 /** Прогресс недели, которая только что закончилась (для воскресного дайджеста). */
 export function lastWeekProgress(db: Db, room: Room, now: Date): Promise<GoalProgress> {
-  return goalProgress(db, room, now, new Date(latestDigestMoment(now).at.getTime() - WEEK_MS));
+  return goalProgress(db, room, now, new Date(latestDigestMoment(now, roomTimeZone(room)).at.getTime() - WEEK_MS));
 }
 
 export async function setWeeklyGoal(db: Db, roomId: number, goal: number): Promise<void> {
   await db.update(rooms).set({ weeklyGoal: goal }).where(eq(rooms.id, roomId));
 }
 
-/** Комнаты, которые только что выполнили цель недели; помечает, чтобы поздравить один раз. */
+/**
+ * Комнаты, которые только что выполнили цель недели; помечает, чтобы поздравить один раз.
+ *
+ * Ключ недели у каждой комнаты свой — по её поясу. Поэтому отбор идёт в памяти, а не одним `where` по
+ * общему `week.date`: у комнаты в Москве и комнаты в Новосибирске это разные даты воскресенья, и общий
+ * фильтр поздравил бы одну из них дважды либо не поздравил вовсе.
+ */
 export async function collectGoalsReached(db: Db, now: Date): Promise<Array<{ room: Room; progress: GoalProgress }>> {
-  const week = latestDigestMoment(now);
   const result: Array<{ room: Room; progress: GoalProgress }> = [];
-  const candidates = await db.select().from(rooms).where(or(isNull(rooms.goalReachedWeek), ne(rooms.goalReachedWeek, week.date)));
-  for (const room of candidates) {
+  for (const room of await db.select().from(rooms)) {
+    const week = latestDigestMoment(now, roomTimeZone(room));
+    if (room.goalReachedWeek === week.date) continue;
     const progress = await goalProgress(db, room, now, week.at);
     if (progress.done < progress.target) continue;
     await db.update(rooms).set({ goalReachedWeek: week.date }).where(eq(rooms.id, room.id));

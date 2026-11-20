@@ -1,4 +1,4 @@
-import { getMe } from "./api";
+import { getMe, reportTimezone } from "./api";
 import { setStudyLanguage } from "./language";
 
 import { settingsButton } from "@telegram-apps/sdk-react";
@@ -45,6 +45,9 @@ export function App() {
   /** Режим босса включён. Пока не знаем — считаем выключенным: лишняя кнопка хуже, чем её отсутствие на секунду. */
   const [bossOn, setBossOn] = useState(false);
   useEffect(() => {
+    // Пояс телефона — до запроса данных: от него зависят границы недели босса, и лучше, чтобы сервер
+    // узнал его раньше, чем посчитает HP. Ошибку глотаем — это фон, а не действие человека.
+    reportTimezone();
     getMe()
       .then((me) => {
         setStudyLanguage(me.language);

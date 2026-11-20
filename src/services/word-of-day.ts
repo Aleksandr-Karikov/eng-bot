@@ -2,15 +2,15 @@ import { eq, inArray, isNotNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, rooms, words, type Room, type Word } from "../db/schema";
 import { localParts } from "../time";
+import { roomTimeZone } from "./digest";
 
-/** Слово дня — каждое утро с 10:00 по Новосибирску, в привязанную группу. */
-const WOTD_TZ = "Asia/Novosibirsk";
+/** Слово дня — каждое утро с 10:00 по поясу комнаты, в привязанную группу. */
 const WOTD_TIME = "10:00";
 const REPEAT_AFTER_MS = 30 * 24 * 60 * 60_000;
 
 /** Локальная дата, если сегодня слово дня ещё не отправляли и уже пора, иначе null. */
-export function wordOfDayDue(room: { lastWordOfDayDate: string | null }, now: Date): string | null {
-  const { date, time } = localParts(WOTD_TZ, now);
+export function wordOfDayDue(room: { lastWordOfDayDate: string | null; timezone?: string | null }, now: Date): string | null {
+  const { date, time } = localParts(roomTimeZone(room), now);
   return time >= WOTD_TIME && room.lastWordOfDayDate !== date ? date : null;
 }
 

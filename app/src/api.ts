@@ -114,6 +114,22 @@ const post = <T>(path: string, body: object = {}) =>
 
 export const getMe = () => call<Me & { ok: true }>("/api/me");
 
+/**
+ * Сообщить боту пояс телефона. Telegram пояса не отдаёт, а от него зависят границы недели босса,
+ * поэтому приложение — единственный честный источник. Ошибку не показываем: пояс — не то, ради чего
+ * человек открыл приложение, и сбой здесь не должен мешать учиться.
+ */
+export function reportTimezone(): void {
+  let timezone: string | undefined;
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    timezone = undefined;
+  }
+  if (!timezone) return;
+  void post("/api/timezone", { timezone }).catch(() => {});
+}
+
 /** Ошибка на телефоне — в лог бота: иначе о ней знает только тот, у кого она случилась. */
 export function reportClientError(where: string, err: unknown): void {
   const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

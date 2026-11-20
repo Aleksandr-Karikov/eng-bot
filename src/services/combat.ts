@@ -3,7 +3,7 @@ import { HUNTER_RELICS, MOBS, type CombatTarget } from "../combat-mobs";
 import type { Db } from "../db/client";
 import { combatSpends, users, type User } from "../db/schema";
 import { availableRune, coreUsed, damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
-import { latestDigestMoment } from "./digest";
+import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, RUNE_PRICE, type BossState } from "./boss";
 import { getRoom, isMember } from "./rooms";
 import { streakBuff } from "./streak-buff";
@@ -39,7 +39,8 @@ function reserveHit(hpDeci: number, available: number, core: boolean, rune: bool
 
 export async function combatState(db: Db, user: User, now: Date, roomId: number, boss: BossState) {
   const [claims, weeks, balance, core, rune, streak] = await Promise.all([
-    mobClaims(db, user.id, latestDigestMoment(now).date), mobHuntWeeks(db, user.id), damageBalanceDeci(db, user.id),
+    // Неделя боя уже посчитана по поясу комнаты — берём её, а не считаем заново по общему поясу.
+    mobClaims(db, user.id, boss.week), mobHuntWeeks(db, user.id), damageBalanceDeci(db, user.id),
     coreState(db, user.id, roomId, boss), availableRune(db, user), streakBuff(db, user, now),
   ]);
   const hp = Math.round(boss.hp * 10);
@@ -69,11 +70,13 @@ export function attackWithReserve(db: Db, userId: number, input: {
 }, now: () => Date) {
   return withCombatLock(db, async () => {
     const at = now();
-    const week = latestDigestMoment(at).date;
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    if (!user?.modeBoss || user.currentRoomId !== input.roomId || week !== input.week) return;
+    if (!user?.modeBoss || user.currentRoomId !== input.roomId) return;
     const room = await getRoom(db, input.roomId);
     if (!room || !(await isMember(db, room.id, userId))) return;
+    // Неделя — по поясу комнаты: у комнаты в Москве бой кончается в 20:00 МСК, а не по общему поясу.
+    const week = latestDigestMoment(at, roomTimeZone(room)).date;
+    if (week !== input.week) return;
 
     const balance = await damageBalanceDeci(db, userId);
     if (!balance) return;

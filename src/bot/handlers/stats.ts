@@ -3,6 +3,7 @@ import { currentLang } from "../../lang";
 import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage } from "../../services/boss";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
+import { roomTimeZone } from "../../services/digest";
 import { personalStats, roomLeaderboard } from "../../services/stats";
 import { toggleCardPart } from "../../services/card-view";
 import { autoVoice, toggleVoiceAccent } from "../../services/voice";
@@ -56,7 +57,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
       await setWeeklyGoal(deps.db, room.id, goal);
     }
     const fresh = (await getRoom(deps.db, room.id)) ?? room;
-    await ctx.reply(goalText(fresh.name, await goalProgress(deps.db, fresh, deps.now())), HTML);
+    await ctx.reply(goalText(fresh.name, await goalProgress(deps.db, fresh, deps.now()), roomTimeZone(fresh)), HTML);
   });
 
   /**

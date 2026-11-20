@@ -2,7 +2,7 @@ import { currentLang, LANG_CODES, LANGUAGES, langForms, languageOf, type LangCod
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Room, User } from "../../db/schema";
 import {
-  createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed,
+  createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed, updateRoomTimezone,
 } from "../../services/rooms";
 import { getUser, setSourceOnce, updateUser } from "../../services/users";
 import { parseStartPayload } from "../../services/source";
@@ -47,8 +47,22 @@ async function roomMenu(deps: Deps, user: User) {
     `🏠 Текущая комната: <b>${esc(roomTitle(current))}</b>`,
     `Участники: ${members.map((m) => esc(m.firstName)).join(", ")}`,
     current.telegramChatId != null ? "🔗 Привязана к группе" : "",
+    // Пояс виден тому, кто может его менять: от него зависит, когда кончается неделя босса.
+    current.createdBy === user.id ? `🕐 Пояс: ${esc(roomTimezoneLabel(current.timezone))} — /roomtz` : "",
   ].filter(Boolean).join("\n");
   return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id, missing) };
+}
+
+/** «Asia/Novosibirsk (UTC+07:00)» — понятнее, чем голое имя пояса. */
+function roomTimezoneLabel(timeZone: string): string {
+  try {
+    const offset = new Intl.DateTimeFormat("ru-RU", { timeZone, timeZoneName: "shortOffset" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value;
+    return offset ? `${timeZone} (${offset})` : timeZone;
+  } catch {
+    return timeZone;
+  }
 }
 
 const MAX_ROOM_NAME = 64;
@@ -175,6 +189,40 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     const name = ctx.match.trim();
     if (!name) return askRoomName(ctx, deps);
     await createNamedRoom(ctx, deps, name.slice(0, MAX_ROOM_NAME));
+  });
+
+  /**
+   * 🕐 /roomtz — пояс комнаты, по которому считаются границы недели босса и слово дня.
+   *
+   * Меняет только автор комнаты: это решение, затрагивающее всех участников. Обычно пояс ставится сам —
+   * из пояса автора и с телефона в приложении; команда нужна, когда тот угадан неверно.
+   */
+  bot.command("roomtz", async (ctx) => {
+    const room = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
+    if (!room) return void (await ctx.reply("Сначала создай комнату — /newroom"));
+    if (room.createdBy !== ctx.user.id) {
+      return void (await ctx.reply(`Пояс комнаты «${esc(room.name)}» меняет её автор. Сейчас: ${esc(roomTimezoneLabel(room.timezone))}.`, HTML));
+    }
+    const asked = ctx.match.trim();
+    if (!asked) {
+      return void (await ctx.reply(
+        `🕐 Пояс комнаты «${esc(room.name)}»: <b>${esc(roomTimezoneLabel(room.timezone))}</b>\n\n` +
+        "По нему считаются неделя босса, трофеи и слово дня.\n" +
+        "Сменить: <code>/roomtz Europe/Moscow</code> — или <code>/roomtz auto</code>, чтобы взять твой пояс.",
+        HTML,
+      ));
+    }
+    const next = asked === "auto" ? ctx.user.timezone : asked;
+    if (!(await updateRoomTimezone(deps.db, room.id, next))) {
+      return void (await ctx.reply(
+        "Такого пояса не знаю. Нужно имя из списка IANA, например Europe/Moscow, Asia/Novosibirsk, Asia/Seoul.",
+      ));
+    }
+    await ctx.reply(
+      `🕐 Пояс комнаты «${esc(room.name)}» теперь ${esc(roomTimezoneLabel(next))}.\n` +
+      "Неделя заканчивается в воскресенье в 20:00 по этому поясу.",
+      HTML,
+    );
   });
 
   bot.callbackQuery(/^rm:/, async (ctx) => {

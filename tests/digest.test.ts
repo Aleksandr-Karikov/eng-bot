@@ -111,3 +111,57 @@ describe("friends in the daily reminder", () => {
     expect(reminderText(1, { name: "R&D", reviews: 21 })).toBe("🔔 1 слово ждёт повторения · R&amp;D сегодня уже повторил(а) 21 🔥");
   });
 });
+
+// Неделя комнаты считается по её поясу: комната, созданная в Москве, кончается в 20:00 МСК,
+// и это на три часа позже Новосибирска. Раньше смещение было зашито («+07:00») для всех.
+describe("week boundary follows the room's own timezone", () => {
+  const msk = (iso: string) => new Date(`${iso}+03:00`);
+
+  it("ends the week at 20:00 of the room's zone, not Novosibirsk", () => {
+    // Новосибирск (UTC+7) опережает Москву (UTC+3), поэтому его 20:00 наступает РАНЬШЕ по UTC:
+    // 13:00 UTC против 17:00 UTC. Это и проверяем — у каждой комнаты своя граница.
+    expect(digestDue({ lastDigestDate: null, timezone: "Europe/Moscow" }, msk("2026-10-18T19:59"))).toBeNull();
+    expect(digestDue({ lastDigestDate: null, timezone: "Europe/Moscow" }, msk("2026-10-18T20:00"))).toBe("2026-10-18");
+    // Новосибирск в этот момент (17:00 UTC = 00:00 понедельника) уже закрыл неделю — и тоже на «18-е».
+    expect(digestDue({ lastDigestDate: null, timezone: "Asia/Novosibirsk" }, msk("2026-10-18T20:00"))).toBe("2026-10-18");
+    expect(digestDue({ lastDigestDate: null, timezone: "Asia/Novosibirsk" }, nsk("2026-10-18T20:00"))).toBe("2026-10-18");
+    // А в 12:59 UTC (19:59 по Новосибирску, 15:59 по Москве) не закрыта ни одна.
+    expect(digestDue({ lastDigestDate: null, timezone: "Asia/Novosibirsk" }, nsk("2026-10-18T19:59"))).toBeNull();
+    expect(digestDue({ lastDigestDate: null, timezone: "Europe/Moscow" }, nsk("2026-10-18T19:59"))).toBeNull();
+  });
+
+  it("stores the author's zone on the room and uses it for the digest", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, { canDm: true, timezone: "Europe/Moscow" });
+    const room = await createRoom(db, { name: "Москва", createdBy: alice.id, now: msk("2026-10-12T10:00") });
+    // Пояс автора переехал в комнату: неделя не зависит от того, что автор потом передумает.
+    expect(room.timezone).toBe("Europe/Moscow");
+    await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: "a", translation: "t", explanation: "", example: "" }, now: msk("2026-10-15T10:00") });
+    await review(db, alice.id, 2, msk("2026-10-16T12:00"));
+    // В 20:00 по Москве дайджест уже пора, хотя по Новосибирску ещё 23:00 воскресенья — тоже пора,
+    // поэтому проверяем обратное: в 20:00 по Новосибирску (17:00 МСК) московская комната ещё ждёт.
+    expect(await collectDigests(db, nsk("2026-10-18T20:00"))).toEqual([]);
+    const due = await collectDigests(db, msk("2026-10-18T20:00"));
+    expect(due.map((d) => d.room.name)).toEqual(["Москва"]);
+  });
+
+  it("keeps weeks of two rooms on different zones apart", async () => {
+    const db = testDb();
+    const author = await updateUser(db, (await makeUser(db, 1, "Alice")).id, { timezone: "Europe/Moscow", canDm: true });
+    const other = await updateUser(db, (await makeUser(db, 2, "Bob")).id, { timezone: "Asia/Novosibirsk", canDm: true });
+    const moscow = await createRoom(db, { name: "Москва", createdBy: author.id, now: msk("2026-10-12T10:00") });
+    const novosibirsk = await createRoom(db, { name: "Новосибирск", createdBy: other.id, now: nsk("2026-10-12T10:00") });
+    for (const room of [moscow, novosibirsk]) {
+      await saveWord(db, { roomId: room.id, addedBy: room.createdBy, draft: { term: "a", translation: "t", explanation: "", example: "" }, now: nsk("2026-10-13T10:00") });
+    }
+    await review(db, author.id, 2, msk("2026-10-16T12:00"));
+    await review(db, other.id, 2, nsk("2026-10-16T12:00"));
+    // 14:00 UTC: новосибирская неделя (13:00 UTC) уже закрылась, московская (17:00 UTC) — ещё нет.
+    const at14 = new Date("2026-10-18T14:00:00Z");
+    const first = await collectDigests(db, at14);
+    expect(first.map((d) => d.room.name)).toEqual(["Новосибирск"]);
+    // Через три часа закрывается и московская.
+    const later = await collectDigests(db, new Date("2026-10-18T17:00:00Z"));
+    expect(later.map((d) => d.room.name)).toEqual(["Москва"]);
+  });
+});

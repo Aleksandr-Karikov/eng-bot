@@ -10,6 +10,8 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
+import { adoptDeviceTimeZone } from "../services/users";
+import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
 import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
@@ -45,6 +47,18 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
 
   app.get("/api/me", async (c) => c.json({ ok: true, ...(await appMe(deps, c.get("user"))) }));
+  /**
+   * Пояс с телефона. Telegram его не отдаёт, поэтому единственный честный источник — приложение:
+   * оно присылает `Intl.DateTimeFormat().resolvedOptions().timeZone` при запуске.
+   */
+  app.post("/api/timezone", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { timezone?: unknown };
+    const timezone = typeof body.timezone === "string" ? body.timezone.slice(0, 100) : "";
+    // Мусор и опечатки не пишем: неизвестный пояс сделал бы неделю невычислимой.
+    if (!timezone || !isTimeZone(timezone)) return c.json({ ok: false, error: "Неизвестный часовой пояс" }, 400);
+    await adoptDeviceTimeZone(deps.db, c.get("user").id, timezone);
+    return c.json({ ok: true, timezone });
+  });
   // Ошибки с телефона (кнопки Telegram, плеер…) — в лог бота, коротко.
   app.post("/api/client-error", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
