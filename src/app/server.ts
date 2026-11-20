@@ -13,7 +13,7 @@ import { undoAnswer } from "../services/review";
 import { adoptDeviceTimeZone } from "../services/users";
 import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
-import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appSetDecide, appSetItems, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -114,14 +114,21 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json(r.body, r.status as 200 | 400);
   });
   // 📦 Готовые наборы слов.
-  app.get("/api/sets", async (c) => c.json({ ok: true, sets: await appSets(deps, c.get("user")) }));
-  app.get("/api/sets/:id", async (c) => {
-    const r = await appSetItems(deps, c.get("user"), Number(c.req.param("id")));
-    return r ? c.json({ ok: true, ...r }) : c.json({ ok: false, error: "Нет такого набора" }, 404);
-  });
+  app.get("/api/sets", async (c) => c.json({ ok: true, ...await appSets(deps, c.get("user")) }));
   app.post("/api/sets/decide", async (c) => {
     const r = await appSetDecide(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400 | 409);
+  });
+  // 📍 Куда «учу» кладёт слово: показать и сменить комнату. Регистрируется ДО `/api/sets/:id`,
+  // иначе «target» разобрался бы как id набора и отдал 404.
+  app.get("/api/sets/target", async (c) => c.json(await appSetTarget(deps, c.get("user"))));
+  app.post("/api/sets/target", async (c) => {
+    const r = await appSetSetTarget(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 409);
+  });
+  app.get("/api/sets/:id", async (c) => {
+    const r = await appSetItems(deps, c.get("user"), Number(c.req.param("id")));
+    return r ? c.json({ ok: true, ...r }) : c.json({ ok: false, error: "Нет такого набора" }, 404);
   });
   // ↩️ Отменить последний свайп: карточка — как до ответа.
   app.post("/api/undo", async (c) => {

@@ -463,7 +463,22 @@ export interface SetItem {
   usefulness: number | null;
 }
 
-export const getSets = () => call<{ sets: WordSetInfo[] }>("/api/sets").then((r) => r.sets);
+/** Комната, в которую пойдут слова набора: её выбирает человек, а не приложение. */
+export interface SetTarget {
+  roomId: number;
+  roomName: string;
+  /** Личный словарь: поведение по умолчанию, спрашивать не о чем. */
+  personal: boolean;
+}
+export interface SetTargetState {
+  target: SetTarget;
+  rooms: Array<SetTarget & { current: boolean }>;
+  /** Спросить один раз: есть из чего выбирать, а выбор ещё не сделан. */
+  needsChoice?: boolean;
+}
+export const getSets = () => call<SetTargetState & { sets: WordSetInfo[] }>("/api/sets");
+export const getSetTarget = () => call<SetTargetState>("/api/sets/target");
+export const setSetTarget = (roomId: number) => post<SetTargetState>("/api/sets/target", { roomId });
 export const getSetItems = (id: number) => call<{ set: { id: number; title: string }; remaining: number; items: SetItem[] }>(`/api/sets/${id}`);
 export const decideSetItem = (item: SetItem, decision: "learn" | "know" | "drop", undo = false) =>
   post("/api/sets/decide", { itemId: item.id, decision, undo });

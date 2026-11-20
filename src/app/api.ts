@@ -8,7 +8,7 @@ import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import { cardView } from "../services/card-view";
 import { autoVoice } from "../services/voice";
-import { decide, listSets, nextSetItems, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
+import { decide, listSets, nextSetItems, setSetTarget, setTarget, setTargetChoices, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
 import { cards as cardsTable, roomMembers, setItems, wordSets } from "../db/schema";
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
@@ -429,16 +429,57 @@ export async function appCombat(deps: Deps, user: User, input: {
   return { status: 200 as const, body: { ok: true, ...(damage === undefined ? { notice: "Удар не прошёл. Проверь цель и запас." } : { damage }), ...await appBoss(deps, fresh) } };
 }
 
-/** 📦 Наборы: список с прогрессом, следующие слова набора, решение по слову (или его отмена). */
+/**
+ * 📦 Наборы: список с прогрессом и куда сейчас идут слова.
+ *
+ * `target` отдаём всегда: приложение показывает его в заголовке («слова пойдут в …») и спрашивает
+ * один раз, если человек ещё не выбирал. `needsChoice` — есть выбор из чего выбирать и он не сделан.
+ */
 export async function appSets(deps: Deps, user: User) {
-  return (await listSets(deps.db, user.id)).map(({ set, total, done }) => ({
-    id: set.id,
-    title: set.title,
-    description: set.description,
-    kind: set.kind,
-    total,
-    done,
-  }));
+  const lang = currentLang().code;
+  const [target, choices] = await Promise.all([
+    setTarget(deps.db, user, lang, deps.now()),
+    setTargetChoices(deps.db, user, lang),
+  ]);
+  return {
+    target: { roomId: target.roomId, roomName: target.roomName, personal: target.personal },
+    // Спрашиваем один раз и только если выбор осмысленный: одна комната — выбирать не из чего.
+    needsChoice: user.setTargetRoomId == null && choices.length > 1,
+    rooms: choices.map((c) => ({ roomId: c.roomId, roomName: c.roomName, personal: c.personal, current: c.roomId === target.roomId })),
+    sets: (await listSets(deps.db, user.id)).map(({ set, total, done }) => ({
+      id: set.id,
+      title: set.title,
+      description: set.description,
+      kind: set.kind,
+      total,
+      done,
+    })),
+  };
+}
+
+/** Куда «учу» кладёт слово в этом наборе — приложение показывает это до первого свайпа. */
+export async function appSetTarget(deps: Deps, user: User) {
+  const lang = currentLang().code;
+  const [target, choices] = await Promise.all([
+    setTarget(deps.db, user, lang, deps.now()),
+    setTargetChoices(deps.db, user, lang),
+  ]);
+  return {
+    ok: true as const,
+    target: { roomId: target.roomId, roomName: target.roomName, personal: target.personal },
+    needsChoice: user.setTargetRoomId == null && choices.length > 1,
+    rooms: choices.map((c) => ({ roomId: c.roomId, roomName: c.roomName, personal: c.personal, current: c.roomId === target.roomId })),
+  };
+}
+
+/** Сменить комнату для слов из наборов. Ошибка — текстом для человека. */
+export async function appSetSetTarget(deps: Deps, user: User, body: { roomId?: unknown }) {
+  const roomId = Number(body.roomId);
+  if (!Number.isInteger(roomId)) return { status: 400 as const, body: { ok: false as const, error: "bad room" } };
+  const result = await setSetTarget(deps.db, user, roomId);
+  if (!result.ok) return { status: 409 as const, body: { ok: false as const, error: result.error } };
+  const fresh = await getUserByTelegramId(deps.db, user.telegramId);
+  return { status: 200 as const, body: await appSetTarget(deps, fresh ?? user) };
 }
 
 export async function appSetItems(deps: Deps, user: User, setId: number) {
@@ -474,7 +515,7 @@ export async function appSetDecide(deps: Deps, user: User, body: { itemId?: unkn
   }
   const decision = String(body.decision) as SetDecision;
   if (!SET_DECISIONS.has(decision)) return { status: 400, body: { ok: false, error: "bad decision" } };
-  const ok = await decide(deps.db, { userId: user.id, itemId, decision, now: deps.now() });
+  const ok = await decide(deps.db, { user, itemId, decision, now: deps.now() });
   return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже разобрано" } };
 }
 

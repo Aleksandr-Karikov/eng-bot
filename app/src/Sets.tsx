@@ -1,6 +1,6 @@
 import { Button, Cell, List, Placeholder, Progress, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { decideSetItem, getSetItems, getSets, type SetItem, type WordSetInfo } from "./api";
+import { decideSetItem, getSetItems, getSets, setSetTarget, type SetItem, type SetTargetState, type WordSetInfo } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { DeckCard, type DeckAction } from "./Deck";
 import { IconUndo } from "./icons";
@@ -9,28 +9,41 @@ import { haptic, notify, useBackButton } from "./telegram";
 const UNDO_DEPTH = 5;
 
 /**
- * Готовые наборы: по уровням и по темам. Набор разбирается колодой — знаю / учу / не для меня;
- * «учу» отправляет слово в личный словарь «Мои слова».
+ * Готовые наборы: по уровням и по темам. Набор разбирается колодой — знаю / учу / не для меня.
+ *
+ * «Учу» кладёт слово в комнату, которую человек выбрал (`SetTargetState`): по умолчанию текущую,
+ * а не всегда в личный словарь. Иначе слова, которые учат в общей комнате, не попадали в её босса —
+ * урон считался цели личной комнаты, где человек один, и выглядел как «не засчитывается».
  *
  * `startSetId` открывает набор сразу, минуя список: так пустой `/learn` ведёт новичка в A1 одним
  * тапом. Список ему сейчас не нужен — он ещё не знает, чем A1 отличается от B2.
  */
 export function Sets({ onExit, startSetId }: { onExit: () => void; startSetId?: number }) {
   const [sets, setSets] = useState<WordSetInfo[]>();
+  const [target, setTarget] = useState<SetTargetState>();
   const [error, setError] = useState<string>();
   const [open, setOpen] = useState<number | undefined>(startSetId);
 
   const load = useCallback(() => {
     getSets()
-      .then(setSets)
+      .then((r) => {
+        setSets(r.sets);
+        setTarget({ target: r.target, rooms: r.rooms, needsChoice: r.needsChoice });
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
   useEffect(load, [load]);
+
+  const choose = useCallback(async (roomId: number) => {
+    setTarget(await setSetTarget(roomId));
+  }, []);
 
   if (open !== undefined) {
     return (
       <SetDeck
         id={open}
+        target={target}
+        onChooseRoom={choose}
         onExit={() => {
           setOpen(undefined);
           load();
@@ -38,10 +51,17 @@ export function Sets({ onExit, startSetId }: { onExit: () => void; startSetId?: 
       />
     );
   }
-  return <SetList sets={sets} error={error} onOpen={setOpen} onExit={onExit} />;
+  return <SetList sets={sets} target={target} error={error} onOpen={setOpen} onExit={onExit} onChooseRoom={choose} />;
 }
 
-function SetList({ sets, error, onOpen, onExit }: { sets?: WordSetInfo[]; error?: string; onOpen: (id: number) => void; onExit: () => void }) {
+function SetList({ sets, target, error, onOpen, onExit, onChooseRoom }: {
+  sets?: WordSetInfo[];
+  target?: SetTargetState;
+  error?: string;
+  onOpen: (id: number) => void;
+  onExit: () => void;
+  onChooseRoom: (roomId: number) => Promise<void>;
+}) {
   useBackButton(onExit);
   if (error) return <Placeholder header="Не получилось загрузить" description={error} />;
   if (!sets) {
@@ -77,14 +97,37 @@ function SetList({ sets, error, onOpen, onExit }: { sets?: WordSetInfo[]; error?
   );
   return (
     <List>
-      <Text className="hint week-line">Листай слова набора: → знаю, ← учу, ↑ не для меня. Те, что учишь, попадут в «Мои слова» и придут в карточках.</Text>
+      <Text className="hint week-line">Листай слова набора: → знаю, ← учу, ↑ не для меня. Те, что учишь, придут в карточках.</Text>
+      {target && (
+        <Section header="Куда попадут слова, которые учишь" footer={target.needsChoice ? "Выбери комнату — от неё зависит, в чей босс пойдёт урон." : undefined}>
+          {target.rooms.map((r) => (
+            <Cell
+              key={r.roomId}
+              after={r.roomId === target.target.roomId ? "✓" : undefined}
+              subtitle={r.personal ? "личный словарь: видишь только ты" : undefined}
+              onClick={() => {
+                if (r.roomId === target.target.roomId) return;
+                haptic.select();
+                void onChooseRoom(r.roomId);
+              }}
+            >
+              {r.roomName}
+            </Cell>
+          ))}
+        </Section>
+      )}
       <Section header="По уровню">{group("level").map(row)}</Section>
       <Section header="По темам">{group("topic").map(row)}</Section>
     </List>
   );
 }
 
-function SetDeck({ id, onExit }: { id: number; onExit: () => void }) {
+function SetDeck({ id, target, onChooseRoom, onExit }: {
+  id: number;
+  target?: SetTargetState;
+  onChooseRoom: (roomId: number) => Promise<void>;
+  onExit: () => void;
+}) {
   const [title, setTitle] = useState("");
   const [deck, setDeck] = useState<SetItem[]>();
   const [error, setError] = useState<string>();
@@ -165,26 +208,50 @@ function SetDeck({ id, onExit }: { id: number; onExit: () => void }) {
           )}
         </div>
       </header>
+      {item && target?.needsChoice && (
+        <Section header="Куда добавлять слова, которые учишь" footer="От комнаты зависит, в чей босс пойдёт урон за эти слова. Спросим один раз.">
+          {target.rooms.map((r) => (
+            <Cell
+              key={r.roomId}
+              after={r.roomId === target.target.roomId ? "✓" : undefined}
+              subtitle={r.personal ? "личный словарь: видишь только ты" : undefined}
+              onClick={() => {
+                if (r.roomId === target.target.roomId) return;
+                haptic.select();
+                void onChooseRoom(r.roomId);
+              }}
+            >
+              {r.roomName}
+            </Cell>
+          ))}
+        </Section>
+      )}
       {item ? (
         <DeckCard
           key={item.id}
           word={{ ...item, audio: `/api/audio?item=${item.id}` }}
-          footer={learned ? `В «Мои слова» сейчас добавлено: ${learned}` : undefined}
+          footer={
+            learned
+              ? `Добавлено в «${target?.target.roomName ?? "Мои слова"}»: ${learned}`
+              : target
+                ? `«Учу» добавит в «${target.target.roomName}»${target.target.personal ? " (личный словарь)" : ""}`
+                : undefined
+          }
           onDecide={(a) => decide(item, a)}
         />
       ) : (
-        <SetDone learned={learned} onExit={onExit} />
+        <SetDone learned={learned} roomName={target?.target.roomName} onExit={onExit} />
       )}
     </div>
   );
 }
 
-function SetDone({ learned, onExit }: { learned: number; onExit: () => void }) {
+function SetDone({ learned, roomName, onExit }: { learned: number; roomName?: string; onExit: () => void }) {
   const native = useBottomButtons({ text: "К наборам", onClick: onExit });
   return (
     <Placeholder
       header="Набор разобран"
-      description={learned ? `${learned} слов добавлено в «Мои слова» — они придут в карточках.` : "Новых слов для тебя в нём не нашлось."}
+      description={learned ? `${learned} слов добавлено в «${roomName ?? "Мои слова"}» — они придут в карточках.` : "Новых слов для тебя в нём не нашлось."}
       action={native ? undefined : <Button onClick={onExit}>К наборам</Button>}
     />
   );

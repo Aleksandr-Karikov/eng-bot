@@ -3,7 +3,7 @@ import { cards, rooms, words } from "../src/db/schema";
 import { createRoom, ensurePersonalRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
-import { decide, listSets, nextSetItems, replaceSet, starterSet, undoDecision } from "../src/services/word-sets";
+import { decide, listSets, nextSetItems, replaceSet, setSetTarget, setTarget, setTargetChoices, starterSet, undoDecision } from "../src/services/word-sets";
 import { botHarness } from "./bot-harness";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
@@ -31,17 +31,19 @@ describe("📦 word sets", () => {
     expect((await nextSetItems(h.db, user.id, summary.set.id)).map((i) => i.term)).toEqual(["river", "tree"]);
   });
 
-  it("«учу» goes to the personal dictionary, not the shared room; «знаю» just counts; both can be undone", async () => {
+  it("«учу» goes to the room the person chose, not blindly to the personal one; «знаю» just counts; both undo", async () => {
     const { h, user, shared } = await setup();
     const [river, tree] = await nextSetItems(h.db, user.id, (await listSets(h.db, user.id))[0].set.id);
-    expect(await decide(h.db, { userId: user.id, itemId: river.id, decision: "learn", now: T0 })).toBe(true);
-    expect(await decide(h.db, { userId: user.id, itemId: river.id, decision: "learn", now: T0 })).toBe(false);
-    await decide(h.db, { userId: user.id, itemId: tree.id, decision: "know", now: T0 });
+    // Человек выбрал общую комнату — туда и пойдут слова, иначе они не попадут в босса этой комнаты.
+    expect(await setSetTarget(h.db, user, shared.id)).toEqual({ ok: true });
+    const chosen = await updateUser(h.db, user.id, { setTargetRoomId: shared.id });
+
+    expect(await decide(h.db, { user: chosen, itemId: river.id, decision: "learn", now: T0 })).toBe(true);
+    expect(await decide(h.db, { user: chosen, itemId: river.id, decision: "learn", now: T0 })).toBe(false);
+    await decide(h.db, { user: chosen, itemId: tree.id, decision: "know", now: T0 });
 
     const added = (await h.db.select().from(words)).find((w) => w.term === "river")!;
-    const [personal] = (await h.db.select().from(rooms)).filter((r) => r.personalOf === user.id);
-    expect(added.roomId).toBe(personal.id);
-    expect(added.roomId).not.toBe(shared.id);
+    expect(added.roomId).toBe(shared.id);
     expect((await listSets(h.db, user.id))[0]).toMatchObject({ total: 3, done: 3 });
 
     await undoDecision(h.db, { userId: user.id, itemId: river.id });
@@ -53,8 +55,9 @@ describe("📦 word sets", () => {
     const { h } = await setup();
     const app = createApp({ deps: h.deps, botToken: TOKEN });
     const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, TOKEN, new Date())}`, "content-type": "application/json" };
-    const { sets } = await (await app.request("/api/sets", { headers })).json();
-    expect(sets).toMatchObject([{ title: "B1", total: 3, done: 1 }]);
+    const body = await (await app.request("/api/sets", { headers })).json();
+    expect(body.sets).toMatchObject([{ title: "B1", total: 3, done: 1 }]);
+    const sets = body.sets;
     const { items } = await (await app.request(`/api/sets/${sets[0].id}`, { headers })).json();
     expect(items.map((i: { term: string }) => i.term)).toEqual(["river", "tree"]);
     const post = (body: object) => app.request("/api/sets/decide", { method: "POST", headers, body: JSON.stringify(body) });
@@ -141,5 +144,99 @@ describe("📦 новичок в /learn", () => {
     const text = texts(h).at(-1)!;
     expect(text).not.toContain("/sets");
     expect(text).toMatch(/нечего повторять|Следующее повторение/);
+  });
+});
+
+describe("📦 куда «учу» кладёт слово (setTarget)", () => {
+  it("без выбора берёт текущую комнату, чтобы слова попадали в босса этой комнаты", async () => {
+    const { h, user, shared } = await setup();
+    const inShared = await updateUser(h.db, user.id, { currentRoomId: shared.id });
+    const target = await setTarget(h.db, inShared, "en", T0);
+    expect(target).toMatchObject({ roomId: shared.id, roomName: "Друзья", personal: false });
+  });
+
+  it("выбор человека главнее текущей комнаты", async () => {
+    const { h, user, shared } = await setup();
+    const personal = await ensurePersonalRoom(h.db, user.id, T0);
+    // Смотрит клуб, но складывать слова попросил в личный словарь.
+    const chosen = await updateUser(h.db, user.id, { currentRoomId: shared.id, setTargetRoomId: personal.id });
+    const target = await setTarget(h.db, chosen, "en", T0);
+    expect(target).toMatchObject({ roomId: personal.id, personal: true });
+  });
+
+  it("выбор сбрасывается, если комнату покинули: остаётся текущая, а не мёртвый id", async () => {
+    const { h, user, shared } = await setup();
+    const personal = await ensurePersonalRoom(h.db, user.id, T0);
+    const stale = await updateUser(h.db, user.id, { currentRoomId: shared.id, setTargetRoomId: 999_999 });
+    const target = await setTarget(h.db, stale, "en", T0);
+    expect(target.roomId).toBe(shared.id);
+    expect(target.roomId).not.toBe(personal.id);
+  });
+
+  it("без комнат вообще заводит личный словарь, а не падает", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100);
+    const target = await setTarget(h.db, user, "en", T0);
+    expect(target.personal).toBe(true);
+    const [room] = (await h.db.select().from(rooms)).filter((r) => r.id === target.roomId);
+    expect(room?.personalOf).toBe(user.id);
+  });
+
+  it("в чужую комнату слова не положить, даже зная её id", async () => {
+    const { h, user } = await setup();
+    const stranger = await makeUser(h.db, 200);
+    const strangerRoom = await createRoom(h.db, { name: "Чужая", createdBy: stranger.id, now: T0 });
+    expect(await setSetTarget(h.db, user, strangerRoom.id)).toMatchObject({ ok: false, error: "Ты не в этой комнате" });
+  });
+
+  it("в комнату другого языка слова не положить: там другой словарь и другие наборы", async () => {
+    const { h, user } = await setup();
+    const korean = await createRoom(h.db, { name: "Korean", createdBy: user.id, now: T0, language: "ko" });
+    expect(await setSetTarget(h.db, user, korean.id)).toMatchObject({ ok: false });
+  });
+
+  it("в списке выбора личный словарь идёт последним", async () => {
+    const { h, user, shared } = await setup();
+    await ensurePersonalRoom(h.db, user.id, T0);
+    const inShared = await updateUser(h.db, user.id, { currentRoomId: shared.id });
+    const choices = await setTargetChoices(h.db, inShared, "en");
+    expect(choices.length).toBeGreaterThan(1);
+    expect(choices.at(-1)?.personal).toBe(true);
+  });
+});
+
+describe("📦 /api/sets/target", () => {
+  const headersFor = (token: string) => ({ authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, token, new Date())}`, "content-type": "application/json" });
+
+  it("отдаёт комнаты и текущий выбор, а смена меняет, куда пойдут слова", async () => {
+    const { h, user, shared } = await setup();
+    await ensurePersonalRoom(h.db, user.id, T0);
+    await updateUser(h.db, user.id, { currentRoomId: shared.id });
+    const app = createApp({ deps: h.deps, botToken: TOKEN });
+    const headers = headersFor(TOKEN);
+
+    const before = await (await app.request("/api/sets/target", { headers })).json();
+    expect(before.target.roomId).toBe(shared.id);
+    expect(before.rooms.map((r: { roomName: string }) => r.roomName)).toContain("Друзья");
+
+    const personal = before.rooms.find((r: { personal: boolean }) => r.personal);
+    const after = await (await app.request("/api/sets/target", { method: "POST", headers, body: JSON.stringify({ roomId: personal.roomId }) })).json();
+    expect(after.target).toMatchObject({ roomId: personal.roomId, personal: true });
+
+    // Решение после смены кладёт слово в выбранный личный словарь.
+    const [summary] = await listSets(h.db, user.id);
+    const [river] = await nextSetItems(h.db, user.id, summary.set.id);
+    const fresh = await updateUser(h.db, user.id, { setTargetRoomId: personal.roomId });
+    expect(await decide(h.db, { user: fresh, itemId: river.id, decision: "learn", now: T0 })).toBe(true);
+    const added = (await h.db.select().from(words)).find((w) => w.term === "river")!;
+    expect(added.roomId).toBe(personal.roomId);
+  });
+
+  it("чужой id комнаты отвергается текстом для человека", async () => {
+    const { h } = await setup();
+    const app = createApp({ deps: h.deps, botToken: TOKEN });
+    const r = await app.request("/api/sets/target", { method: "POST", headers: headersFor(TOKEN), body: JSON.stringify({ roomId: 999_999 }) });
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBeTruthy();
   });
 });

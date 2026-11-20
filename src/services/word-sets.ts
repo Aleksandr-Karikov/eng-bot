@@ -1,15 +1,27 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { cards, setDecisions, setItems, wordSets, words, type SetItem, type WordSet } from "../db/schema";
+import { cards, rooms, setDecisions, setItems, users, wordSets, words, type SetItem, type User, type WordSet } from "../db/schema";
 import { currentLang, isLangCode } from "../lang";
-import { ensurePersonalRoom } from "./rooms";
+import { ensurePersonalRoom, isMember, listUserRooms } from "./rooms";
 import { deleteWord, findWord, getWord, normalizeTerm, saveWord } from "./words";
 
 /**
  * 📦 Готовые наборы слов. Человек разбирает набор колодой: знаю / учу / не для меня.
- * «Учу» — слово идёт в его личный словарь «Мои слова», а не в общую комнату: друзей не засыпает «знаешь?».
+ *
+ * «Учу» кладёт слово в комнату из `users.setTargetRoomId` — человек выбирает её один раз, при первом
+ * разборе. По умолчанию это личный словарь «Мои слова»: туда же он шёл всегда, и друзей не засыпает
+ * «знаешь?». Но если слова учат в общей комнате, они должны попадать именно туда — иначе урон боссу
+ * считается цели личной комнаты, где человек один, и слова будто «не засчитываются».
  */
 export type SetDecision = "learn" | "know" | "drop";
+
+/** Куда «учу» положит слово: комната и её имя для подписи. */
+export interface SetTarget {
+  roomId: number;
+  roomName: string;
+  /** Личная комната этого человека — значит, поведение по умолчанию, спрашивать не о чем. */
+  personal: boolean;
+}
 
 export interface SetSummary {
   set: WordSet;
@@ -22,6 +34,42 @@ export interface SetSummary {
 async function knownTerms(db: Db, userId: number): Promise<Set<string>> {
   const rows = await db.select({ term: words.termNormalized }).from(cards).innerJoin(words, eq(cards.wordId, words.id)).where(eq(cards.userId, userId));
   return new Set(rows.map((r) => r.term));
+}
+
+/** Комнаты, в которые человек может складывать слова набора: только членские и только нужного языка. */
+export async function setTargetChoices(db: Db, user: User, lang: string): Promise<Array<{ roomId: number; roomName: string; personal: boolean }>> {
+  const mine = (await listUserRooms(db, user.id)).filter((r) => r.language === lang);
+  return mine
+    // Личная комната — всегда последней: она запасной вариант, а не то, что человек ищет.
+    .sort((a, b) => Number(a.personalOf != null) - Number(b.personalOf != null))
+    .map((r) => ({ roomId: r.id, roomName: r.name, personal: r.personalOf === user.id }));
+}
+
+/**
+ * Куда сейчас идут слова из наборов. Разрешено в этом порядке:
+ * выбор человека (если он всё ещё в той комнате и язык тот же) → текущая комната этого языка →
+ * личный словарь. Никогда не падает: набор должен работать всегда.
+ */
+export async function setTarget(db: Db, user: User, lang: string, now: Date): Promise<SetTarget> {
+  const choices = await setTargetChoices(db, user, lang);
+  const chosen = choices.find((c) => c.roomId === user.setTargetRoomId);
+  if (chosen) return chosen;
+  const current = choices.find((c) => c.roomId === user.currentRoomId);
+  if (current) return current;
+  const first = choices[0];
+  if (first) return first;
+  const personal = await ensurePersonalRoom(db, user.id, now, isLangCode(lang) ? lang : "en");
+  return { roomId: personal.id, roomName: personal.name, personal: true };
+}
+
+/** Запомнить выбор: сюда пойдут слова этого языка. Общую комнату выбирает только её участник. */
+export async function setSetTarget(db: Db, user: User, roomId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await isMember(db, roomId, user.id))) return { ok: false, error: "Ты не в этой комнате" };
+  const [room] = await db.select().from(rooms).where(eq(rooms.id, roomId));
+  if (!room) return { ok: false, error: "Комнаты нет" };
+  if (room.language !== currentLang().code) return { ok: false, error: "Наборы на другом языке — выбери комнату того же языка" };
+  await db.update(users).set({ setTargetRoomId: roomId }).where(eq(users.id, user.id));
+  return { ok: true };
 }
 
 async function decided(db: Db, userId: number): Promise<Set<number>> {
@@ -62,20 +110,27 @@ export async function nextSetItems(db: Db, userId: number, setId: number, limit 
   return items.filter((i) => !done.has(i.id) && !mine.has(normalizeTerm(i.term))).slice(0, limit);
 }
 
-/** Решение по слову. «Учу» — в личный словарь. false — слова нет или по нему уже решили. */
-export async function decide(db: Db, input: { userId: number; itemId: number; decision: SetDecision; now: Date }): Promise<boolean> {
+/**
+ * Решение по слову. «Учу» — в комнату из выбора человека (`setTarget`). false — слова нет или по нему
+ * уже решили.
+ *
+ * `target` передают, когда решение принимается по конкретному экрану (приложение уже знает, куда
+ * человек складывает слова). Без него комната вычисляется по настройке — на случай фоновых вызовов.
+ */
+export async function decide(
+  db: Db,
+  input: { user: User; itemId: number; decision: SetDecision; now: Date; target?: SetTarget },
+): Promise<boolean> {
   const [item] = await db.select().from(setItems).where(eq(setItems.id, input.itemId));
   if (!item) return false;
-  const [already] = await db.select().from(setDecisions).where(and(eq(setDecisions.userId, input.userId), eq(setDecisions.itemId, item.id)));
+  const [already] = await db.select().from(setDecisions).where(and(eq(setDecisions.userId, input.user.id), eq(setDecisions.itemId, item.id)));
   if (already) return false;
   let wordId: number | null = null;
   if (input.decision === "learn") {
-    const [set] = await db.select({ language: wordSets.language }).from(wordSets).where(eq(wordSets.id, item.setId));
-    // В личный словарь на языке набора.
-    const room = await ensurePersonalRoom(db, input.userId, input.now, isLangCode(set?.language) ? set.language : "en");
+    const target = input.target ?? await setTarget(db, input.user, currentLang().code, input.now);
     const saved = await saveWord(db, {
-      roomId: room.id,
-      addedBy: input.userId,
+      roomId: target.roomId,
+      addedBy: input.user.id,
       draft: {
         term: item.term,
         translation: item.translation,
@@ -88,9 +143,9 @@ export async function decide(db: Db, input: { userId: number; itemId: number; de
       },
       now: input.now,
     });
-    wordId = saved.status === "saved" ? saved.word.id : ((await findWord(db, room.id, item.term))?.id ?? null);
+    wordId = saved.status === "saved" ? saved.word.id : ((await findWord(db, target.roomId, item.term))?.id ?? null);
   }
-  await db.insert(setDecisions).values({ userId: input.userId, itemId: item.id, decision: input.decision, wordId, decidedAt: input.now });
+  await db.insert(setDecisions).values({ userId: input.user.id, itemId: item.id, decision: input.decision, wordId, decidedAt: input.now });
   return true;
 }
 
