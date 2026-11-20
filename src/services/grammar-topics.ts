@@ -255,3 +255,66 @@ export async function topicBySlug(db: Db, slug: string): Promise<GrammarTopic | 
   const [row] = await db.select().from(grammarTopics).where(eq(grammarTopics.slug, slug));
   return row;
 }
+
+/**
+ * 📦 Залить темы из кода в базу — при старте бота, как миграции.
+ *
+ * Контент лежит в `src/grammar-content.ts`, поэтому деплой кода должен и обновлять темы: иначе человек
+ * видел бы «тем нет» (или получал старые упражнения) до тех пор, пока кто-то вручную не запустит скрипт.
+ * Пользователю такое сообщение показывать бессмысленно — он не может ничего сделать.
+ *
+ * Идемпотентно: тему с тем же slug обновляем, упражнения заменяем целиком. Прогресс по теме сбрасывается,
+ * только если содержимое правда изменилось — иначе каждый перезапуск обнулял бы людям пройденное.
+ */
+export async function syncGrammar(db: Db, now: Date, only?: string[]): Promise<{ topics: number; exercises: number }> {
+  const { GRAMMAR_TOPICS } = await import("../grammar-content");
+  let topics = 0;
+  let exercises = 0;
+  // `only` — залить отдельные темы (ручной скрипт); без него синхронизируется всё, как при старте бота.
+  const selected = only?.length ? GRAMMAR_TOPICS.filter((t) => only.includes(t.slug)) : GRAMMAR_TOPICS;
+  for (const [position, draft] of selected.entries()) {
+    const [existing] = await db.select().from(grammarTopics).where(eq(grammarTopics.slug, draft.slug));
+    const values = {
+      slug: draft.slug,
+      title: draft.title,
+      level: draft.level,
+      language: draft.language ?? "en",
+      category: draft.category,
+      rule: draft.rule,
+      examples: draft.examples.join("\n"),
+      position,
+    };
+    let topicId: number;
+    if (existing) {
+      await db.update(grammarTopics).set(values).where(eq(grammarTopics.id, existing.id));
+      topicId = existing.id;
+    } else {
+      const [created] = await db.insert(grammarTopics).values({ ...values, createdAt: now }).returning();
+      topicId = created.id;
+    }
+    // Сверяем упражнения с кодом: заменяем только при расхождении, иначе прогресс терялся бы впустую.
+    const stored = await db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topicId)).orderBy(asc(grammarExercises.position));
+    const wanted = draft.exercises.map((exercise, index) => ({
+      topicId,
+      kind: exercise.kind,
+      prompt: exercise.prompt,
+      options: (exercise.options ?? []).join("\n"),
+      answer: exercise.answer,
+      why: exercise.why,
+      position: index,
+    }));
+    const same = stored.length === wanted.length && stored.every((row, i) => {
+      const next = wanted[i];
+      return row.kind === next.kind && row.prompt === next.prompt && row.options === next.options && row.answer === next.answer;
+    });
+    if (!same) {
+      await db.delete(grammarExercises).where(eq(grammarExercises.topicId, topicId));
+      if (wanted.length) await db.insert(grammarExercises).values(wanted);
+      // Упражнения сменились — прежний прогресс к ним больше не относится.
+      await db.update(grammarProgress).set({ done: 0, streak: 0, passed: false, updatedAt: now }).where(eq(grammarProgress.topicId, topicId));
+    }
+    topics += 1;
+    exercises += wanted.length;
+  }
+  return { topics, exercises };
+}

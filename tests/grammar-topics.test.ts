@@ -6,7 +6,7 @@ import { goalProgress } from "../src/services/goals";
 import { updateUser } from "../src/services/users";
 import { createApp } from "../src/app/server";
 import { sign } from "@telegram-apps/init-data-node";
-import { answerExercise, isCorrect, listTopics, topicView } from "../src/services/grammar-topics";
+import { answerExercise, isCorrect, listTopics, syncGrammar, topicView } from "../src/services/grammar-topics";
 import { GRAMMAR_TOPICS } from "../src/grammar-content";
 import { botHarness } from "./bot-harness";
 import { makeUser, testDb, T0 } from "./helpers";
@@ -362,5 +362,70 @@ describe("📱 grammar in the Mini App", () => {
       body: JSON.stringify({ exerciseId: 999_999, answer: "x" }),
     });
     expect(unknown.status).toBe(404);
+  });
+});
+
+// 🚀 Контент едет вместе с кодом: темы заливаются при старте бота, а не руками через скрипт.
+// Это и убирает сообщение «залей скриптом» у человека, которому оно ничего не говорит.
+describe("🚀 grammar content ships with the code", () => {
+  it("fills every topic on the first start", async () => {
+    const h = botHarness();
+    const synced = await syncGrammar(h.db, T0);
+    expect(synced.topics).toBe(GRAMMAR_TOPICS.length);
+    expect(synced.exercises).toBe(GRAMMAR_TOPICS.reduce((n, t) => n + t.exercises.length, 0));
+    // Ни одной темы с пустым правилом или без упражнений — иначе экран открылся бы пустым.
+    for (const topic of await listTopics(h.db, 1)) {
+      expect(topic.total).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not duplicate topics or reset progress on a restart", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    await syncGrammar(h.db, T0);
+    const topics = await listTopics(h.db, user.id);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topics[0].id));
+    await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0 });
+    const before = (await h.db.select().from(grammarProgress).where(eq(grammarProgress.userId, user.id)))[0];
+
+    // Второй и третий запуск — как перезапуски бота при деплое.
+    await syncGrammar(h.db, T0);
+    await syncGrammar(h.db, T0);
+
+    // Тема одна и та же, а прогресс человека не пострадал: иначе каждый деплой обнулял бы пройденное.
+    expect(await h.db.select().from(grammarTopics)).toHaveLength(GRAMMAR_TOPICS.length);
+    const after = (await h.db.select().from(grammarProgress).where(eq(grammarProgress.userId, user.id)))[0];
+    expect(after.done).toBe(before.done);
+    expect(after.done).toBeGreaterThan(0);
+  });
+
+  it("resets a topic's progress only when its exercises actually changed", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    await syncGrammar(h.db, T0);
+    const topics = await listTopics(h.db, user.id);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topics[0].id));
+    await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0 });
+
+    // Имитируем старый контент в базе: расходится с кодом.
+    await h.db.update(grammarExercises).set({ prompt: "старый вопрос" }).where(eq(grammarExercises.id, first.id));
+    await syncGrammar(h.db, T0);
+
+    // Контент вернулся к коду, значит упражнения сменились — пройденное по ним больше не актуально.
+    const after = (await h.db.select().from(grammarProgress).where(eq(grammarProgress.userId, user.id)))[0];
+    expect(after.done).toBe(0);
+    expect(after.passed).toBe(false);
+  });
+
+  it("never tells a person to run a script", async () => {
+    const h = botHarness();
+    await makeUser(h.db, 100, "Alice");
+    // Пустая база: контента ещё нет (первый старт не прошёл).
+    await h.bot.handleUpdate(h.message(100, "/grammar"));
+    const text = String(h.calls.at(-1)?.payload.text);
+    // Человек не может запустить скрипт — сообщение не должно его об этом просить.
+    expect(text).not.toContain("npx tsx");
+    expect(text).not.toContain("scripts/");
+    expect(text).toContain("Грамматика");
   });
 });

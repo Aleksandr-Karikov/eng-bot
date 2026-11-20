@@ -20,6 +20,7 @@ import { PracticeStore } from "./bot/practice";
 import { RoomNameStore } from "./bot/room-names";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
+import { syncGrammar } from "./services/grammar-topics";
 import { OpenRouterBackend } from "./llm/openrouter";
 import { ProviderRouter } from "./llm/provider";
 import { initialProvider, writeProvider } from "./llm/provider-store";
@@ -206,6 +207,15 @@ let captureServer: Server | undefined;
 if (config.capturePort) {
   deps.capturePort = config.capturePort;
   captureServer = startCaptureServer(deps, config.capturePort);
+}
+// 📘 Грамматика едет вместе с кодом: контент лежит в src/grammar-content.ts, поэтому деплой сам обновляет
+// темы. Без этого человек видел бы «тем нет», пока кто-то не запустит скрипт руками.
+try {
+  const synced = await syncGrammar(db, deps.now());
+  console.log(`Grammar: ${synced.topics} topics, ${synced.exercises} exercises`);
+} catch (err) {
+  // Грамматика — не причина не поднимать бота: остальное работает и без неё.
+  console.error("Grammar sync failed", err);
 }
 const appServer = config.appPort ? startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort) : undefined;
 deps.appUrl = config.appUrl;

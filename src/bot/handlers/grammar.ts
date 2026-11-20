@@ -28,7 +28,9 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("grammar", async (ctx) => {
     const topics = await listTopics(deps.db, ctx.user.id);
     if (topics.length === 0) {
-      return void (await ctx.reply("📘 Тем пока нет. Грамматику заливает админ: npx tsx scripts/build-grammar.ts"));
+      // Человеку нечего делать с путём к скрипту: контент приезжает вместе с кодом при обновлении бота,
+      // поэтому честный текст — «ещё не готово», а не инструкция для разработчика.
+      return void (await ctx.reply("📘 Грамматика пока готовится — темы появятся в ближайшее обновление.\nА пока можно учить слова: /learn"));
     }
     await ctx.reply(listText(topics), { ...HTML, reply_markup: listKeyboard(topics) });
   });

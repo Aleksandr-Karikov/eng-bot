@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "../src/db/client";
 import { grammarExercises, grammarProgress, grammarTopics } from "../src/db/schema";
 import { GRAMMAR_TOPICS, type ExerciseDraft, type TopicDraft } from "../src/grammar-content";
+import { syncGrammar } from "../src/services/grammar-topics";
 import { MISTAKE_CATEGORIES } from "../src/llm/enricher";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -84,42 +85,7 @@ console.log(`Тем: ${selected.length}, упражнений: ${selected.reduce
 if (dryRun) process.exit(0);
 
 const db = createDb(process.env.DB_PATH || "data/eng-bot.sqlite", { migrate: false });
-const now = new Date();
-
-for (const [position, draft] of selected.entries()) {
-  const [existing] = await db.select().from(grammarTopics).where(eq(grammarTopics.slug, draft.slug));
-  const values = {
-    slug: draft.slug,
-    title: draft.title,
-    level: draft.level,
-    language: draft.language ?? "en",
-    category: draft.category,
-    rule: draft.rule,
-    examples: draft.examples.join("\n"),
-    position,
-  };
-  let topicId: number;
-  if (existing) {
-    await db.update(grammarTopics).set(values).where(eq(grammarTopics.id, existing.id));
-    topicId = existing.id;
-    // Упражнения заменяются целиком: прогресс по этой теме сбрасывается, но строка прогресса остаётся,
-    // иначе после правки контента экзамен оказался бы сдан по старым упражнениям.
-    await db.update(grammarProgress).set({ done: 0, streak: 0, passed: false, updatedAt: now }).where(eq(grammarProgress.topicId, topicId));
-    await db.delete(grammarExercises).where(eq(grammarExercises.topicId, topicId));
-  } else {
-    const [created] = await db.insert(grammarTopics).values({ ...values, createdAt: now }).returning();
-    topicId = created.id;
-  }
-  await db.insert(grammarExercises).values(draft.exercises.map((exercise, index) => ({
-    topicId,
-    kind: exercise.kind,
-    prompt: exercise.prompt,
-    options: (exercise.options ?? []).join("\n"),
-    answer: exercise.answer,
-    why: exercise.why,
-    position: index,
-  })));
-  console.log(`  ✓ ${draft.slug}: ${draft.exercises.length} упражнений`);
-}
-
-console.log("Готово. Темы в боте: /grammar");
+// Запись — та же функция, что зовёт бот при старте: одна логика на всех, иначе скрипт и старт
+// расходились бы в том, как обновлять темы и когда сбрасывать прогресс.
+const synced = await syncGrammar(db, new Date(), only.length ? only : undefined);
+console.log(`Готово: ${synced.topics} тем, ${synced.exercises} упражнений.`);

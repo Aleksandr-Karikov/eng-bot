@@ -38,7 +38,8 @@ export function Grammar({ onExit }: { onExit: () => void }) {
     );
   }
   if (list.topics.length === 0) {
-    return <Placeholder header="Тем пока нет" description="Грамматику заливает админ: npx tsx scripts/build-grammar.ts" />;
+    // Без технических подробностей: загрузкой контента занимается бот при обновлении, человек тут ни при чём.
+    return <Placeholder header="Грамматика готовится" description="Темы появятся в ближайшее обновление. А пока — карточки: они всегда под рукой." />;
   }
   if (openId !== undefined) {
     return <TopicScreen topicId={openId} onBack={() => { setOpenId(undefined); load(); }} />;
@@ -186,7 +187,7 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
       <div style={{ padding: "0 16px", display: "flex", gap: 8 }}>
         <Button size="m" mode="bezeled" stretched onClick={onBack}>← К темам</Button>
       </div>
-      {!current && <Placeholder header="Упражнений нет" description="В этой теме пока нет заданий. Загляни позже." />}
+      {!current && <Placeholder header="Упражнений нет" description="В этой теме пока нет заданий — загляни позже." />}
     </div>
   );
 }
