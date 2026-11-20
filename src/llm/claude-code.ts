@@ -36,6 +36,7 @@ import {
   buildStoryPrompt,
   buildUntanglePrompt,
   buildTalkReplyPrompt,
+  buildExplainGrammarPrompt,
   buildSayPrompt,
   buildCollocationsPrompt,
   buildTranslationTaskPrompt,
@@ -50,6 +51,7 @@ import {
   buildGrammarPrompt,
   parseGrammar,
   type WordGrammar,
+  parseExplainGrammar,
   parseSayAnswer,
   type SayAnswer,
   buildTalkReviewPrompt,
@@ -263,6 +265,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   /** Грамматика и родня слова — как и сочетания, в фоне и сильной моделью: часть речи и CEFR Haiku врёт. */
   async grammar(term: string, translation: string): Promise<WordGrammar> {
     return parseGrammar(await this.ask(buildGrammarPrompt(term, translation, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
+  }
+
+  /** Почему верен этот ответ — сильной моделью: объяснение правила Haiku упрощает до банальности. */
+  async explainGrammar(input: { rule: string; task: string; answer: string }): Promise<string> {
+    return parseExplainGrammar(await this.ask(buildExplainGrammarPrompt({ ...input, lang: currentLang() }), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */

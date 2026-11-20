@@ -29,6 +29,13 @@ export type Cb =
   | { k: "drillMode" }
   | { k: "bossMode" }
   | { k: "bossHits" }
+  /** 📘 Темы грамматики: список, тема и ответ на упражнение. */
+  | { k: "grammar" }
+  | { k: "grammarTopic"; topicId: number }
+  /** Показать одно упражнение: сначала задание, потом ответ. */
+  | { k: "grammarQuestion"; exerciseId: number }
+  | { k: "grammarAnswer"; exerciseId: number; index: number }
+  | { k: "grammarWhy"; exerciseId: number }
   | { k: "notifyDue" }
   | { k: "weeklyReport" }
   | { k: "cardPart"; part: CardPart }
@@ -144,6 +151,11 @@ export function encodeCb(cb: Cb): string {
     case "drillMode": return "md";
     case "bossMode": return "bm";
     case "bossHits": return "bh";
+    case "grammar": return "gr";
+    case "grammarTopic": return `gt:${cb.topicId}`;
+    case "grammarQuestion": return `gq:${cb.exerciseId}`;
+    case "grammarAnswer": return `ga:${cb.exerciseId}:${cb.index}`;
+    case "grammarWhy": return `gw:${cb.exerciseId}`;
     case "notifyDue": return "nd";
     case "weeklyReport": return "wr";
     case "cardPart": return `cv:${cb.part}`;
@@ -257,6 +269,24 @@ export function decodeCb(data: string): Cb | null {
     case "md": return { k: "drillMode" };
     case "bm": return { k: "bossMode" };
     case "bh": return { k: "bossHits" };
+    case "gr": return { k: "grammar" };
+    case "gt": {
+      const topicId = int(a);
+      return topicId === null ? null : { k: "grammarTopic", topicId };
+    }
+    case "gq": {
+      const exerciseId = int(a);
+      return exerciseId === null ? null : { k: "grammarQuestion", exerciseId };
+    }
+    case "ga": {
+      const exerciseId = int(a);
+      const index = int(b);
+      return exerciseId === null || index === null ? null : { k: "grammarAnswer", exerciseId, index };
+    }
+    case "gw": {
+      const exerciseId = int(a);
+      return exerciseId === null ? null : { k: "grammarWhy", exerciseId };
+    }
     case "nd": return { k: "notifyDue" };
     case "wr": return { k: "weeklyReport" };
     case "cv": return (CARD_PARTS as readonly string[]).includes(a ?? "") ? { k: "cardPart", part: a as CardPart } : null;

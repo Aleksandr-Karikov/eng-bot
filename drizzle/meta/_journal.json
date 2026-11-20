@@ -414,6 +414,13 @@
       "when": 1795173561347,
       "tag": "0058_majestic_bug",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1795175593684,
+      "tag": "0059_amusing_klaw",
+      "breakpoints": true
     }
   ]
 }

@@ -441,6 +441,67 @@ export const setDecisions = sqliteTable("set_decisions", {
 ]);
 
 /**
+ * 📘 Темы грамматики — статический контент, как наборы слов.
+ *
+ * Устроено намеренно без модели: темы и упражнения собираются заранее скриптом (`scripts/build-grammar.ts`)
+ * и лежат в базе. Проверка ответа — сравнение с сохранённым правильным вариантом, а не суждение LLM:
+ * генерация упражнений моделью нестабильна, и человек не должен зависеть от того, ответила она или нет.
+ * Модель зовётся только на кнопку «почему так» — там её сбой ничего не блокирует.
+ */
+export const grammarTopics = sqliteTable("grammar_topics", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  /** Уровень CEFR: A1…C1. По нему темы идут от простого к сложному. */
+  level: text("level").notNull().default("A1"),
+  language: text("language").notNull().default("en"),
+  /** Правило своими словами: что это и когда применять. Показывается перед упражнениями. */
+  rule: text("rule").notNull().default(""),
+  /** Разобранные примеры: «I have lived here since 2020 — since + точка отсчёта». По одному в строке. */
+  examples: text("examples").notNull().default(""),
+  position: integer("position").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+/**
+ * Упражнение темы. Три вида, и все проверяются без модели:
+ *
+ * - `choice` — выбрать вариант: `answer` один из `options` (через перевод строки);
+ * - `gap` — вписать слово в пропуск: `answer` сравнивается без регистра и лишних пробелов;
+ * - `order` — собрать предложение: `options` — слова, `answer` — правильный порядок.
+ *
+ * `prompt` — предложение с `___` там, где пропуск. `why` — короткое объяснение на случай ошибки.
+ */
+export const grammarExercises = sqliteTable("grammar_exercises", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  topicId: integer("topic_id").notNull().references(() => grammarTopics.id),
+  kind: text("kind").notNull(),
+  prompt: text("prompt").notNull(),
+  options: text("options").notNull().default(""),
+  answer: text("answer").notNull(),
+  /** Объяснение из контента: показывается сразу после ответа, модель для этого не нужна. */
+  why: text("why").notNull().default(""),
+  position: integer("position").notNull().default(0),
+}, (t) => [
+  index("grammar_exercises_topic_idx").on(t.topicId),
+]);
+
+/** Прогресс по теме: сколько упражнений пройдено и сдан ли экзамен. По одной строке на человека и тему. */
+export const grammarProgress = sqliteTable("grammar_progress", {
+  userId: integer("user_id").notNull().references(() => users.id),
+  topicId: integer("topic_id").notNull().references(() => grammarTopics.id),
+  /** Верных ответов подряд в текущем проходе: сбрасывается на ошибке. */
+  streak: integer("streak").notNull().default(0),
+  /** Сколько упражнений темы уже отвечено верно (по одному разу каждое). */
+  done: integer("done").notNull().default(0),
+  /** Сдан ли экзамен темы: он открывается, когда пройдены все упражнения. */
+  passed: integer("passed", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.topicId] }),
+]);
+
+/**
  * Счётчики использования: сколько раз человек за период сделал тяжёлую операцию.
  *
  * Одна таблица на все лимиты (см. docs/limits.md). Ключ — (userId, period, kind), где period —
@@ -492,6 +553,9 @@ export const dailySpend = sqliteTable("daily_spend", {
 ]);
 
 export type WordSet = typeof wordSets.$inferSelect;
+export type GrammarTopic = typeof grammarTopics.$inferSelect;
+export type GrammarExercise = typeof grammarExercises.$inferSelect;
+export type GrammarProgress = typeof grammarProgress.$inferSelect;
 export type SetItem = typeof setItems.$inferSelect;
 export type UsageCounter = typeof usageCounters.$inferSelect;
 export type DailySpend = typeof dailySpend.$inferSelect;

@@ -21,6 +21,7 @@ import { registerPronounce } from "./handlers/pronounce";
 import { registerTranslate } from "./handlers/translate";
 import { registerSay } from "./handlers/say";
 import { registerExtension } from "./handlers/extension";
+import { registerGrammar } from "./handlers/grammar";
 import { registerBug } from "./handlers/bug";
 import { registerLesson } from "./handlers/lesson";
 import { registerLlm } from "./handlers/llm";
@@ -47,7 +48,7 @@ export const COMMANDS = [
   { command: "pron", description: "Проверить произношение голосовым" },
   { command: "stats", description: "Прогресс твой и друзей" },
   { command: "boss", description: "Босс недели: цель комнаты боем" },
-  { command: "sets", description: "Готовые наборы слов по уровням и темам" },
+  { command: "grammar", description: "Грамматика: темы и упражнения" },
   { command: "lang", description: "Язык: английский или корейский" },
   { command: "settings", description: "Настройки" },
   { command: "bug", description: "Сообщить об ошибке" },
@@ -142,6 +143,7 @@ export function setupBot(bot: Bot<BotContext>, deps: Deps): void {
   registerStatus(bot, deps);
   registerUsers(bot, deps);
   registerExtension(bot, deps);
+  registerGrammar(bot, deps);
   registerAdd(bot, deps);
   registerInline(bot, deps);
   // Неизвестные/устаревшие кнопки — просто гасим «часики».

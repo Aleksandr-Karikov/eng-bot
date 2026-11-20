@@ -233,6 +233,12 @@ export interface ExerciseTutor {
   grammar?(term: string, translation: string): Promise<WordGrammar>;
   /** Как естественно сказать это по-английски. */
   say(phrase: string): Promise<SayAnswer>;
+  /**
+   * Почему верен именно этот ответ в грамматическом задании. Необязателен: проверка ответов моделью
+   * не пользуется, а объяснение из контента показывается всегда — без этого метода кнопка просто
+   * присылает его.
+   */
+  explainGrammar?(input: { rule: string; task: string; answer: string }): Promise<string>;
   /** Следующая реплика собеседника в разговоре /talk. */
   talkReply(input: TalkInput): Promise<string>;
   /** Разбор реплик ученика по итогам разговора. */
@@ -478,6 +484,36 @@ const collocationsSchema = z.object({
 export function parseCollocations(text: string): Collocations {
   return collocationsSchema.parse(jsonObject(text));
 }
+
+/**
+ * Объяснение грамматического ответа по-русски: почему верно именно так.
+ *
+ * Отдельный метод, а не переиспользование `say`: тот даёт варианты фраз, а здесь нужен разбор правила.
+ * В обычном потоке ученика модель здесь не нужна вовсе — правила и объяснения лежат в контенте,
+ * и этот вызов идёт только по кнопке «почему так».
+ */
+export function buildExplainGrammarPrompt(input: { rule: string; task: string; answer: string; lang?: Language }): string {
+  const lang = input.lang ?? EN;
+  return [
+    `Русскоязычный человек учит ${lang.stem}ий и разбирает грамматическое задание.`,
+    "",
+    `Правило темы: ${input.rule}`,
+    `Задание: ${input.task}`,
+    `Верный ответ: ${input.answer}`,
+    "",
+    "Объясни по-русски, почему верно именно так, опираясь на правило. Одно-три коротких предложения,",
+    "без вводных слов и без повторения задания. Если уместно — одно сравнение с ошибочным вариантом.",
+    'Верни JSON: {"explanation": "..."}',
+  ].join("\n");
+}
+
+export function parseExplainGrammar(text: string): string {
+  return explainGrammarSchema.parse(jsonObject(text)).explanation;
+}
+
+const explainGrammarSchema = z.object({
+  explanation: z.string().trim().min(1).max(600),
+});
 
 export function buildSayPrompt(phrase: string, lang: Language = EN): string {
   return [
