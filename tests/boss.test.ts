@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { bossFeed, bossOf, bossPace, bossPhase, bossRound } from "../src/services/boss";
+import { bossFeed, bossOf, bossPace, bossPhase, bossRound, roundHp, roundOpponent } from "../src/services/boss";
 import { setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
@@ -202,7 +202,7 @@ describe("урон из запаса", () => {
     const attack = { target: "boss", roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: 20 };
     const result = await post("/api/boss/combat", attack);
     // Добили — и сразу следующий босс с полным HP, а не пустой экран до воскресенья.
-    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: 2, round: 2, kills: 1, progress: 0 }, hits: [{ damage: 2 }] });
+    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: 2.5, round: 2, kills: 1, progress: 0, bossHp: 2.5 }, hits: [{ damage: 2 }] });
     expect(await post("/api/boss/combat", attack)).toMatchObject({ notice: expect.any(String), combat: { balance: 0 } });
     expect(await post("/api/undo", { cardId: 1 })).toMatchObject({ ok: false });
   });
@@ -237,7 +237,7 @@ describe("урон из запаса", () => {
     expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good", stage: "sentence" })).toMatchObject({ damage: 4.8 });
 
     // Добили первого — на арене сразу второй, с полным HP.
-    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: 10, round: 2, kills: 1 } });
+    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: 12.5, round: 2, kills: 1, bossHp: 12.5 } });
     await dropCard(db, alice.id, 1);
     expect(await damageBalanceDeci(db, alice.id)).toBe(246);
 
@@ -326,7 +326,7 @@ it("открывает ядро на половине HP, тратит руну 
   await credit(10, true);
   expect(await strike(1)).toMatchObject({
     // Добили — сразу второй босс с полным HP; недельный вклад при этом остаётся недельным.
-    damage: 0.5, boss: { hp: 100, round: 2, kills: 1, byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
+    damage: 0.5, boss: { hp: 125, round: 2, kills: 1, bossHp: 125, byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
     victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
   });
   expect(await buy()).toMatchObject({ combat: { rune: { owned: true } } });
@@ -717,54 +717,88 @@ describe("🕐 boss follows the room's timezone", () => {
   });
 });
 
+
 // 🐉 Добитая цель не оставляет комнату без боя до воскресенья: недельный урон нарезан на раунды,
-// и каждый новый раунд — новый босс с полным HP. Неделя при этом остаётся неделей для монет и трофеев.
+// каждый следующий босс — другой противник и толще предыдущего.
 describe("🐉 a new boss takes the arena right after a kill", () => {
-  it("splits weekly damage into rounds", () => {
-    const round = (done: number) => bossRound(done, 100);
-    expect(round(0)).toMatchObject({ round: 1, kills: 0, progress: 0 });
-    expect(round(99.9)).toMatchObject({ round: 1, kills: 0, progress: 99.9 });
-    // Ровно цель — уже следующий босс, а не «повержен и пусто».
-    expect(round(100)).toMatchObject({ round: 2, kills: 1, progress: 0 });
-    expect(round(250)).toMatchObject({ round: 3, kills: 2, progress: 50 });
-    // Перебор засчитывается: несколько раундов сразу.
-    expect(round(350)).toMatchObject({ round: 4, kills: 3, progress: 50 });
-    // Нулевая цель не делится на ноль.
-    expect(bossRound(10, 0)).toMatchObject({ round: 1, kills: 0, progress: 0 });
+  const TARGET = 100;
+
+  it("makes every next boss tougher than the one before", () => {
+    expect(roundHp(TARGET, 1)).toBe(TARGET);
+    expect(roundHp(TARGET, 2)).toBeGreaterThan(roundHp(TARGET, 1));
+    expect(roundHp(TARGET, 3)).toBeGreaterThan(roundHp(TARGET, 2));
+    // Рост не взрывается: пятый босс ещё обозрим, иначе комната упрётся в стену.
+    expect(roundHp(TARGET, 5)).toBeLessThan(TARGET * 3);
   });
 
-  it("gives the room a fresh boss instead of an empty week", async () => {
+  it("puts a different opponent on the arena each round", () => {
+    const weekStart = new Date("2026-11-15T13:00:00Z");
+    const first = roundOpponent(weekStart, 1);
+    const second = roundOpponent(weekStart, 2);
+    expect(second.id).not.toBe(first.id);
+    // Противники чередуются, а не выпадают случайно: третий снова как первый.
+    expect(roundOpponent(weekStart, 3).id).toBe(first.id);
+  });
+
+  it("splits weekly damage into rounds by the growing hp", () => {
+    // Ноль — первый босс, ничего не добито.
+    expect(bossRound(0, TARGET)).toMatchObject({ round: 1, kills: 0, progress: 0, hp: TARGET });
+    // Ровно цель — уже следующий босс с полным HP, а не «повержен и пусто».
+    const afterOne = bossRound(TARGET, TARGET);
+    expect(afterOne).toMatchObject({ round: 2, kills: 1, progress: 0 });
+    expect(afterOne.hp).toBe(roundHp(TARGET, 2));
+    // Перебор засчитывается: несколько раундов сразу.
+    let toKillThree = 0;
+    for (const r of [1, 2, 3]) toKillThree += roundHp(TARGET, r);
+    expect(bossRound(toKillThree, TARGET)).toMatchObject({ round: 4, kills: 3, progress: 0 });
+    // Чуть меньше — третий ещё стоит и почти добит.
+    const almost = bossRound(toKillThree - 1, TARGET);
+    expect(almost).toMatchObject({ round: 3, kills: 2 });
+    expect(almost.progress).toBeGreaterThan(0);
+  });
+
+  it("never leaves progress above the boss's own hp", () => {
+    // Свойство, а не число: при любом уроне остаток меньше HP текущего босса и не отрицателен.
+    for (const done of [0, 1, 99.9, 100, 101, 224.9, 225, 400, 1000]) {
+      const r = bossRound(done, TARGET);
+      expect(r.progress).toBeGreaterThanOrEqual(0);
+      expect(r.progress).toBeLessThan(r.hp);
+    }
+  });
+
+  it("gives the room a fresh, tougher boss instead of an empty week", async () => {
     const { h, alice, room } = await setup();
     await setWeeklyGoal(h.db, room.id, 10);
     // Комната добила цель (10 HP) ещё во вторник: пять ответов «Помню» по 2 HP.
     await h.db.insert(reviewLogs).values(Array.from({ length: 5 }, (_, i) => ({
       userId: alice.id, cardId: 1, rating: "good", reviewedAt: at((i + 1) * HOUR),
     })));
-    const now = at(3 * HOUR);
-    const boss = await bossOf(h.db, (await getRoom(h.db, room.id))!, now);
-    // HP снова полные: на арене второй босс, а не «повержен».
-    expect(boss).toMatchObject({ round: 2, kills: 1, hp: 10, target: 10, phase: "fresh", progress: 0 });
-    // Недельные числа остались недельными — на них считаются монеты и трофеи.
-    expect(boss.done).toBeGreaterThanOrEqual(10);
+    const boss = await bossOf(h.db, (await getRoom(h.db, room.id))!, at(6 * HOUR));
+    // Второй босс толще первого — иначе «новый» был бы клоном добитого.
+    expect(boss).toMatchObject({ round: 2, kills: 1, phase: "fresh", progress: 0 });
+    expect(boss.bossHp).toBeGreaterThan(boss.target);
+    expect(boss.hp).toBe(boss.bossHp);
   });
 
-  it("keeps counting up while the room keeps hitting", async () => {
+  it("counts up while the room keeps hitting", async () => {
     const { h, alice, room } = await setup();
     await setWeeklyGoal(h.db, room.id, 2);
-    // Три ответа по 2 HP при цели 2 HP — три добитых босса за неделю.
-    for (let i = 0; i < 3; i++) {
+    // При цели 2 HP и росте 1.25 двадцать ответов по 2 HP дают несколько добиваний.
+    for (let i = 0; i < 20; i++) {
       await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(i * HOUR) });
     }
-    const boss = await bossOf(h.db, (await getRoom(h.db, room.id))!, at(4 * HOUR));
-    expect(boss).toMatchObject({ round: 4, kills: 3, hp: 2, progress: 0 });
+    const boss = await bossOf(h.db, (await getRoom(h.db, room.id))!, at(21 * HOUR));
+    expect(boss.kills).toBeGreaterThan(1);
+    expect(boss.round).toBe(boss.kills + 1);
   });
 
   it("names the last kill as the final blow, not the first", async () => {
     const { h, alice, bob, room } = await setup();
     await setWeeklyGoal(h.db, room.id, 2);
-    // Два добивания: первое — Alice, второе — Bob.
+    // Два добивания: первый босс (2 HP) — Alice, второй (2.5 HP) — Bob двумя ударами по 2 и 1.
     await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(HOUR) });
     await h.db.insert(reviewLogs).values({ userId: bob.id, cardId: 2, rating: "good", reviewedAt: at(2 * HOUR) });
+    await h.db.insert(reviewLogs).values({ userId: bob.id, cardId: 2, rating: "again", reviewedAt: at(2 * HOUR + 1000) });
     const now = at(3 * HOUR);
     const boss = await bossOf(h.db, (await getRoom(h.db, room.id))!, now);
     const feed = await bossFeed(h.db, (await getRoom(h.db, room.id))!, now, 20, boss.target);

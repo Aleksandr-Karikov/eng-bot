@@ -24,8 +24,22 @@ export const WEEKLY_BOSSES = [
   { id: "sentinel", name: "Страж обсерватории" },
 ] as const;
 
+/**
+ * Кто стоит на арене в этом раунде.
+ *
+ * Раньше неделя была одним боссом, и `weeklyOpponent` звался один раз. Теперь раундов в неделе может быть
+ * несколько, и повторять подряд того же дракона с теми же HP — значит показывать «новый босс», который на
+ * вид ничем не отличается от добитого. Поэтому противники чередуются от недели к неделе И от раунда к
+ * раунду: первый раунд недели идёт от даты недели, второй сдвигает выбор на одного вперёд.
+ */
+export function roundOpponent(weekStart: Date, round = 1) {
+  const weekIndex = Math.floor(weekStart.getTime() / WEEK_MS);
+  return WEEKLY_BOSSES[(weekIndex + Math.max(0, round - 1)) % WEEKLY_BOSSES.length];
+}
+
+/** Противник первого раунда недели. Оставлено ради бонуса Дракона: он считается по неделе, не по раунду. */
 export function weeklyOpponent(weekStart: Date) {
-  return WEEKLY_BOSSES[Math.floor(weekStart.getTime() / WEEK_MS) % WEEKLY_BOSSES.length];
+  return roundOpponent(weekStart, 1);
 }
 
 export interface BossState extends GoalProgress {
@@ -49,6 +63,11 @@ export interface BossState extends GoalProgress {
   kills: number;
   /** Урон, снятый с текущего босса. */
   progress: number;
+  /**
+   * HP текущего босса. Растёт с раундом, поэтому у второго он больше недельной цели `target`.
+   * Полоску и «осталось» считать по нему; монеты, трофеи и дайджест — по `target`.
+   */
+  bossHp: number;
 }
 
 /**
@@ -75,24 +94,48 @@ export interface BossRound {
   kills: number;
   /** Урон по текущему боссу: сколько снято с него, а не за неделю. */
   progress: number;
+  /** Сколько HP у текущего босса: каждый следующий толще предыдущего. */
+  hp: number;
+}
+
+/**
+ * HP босса в раунде: следующий толще предыдущего.
+ *
+ * Без роста второй босс недели ничем не отличается от первого, и «новый бой» превращается в повтор.
+ * Рост 25% за раунд: третий босс — уже 1.56 цели, пятый — 2.44. Быстрее нельзя — комната, случайно
+ * добившая двух, не должна упереться в стену на третьем; медленнее — раунды останутся клонами.
+ */
+export function roundHp(target: number, round: number): number {
+  return Math.round(target * 1.25 ** Math.max(0, round - 1) * 10) / 10;
 }
 
 /**
  * Какой по счёту босс сейчас на арене и сколько снято с него.
  *
  * Неделя — единица монет, трофеев и дайджеста, но не босса: комната, которая смела цель к среде, не должна
- * сидеть без боя до воскресенья. Поэтому урон недели нарезается на раунды по `target`, и каждый новый
- * раунд — новый босс с полным HP. Перебор засчитывается: добил с запасом — сразу несколько раундов.
+ * сидеть без боя до воскресенья. Поэтому урон недели нарезается на раунды, каждый следующий босс толще
+ * (`roundHp`) и это другой противник (`roundOpponent`). Перебор засчитывается: добил с запасом — сразу
+ * несколько раундов.
  *
- * Дробные HP приходят десятыми, поэтому сравнение идёт с допуском: 99.9999 не должно давать «почти добит».
+ * HP растут геометрически, поэтому «остаток недельного урона» делится по накопленной сумме HP раундов,
+ * а не по `kills * target`: иначе после второго раунда границы поехали бы.
  */
 export function bossRound(done: number, target: number): BossRound {
-  if (target <= 0) return { round: 1, kills: 0, progress: 0 };
-  // Допуск в одну десятую HP: урон хранится с точностью до десятых, и без него погрешность сложения
-  // десяти чисел могла бы дать 99.99999999999 вместо 100.
-  const kills = Math.floor((done + 0.05) / target);
-  const progress = Math.max(0, Math.round((done - kills * target) * 10) / 10);
-  return { round: kills + 1, kills, progress };
+  if (target <= 0) return { round: 1, kills: 0, progress: 0, hp: 0 };
+  let kills = 0;
+  let spent = 0;
+  // Раундов не может быть больше, чем помещается в нанесённый урон: цикл ограничен самим `done`.
+  // Допуск в одну десятую HP: урон хранится десятыми, и без него погрешность сложения дала бы
+  // «99.99999999999 вместо 100».
+  while (done + 0.05 >= spent + roundHp(target, kills + 1)) {
+    spent += roundHp(target, kills + 1);
+    kills += 1;
+    // Предохранитель от бесконечного цикла на вырожденных значениях.
+    if (kills > 10_000) break;
+  }
+  const hp = roundHp(target, kills + 1);
+  const progress = Math.max(0, Math.round((done - spent) * 10) / 10);
+  return { round: kills + 1, kills, progress, hp };
 }
 
 /**
@@ -125,25 +168,29 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   const progress = await goalProgress(db, room, now, weekStart, userId);
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
-  const { round, kills, progress: current } = bossRound(progress.done, progress.target);
-  const hp = Math.max(0, Math.round((progress.target - current) * 10) / 10);
-  const damage = progress.target > 0 ? Math.min(1, current / progress.target) : 0;
+  const { round, kills, progress: current, hp: bossHp } = bossRound(progress.done, progress.target);
+  const hp = Math.max(0, Math.round((bossHp - current) * 10) / 10);
+  const damage = bossHp > 0 ? Math.min(1, current / bossHp) : 0;
   return {
     ...progress,
     room: room.name,
-    opponent: weeklyOpponent(weekStart),
+    // Свой противник у каждого раунда: второй босс недели — уже другой, а не тот же дракон.
+    opponent: roundOpponent(weekStart, round),
     week,
     hp,
     damage,
     // Добитый босс сразу уступает место следующему, поэтому фаза считается по текущему раунду:
     // ровно `done === target` не наступает, вместо него начинается раунд 2.
-    phase: bossPhase(damage, current, progress.target),
+    phase: bossPhase(damage, current, bossHp),
     pace: bossPace(progress.done, progress.target, elapsed),
     daysLeft: Math.max(0, Math.floor((end - now.getTime()) / DAY_MS)),
     timeZone,
     round,
     kills,
     progress: current,
+    // HP текущего босса: у второго он толще цели недели, и полоска должна показывать его, а не цель.
+    // `target` при этом остаётся недельным — на нём считаются монеты, трофеи и дайджест.
+    bossHp,
   };
 }
 

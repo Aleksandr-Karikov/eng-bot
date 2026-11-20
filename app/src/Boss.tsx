@@ -174,7 +174,9 @@ function BossView({
   const phase = PHASE[boss.phase];
   const portrait = boss.opponent?.id === "sentinel" ? "boss-sentinel.webp" : phase.art;
   const reducedMotion = useReducedMotion();
-  const percent = boss.target > 0 ? Math.min(100, (boss.hp / boss.target) * 100) : 0;
+  // HP текущего босса, а не недельная цель: у второго босса он толще, и полоска должна это показывать.
+  const maxHp = boss.bossHp ?? boss.target;
+  const percent = maxHp > 0 ? Math.min(100, (boss.hp / maxHp) * 100) : 0;
   // Добитый босс сразу уступает место следующему, поэтому «мёртв» — это не экран, а счёт побед.
   const kills = boss.kills ?? 0;
   /** «20:00 (UTC+03:00)» — по поясу комнаты, а не зашитым «по Новосибирску». */
@@ -185,7 +187,7 @@ function BossView({
   useEffect(() => {
     const last = previous.current;
     previous.current = boss;
-    if (last.room === boss.room && last.week === boss.week && last.target === boss.target && boss.hp < last.hp) {
+    if (last.room === boss.room && last.week === boss.week && last.round === boss.round && boss.hp < last.hp) {
       setStrike({ damage: last.hp - boss.hp, done: boss.done });
     }
   }, [boss]);
@@ -206,7 +208,10 @@ function BossView({
         <div className="boss-portrait">
           <img src={`${import.meta.env.BASE_URL}${portrait}`} alt="" />
           <div className="boss-caption">
-            <span className="boss-kicker">Босс недели</span>
+            <span className="boss-kicker">
+              {/* Номер босса: добили — на арене следующий, и это видно сразу, а не по изменившемуся имени. */}
+              {(boss.round ?? 1) > 1 ? `Босс недели · ${boss.round}-й за неделю` : "Босс недели"}
+            </span>
             <h1>{boss.opponent?.name ?? "Дракон библиотеки"}</h1>
           </div>
           <span className="boss-phase">{phase.title}</span>
@@ -223,10 +228,10 @@ function BossView({
         </div>
         <div className="boss-hud">
           <div className="boss-hp" aria-live="polite">
-            <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(boss.target)} HP
+            <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(maxHp)} HP
           </div>
           <div className={strike ? "boss-bar struck" : "boss-bar"} role="progressbar" aria-label="Здоровье босса"
-            aria-valuemin={0} aria-valuemax={boss.target} aria-valuenow={boss.hp}>
+            aria-valuemin={0} aria-valuemax={maxHp} aria-valuenow={boss.hp}>
             <div className="boss-bar-fill" style={{ width: `${percent}%` }} />
           </div>
           <div className="boss-meta">
