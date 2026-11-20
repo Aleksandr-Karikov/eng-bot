@@ -4,6 +4,7 @@ import { setStudyLanguage } from "./language";
 import { settingsButton } from "@telegram-apps/sdk-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { BossScreen } from "./Boss";
+import { Grammar } from "./Grammar";
 import { Learn } from "./Learn";
 import { ProgressScreen } from "./Progress";
 import { Sets } from "./Sets";
@@ -13,12 +14,12 @@ import { Words } from "./Words";
 import { IconBook, IconChart, IconClose, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss";
+type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss" | "grammar";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "settings", "triage", "progress", "sets", "boss"];
+  const pages: Page[] = ["words", "settings", "triage", "progress", "sets", "boss", "grammar"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -75,6 +76,7 @@ export function App() {
   if (page === "progress") return <ProgressScreen onExit={back} />;
   if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
   if (page === "boss") return <BossScreen onExit={back} />;
+  if (page === "grammar") return <Grammar onExit={back} />;
   return (
     <Learn
       onTriage={() => open("triage")}
@@ -86,6 +88,7 @@ export function App() {
           items={[
             ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
             { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
+            { icon: <IconBook size={16} />, label: "Грамматика", onPick: () => open("grammar") },
             { icon: <IconBook size={16} />, label: "Слова", onPick: () => open("words") },
             { icon: <IconSettings size={16} />, label: "Настройки", onPick: () => open("settings") },
           ]}

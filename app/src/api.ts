@@ -325,6 +325,47 @@ export interface Progress {
 
 export const getProgress = () => call<Progress & { ok: true }>("/api/progress");
 
+/** 📘 Грамматика: тема в списке и упражнение. Ответ проверяет сервер — приложение его не знает. */
+export interface GrammarTopic {
+  id: number;
+  slug: string;
+  title: string;
+  level: string;
+  total: number;
+  done: number;
+  passed: boolean;
+}
+
+export interface GrammarExercise {
+  id: number;
+  kind: "choice" | "gap" | "order";
+  prompt: string;
+  options: string[];
+  solved: boolean;
+}
+
+export interface GrammarTopicView extends GrammarTopic {
+  rule: string;
+  examples: string[];
+  exercises: GrammarExercise[];
+}
+
+export interface GrammarAnswer {
+  correct: boolean;
+  answer: string;
+  why: string;
+  done: number;
+  total: number;
+  passed: boolean;
+  /** Урон боссу за этот ответ: 0, если режим выключен или ответ уже был засчитан. */
+  bossDamage: number;
+}
+
+export const getGrammar = () => call<{ topics: GrammarTopic[]; passed: number; total: number; ok: true }>("/api/grammar");
+export const getGrammarTopic = (id: number) => call<{ topic: GrammarTopicView; ok: true }>(`/api/grammar/${id}`);
+export const sendGrammarAnswer = (exerciseId: number, answer: string) =>
+  post<{ result: GrammarAnswer; ok: true }>("/api/grammar/answer", { exerciseId, answer });
+
 /** Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
 export interface BossHit {
   name: string;

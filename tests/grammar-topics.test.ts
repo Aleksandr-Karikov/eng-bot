@@ -4,6 +4,8 @@ import { combatSpends, grammarExercises, grammarProgress, grammarTopics, mistake
 import { createRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
 import { updateUser } from "../src/services/users";
+import { createApp } from "../src/app/server";
+import { sign } from "@telegram-apps/init-data-node";
 import { answerExercise, isCorrect, listTopics, topicView } from "../src/services/grammar-topics";
 import { GRAMMAR_TOPICS } from "../src/grammar-content";
 import { botHarness } from "./bot-harness";
@@ -135,8 +137,16 @@ describe("📘 answer checking never needs a model", () => {
     const topic = await seed(h);
     const view = await topicView(h.db, user.id, topic.id);
     expect(view).toBeDefined();
-    // В упражнении, которое видит клиент, ответа нет — иначе проверять нечего.
-    for (const exercise of view!.exercises) expect(exercise).not.toHaveProperty("answer");
+    // В упражнении, которое видит клиент, ответа нет ни полем, ни единственным вариантом:
+    // иначе проверять нечего — правильный вариант был бы виден в исходниках экрана.
+    for (const exercise of view!.exercises) {
+      expect(Object.keys(exercise)).not.toContain("answer");
+      expect(Object.keys(exercise)).not.toContain("key");
+      const rows = await h.db.select().from(grammarExercises).where(eq(grammarExercises.id, exercise.id));
+      // Верный ответ обязан быть среди кнопок, но не единственным — иначе выбор мнимый.
+      expect(exercise.options).toContain(rows[0].answer);
+      expect(exercise.options.length).toBeGreaterThan(1);
+    }
   });
 });
 
@@ -284,5 +294,73 @@ describe("🔗 grammar is wired into mistakes and the boss", () => {
     const progress = await goalProgress(h.db, room, T0);
     expect(progress.done).toBeCloseTo(4, 1);
     expect(progress.byUser[0]).toMatchObject({ name: "Alice", count: 4 });
+  });
+});
+
+// 📱 Экран Mini App: он ходит в /api/grammar, поэтому проверяем именно эндпоинты, а не только сервис.
+describe("📱 grammar in the Mini App", () => {
+  const TOKEN = "123:test-token";
+  /** Приложение с подписанным пользователем — как настоящий Mini App. */
+  async function appHarness() {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100, "Alice");
+    const app = createApp({ deps: h.deps, botToken: TOKEN });
+    const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "Alice" } }, TOKEN, new Date())}` };
+    return { h, user, app, headers };
+  }
+
+  it("lists topics and opens one", async () => {
+    const { h, app, headers } = await appHarness();
+    await seed(h);
+    const list = await (await app.request("/api/grammar", { headers })).json();
+    expect(list.ok).toBe(true);
+    expect(list.topics).toHaveLength(1);
+    expect(list.topics[0]).toMatchObject({ title: "Present Simple: что делаю обычно", passed: false });
+
+    const one = await (await app.request(`/api/grammar/${list.topics[0].id}`, { headers })).json();
+    expect(one.topic.rule.length).toBeGreaterThan(20);
+    expect(one.topic.exercises.length).toBeGreaterThan(0);
+    // Ответа на клиенте нет — проверять будет сервер.
+    expect(one.topic.exercises[0]).not.toHaveProperty("answer");
+  });
+
+  it("checks an answer on the server and deals boss damage", async () => {
+    const { h, app, headers, user } = await appHarness();
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    await updateUser(h.db, user.id, { currentRoomId: room.id });
+    const topic = await seed(h);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+
+    const post = async (body: object) => {
+      const res = await app.request("/api/grammar/answer", {
+        method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      return res.json() as Promise<{ result: { correct: boolean; answer: string; why: string; done: number; bossDamage: number } }>;
+    };
+
+    // Ошибка на первом упражнении: разбор показан, счётчик не продвинулся.
+    const wrong = await post({ exerciseId: first.id, answer: "мимо" });
+    expect(wrong.result).toMatchObject({ correct: false, answer: first.answer, done: 0 });
+    expect(wrong.result.why).toBe(first.why);
+
+    // Верный ответ на СЛЕДУЮЩЕЕ упражнение: на то же самое повторно урона не будет — requestId уникален.
+    const second = (await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id)))[1];
+    const right = await post({ exerciseId: second.id, answer: second.answer });
+    expect(right.result.correct).toBe(true);
+    // Урон идёт в текущую комнату — экран показывает его же.
+    expect(right.result.bossDamage).toBe(2);
+  });
+
+  it("rejects a missing or unknown exercise instead of failing silently", async () => {
+    const { app, headers } = await appHarness();
+    const noAnswer = await app.request("/api/grammar/answer", {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ exerciseId: 1 }),
+    });
+    expect(noAnswer.status).toBe(400);
+    const unknown = await app.request("/api/grammar/answer", {
+      method: "POST", headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ exerciseId: 999_999, answer: "x" }),
+    });
+    expect(unknown.status).toBe(404);
   });
 });

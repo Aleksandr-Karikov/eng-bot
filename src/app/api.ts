@@ -13,6 +13,7 @@ import { cards as cardsTable, roomMembers, setItems, wordSets } from "../db/sche
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, settledBank, UPGRADES } from "../services/boss";
+import { answerExercise, listTopics, topicView } from "../services/grammar-topics";
 import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
@@ -558,4 +559,42 @@ export async function appBuyUpgrade(deps: Deps, user: User, body: unknown = {}) 
   if (result === "stale") return { status: 400, body: { ok: false as const, error: "Покупка не прошла. Проверь баланс." } };
   // Обновлённый пользователь: ответ должен показывать новый уровень, а не тот, что был на входе.
   return { status: 200, body: { ok: true as const }, user: (await getUserByTelegramId(deps.db, user.telegramId)) ?? user };
+}
+
+/**
+ * 📘 Грамматика в приложении: темы, тема целиком и проверка ответа.
+ *
+ * Проверка серверная и **без модели** — тот же `answerExercise`, что в боте: сравнение строк с ответом
+ * из базы. Поэтому приложение не может «подсказать» себе правильный вариант, а промах попадает в общую
+ * работу над ошибками и наносит урон боссу ровно так же, как ответ в чате.
+ */
+export async function appGrammar(deps: Deps, user: User) {
+  const topics = await listTopics(deps.db, user.id);
+  // Сколько тем сдано — отдельным числом, чтобы экран не пересчитывал сам.
+  const passed = topics.filter((t) => t.passed).length;
+  return { topics, passed, total: topics.length };
+}
+
+export async function appGrammarTopic(deps: Deps, user: User, topicId: number) {
+  return topicView(deps.db, user.id, topicId);
+}
+
+/**
+ * Ответ на упражнение. Комната берётся текущая: урон боссу идёт туда, где человек учится сейчас.
+ * `ok: false` — упражнения нет (контент обновили, пока экран был открыт).
+ */
+export async function appGrammarAnswer(deps: Deps, user: User, body: unknown) {
+  const input = body && typeof body === "object" ? body as { exerciseId?: unknown; answer?: unknown } : {};
+  const exerciseId = Number(input.exerciseId);
+  if (!Number.isInteger(exerciseId)) return { status: 400 as const, body: { ok: false as const, error: "Не выбрано упражнение" } };
+  if (typeof input.answer !== "string") return { status: 400 as const, body: { ok: false as const, error: "Нет ответа" } };
+  const result = await answerExercise(deps.db, {
+    userId: user.id,
+    exerciseId,
+    answer: input.answer,
+    now: deps.now(),
+    roomId: user.currentRoomId ?? undefined,
+  });
+  if (!result) return { status: 404 as const, body: { ok: false as const, error: "Упражнение не найдено — возможно, контент обновили" } };
+  return { status: 200 as const, body: { ok: true as const, result } };
 }

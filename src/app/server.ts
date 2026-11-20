@@ -13,7 +13,7 @@ import { undoAnswer } from "../services/review";
 import { adoptDeviceTimeZone } from "../services/users";
 import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
-import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
@@ -97,6 +97,18 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user"), accent) });
   });
   app.get("/api/progress", async (c) => c.json({ ok: true, ...(await appProgress(deps, c.get("user"))) }));
+  // 📘 Грамматика: список тем, тема целиком и проверка ответа. Проверка без модели — сравнение строк.
+  app.get("/api/grammar", async (c) => c.json({ ok: true, ...(await appGrammar(deps, c.get("user"))) }));
+  app.get("/api/grammar/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ ok: false, error: "Нет такой темы" }, 404);
+    const topic = await appGrammarTopic(deps, c.get("user"), id);
+    return topic ? c.json({ ok: true, topic }) : c.json({ ok: false, error: "Тема не найдена" }, 404);
+  });
+  app.post("/api/grammar/answer", async (c) => {
+    const r = await appGrammarAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    return c.json(r.body, r.status as 200 | 400 | 404);
+  });
   // 🐉 Вкладка босса: цель комнаты, показанная боем (services/boss.ts).
   app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
   app.post("/api/boss/combat", async (c) => {

@@ -142,11 +142,46 @@ export async function topicView(db: Db, userId: number, topicId: number): Promis
       id: e.id,
       kind: asKind(e.kind),
       prompt: e.prompt,
-      options: splitLines(e.options),
+      // У `gap` вариантов в контенте нет — их собираем здесь: верный ответ плюс правдоподобные
+      // подстановки. Приложение показывает всё кнопками, поэтому ввод с клавиатуры не нужен,
+      // а сравнение строк остаётся предсказуемым (регистр и пробелы не мешают).
+      // У `choice` варианты готовы; у `gap` их нет вовсе, у `order` они — отдельные слова, а не фразы.
+      // Приложению нужны нажимаемые варианты ответа, поэтому эти два вида получают собранные здесь.
+      options: asKind(e.kind) === "choice" ? splitLines(e.options) : distractorsFor({ answer: e.answer, kind: e.kind }),
       // «Решено» считаем по прогрессу: упражнения не помечаются по одному, чтобы не заводить третью таблицу.
       solved: (progress?.done ?? 0) > 0 && e.position < (progress?.done ?? 0),
     })),
   };
+}
+
+/**
+ * Варианты для упражнения без готовых вариантов (`gap` и `order`).
+ *
+ * Верный ответ ставится в список, иначе нажать было бы нечего. Подстановки берутся из форм того же ответа —
+ * так они правдоподобны: человек выбирает форму, а не угадывает по незнакомым словам. Перемешивание —
+ * по порядку ответа и его искажений, без случайности: экран не должен перетасовываться при каждом открытии.
+ */
+function distractorsFor(exercise: { answer: string; kind: string; prompt?: string }): string[] {
+  const answer = exercise.answer;
+  // `order` приходит со словами, а не вариантами: единственный путь — предложить порядки этих слов.
+  // Верный порядок обязателен, иначе нажать нечего.
+  if (exercise.kind === "order") {
+    const words = exercise.answer.split(/\s+/);
+    const shuffled = [...words].reverse().join(" ");
+    const shifted = words.length > 2 ? [...words.slice(1), words[0]].join(" ") : shuffled;
+    return [...new Set([answer, shuffled, shifted])].filter(Boolean);
+  }
+  const words = answer.split(/\s+/);
+  const last = words[words.length - 1] ?? answer;
+  const forms = [
+    answer,
+    // Инфинитив и «-ing» — самые частые ловушки в формах глагола.
+    words.slice(0, -1).concat(/[^aeiou]e$/.test(last) && !last.endsWith("ee") ? last.slice(0, -1) : last).join(" "),
+    words.slice(0, -1).concat(`${last}ing`).join(" "),
+    words.slice(0, -1).concat(`${last}s`).join(" "),
+  ];
+  // Уникальные и непустые; верный ответ — среди них.
+  return [...new Set(forms.filter(Boolean))].slice(0, 3);
 }
 
 function asKind(value: string): GrammarKind {
@@ -219,10 +254,4 @@ export function explanationPrompt(topicRow: GrammarTopic, exercise: GrammarExerc
 export async function topicBySlug(db: Db, slug: string): Promise<GrammarTopic | undefined> {
   const [row] = await db.select().from(grammarTopics).where(eq(grammarTopics.slug, slug));
   return row;
-}
-
-/** Прогресс человека по всем темам — для сводки «сколько грамматики пройдено». */
-export async function grammarSummary(db: Db, user: User): Promise<{ topics: number; passed: number }> {
-  const topics = await listTopics(db, user.id);
-  return { topics: topics.length, passed: topics.filter((t) => t.passed).length };
 }
