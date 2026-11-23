@@ -29,6 +29,7 @@ import type { TalkStore } from "./talks";
 import type { ChatTranscript } from "./transcript";
 import type { FrequencySource } from "../frequency/frequency";
 import type { TranslateStore } from "./translations";
+import type { GrammarAnswerStore } from "./grammar-answers";
 import type { SubtitleSource } from "../youtube/subtitles";
 
 /** Что боту нужно знать про LLM-провайдера, чтобы им можно было управлять из чата (см. `src/llm/provider.ts`). */
@@ -116,6 +117,8 @@ export interface Deps {
   pictureWishes: PictureWishStore;
   talks: TalkStore;
   translations: TranslateStore;
+  /** Упражнения грамматики, на которые ждём ответ сообщением (виды `gap` и `order`). */
+  grammarAnswers: GrammarAnswerStore;
   /** Публичный адрес Mini App (APP_URL); нет — кнопки «Учить» нет. */
   appUrl?: string;
   /** Кому слать новые /bug (ADMIN_TELEGRAM_ID); нет — никому. */

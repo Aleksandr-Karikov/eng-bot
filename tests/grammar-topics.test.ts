@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes } from "../src/db/schema";
+import { combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes, words } from "../src/db/schema";
 import { createRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
 import { updateUser } from "../src/services/users";
@@ -151,16 +151,40 @@ describe("📘 answer checking never needs a model", () => {
     const topic = await seed(h);
     const view = await topicView(h.db, user.id, topic.id);
     expect(view).toBeDefined();
-    // В упражнении, которое видит клиент, ответа нет ни полем, ни единственным вариантом:
+    // В упражнении, которое видит клиент, ответа нет ни полем, ни подсказкой:
     // иначе проверять нечего — правильный вариант был бы виден в исходниках экрана.
     for (const exercise of view!.exercises) {
       expect(Object.keys(exercise)).not.toContain("answer");
       expect(Object.keys(exercise)).not.toContain("key");
-      const rows = await h.db.select().from(grammarExercises).where(eq(grammarExercises.id, exercise.id));
-      // Верный ответ обязан быть среди кнопок, но не единственным — иначе выбор мнимый.
-      expect(exercise.options).toContain(rows[0].answer);
-      expect(exercise.options.length).toBeGreaterThan(1);
+      const [row] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.id, exercise.id));
+      if (exercise.kind === "choice") {
+        // Выбор: верный вариант среди кнопок, но не единственный — иначе выбор мнимый.
+        expect(exercise.options).toContain(row.answer);
+        expect(exercise.options!.length).toBeGreaterThan(1);
+      } else {
+        // Вписать и собрать: вариантов нет вовсе — человек пишет форму сам. Собранные из ответа
+        // «works | worksing | workss» позволяли угадать верное, не зная правила.
+        expect(exercise.options).toBeUndefined();
+      }
+      if (exercise.kind === "order") {
+        // Слова приходят перемешанными: порядок в контенте — правильный ответ, отдавать его нельзя.
+        expect(exercise.words).toBeDefined();
+        expect([...exercise.words!].sort()).toEqual([...row.answer.split(/\s+/)].sort());
+        expect(exercise.words!.join(" ")).not.toBe(row.answer);
+      }
     }
+  });
+
+  it("shuffles the words of an order exercise the same way every time", async () => {
+    // Экран не должен перетасовываться при каждом открытии: человек, вернувшийся к упражнению,
+    // искал бы слова заново.
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const topic = await seed(h, GRAMMAR_TOPICS.find((t) => t.slug === "present-simple")!);
+    const first = await topicView(h.db, user.id, topic.id);
+    const second = await topicView(h.db, user.id, topic.id);
+    const orders = (v: typeof first) => v!.exercises.filter((e) => e.kind === "order").map((e) => e.words!.join(" "));
+    expect(orders(first)).toEqual(orders(second));
   });
 });
 
@@ -442,5 +466,125 @@ describe("🚀 grammar content ships with the code", () => {
     expect(text).not.toContain("npx tsx");
     expect(text).not.toContain("scripts/");
     expect(text).toContain("Грамматика");
+  });
+});
+
+// ✍️ Виды `gap` и `order` отвечаются сообщением: варианты, собранные из правильного ответа,
+// были неязыковыми («works | worksing | workss»), и верный угадывался без знания правила.
+describe("✍️ typed answers in the bot", () => {
+  /**
+   * Пройти всё до указанного упражнения включительно, но не его самого: прогресс двигается только
+   * по порядку, поэтому текстовое упражнение посреди темы недостижимо без предыдущих.
+   */
+  async function answerUpTo(
+    h: ReturnType<typeof botHarness>,
+    userId: number,
+    exercises: Array<{ id: number; position: number; answer: string }>,
+    target: { position: number },
+  ) {
+    for (const exercise of exercises) {
+      if (exercise.position >= target.position) break;
+      await answerExercise(h.db, { userId, exerciseId: exercise.id, answer: exercise.answer, now: T0 });
+    }
+  }
+
+  /** Тема с текстовыми упражнениями; возвращает их id в порядке показа. */
+  async function seedTopic(h: ReturnType<typeof botHarness>) {
+    const topic = await seed(h, GRAMMAR_TOPICS.find((t) => t.slug === "present-simple")!);
+    const exercises = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id)).orderBy(grammarExercises.position);
+    return { topic, exercises };
+  }
+
+  it("shows no answer buttons for gap and order", async () => {
+    const h = botHarness();
+    await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
+    const sent = h.calls.at(-1);
+    const keyboard = (sent?.payload.reply_markup as { inline_keyboard: Array<Array<{ text: string }>> }).inline_keyboard.flat();
+    // Ни одного варианта ответа: только навигация. Иначе верный был бы среди кнопок.
+    expect(keyboard.map((b) => b.text)).toEqual(["← К теме"]);
+    // И сказано, что делать: без кнопок это неочевидно.
+    expect(String(sent?.payload.text)).toContain("Напиши ответ сообщением");
+  });
+
+  it("accepts the typed answer and advances the topic", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    // Прогресс двигается только по порядку, поэтому до текстового упражнения надо дойти —
+    // ровно как это делает человек, проходя тему.
+    await answerUpTo(h, user.id, exercises, gap);
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
+    await h.bot.handleUpdate(h.message(100, gap.answer));
+    const text = String(h.calls.at(-1)?.payload.text);
+    expect(text).toContain("Верно");
+    const [row] = await h.db.select().from(grammarProgress).where(eq(grammarProgress.userId, user.id));
+    expect(row.done).toBe(gap.position + 1);
+  });
+
+  it("forgives case, apostrophes and contractions but not a wrong form", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    // Первый текстовый ответ — с большой буквы и лишними пробелами.
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    await answerUpTo(h, user.id, exercises, gap);
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
+    await h.bot.handleUpdate(h.message(100, `  ${gap.answer.toUpperCase()}  `));
+    expect(String(h.calls.at(-1)?.payload.text)).toContain("Верно");
+    const [row] = await h.db.select().from(grammarProgress).where(eq(grammarProgress.userId, user.id));
+    expect(row.done).toBe(gap.position + 1);
+
+    // А неверная форма — неверна: «work» вместо «works» это промах в правиле, а не опечатка.
+    const order = exercises.find((e) => e.kind === "order")!;
+    await answerUpTo(h, user.id, exercises, order);
+    await h.bot.handleUpdate(h.callback(100, `gq:${order.id}`));
+    await h.bot.handleUpdate(h.message(100, "совсем другой порядок слов"));
+    const text = String(h.calls.at(-1)?.payload.text);
+    expect(text).toContain("Неверно");
+    expect(text).toContain(order.answer);
+  });
+
+  it("does not let the text answer become a new word", async () => {
+    // Без ожидания ответ ушёл бы в /add и стал бы словом — ровно та ошибка, что уже была в проекте.
+    const h = botHarness();
+    await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
+    await h.bot.handleUpdate(h.message(100, gap.answer));
+    const drafts = await h.db.select().from(words);
+    expect(drafts).toHaveLength(0);
+  });
+
+  it("ignores ordinary chat in a group until the answer is a reply", async () => {
+    // Бот видит всю переписку в группе: «works» в разговоре ответом быть не должно.
+    const h = botHarness();
+    await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`, { chatType: "group" }));
+    // Сообщение без реплая — не ответ: прогресса нет.
+    await h.bot.handleUpdate(h.groupMessage(100, -1100, gap.answer));
+    expect(await h.db.select().from(grammarProgress)).toHaveLength(0);
+  });
+
+  it("waits for the next typed exercise after a correct answer", async () => {
+    // Ответили — и следующий вопрос текстовый, значит ждём его без лишнего нажатия кнопки.
+    const h = botHarness();
+    await makeUser(h.db, 100, "Alice");
+    const { exercises } = await seedTopic(h);
+    const gap = exercises.find((e) => e.kind === "gap")!;
+    const nextText = exercises.find((e) => e.position > gap.position && e.kind !== "choice");
+    if (!nextText) return; // в теме может не быть второго текстового подряд — проверка не к чему
+    await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
+    await h.bot.handleUpdate(h.message(100, gap.answer));
+    await h.bot.handleUpdate(h.message(100, nextText.answer));
+    const texts = h.calls.map((c) => String(c.payload.text ?? ""));
+    expect(texts.some((t) => t.includes("Верно"))).toBe(true);
+    expect(texts.length).toBeGreaterThan(2);
   });
 });

@@ -41,7 +41,21 @@ export interface ExerciseView {
   id: number;
   kind: GrammarKind;
   prompt: string;
-  options: string[];
+  /**
+   * Варианты есть только у `choice`. У `gap` и `order` их нет намеренно: человек вспоминает форму
+   * и пишет её сам.
+   *
+   * Раньше варианты собирались здесь же (`distractorsFor`) из правильного ответа — и получались
+   * «works | worksing | workss». Два из трёх вариантов не существуют в языке, поэтому верный угадывался
+   * без знания правила: упражнение тренировало не грамматику, а узнавание бессмыслицы. Для `order`
+   * было то же самое — три готовых предложения целиком вместо сборки.
+   */
+  options?: string[];
+  /**
+   * Слова для сборки — только у `order`. Перемешаны на сервере: в контенте они записаны в правильном
+   * порядке, и отдавать их как есть значило бы показывать ответ.
+   */
+  words?: string[];
   /** Отвечено ли уже верно: такие показываем отмеченными, но не убираем — тема должна читаться целиком. */
   solved: boolean;
 }
@@ -60,7 +74,65 @@ export interface AnswerResult {
   bossDamage: number;
 }
 
-const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+/**
+ * Сокращения, которые считаются тем же ответом, что и полная запись.
+ *
+ * Словарь, а не цепочка регулярок: при заменах по порядку «won't» успевало превратиться в «wo not»
+ * раньше, чем до него доходила своя замена. Здесь каждая форма перечислена целиком.
+ *
+ * «'s» намеренно не раскрывается: это и «is», и «has», и притяжательное — угадывать нельзя, иначе
+ * верный ответ «John's car» совпал бы с неверным «John is car».
+ */
+const CONTRACTIONS: Record<string, string> = {
+  "can't": "cannot", "cannot": "cannot",
+  "won't": "will not",
+  "shan't": "shall not",
+  "i'm": "i am",
+  "it's": "it is", "that's": "that is", "what's": "what is", "there's": "there is", "here's": "here is", "who's": "who is",
+  "he's": "he is", "she's": "she is",
+};
+
+/** Раскрыть сокращение по правилу «основа + n't» → «основа not»: doesn't → does not. */
+function expandContraction(token: string): string {
+  const mapped = CONTRACTIONS[token];
+  if (mapped) return mapped;
+  // Порядок важен: сначала слова из словаря (they обрабатываются выше), потом общее правило.
+  if (token.endsWith("n't")) return `${token.slice(0, -3)} not`;
+  if (token.endsWith("'re")) return `${token.slice(0, -3)} are`;
+  if (token.endsWith("'ve")) return `${token.slice(0, -3)} have`;
+  if (token.endsWith("'ll")) return `${token.slice(0, -3)} will`;
+  if (token === "'d" || token.endsWith("'d")) return `${token.slice(0, -2)} would`;
+  return token;
+}
+
+/**
+ * Приведение ответа к сравнимому виду.
+ *
+ * Человек теперь пишет форму сам, а не выбирает кнопку, поэтому прощается всё, что не относится
+ * к проверяемому правилу:
+ *
+ * - регистр и лишние пробелы — «Works» и «  works » это верный ответ;
+ * - типографские апострофы — на телефоне автозамена ставит «’» вместо «'», и «doesn’t» не должно
+ *   считаться ошибкой в отрицании;
+ * - сокращения — «does not» и «doesn't» проверяют одно и то же правило. Требовать ровно одну запись
+ *   значило бы наказывать за форму записи, а не за грамматику;
+ * - знаки препинания — запятая не является ответом на вопрос о форме глагола.
+ */
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    // Типографские апострофы и тире к обычным: клавиатура телефона подставляет свои.
+    .replace(/[\u2018\u2019\u02bc\u00b4`]/g, "'")
+    .replace(/[\u201c\u201d]/g, "\"")
+    .replace(/[\u2013\u2014]/g, "-")
+    // Знаки препинания по краям не часть ответа.
+    .replace(/[.,!?;:]+/g, " ")
+    .split(/\s+/)
+    .map(expandContraction)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /**
  * 💥 Урон боссу за ответ в грамматике — та же механика, что у ответов по карточкам.
@@ -143,12 +215,10 @@ export async function topicView(db: Db, userId: number, topicId: number): Promis
       id: e.id,
       kind: asKind(e.kind),
       prompt: e.prompt,
-      // У `gap` вариантов в контенте нет — их собираем здесь: верный ответ плюс правдоподобные
-      // подстановки. Приложение показывает всё кнопками, поэтому ввод с клавиатуры не нужен,
-      // а сравнение строк остаётся предсказуемым (регистр и пробелы не мешают).
-      // У `choice` варианты готовы; у `gap` их нет вовсе, у `order` они — отдельные слова, а не фразы.
-      // Приложению нужны нажимаемые варианты ответа, поэтому эти два вида получают собранные здесь.
-      options: asKind(e.kind) === "choice" ? splitLines(e.options) : distractorsFor({ answer: e.answer, kind: e.kind }),
+      // `choice` — единственный вид с готовыми вариантами из контента.
+      options: asKind(e.kind) === "choice" ? splitLines(e.options) : undefined,
+      // `order` — слова вперемешку, чтобы их надо было собрать, а не узнать готовое предложение.
+      words: asKind(e.kind) === "order" ? shuffleWords(e.answer, e.id) : undefined,
       // «Решено» считаем по прогрессу: упражнения не помечаются по одному, чтобы не заводить третью таблицу.
       solved: (progress?.done ?? 0) > 0 && e.position < (progress?.done ?? 0),
     })),
@@ -156,33 +226,27 @@ export async function topicView(db: Db, userId: number, topicId: number): Promis
 }
 
 /**
- * Варианты для упражнения без готовых вариантов (`gap` и `order`).
+ * Слова предложения в перемешанном порядке.
  *
- * Верный ответ ставится в список, иначе нажать было бы нечего. Подстановки берутся из форм того же ответа —
- * так они правдоподобны: человек выбирает форму, а не угадывает по незнакомым словам. Перемешивание —
- * по порядку ответа и его искажений, без случайности: экран не должен перетасовываться при каждом открытии.
+ * Перемешивание детерминированное (от `id` упражнения), а не случайное: экран не должен перетасовываться
+ * при каждом открытии, иначе человек, вернувшийся к упражнению, искал бы слова заново.
+ *
+ * Вырожденные случаи проверяются явно: при двух-трёх словах перестановка может совпасть с ответом,
+ * и тогда «собери предложение» решалось бы одним нажатием.
  */
-function distractorsFor(exercise: { answer: string; kind: string; prompt?: string }): string[] {
-  const answer = exercise.answer;
-  // `order` приходит со словами, а не вариантами: единственный путь — предложить порядки этих слов.
-  // Верный порядок обязателен, иначе нажать нечего.
-  if (exercise.kind === "order") {
-    const words = exercise.answer.split(/\s+/);
-    const shuffled = [...words].reverse().join(" ");
-    const shifted = words.length > 2 ? [...words.slice(1), words[0]].join(" ") : shuffled;
-    return [...new Set([answer, shuffled, shifted])].filter(Boolean);
-  }
-  const words = answer.split(/\s+/);
-  const last = words[words.length - 1] ?? answer;
-  const forms = [
-    answer,
-    // Инфинитив и «-ing» — самые частые ловушки в формах глагола.
-    words.slice(0, -1).concat(/[^aeiou]e$/.test(last) && !last.endsWith("ee") ? last.slice(0, -1) : last).join(" "),
-    words.slice(0, -1).concat(`${last}ing`).join(" "),
-    words.slice(0, -1).concat(`${last}s`).join(" "),
-  ];
-  // Уникальные и непустые; верный ответ — среди них.
-  return [...new Set(forms.filter(Boolean))].slice(0, 3);
+function shuffleWords(answer: string, seed: number): string[] {
+  const words = answer.trim().split(/\s+/);
+  // Детерминированный шаг: взаимно простой с длиной, чтобы обход покрыл все позиции.
+  const step = [1, 2, 3, 5, 7].map((s) => s).find((s) => gcd(s, words.length) === 1) ?? 1;
+  const start = seed % Math.max(words.length, 1);
+  const shuffled = words.map((_, i) => words[(start + i * step) % words.length]);
+  // Совпало с ответом — сдвигаем на одно слово: этого достаточно, а перемешивать заново не нужно.
+  if (shuffled.join(" ") === words.join(" ")) shuffled.push(shuffled.shift() as string);
+  return shuffled;
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
 }
 
 function asKind(value: string): GrammarKind {

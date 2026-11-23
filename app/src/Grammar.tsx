@@ -1,6 +1,6 @@
-import { Button, Cell, List, Placeholder, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
+import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getGrammar, getGrammarTopic, sendGrammarAnswer, type GrammarAnswer, type GrammarExercise, type GrammarTopic, type GrammarTopicView } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
 
@@ -145,25 +145,37 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
         <List>
           <Section header={`Упражнение ${Math.min(view.done + 1, view.total)} из ${view.total}`}>
             <Cell multiline>{current.prompt}</Cell>
-            {current.options.map((option) => {
-              const state = !answer
-                ? undefined
-                : option === answer.result.answer
-                  ? "right"
-                  : option === answer.picked
-                    ? "wrong"
-                    : "muted";
-              return (
-                <Cell
-                  key={option}
-                  onClick={() => void pick(current, option)}
-                  after={state === "right" ? "✅" : state === "wrong" ? "❌" : undefined}
-                  style={state === "muted" ? { opacity: 0.5 } : undefined}
-                >
-                  {option}
-                </Cell>
-              );
-            })}
+            {current.kind === "choice"
+              ? (current.options ?? []).map((option) => {
+                  const state = !answer
+                    ? undefined
+                    : option === answer.result.answer
+                      ? "right"
+                      : option === answer.picked
+                        ? "wrong"
+                        : "muted";
+                  return (
+                    <Cell
+                      key={option}
+                      onClick={() => void pick(current, option)}
+                      after={state === "right" ? "✅" : state === "wrong" ? "❌" : undefined}
+                      style={state === "muted" ? { opacity: 0.5 } : undefined}
+                    >
+                      {option}
+                    </Cell>
+                  );
+                })
+              : (
+                // `gap` и `order` отвечаются вводом: вариантов из ответа больше нет, иначе верный
+                // угадывался бы по форме, не зная правила.
+                <AnswerInput
+                  key={current.id}
+                  exercise={current}
+                  pending={answer}
+                  busy={busy}
+                  onSubmit={(text) => void pick(current, text)}
+                />
+              )}
           </Section>
         </List>
       )}
@@ -188,6 +200,93 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
         <Button size="m" mode="bezeled" stretched onClick={onBack}>← К темам</Button>
       </div>
       {!current && <Placeholder header="Упражнений нет" description="В этой теме пока нет заданий — загляни позже." />}
+    </div>
+  );
+}
+
+/**
+ * Ответ на `gap` и `order` — вводом, а не кнопками.
+ *
+ * Почему так: варианты, собранные на сервере из правильного ответа, были неязыковыми
+ * («works | worksing | workss») — верный угадывался по форме, без знания правила. Здесь человек пишет
+ * форму сам, поэтому упражнение тренирует вспоминание.
+ *
+ * У сборки предложения слова даны кнопками: на телефоне набрать целую фразу медленнее и легче ошибиться
+ * в регистре, а тренируется порядок слов, а не скорость печати. Набранное руками тоже принимается.
+ */
+function AnswerInput({ exercise, pending, busy, onSubmit }: {
+  exercise: GrammarExercise;
+  pending?: { picked: string; result: GrammarAnswer };
+  busy: boolean;
+  onSubmit: (text: string) => void;
+}) {
+  const [text, setText] = useState(pending?.picked ?? "");
+  const input = useRef<HTMLInputElement>(null);
+  // Слова, уже поставленные в предложение: второй раз то же слово не подставить, если оно одно в наборе.
+  const [taken, setTaken] = useState<number[]>([]);
+  const words = exercise.words ?? [];
+  const answer = pending?.result;
+
+  // После разбора поле блокируется: ответ уже дан, и правки в нём ничего не изменят.
+  const locked = Boolean(answer) || busy;
+
+  useEffect(() => {
+    if (exercise.kind === "gap" && !answer) input.current?.focus();
+  }, [exercise.id, exercise.kind, answer]);
+
+  const append = (word: string, index: number) => {
+    if (locked) return;
+    setText((current) => {
+      const next = current.trim() ? `${current.trim()} ${word}` : word;
+      return next;
+    });
+    setTaken((current) => [...current, index]);
+    haptic.tap();
+  };
+
+  const undo = () => {
+    if (locked) return;
+    const parts = text.trim().split(/\s+/).filter(Boolean);
+    parts.pop();
+    setText(parts.join(" "));
+    // Снимаем пометку с последнего добавленного слова — его снова можно нажать.
+    setTaken((current) => current.slice(0, -1));
+    haptic.tap();
+  };
+
+  return (
+    <div style={{ padding: 16, display: "grid", gap: 12 }}>
+      {exercise.kind === "order" && words.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {words.map((word, index) => (
+            <Button
+              key={`${word}-${index}`}
+              size="s"
+              mode={taken.includes(index) ? "plain" : "filled"}
+              disabled={locked || taken.includes(index)}
+              onClick={() => append(word, index)}
+            >
+              {word}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      <Input
+        ref={input}
+        placeholder={exercise.kind === "order" ? "Собери предложение" : "Впиши ответ"}
+        value={text}
+        disabled={locked}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (!text.trim()) return;
+          onSubmit(text.trim());
+        }}
+      />
+      {exercise.kind === "order" && (
+        <Text className="hint">Слова перемешаны — нажимай по порядку. Можно и напечатать.</Text>
+      )}
     </div>
   );
 }

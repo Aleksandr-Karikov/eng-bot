@@ -6,6 +6,7 @@ import type { SubtitleSource } from "../src/youtube/subtitles";
 import { CollocationGenerator } from "../src/services/collocations";
 import { GrammarGenerator } from "../src/services/grammar";
 import { TalkStore } from "../src/bot/talks";
+import { GrammarAnswerStore } from "../src/bot/grammar-answers";
 import { Bot } from "grammy";
 import { BatchStore } from "../src/bot/batches";
 import { ChatHistory } from "../src/bot/history";
@@ -123,7 +124,7 @@ export function botHarness(opts: {
   const speech: SpeechSynth = opts.speech ?? { synthesize: async () => Buffer.from("ogg") };
   /** «Сейчас» для обработчиков. Меняется через setNow — иначе смену дня не проверить. */
   const clock = { now: T0 };
-  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), grammarGen: new GrammarGenerator(db, tutor, () => T0), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), llm: opts.llm, practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), transcript: new ChatTranscript(), youtube: opts.youtube, recognizer: opts.recognizer, voiceSamplesDir: opts.voiceSamplesDir, welcomeVideo: opts.welcomeVideo, adminTelegramId: opts.adminTelegramId, status: opts.status, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => clock.now, botUsername: BOT_INFO.username };
+  const deps: Deps = { db, notifier, enricher, tutor, clozeGen, collocationGen: new CollocationGenerator(db, tutor), grammarGen: new GrammarGenerator(db, tutor, () => T0), mnemonicGen: new MnemonicGenerator(db, tutor), drafts: new DraftStore(), batches: new BatchStore(), pickers: new PickerStore(), edits: new EditStore(), history: new ChatHistory(), exercises: new ExerciseStore(), drills: new DrillStore(), speech, voices: new VoiceStore(), roomNames: new RoomNameStore(), duels: new DuelStore(opts.duelRoundMs ?? 30_000), pendingMistakes: new PendingMistakesStore(), random: opts.random ?? (() => 0), llm: opts.llm, practice: new PracticeStore(), pictureWishes: new PictureWishStore(), talks: new TalkStore(), translations: new TranslateStore(), grammarAnswers: new GrammarAnswerStore(), transcript: new ChatTranscript(), youtube: opts.youtube, recognizer: opts.recognizer, voiceSamplesDir: opts.voiceSamplesDir, welcomeVideo: opts.welcomeVideo, adminTelegramId: opts.adminTelegramId, status: opts.status, images: opts.images ? new ImageService(opts.images, tutor) : undefined, pictures, now: () => clock.now, botUsername: BOT_INFO.username };
   setupBot(bot, deps);
 
   let seq = 0;

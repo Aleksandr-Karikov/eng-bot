@@ -61,6 +61,20 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     if (!view) return;
     const exercise = view.exercises.find((e) => e.id === cb.exerciseId);
     if (!exercise) return void (await edit(ctx, "Упражнение не найдено."));
+    // `gap` и `order` отвечаются сообщением, поэтому запоминаем, какой ответ ждём: без этого
+    // присланный текст ушёл бы в /add и стал бы новым словом.
+    if (exercise.kind !== "choice") {
+      deps.grammarAnswers.set(ctx.user.id, {
+        exerciseId: exercise.id,
+        topicId: view.id,
+        chatId: ctx.chat?.id ?? 0,
+        // В группе ответ принимается только реплаем на это сообщение — иначе любая фраза в чате
+        // считалась бы ответом. В личке реплай не нужен.
+        messageId: ctx.callbackQuery.message?.message_id,
+      });
+    } else {
+      deps.grammarAnswers.clear(ctx.user.id);
+    }
     await edit(ctx, questionText(view, exercise), questionKeyboard(view, exercise));
   });
 
@@ -73,7 +87,8 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     const exercise = view?.exercises.find((e) => e.id === cb.exerciseId);
     if (!view || !exercise) return void (await ctx.answerCallbackQuery({ text: "Упражнение не найдено" }));
 
-    const picked = exercise.options[cb.index];
+    // Кнопками отвечается только выбор варианта: у `gap` и `order` кнопок с ответом больше нет.
+    const picked = exercise.options?.[cb.index];
     if (picked === undefined) return void (await ctx.answerCallbackQuery({ text: "Такого варианта нет" }));
     // Комната для урона — текущая: грамматика бьёт по боссу той комнаты, где человек учится.
     const result = await answerExercise(deps.db, {
@@ -85,6 +100,57 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     const fresh = await topicView(deps.db, ctx.user.id, view.id);
     if (!fresh) return;
     await edit(ctx, answerText(fresh, exercise, result, picked), answerKeyboard(fresh, exercise, result));
+  });
+
+  /**
+   * Ответ сообщением на `gap` и `order`.
+   *
+   * Почему текстом, а не кнопками: варианты, собранные из правильного ответа кодом, были неязыковыми
+   * («works | worksing | workss»), и верный угадывался без знания правила. Человек, который сам пишет
+   * форму, тренирует вспоминание, а не узнавание.
+   *
+   * Обработчик регистрируется до общего перехвата текста (как у `/translate` и «вставь по смыслу»),
+   * иначе ответ ушёл бы в `/add`.
+   */
+  bot.on("message:text", async (ctx, next) => {
+    const text = ctx.message.text;
+    if (text.startsWith("/")) return next();
+    const pending = deps.grammarAnswers.take(ctx.user.id);
+    if (!pending) return next();
+    // Ждём ответ именно в этом чате: упражнение в личке не должно съедать сообщение в группе.
+    if (pending.chatId !== ctx.chat.id) return next();
+    // В группе — только реплай на задание: бот видит всю переписку, и «works» в разговоре не ответ.
+    if (ctx.chat.type !== "private" && ctx.message.reply_to_message?.message_id !== pending.messageId) {
+      // Ожидание не потрачено — вернуть его, иначе человек не сможет ответить вовсе.
+      deps.grammarAnswers.set(ctx.user.id, pending);
+      return next();
+    }
+    const data = await exerciseWithTopic(deps, pending.exerciseId);
+    if (!data) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
+    const view = await topicView(deps.db, ctx.user.id, data.topic.id);
+    const exercise = view?.exercises.find((e) => e.id === pending.exerciseId);
+    if (!view || !exercise) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
+
+    const result = await answerExercise(deps.db, {
+      userId: ctx.user.id, exerciseId: pending.exerciseId, answer: text, now: deps.now(), roomId: ctx.user.currentRoomId ?? undefined,
+    });
+    if (!result) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
+    // Задание ответило — кнопка «Почему так» под ним больше не нужна.
+    if (pending.messageId !== undefined) void ctx.api.editMessageReplyMarkup(ctx.chat.id, pending.messageId).catch(() => {});
+
+    const fresh = await topicView(deps.db, ctx.user.id, view.id);
+    if (!fresh) return;
+    const sent = await ctx.reply(answerText(fresh, exercise, result, text.trim()), {
+      ...HTML,
+      reply_markup: answerKeyboard(fresh, exercise, result),
+    });
+    // Следующее упражнение текстовое — ждём ответ на это сообщение, а не на старое.
+    if (result.correct) {
+      const nextExercise = nextUnsolved(fresh, exercise.id);
+      if (nextExercise && nextExercise.kind !== "choice") {
+        deps.grammarAnswers.set(ctx.user.id, { exerciseId: nextExercise.id, topicId: fresh.id, chatId: ctx.chat.id, messageId: sent.message_id });
+      }
+    }
   });
 
   /**
@@ -180,19 +246,37 @@ function topicKeyboard(view: TopicView) {
 }
 
 function questionText(view: TopicView, exercise: ExerciseView): string {
-  return [
+  const lines = [
     `📘 <b>${esc(view.title)}</b> · ${view.done + 1} из ${view.total}`,
     "",
     esc(exercise.prompt),
-  ].join("\n");
+  ];
+  // Слова для сборки показываем списком: в контенте они лежат в правильном порядке, поэтому
+  // присланный порядок — серверный, а здесь он перемешан (см. `shuffleWords`).
+  if (exercise.kind === "order" && exercise.words?.length) {
+    lines.push("", `<i>Слова:</i> ${exercise.words.map((w) => esc(w)).join(" · ")}`);
+  }
+  // Что делать дальше — прямо в задании: без вариантов на экране человек может не догадаться,
+  // что ответ надо написать сообщением.
+  if (exercise.kind !== "choice") {
+    lines.push("", "<i>Напиши ответ сообщением.</i>");
+  }
+  return lines.join("\n");
 }
 
 function questionKeyboard(view: TopicView, exercise: ExerciseView) {
-  const rows = exercise.options.map((option, index) => [
+  // Кнопки — только у выбора варианта. У `gap` и `order` вариантов нет: человек пишет ответ
+  // сообщением, и предлагать ему нажать нечего.
+  const rows = (exercise.options ?? []).map((option, index) => [
     { text: option.slice(0, 60), callback_data: `ga:${exercise.id}:${index}` },
   ]);
   rows.push([{ text: "← К теме", callback_data: `gt:${view.id}` }]);
   return { inline_keyboard: rows };
+}
+
+/** Следующее нерешённое упражнение — чтобы сразу ждать ответ на него, если оно тоже текстовое. */
+function nextUnsolved(view: TopicView, currentId: number): ExerciseView | undefined {
+  return view.exercises.find((e) => !e.solved && e.id !== currentId);
 }
 
 /** Экран ответа: верно или нет, правильный ответ, объяснение из контента и что дальше. */

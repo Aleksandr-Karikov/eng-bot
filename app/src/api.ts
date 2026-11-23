@@ -340,7 +340,10 @@ export interface GrammarExercise {
   id: number;
   kind: "choice" | "gap" | "order";
   prompt: string;
-  options: string[];
+  /** Варианты есть только у `choice`: `gap` и `order` человек отвечает вводом с клавиатуры. */
+  options?: string[];
+  /** Слова для сборки — только у `order`, перемешаны на сервере. */
+  words?: string[];
   solved: boolean;
 }
 

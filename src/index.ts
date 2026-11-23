@@ -43,6 +43,7 @@ import { startAppServer } from "./app/server";
 import { WordfreqSource } from "./frequency/frequency";
 import { TranslateStore } from "./bot/translations";
 import { TalkStore } from "./bot/talks";
+import { GrammarAnswerStore } from "./bot/grammar-answers";
 import { CollocationGenerator } from "./services/collocations";
 import { GrammarGenerator } from "./services/grammar";
 import { startReminderLoop } from "./reminder-loop";
@@ -164,6 +165,7 @@ const deps: Deps = {
   pictureWishes: new PictureWishStore(),
   talks: new TalkStore(),
   translations: new TranslateStore(),
+  grammarAnswers: new GrammarAnswerStore(),
   transcript: new ChatTranscript(),
   frequency: existsSync(config.wordfreqPython) ? new WordfreqSource(config.wordfreqPython, "tools/wordfreq/zipf.py") : undefined,
   youtube: existsSync(config.youtubePython) ? new TranscriptSubtitles(config.youtubePython, "tools/youtube/transcript.py") : undefined,
