@@ -322,6 +322,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
         <TypeCard
           key={`${card.cardId}-${card.reps}`}
           card={card}
+          voice={me?.voice}
           // Оценил сервер при проверке — в историю для отмены (запрос уже прошёл).
           onRated={(hp) => {
             showDamage(hp);

@@ -1,4 +1,5 @@
 import { langForms, pickAccent } from "../../lang";
+import { autoVoice } from "../../services/voice";
 import { startTranslate } from "./translate";
 import { dropCard, restoreCard } from "../../services/cards";
 import { markTriaged } from "../../services/triage";
@@ -99,7 +100,10 @@ async function presentSpecial(
     return true;
   }
   if (!ctx.chat || (stage !== "sentence" && stage !== "listen")) return false;
-  const accent = pickAccent(deps.random);
+  // Диктант читает выбранным вариантом произношения — тем же, что включён в настройках карточек.
+  // Раньше здесь выбирался случайный, и включённый американский звучал британским через слово.
+  // Случайный остаётся запасным: диктант без звука невозможен, и любой вариант лучше молчания.
+  const accent = autoVoice(ctx.user) ?? pickAccent(deps.random);
   const voice = stage === "listen" ? await wordVoice(deps, word, accent) : undefined;
   if (stage === "listen" && !voice) return false;
   const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };

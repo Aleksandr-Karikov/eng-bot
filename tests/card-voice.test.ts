@@ -1,13 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { autoVoice, DEFAULT_VOICE_ACCENT, toggleVoiceAccent } from "../src/services/voice";
 import { getUser, updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
+import { cards } from "../src/db/schema";
 import type { Language } from "../src/lang";
 import { botHarness, buttonData, lastButtons } from "./bot-harness";
-import { T0, makeUser } from "./helpers";
+import { DAY, T0, makeUser } from "./helpers";
 
 const EN: Language = { accents: ["uk", "us"] } as Language;
 const KO: Language = { accents: ["uk"] } as Language;
@@ -97,5 +98,46 @@ describe("🗣 озвучка в Mini App", () => {
     await post(app, { voice: "off" });
     expect((await getUser(h.db, 1))!.voiceAccent).toBe("");
     expect((await post(app, { voice: "hack" })).status).toBe(400);
+  });
+});
+
+// 🎧 Диктант читает выбранным вариантом произношения. Раньше акцент выбирался случайно, и при
+// включённом американском британский звучал «через слово»: настройка карточки не доходила до диктанта.
+describe("🎧 диктант озвучивается выбранным вариантом", () => {
+  /** Включает единственный режим «на слух» и отдаёт слово к повторению. */
+  async function listenSetup(voiceAccent: string) {
+    const accents: string[] = [];
+    const h = botHarness({ speech: { synthesize: async (_t, accent) => (accents.push(accent), Buffer.from("ogg")) } });
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, {
+      canDm: true, modeEnRu: false, modeRuEn: false, modeCollocation: false, modeCloze: false, modeSentence: false, modeListen: true, voiceAccent,
+    });
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    const saved = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "bank", translation: "берег", explanation: "", example: "the river bank", usefulness: 3 }, now: T0 });
+    if (saved.status !== "saved") throw new Error("fixture");
+    await h.db.update(cards).set({ state: 2, stability: 5, reps: 3, due: new Date(T0.getTime() - DAY) });
+    return { h, accents };
+  }
+
+  it("reads American when the person chose American", async () => {
+    const { h, accents } = await listenSetup("us");
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await vi.waitFor(() => expect(accents.length).toBeGreaterThan(0));
+    // Диктант без звука невозможен, поэтому проверяем именно акцент, а не факт отправки.
+    expect(accents).toEqual(["us"]);
+  });
+
+  it("reads British when the person chose British", async () => {
+    const { h, accents } = await listenSetup("uk");
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await vi.waitFor(() => expect(accents.length).toBeGreaterThan(0));
+    expect(accents).toEqual(["uk"]);
+  });
+
+  it("falls back to either accent only when the voice is switched off", async () => {
+    // Озвучка выключена — настройки нет, но диктант всё равно должен звучать: любой вариант лучше тишины.
+    const { h, accents } = await listenSetup("");
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await vi.waitFor(() => expect(accents.length).toBeGreaterThan(0));
+    expect(["uk", "us"]).toContain(accents[0]);
   });
 });

@@ -1,4 +1,5 @@
 import { langForms, pickAccent } from "../../lang";
+import { autoVoice } from "../../services/voice";
 import { clearPendingInputs, endLongModes } from "../pending";
 import { InputFile, type Bot } from "grammy";
 import type { TalkReview } from "../../llm/tutor";
@@ -34,7 +35,9 @@ async function startTalk(ctx: BotContext, deps: Deps, topic: string, label: stri
   const words = room ? (await storyWords(deps.db, room.id, deps.random, ctx.user.id)).slice(0, TALK_WORDS) : [];
   endLongModes(deps, ctx.user.id, "talk");
   clearPendingInputs(deps, ctx.user.id, ctx.chat.id);
-  const talk = deps.talks.start(ctx.user.id, { topic, words, lines: [], chatId: ctx.chat.id, accent: pickAccent(deps.random) });
+  // Голос разговора — из настроек: человек уже выбрал, каким произношением хочет слышать английский.
+  // Случайный вариант остаётся запасным, когда озвучка выключена.
+  const talk = deps.talks.start(ctx.user.id, { topic, words, lines: [], chatId: ctx.chat.id, accent: autoVoice(ctx.user) ?? pickAccent(deps.random) });
   const hint = words.length ? `\n\nПопробуй употребить: ${words.map((w) => `<b>${esc(w.term)}</b>`).join(", ")}` : "";
   await ctx.reply(
     `🗣 ${esc(label)}\n\nПиши ${langForms().adv}, как в обычном чате${deps.recognizer ? ", или отвечай голосовыми" : ""}. По ходу не поправляю — разбор в конце по кнопке «🏁 Закончить».${hint}`,

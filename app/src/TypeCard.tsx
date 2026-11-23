@@ -4,7 +4,7 @@ import { studyLanguage } from "./language";
 import { viewport as telegramViewport } from "@telegram-apps/sdk-react";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type CheckResult } from "./api";
+import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type CheckResult, type VoiceAccent } from "./api";
 import { useBottomButtons } from "./bottomButtons";
 import { transcription } from "./format";
 import { haptic, notify } from "./telegram";
@@ -27,7 +27,7 @@ function Marked({ text }: { text: string }) {
  * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для отмены), onRateSelf —
  * проверить не вышло и человек оценил себя сам.
  */
-export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
+export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: Card; voice?: VoiceAccent | null; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
   const [answer, setAnswer] = useState("");
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult>();
@@ -38,8 +38,13 @@ export function TypeCard({ card, onRated, onRateSelf, onNext }: { card: Card; on
   const w = card.word;
 
   useEffect(() => {
-    if (card.stage === "listen") void play(card, Math.random() < 0.5 ? "uk" : "us");
-  }, [card]);
+    // Диктант читает выбранным вариантом произношения — тем же, что и карточка. Раньше здесь
+    // стоял случайный выбор, из-за чего включённый американский звучал британским через слово:
+    // человек выбирал вариант в настройках, а диктант его игнорировал.
+    // Случайный выбор остаётся только запасным — когда озвучка не выбрана вовсе, но диктант
+    // без звука невозможен: тогда любой вариант лучше молчания.
+    if (card.stage === "listen") void play(card, voice ?? (Math.random() < 0.5 ? "uk" : "us"));
+  }, [card, voice]);
 
   useEffect(() => {
     const panel = deck.current;
