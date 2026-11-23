@@ -4,7 +4,7 @@
   if (window.__wordbossLoaded) return;
   window.__wordbossLoaded = true;
 
-  const HISTORY = 30;
+  const HISTORY = 200;
   /** Реплика длиннее — скорее всего, не субтитр, а кусок страницы. */
   const MAX_LINE = 300;
 
@@ -98,8 +98,19 @@
 
   function pushLine(raw, source) {
     const line = cleanCue(raw || "");
+    const last = state.lines.length - 1;
     if (!line || line.length > MAX_LINE || !looksLikeSpeech(line)) return;
-    if (state.lines.at(-1) === line) return;
+    if (state.lines[last] === line) return;
+    // Плеер набирает реплику по буквам: дописанное продолжение — та же строка, а не новая,
+    // иначе история заполняется обрывками и листать назад некуда. Стирание окна (строка короче) — не реплика.
+    if (source === "dom" && last >= 0) {
+      if (state.lines[last].startsWith(line)) return;
+      if (line.startsWith(state.lines[last])) {
+        state.lines[last] = line;
+        render();
+        return;
+      }
+    }
     debug(source, line);
     state.lines.push(line);
     if (state.lines.length > HISTORY) {
@@ -147,14 +158,22 @@
       const video = state.video;
       if (!video) return;
       const rect = video.getBoundingClientRect();
+      const overVideo = (r) =>
+        r.width > 0 && r.top >= rect.top + rect.height * 0.4 && r.bottom <= rect.bottom + 40 && r.left >= rect.left - 20 && r.right <= rect.right + 20;
       for (const m of mutations) {
         const node = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : m.target;
         if (!node || node.closest?.("#wordboss-panel")) continue;
-        const text = node.innerText || "";
+        // YouTube набирает реплику по частям: изменившийся узел — сегмент или строка, а не вся реплика.
+        // Поднимаемся к общему блоку реплики, пока родитель лежит поверх видео и его текст — ещё субтитр.
+        let box = node;
+        for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
+          const text = p.innerText || "";
+          if (!text.trim() || text.length > MAX_LINE || !overVideo(p.getBoundingClientRect())) break;
+          box = p;
+        }
+        const text = box.innerText || "";
         if (!text.trim() || text.length > MAX_LINE) continue;
-        const r = node.getBoundingClientRect();
-        const overVideo = r.width > 0 && r.top >= rect.top + rect.height * 0.4 && r.bottom <= rect.bottom + 40 && r.left >= rect.left - 20 && r.right <= rect.right + 20;
-        if (overVideo) pushLine(text, "dom");
+        if (overVideo(box.getBoundingClientRect())) pushLine(text, "dom");
       }
     });
     observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
