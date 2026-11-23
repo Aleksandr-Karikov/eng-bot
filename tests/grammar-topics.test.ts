@@ -55,6 +55,22 @@ describe("📘 grammar content", () => {
     for (const topic of GRAMMAR_TOPICS) expect(["A1", "A2", "B1", "B2", "C1"]).toContain(topic.level);
   });
 
+  it("covers the whole CEFR programme, not a sample of it", () => {
+    // «Самодостаточный раздел» — это когда путь с нуля до C1 не обрывается. Проверяем не точное число
+    // тем (оно будет расти), а то, что каждый уровень наполнен и в каждой теме есть на чём тренироваться.
+    for (const level of ["A1", "A2", "B1", "B2", "C1"]) {
+      const topics = GRAMMAR_TOPICS.filter((t) => t.level === level);
+      expect(topics.length, `уровень ${level} почти пуст`).toBeGreaterThanOrEqual(10);
+    }
+    // 12 упражнений — минимум, при котором правило отрабатывается, а не только читается.
+    for (const topic of GRAMMAR_TOPICS) {
+      expect(topic.exercises.length, `${topic.slug}: мало упражнений`).toBeGreaterThanOrEqual(12);
+      // Не больше половины «выбрать вариант»: остальное требует вспомнить форму самому.
+      const choices = topic.exercises.filter((e) => e.kind === "choice").length;
+      expect(choices, `${topic.slug}: слишком много выбора готовых вариантов`).toBeLessThanOrEqual(Math.floor(topic.exercises.length / 2));
+    }
+  });
+
   it("never repeats a question across topics", () => {
     // Проходя подряд, человек не должен видеть один и тот же вопрос дважды.
     const prompts = GRAMMAR_TOPICS.flatMap((t) => t.exercises.map((e) => e.prompt.trim().toLowerCase()));
@@ -65,6 +81,48 @@ describe("📘 grammar content", () => {
     // Без `why` ошибка ничему не учит, а модель зовётся только по кнопке — значит объяснение обязано быть.
     for (const topic of GRAMMAR_TOPICS) {
       for (const exercise of topic.exercises) expect(exercise.why.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("accepts its own answer in every exercise, typing it the way a person would", () => {
+    // Главная гарантия для текстового ввода: верный ответ обязан приниматься. Если сравнение строк
+    // окажется строже, чем контент, человек напишет правильно и получит «неверно» — худший из багов.
+    for (const topic of GRAMMAR_TOPICS) {
+      for (const exercise of topic.exercises) {
+        for (const typed of [exercise.answer, exercise.answer.toLowerCase(), ` ${exercise.answer} `, exercise.answer.toUpperCase()]) {
+          expect(
+            isCorrect(exercise.kind, typed, exercise.answer),
+            `${topic.slug}: ответ «${typed}» не принимается, хотя он верный`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("never lets the prompt give the answer away", () => {
+    // Иначе упражнение решается чтением задания, а не знанием.
+    for (const topic of GRAMMAR_TOPICS) {
+      for (const exercise of topic.exercises) {
+        const answer = exercise.answer.trim().toLowerCase();
+        const prompt = exercise.prompt.toLowerCase();
+        if (exercise.kind === "order") {
+          expect(prompt.includes(answer), `${topic.slug}: в задании уже стоит готовый порядок слов`).toBe(false);
+        }
+        if (exercise.kind === "gap") {
+          // Смысл проверки: ответ не должен стоять в самом предложении рядом с пропуском.
+          // Подсказка в скобках — намеренная часть задания («___ (he)» значит «вставь he»),
+          // поэтому она исключается: иначе проверка срабатывала бы на каждом верном задании.
+          const sentence = prompt.replace(/\([^)]*\)/g, " ");
+          const words = sentence.split(/[^a-zа-яё']+/).filter(Boolean);
+          // Служебное слово (артикль, предлог, местоимение) законно встречается в предложении рядом
+          // с другими пропусками. Проверять имеет смысл содержательный ответ — форму глагола или
+          // знаменательное слово: именно там подсказка выдала бы всё задание.
+          const functionWord = ["a", "an", "the", "to", "of", "in", "on", "at", "for", "some", "any", "no", "he", "she", "it", "we", "they", "you", "i", "my", "your", "his", "her", "its", "our", "their"].includes(answer);
+          if (!functionWord) {
+            expect(words.includes(answer), `${topic.slug}: ответ «${answer}» уже стоит в предложении`).toBe(false);
+          }
+        }
+      }
     }
   });
 
