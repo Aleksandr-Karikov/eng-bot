@@ -16,6 +16,7 @@ import { B2_MORE } from "./b2-more";
 import { B2_VERBS } from "./b2-verbs";
 import { C1_ADVANCED } from "./c1-advanced";
 import { C1_TOPICS } from "./c1";
+import { C1_FINAL } from "./c1-final";
 import { C1_MORE } from "./c1-more";
 import type { TopicDraft } from "./types";
 
@@ -53,4 +54,5 @@ export const GRAMMAR_TOPICS: TopicDraft[] = [
   ...C1_TOPICS,
   ...C1_ADVANCED,
   ...C1_MORE,
+  ...C1_FINAL,
 ];

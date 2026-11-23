@@ -37,6 +37,8 @@ const FUNCTION_WORDS = new Set([
   "in", "on", "at", "to", "for", "from", "with", "by", "of", "about", "into", "during", "until",
   "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
   "my", "your", "his", "its", "our", "their",
+  // Относительные и союзные слова: их выбор задаёт само предложение, подсказка была бы шумом.
+  "who", "whom", "whose", "which", "that", "where", "when", "why", "whether", "if",
 ]);
 
 /**

@@ -17,7 +17,7 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 - Вопросы не повторяются ни внутри темы, ни между темами (проверяется скриптом).
 - Язык интерфейса русский; примеры и ответы — английские.
 
-## A1 — 16 тем (было 4)
+## A1
 
 | slug | тема |
 |---|---|
@@ -38,7 +38,7 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 | like-ing | like / hate / love + -ing |
 | questions-wh | Вопросы: what, where, when |
 
-## A2 — 16 тем (было 6)
+## A2
 
 | slug | тема |
 |---|---|
@@ -59,7 +59,7 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 | prepositional-phrases | Предлоги места и движения |
 | phrasal-verbs-basic | Фразовые глаголы: базовые |
 
-## B1 — 20 тем (было 12)
+## B1
 
 | slug | тема |
 |---|---|
@@ -84,7 +84,7 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 | modals-deduction | Must be / can't be: deduction |
 | modals-speculation | Might / may / probably |
 
-## B2 — 14 тем (было 6)
+## B2
 
 | slug | тема |
 |---|---|
@@ -103,7 +103,7 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 | wish-present | Wish: сожаление о настоящем |
 | would-habits | Would: привычки в прошлом |
 
-## C1 — 10 тем (было 3)
+## C1
 
 | slug | тема |
 |---|---|
@@ -118,7 +118,8 @@ Inventory). Здесь — разбивка по нашим темам, чтоб
 | relative-clauses-advanced | Non-defining и which = whole clause |
 | advanced-connectors | Whereas, albeit, notwithstanding |
 
-Итого: 76 тем, ~1000 упражнений.
+Точное число тем и упражнений здесь не пишется: оно меняется с каждым коммитом и устаревает сразу.
+Актуальное покажет `npx tsx scripts/build-grammar.ts --dry-run`.
 
 ## Проверка перед сдачей
 
