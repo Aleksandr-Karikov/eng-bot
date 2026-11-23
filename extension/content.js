@@ -160,15 +160,18 @@
       const rect = video.getBoundingClientRect();
       const overVideo = (r) =>
         r.width > 0 && r.top >= rect.top + rect.height * 0.4 && r.bottom <= rect.bottom + 40 && r.left >= rect.left - 20 && r.right <= rect.right + 20;
+      /** Элементы управления плеера: кнопки, таймкод, настройки — их текст не субтитр. */
+      const chrome = (el) => !!el.querySelector?.("button, a, input, select, textarea, [role='button'], [role='slider']");
       for (const m of mutations) {
         const node = m.target.nodeType === Node.TEXT_NODE ? m.target.parentElement : m.target;
         if (!node || node.closest?.("#wordboss-panel")) continue;
         // YouTube набирает реплику по частям: изменившийся узел — сегмент или строка, а не вся реплика.
-        // Поднимаемся к общему блоку реплики, пока родитель лежит поверх видео и его текст — ещё субтитр.
+        // Поднимаемся к общему блоку реплики, пока родитель лежит поверх видео, его текст — ещё субтитр
+        // и в нём нет кнопок: иначе подъём уходит в панель управления и в реплику попадает таймкод.
         let box = node;
         for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
           const text = p.innerText || "";
-          if (!text.trim() || text.length > MAX_LINE || !overVideo(p.getBoundingClientRect())) break;
+          if (chrome(p) || !text.trim() || text.length > MAX_LINE || !looksLikeSpeech(text) || !overVideo(p.getBoundingClientRect())) break;
           box = p;
         }
         const text = box.innerText || "";

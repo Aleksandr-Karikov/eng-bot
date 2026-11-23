@@ -15,12 +15,21 @@ const HTML = `<!doctype html><meta charset="utf-8">
   video { position: absolute; inset: 0; width: 900px; height: 506px; display: block; background: #222; }
   /* Контейнер субтитров растянут на весь плеер, окно — у нижнего края. */
   .caption-window-container { position: absolute; inset: 0; pointer-events: none; }
-  .caption-window { position: absolute; bottom: 10%; left: 10%; right: 10%; text-align: center; color: #fff; font: 24px/1.4 sans-serif; }
+  .caption-window { position: absolute; bottom: 12%; left: 10%; right: 10%; text-align: center; color: #fff; font: 24px/1.4 sans-serif; }
+  .ytp-chrome-bottom { position: absolute; bottom: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: rgba(0,0,0,.6); color: #fff; font: 13px sans-serif; }
+  .ytp-time-display { display: flex; gap: 4px; }
 </style>
 <div id="movie_player">
   <video></video>
   <div class="caption-window-container">
     <div class="caption-window"><span class="captions-text" id="cc-text"><span class="caption-visual-line" id="cc-line"></span></span></div>
+  </div>
+  <!-- Панель управления у нижнего края поверх видео: её текст не должен попадать в реплику. -->
+  <div class="ytp-chrome-bottom">
+    <button title="Play">▶</button>
+    <span class="ytp-time-display"><span class="ytp-time-current">0:04</span><span>/</span><span class="ytp-time-duration">12:33</span></span>
+    <button>Subtitles/closed captions</button>
+    <button>Settings</button>
   </div>
 </div>`;
 
@@ -81,6 +90,15 @@ for (let i = 1; i <= 25; i++) await speak([`Line ${i} of the show`]);
 const deep = await history();
 check("назад листается хотя бы 25 реплик", deep.length >= 26, true);
 check("в глубине — целые реплики", deep.at(-1), "I don't know");
+
+// Таймкод тикает рядом с репликой: панель управления не должна попасть в субтитры.
+await speak(["Nice one"]);
+for (let t = 5; t <= 8; t++) {
+  await page.evaluate((v) => (document.querySelector(".ytp-time-current").textContent = `0:${String(v).padStart(2, "0")}`), t);
+  await new Promise((r) => setTimeout(r, 120));
+}
+check("рядом тикает таймкод — в панели реплика", await visible(), "Nice one");
+check("таймкода и кнопок в истории нет", (await history()).filter((x) => /\d:\d\d|Settings|captions|Play/.test(x)), []);
 
 await browser.close();
 process.exit(bad ? 1 : 0);
