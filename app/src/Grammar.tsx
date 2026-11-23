@@ -6,6 +6,7 @@ import { haptic, notify, useBackButton } from "./telegram";
 
 /**
  * 📘 Грамматика: темы по уровням → правило → упражнения → экзамен.
+ * В шапке — «Aa», а не книга: книга в этом приложении означает словарь («Слова»).
  *
  * Проверка ответа — на сервере сравнением строк, модель не участвует: поэтому здесь нет ни ожидания,
  * ни ошибок «модель не ответила». Приложение не знает правильный ответ до отправки — иначе подсказка
@@ -51,7 +52,7 @@ function TopicList({ list, onOpen }: { list: { topics: GrammarTopic[]; passed: n
   return (
     <div className="screen">
       <div className="boss-head">
-        <Text weight="2">📘 Грамматика</Text>
+        <Text weight="2">Aa · Грамматика</Text>
         <Text className="hint">
           {list.passed > 0 ? `Сдано: ${list.passed} из ${list.total}` : "Правило, упражнения и экзамен"}
         </Text>

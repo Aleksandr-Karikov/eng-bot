@@ -11,7 +11,7 @@ import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Triage } from "./Triage";
 import { Words } from "./Words";
-import { IconBook, IconChart, IconClose, IconMenu, IconSettings, IconShield } from "./icons";
+import { IconBook, IconChart, IconClose, IconGrammar, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
 type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss" | "grammar";
@@ -88,7 +88,9 @@ export function App() {
           items={[
             ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
             { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
-            { icon: <IconBook size={16} />, label: "Грамматика", onPick: () => open("grammar") },
+            // У «Грамматики» своя иконка: книга — это «Слова», и два одинаковых пункта меню
+            // различались только подписью.
+            { icon: <IconGrammar size={16} />, label: "Грамматика", onPick: () => open("grammar") },
             { icon: <IconBook size={16} />, label: "Слова", onPick: () => open("words") },
             { icon: <IconSettings size={16} />, label: "Настройки", onPick: () => open("settings") },
           ]}
