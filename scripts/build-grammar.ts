@@ -74,6 +74,9 @@ function check(exercise: ExerciseDraft, at: string, problems: string[]): void {
     if (answer.length !== words.length || [...answer].sort().join(" ") !== [...words].sort().join(" ")) {
       problems.push(`${at}: слова ответа не совпадают со словами вариантов`);
     }
+    // Знак в конце ответа делает верный порядок недостижимым: сравниваются строки дословно,
+    // а слова вариантов знака не содержат.
+    if (/[.?!,;:]$/.test(exercise.answer.trim())) problems.push(`${at}: в ответе order есть знак препинания — слова вариантов его не содержат`);
   }
   if (!["choice", "gap", "order"].includes(exercise.kind)) problems.push(`${at}: неизвестный вид «${exercise.kind}»`);
 }

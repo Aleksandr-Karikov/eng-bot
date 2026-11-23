@@ -126,6 +126,9 @@ function check(exercise: ExerciseDraft, at: string, problems: string[]): void {
     if (answer.length !== words.length || [...answer].sort().join(" ") !== [...words].sort().join(" ")) {
       problems.push(`${at}: слова ответа не совпадают со словами вариантов`);
     }
+    // Знак в конце ответа ломает сборку: слова вариантов его не содержат, и верный ответ
+    // становится недостижим ни одним нажатием. Проверка сравнивает строки дословно.
+    if (/[.?!,;:]$/.test(exercise.answer.trim())) problems.push(`${at}: в ответе order есть знак препинания — слова вариантов его не содержат`);
     if (!exercise.prompt.toLowerCase().includes("собери")) problems.push(`${at}: у order в вопросе нет «Собери»`);
   }
 }
