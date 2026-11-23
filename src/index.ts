@@ -208,7 +208,7 @@ if (config.capturePort) {
   deps.capturePort = config.capturePort;
   captureServer = startCaptureServer(deps, config.capturePort);
 }
-// 📘 Грамматика едет вместе с кодом: контент лежит в src/grammar-content.ts, поэтому деплой сам обновляет
+// 📘 Грамматика едет вместе с кодом: контент лежит в src/grammar/, поэтому деплой сам обновляет
 // темы. Без этого человек видел бы «тем нет», пока кто-то не запустит скрипт руками.
 try {
   const synced = await syncGrammar(db, deps.now());

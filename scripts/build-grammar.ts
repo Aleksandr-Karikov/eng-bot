@@ -1,5 +1,5 @@
 /**
- * Загружает темы грамматики из `src/grammar-content.ts` в базу.
+ * Загружает темы грамматики из `src/grammar/` в базу.
  *
  * Контент ручной: скрипт ничего не генерирует, он только проверяет и заливает. Проверки обязательны —
  * упражнения проверяются сравнением строк, поэтому ошибка в контенте означает «человек ответил верно,
@@ -12,7 +12,7 @@
 import { eq } from "drizzle-orm";
 import { createDb } from "../src/db/client";
 import { grammarExercises, grammarProgress, grammarTopics } from "../src/db/schema";
-import { GRAMMAR_TOPICS, type ExerciseDraft, type TopicDraft } from "../src/grammar-content";
+import { GRAMMAR_TOPICS, type ExerciseDraft, type TopicDraft } from "../src/grammar";
 import { syncGrammar } from "../src/services/grammar-topics";
 import { MISTAKE_CATEGORIES } from "../src/llm/enricher";
 
@@ -38,6 +38,17 @@ function validate(topics: TopicDraft[]): string[] {
       if (prompts.has(exercise.prompt)) problems.push(`${at}: повторяющийся вопрос`);
       prompts.add(exercise.prompt);
     });
+  }
+  // Повтор вопроса МЕЖДУ темами — тоже ошибка: человек, проходящий подряд, увидит одно и то же дважды,
+  // а проверка ответа не заметит, что это дубль из соседней темы.
+  const seen = new Map<string, string>();
+  for (const topic of topics) {
+    for (const exercise of topic.exercises) {
+      const key = exercise.prompt.trim().toLowerCase();
+      const where = seen.get(key);
+      if (where && where !== topic.slug) problems.push(`${topic.slug}: вопрос повторяется из темы «${where}»`);
+      seen.set(key, topic.slug);
+    }
   }
   return problems;
 }

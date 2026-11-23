@@ -7,7 +7,7 @@ import { updateUser } from "../src/services/users";
 import { createApp } from "../src/app/server";
 import { sign } from "@telegram-apps/init-data-node";
 import { answerExercise, isCorrect, listTopics, syncGrammar, topicView } from "../src/services/grammar-topics";
-import { GRAMMAR_TOPICS } from "../src/grammar-content";
+import { GRAMMAR_TOPICS } from "../src/grammar";
 import { botHarness } from "./bot-harness";
 import { makeUser, testDb, T0 } from "./helpers";
 
@@ -43,8 +43,22 @@ describe("📘 grammar content", () => {
       expect(topic.title.length).toBeGreaterThan(0);
       expect(topic.rule.length).toBeGreaterThan(20);
       expect(topic.examples.length).toBeGreaterThan(0);
-      expect(topic.exercises.length).toBeGreaterThan(0);
+      // Тема из одного упражнения — не тема: человек не поймёт правило по одному примеру.
+      expect(topic.exercises.length).toBeGreaterThanOrEqual(4);
     }
+  });
+
+  it("keeps slugs unique and levels from the known set", () => {
+    // Slug — ключ, по которому обновляется тема при старте бота: дубль перетёр бы соседнюю тему.
+    const slugs = GRAMMAR_TOPICS.map((t) => t.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const topic of GRAMMAR_TOPICS) expect(["A1", "A2", "B1", "B2", "C1"]).toContain(topic.level);
+  });
+
+  it("never repeats a question across topics", () => {
+    // Проходя подряд, человек не должен видеть один и тот же вопрос дважды.
+    const prompts = GRAMMAR_TOPICS.flatMap((t) => t.exercises.map((e) => e.prompt.trim().toLowerCase()));
+    expect(new Set(prompts).size).toBe(prompts.length);
   });
 
   it("never writes an exercise without an explanation", () => {
@@ -233,7 +247,8 @@ describe("🔗 grammar is wired into mistakes and the boss", () => {
   it("records a wrong answer in the shared mistake list with the topic's category", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 1, "Alice");
-    const topic = await seed(h, GRAMMAR_TOPICS[2]); // артикли
+    // Поиск по slug, а не по индексу: порядок тем меняется при разбивке по уровням.
+    const topic = await seed(h, GRAMMAR_TOPICS.find((t) => t.slug === "articles")!);
     const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
 
     await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: "чушь", now: T0 });

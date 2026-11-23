@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic, type User } from "../db/schema";
 import { recordMistakes } from "./mistakes";
+import { GRAMMAR_TOPICS } from "../grammar";
 
 /**
  * 📘 Грамматика: темы, упражнения и прогресс.
@@ -259,7 +260,7 @@ export async function topicBySlug(db: Db, slug: string): Promise<GrammarTopic | 
 /**
  * 📦 Залить темы из кода в базу — при старте бота, как миграции.
  *
- * Контент лежит в `src/grammar-content.ts`, поэтому деплой кода должен и обновлять темы: иначе человек
+ * Контент лежит в `src/grammar/`, поэтому деплой кода должен и обновлять темы: иначе человек
  * видел бы «тем нет» (или получал старые упражнения) до тех пор, пока кто-то вручную не запустит скрипт.
  * Пользователю такое сообщение показывать бессмысленно — он не может ничего сделать.
  *
@@ -267,7 +268,6 @@ export async function topicBySlug(db: Db, slug: string): Promise<GrammarTopic | 
  * только если содержимое правда изменилось — иначе каждый перезапуск обнулял бы людям пройденное.
  */
 export async function syncGrammar(db: Db, now: Date, only?: string[]): Promise<{ topics: number; exercises: number }> {
-  const { GRAMMAR_TOPICS } = await import("../grammar-content");
   let topics = 0;
   let exercises = 0;
   // `only` — залить отдельные темы (ручной скрипт); без него синхронизируется всё, как при старте бота.
