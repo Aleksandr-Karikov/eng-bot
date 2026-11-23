@@ -95,17 +95,16 @@ export const B1_TENSES: TopicDraft[] = [
     exercises: [
       {
         kind: "choice",
-        prompt: "The company ___ to a new office in June.",
-        options: ["moved", "has moved", "moves"],
-        answer: "moved",
-        why: "In June — названное время, поэтому только Past Simple: moved.",
+        prompt: "She ___ her first job in 2021.",
+        options: ["started", "has started", "starts"],
+        answer: "started",
+        why: "Год в прошлом назван прямо — это точка на шкале, значит Past Simple.",
       },
       {
-        kind: "choice",
-        prompt: "The office looks different — we ___ to a new place.",
-        options: ["have moved", "moved", "were moving"],
-        answer: "have moved",
-        why: "Время не названо, а результат виден сейчас — Present Perfect.",
+        kind: "gap",
+        prompt: "I ___ (already / send) the email, so you don't need to do it.",
+        answer: "have already sent",
+        why: "Already и «не нужно делать сейчас» — результат к настоящему, значит Present Perfect.",
       },
       {
         kind: "gap",
@@ -115,15 +114,9 @@ export const B1_TENSES: TopicDraft[] = [
       },
       {
         kind: "gap",
-        prompt: "We ___ (meet) in 2019.",
+        prompt: "We ___ (meet) at a conference back in 2019.",
         answer: "met",
-        why: "Год в прошлом — точка на шкале времени, значит Past Simple: met.",
-      },
-      {
-        kind: "gap",
-        prompt: "He ___ (never / be) to London.",
-        answer: "has never been",
-        why: "Опыт «ни разу до сих пор» — Present Perfect: has + never + been.",
+        why: "Back in 2019 — привязка к прошлому, поэтому Past Simple: met.",
       },
       {
         kind: "choice",
@@ -159,7 +152,7 @@ export const B1_TENSES: TopicDraft[] = [
       "После while обычно идёт процесс, после when — короткое событие.",
     examples: [
       "At 8 p.m. I was cooking dinner — процесс в конкретный момент прошлого.",
-      "I was walking home when it started to rain — процесс и событие, которое его прервало.",
+      "She was driving to work when her phone rang — процесс и звонок, который его прервал.",
       "While she was studying, her brother was playing games — два процесса одновременно.",
       "They were waiting for the bus at seven — was/were + -ing, момент указан.",
       "I didn't hear you because I was listening to music — причина в том, что происходило тогда.",
@@ -174,22 +167,22 @@ export const B1_TENSES: TopicDraft[] = [
       },
       {
         kind: "gap",
-        prompt: "They ___ (wait) for the bus when I saw them.",
+        prompt: "They ___ (wait) at the airport when the flight was cancelled.",
         answer: "were waiting",
-        why: "They требует were, и ожидание было фоном, который прервала встреча.",
+        why: "They требует were, и ожидание было фоном к отмене рейса.",
       },
       {
         kind: "choice",
-        prompt: "I was walking home when it ___ to rain.",
-        options: ["started", "was starting", "starts"],
-        answer: "started",
-        why: "Дождь начался в один момент и прервал прогулку — Past Simple.",
+        prompt: "We were having dinner when someone ___ at the door.",
+        options: ["knocked", "was knocking", "knocks"],
+        answer: "knocked",
+        why: "Стук был коротким и прервал ужин — Past Simple, не процесс.",
       },
       {
         kind: "gap",
-        prompt: "While she ___ (study), her brother was playing games.",
-        answer: "was studying",
-        why: "After while идёт длительный процесс: she → was studying.",
+        prompt: "While I ___ (prepare) the slides, the internet went down.",
+        answer: "was preparing",
+        why: "While плюс длительная подготовка, которую прервало падение связи.",
       },
       {
         kind: "choice",
@@ -200,9 +193,9 @@ export const B1_TENSES: TopicDraft[] = [
       },
       {
         kind: "gap",
-        prompt: "What ___ you doing at 6 o'clock yesterday?",
-        answer: "were",
-        why: "Вопрос в Past Continuous: were + you + глагол с -ing.",
+        prompt: "What ___ (you / do) when I called you?",
+        answer: "were you doing",
+        why: "Вопрос в Past Continuous: were + you + глагол с -ing, звонок прервал процесс.",
       },
       {
         kind: "gap",
@@ -212,10 +205,10 @@ export const B1_TENSES: TopicDraft[] = [
       },
       {
         kind: "order",
-        prompt: "Собери предложение: «Я шёл домой, когда начался дождь».",
-        options: ["I", "was", "walking", "home", "when", "it", "started", "to", "rain"],
-        answer: "I was walking home when it started to rain",
-        why: "Долгий процесс — was walking, короткое событие после when — started.",
+        prompt: "Собери предложение: «Я шёл на встречу, когда позвонил клиент».",
+        options: ["I", "was", "walking", "to", "the", "meeting", "when", "a", "client", "called"],
+        answer: "I was walking to the meeting when a client called",
+        why: "Долгий процесс в прошлом — was walking, короткий звонок вклинился после when.",
       },
     ],
   },
@@ -232,17 +225,17 @@ export const B1_TENSES: TopicDraft[] = [
     examples: [
       "I'll help you with the bags — решил прямо сейчас, увидев их.",
       "We're going to sell the car — план был раньше, просто сообщаем.",
-      "Look at the sky — it's going to rain — вывод из того, что видно сейчас.",
+      "The car is making a strange noise — it's going to break down — вывод из того, что видно сейчас.",
       "I'm having lunch with Olga tomorrow — договорённость с временем.",
       "It will probably be warm tomorrow — предсказание, а не план.",
     ],
     exercises: [
       {
         kind: "choice",
-        prompt: "The doorbell is ringing — I ___ get it.",
-        options: ["will", "am going to", "am getting"],
+        prompt: "The phone is ringing in the other room. Don't worry, I ___ answer it.",
+        options: ["will", "am going to", "am answering"],
         answer: "will",
-        why: "Решение возникло сию секунду, плана не было — will.",
+        why: "Решение прозвучало только сейчас, в ответ на звонок — will.",
       },
       {
         kind: "choice",
@@ -259,7 +252,7 @@ export const B1_TENSES: TopicDraft[] = [
       },
       {
         kind: "choice",
-        prompt: "I ___ Anna at 6 — we agreed yesterday.",
+        prompt: "I ___ Anna at 6 — we agreed on it yesterday.",
         options: ["am meeting", "will meet", "meet"],
         answer: "am meeting",
         why: "Договорённость с конкретным временем — Present Continuous для будущего.",
