@@ -523,17 +523,41 @@
     }
   });
 
+  /**
+   * Скопировать текст. В верхней рамке хватает navigator.clipboard; во вложенном cross-origin iframe
+   * (плеер на чужом сайте — как раз режим фильма) браузер запрещает clipboard-write политикой,
+   * и работает только старый execCommand по клику.
+   */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.cssText = "position:fixed;top:0;left:-9999px;opacity:0";
+      document.body.append(area);
+      area.select();
+      area.setSelectionRange(0, text.length);
+      let ok = false;
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      area.remove();
+      return ok;
+    }
+  }
+
   panel.querySelector(".wb-add").addEventListener("click", send);
   panel.querySelector(".wb-explain").addEventListener("click", () => void explain());
   panel.querySelector(".wb-copy").addEventListener("click", async () => {
     const text = selectedText() || state.lines[state.index];
     if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      toast("Скопировано", "wb-ok");
-    } catch {
-      toast("Не удалось скопировать", "wb-err");
-    }
+    const ok = await copyText(text);
+    toast(ok ? "Скопировано" : "Не удалось скопировать", ok ? "wb-ok" : "wb-err");
   });
   panel.querySelector(".wb-pop-example").addEventListener("click", sendExample);
   panel.querySelector(".wb-pop-close").addEventListener("click", hidePopup);
