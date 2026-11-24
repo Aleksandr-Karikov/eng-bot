@@ -123,7 +123,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
       await updateUser(deps.db, ctx.user.id, { reminderTime: time });
       return void (await ctx.reply(`⏰ Буду напоминать в ${time}`));
     }
-    await ctx.reply(settingsText(ctx.user), { reply_markup: settingsKeyboard(ctx.user) });
+    await ctx.reply(settingsText(ctx.user), { ...HTML, reply_markup: settingsKeyboard(ctx.user) });
   });
 
   bot.callbackQuery(/^cv:/, async (ctx) => {
@@ -178,7 +178,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const time = `${String(cb.hour).padStart(2, "0")}:00`;
     const user = await updateUser(deps.db, ctx.user.id, { reminderTime: time });
     await ctx.answerCallbackQuery({ text: `Буду напоминать в ${time}` });
-    await ctx.editMessageText(settingsText(user, "remind"), { reply_markup: settingsKeyboard(user, "remind") });
+    await ctx.editMessageText(settingsText(user, "remind"), { ...HTML, reply_markup: settingsKeyboard(user, "remind") });
   });
 
   bot.callbackQuery(/^vo:/, async (ctx) => {
@@ -187,7 +187,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const user = await updateUser(deps.db, ctx.user.id, { voiceAccent: toggleVoiceAccent(ctx.user.voiceAccent, cb.accent) });
     const accent = autoVoice(user);
     await ctx.answerCallbackQuery({ text: accent ? `Буду включать ${EN.accentLabel[accent]}` : "Озвучка карточек выключена" });
-    await ctx.editMessageText(settingsText(user, "voice"), { reply_markup: settingsKeyboard(user, "voice") });
+    await ctx.editMessageText(settingsText(user, "voice"), { ...HTML, reply_markup: settingsKeyboard(user, "voice") });
   });
 
   bot.callbackQuery(/^np:/, async (ctx) => {
@@ -205,6 +205,6 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "settingsScreen") return void (await ctx.answerCallbackQuery());
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(settingsText(ctx.user, cb.screen), { reply_markup: settingsKeyboard(ctx.user, cb.screen) });
+    await ctx.editMessageText(settingsText(ctx.user, cb.screen), { ...HTML, reply_markup: settingsKeyboard(ctx.user, cb.screen) });
   });
 }
