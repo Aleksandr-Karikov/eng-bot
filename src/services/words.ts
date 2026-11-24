@@ -25,6 +25,17 @@ export interface WordDraft {
 /** Длиннее — это уже не предложение, а абзац: на карточке только мешает. */
 export const MAX_CONTEXT = 300;
 
+/**
+ * Предел длины самого слова (или фразы). 120 символов — это уже длинная идиома, а не слово.
+ *
+ * Ограничение живёт здесь, в единственной точке сохранения, потому что раньше его не было ни в `/add`,
+ * ни в `prepareWord`, ни в `saveWord` — только в расширении и Mini App. Слово в 1100 символов проходило
+ * в базу и создавало карточки всем участникам комнаты; на таком слове вешался `/learnnew`
+ * (в виджете `while` урезал только перевод, а `term` не трогал — цикл не завершался никогда), да и
+ * карточка в чате рисковала не влезть в лимит Telegram.
+ */
+export const MAX_TERM = 120;
+
 /** Только поля слова — без служебных полей черновика/пачки. */
 export function toWordDraft(d: WordDraft): WordDraft {
   return {
@@ -76,9 +87,12 @@ export async function getWord(db: Db, id: number): Promise<Word | undefined> {
 export async function saveWord(
   db: Db,
   input: { roomId: number; addedBy: number; draft: WordDraft; now: Date },
-): Promise<{ status: "duplicate" } | { status: "no-room" } | { status: "saved"; word: Word; members: User[] }> {
+): Promise<{ status: "duplicate" } | { status: "no-room" } | { status: "too-long"; limit: number } | { status: "saved"; word: Word; members: User[] }> {
   // Черновик мог пережить удаление комнаты.
   if (!(await getRoom(db, input.roomId))) return { status: "no-room" };
+  // Длину проверяем здесь, а не у вызывающих: путей сохранения несколько (бот, приложение, расширение,
+  // наборы), и забыть проверку в одном из них слишком легко.
+  if (input.draft.term.trim().length > MAX_TERM) return { status: "too-long", limit: MAX_TERM };
   if (await findWord(db, input.roomId, input.draft.term)) return { status: "duplicate" };
   const [word] = await db
     .insert(words)

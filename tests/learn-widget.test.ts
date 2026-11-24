@@ -67,6 +67,32 @@ describe("/learnnew widget", () => {
     expect(h.calls.map((c) => c.method)).toEqual(["answerWidgetQuery"]);
   });
 
+  it("завершается на длинном слове и всё равно укладывается в лимит", () => {
+    // Раньше здесь был вечный цикл: `while` урезал только перевод, а если длинным оказывалось само
+    // слово, размер не падал никогда — бот вставал намертво (апдейты обрабатываются по одному).
+    for (const termLength of [200, 1100, 5000]) {
+      const item = {
+        card: { id: 1, reps: 0, state: 0 },
+        word: { term: "t".repeat(termLength), translation: "я".repeat(500), example: "e".repeat(300), transcriptionUk: "/x/", transcriptionUs: "/x/" },
+      };
+      const started = Date.now();
+      const data = cardData(item as never, 0);
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(Buffer.byteLength(data)).toBeLessThanOrEqual(WIDGET_DATA_LIMIT);
+    }
+  });
+
+  it("сохраняет перевод, когда он помещается", () => {
+    // Урезание не должно быть грубым: при обычном слове перевод — главное после самого слова.
+    const item = {
+      card: { id: 1, reps: 0, state: 0 },
+      word: { term: "bank", translation: "берег реки, край земли у воды", example: "", transcriptionUk: "/bæŋk/", transcriptionUs: "/bæŋk/" },
+    };
+    const parsed = JSON.parse(cardData(item as never, 0));
+    expect(parsed.a).toBe("берег реки, край земли у воды");
+    expect(parsed.t).toBe("bank");
+  });
+
   it("keeps card data within the limit", () => {
     const item = { card: { id: 1, reps: 0, state: 0 }, word: { term: "x", translation: "я".repeat(2000), example: "e".repeat(2000), transcriptionUk: "", transcriptionUs: "" } };
     const data = cardData(item as never, 3);

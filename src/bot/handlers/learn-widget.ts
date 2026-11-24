@@ -59,8 +59,25 @@ export function cardData(item: DueItem | undefined, answered: number): string {
     n: answered,
   };
   const size = () => Buffer.byteLength(JSON.stringify(data));
+  // Обрезаем по **байтам**, а не по символам: кириллица и хангыль занимают 2–3 байта на символ,
+  // поэтому «убрать N символов» не значит «убрать N байт».
+  const cut = (text: string, bytes: number) => {
+    const buf = Buffer.from(text);
+    return buf.length <= bytes ? text : buf.subarray(0, Math.max(0, bytes)).toString("utf8").replace(/\uFFFD+$/, "");
+  };
+
+  // Порядок урезания — от самого необязательного к самому важному: пример, перевод, транскрипция, слово.
+  // Каждый шаг конечен по построению: прежний `while` резал только перевод и не завершался, если
+  // длинным оказывалось само слово.
   if (size() > WIDGET_DATA_LIMIT) data.e = "";
-  while (size() > WIDGET_DATA_LIMIT) data.a = data.a.slice(0, -10);
+  if (size() > WIDGET_DATA_LIMIT) {
+    // Перевод оставляем насколько влезает — это главное на карточке после самого слова.
+    data.a = cut(data.a, Math.max(0, Buffer.byteLength(data.a) - (size() - WIDGET_DATA_LIMIT) - 40));
+  }
+  if (size() > WIDGET_DATA_LIMIT) data.s = "";
+  if (size() > WIDGET_DATA_LIMIT) {
+    data.t = cut(data.t, Math.max(0, Buffer.byteLength(data.t) - (size() - WIDGET_DATA_LIMIT) - 40));
+  }
   return JSON.stringify(data);
 }
 

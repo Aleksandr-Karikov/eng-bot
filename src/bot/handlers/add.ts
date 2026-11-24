@@ -113,6 +113,10 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
     }
+    if (result.status === "too-long") {
+      await ctx.answerCallbackQuery();
+      return void (await ctx.editMessageText(`Слишком длинно: до ${result.limit} символов. Для фразы такого размера лучше добавить отдельные слова`, HTML));
+    }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
     await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone });
     await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });

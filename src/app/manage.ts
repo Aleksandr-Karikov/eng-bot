@@ -266,6 +266,7 @@ export async function appAddWord(deps: Deps, user: User, body: Record<string, un
   });
   if (result.status === "duplicate") return { status: 409, body: { ok: false, error: `«${term}» уже есть в комнате` } };
   if (result.status === "no-room") return { status: 400, body: { ok: false, error: "Комнату уже удалили" } };
+  if (result.status === "too-long") return { status: 400, body: { ok: false, error: `Слишком длинно: до ${result.limit} символов. Для фразы такого размера лучше разбить на слова` } };
   // Расход — только за действительно сохранённое слово: дубль и удалённая комната места не занимают.
   await checkAndCountWord(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
   void broadcastWord(deps, result.word, result.members, user).catch((err) => console.error("App word broadcast failed", err));
