@@ -1,4 +1,4 @@
-import { currentLang } from "../lang";
+import { EN } from "../lang";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -52,7 +52,7 @@ export class LocalRecognizer implements SpeechRecognizer {
   }
 
   async transcribe(audio: Buffer): Promise<string> {
-    const language = currentLang().whisper;
+    const language = EN.whisper;
     return this.withWavs([audio], async ([wav]) => String((await this.worker.request({ op: "transcribe", wav, language }, REQUEST_TIMEOUT_MS)).text ?? ""));
   }
 

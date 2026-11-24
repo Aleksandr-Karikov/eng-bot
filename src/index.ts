@@ -32,7 +32,6 @@ import { PictureStore } from "./images/store";
 import { MnemonicGenerator } from "./services/hard-words";
 import { KokoroSynth, LanguageAwareSynth, MacSaySynth } from "./speech/tts";
 import { LocalRecognizer } from "./speech/stt";
-import { wordLanguage } from "./services/words";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
 import type { Server } from "node:http";
@@ -126,7 +125,7 @@ console.log(
         `, фон ${config.imagesBackground ? "включён" : "выключен (только по кнопке)"}`
     : "Картинки: выключены",
 );
-const images = imageSynth ? new ImageService(imageSynth, llm, config.imageStyle, (wordId) => wordLanguage(db, wordId)) : undefined;
+const images = imageSynth ? new ImageService(imageSynth, llm, config.imageStyle) : undefined;
 const pictures = images ? new PictureStore("data/images") : undefined;
 const mnemonicGen = new MnemonicGenerator(db, llm);
 

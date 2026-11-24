@@ -12,12 +12,12 @@
  * и смотрим, вернула ли модель слова, которых в тексте не было. Это и есть та часть приёмки E26,
  * которую нельзя закрыть тестом: «послушалась или нет» — свойство модели.
  */
+import { EN } from "../src/lang";
 import { OpenRouterBackend } from "../src/llm/openrouter";
 import { ClaudeCodeBackend } from "../src/llm/claude-code";
 import { ClaudeCodeEnricher } from "../src/llm/claude-code";
 import { loadConfig } from "../src/config";
 import { readProvider } from "../src/llm/provider-store";
-import { LANGUAGES } from "../src/lang";
 
 try {
   process.loadEnvFile(".env");
@@ -72,8 +72,8 @@ async function main() {
     const { buildExtractPrompt, buildCheckPrompt, dictionaryFormPrompt } = await import("../src/llm/enricher");
     const prompt = checkMode
       ? buildCheckPrompt(HOSTILE)
-      : dictionaryFormPrompt(buildExtractPrompt(HOSTILE), LANGUAGES.en);
-    const raw = await backend.ask(prompt, 120_000, checkMode ? models.check : models.main, [], LANGUAGES.en);
+      : dictionaryFormPrompt(buildExtractPrompt(HOSTILE));
+    const raw = await backend.ask(prompt, 120_000, checkMode ? models.check : models.main, [], EN);
     console.log("Сырой ответ модели:\n", raw);
     const leaked = FORBIDDEN.filter((word) => raw.toLowerCase().includes(word));
     report(leaked, Date.now() - started);

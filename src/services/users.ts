@@ -50,12 +50,6 @@ export async function getUser(db: Db, id: number): Promise<User | undefined> {
 
 export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<User> {
   let set: UserPatch & { lastRooms?: string } = patch;
-  // Новая текущая комната — запоминаем как последнюю для её языка (/lang вернёт сюда).
-  if (patch.currentRoomId != null) {
-    const [room] = await db.select({ language: rooms.language }).from(rooms).where(eq(rooms.id, patch.currentRoomId));
-    const [before] = await db.select({ lastRooms: users.lastRooms }).from(users).where(eq(users.id, id));
-    if (room && before) set = { ...patch, lastRooms: JSON.stringify({ ...parseLastRooms(before.lastRooms), [room.language]: patch.currentRoomId }) };
-  }
   const [user] = await db.update(users).set(set).where(eq(users.id, id)).returning();
   return user;
 }
@@ -96,7 +90,7 @@ export async function adoptDeviceTimeZone(db: Db, userId: number, timeZone: stri
     .where(and(eq(rooms.createdBy, userId), eq(rooms.timezone, user.timezone)));
 }
 
-/** {"en": 7, "ko": 12} — последняя комната каждого языка. */
+/** {"en": 7} — последняя комната (ключ остался от времён двух языков). */
 export function parseLastRooms(json: string): Record<string, number> {
   try {
     const parsed: unknown = JSON.parse(json);

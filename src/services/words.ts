@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
-import { isLangCode, withLang, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { parseExampleTranslation, type WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
@@ -71,12 +70,6 @@ export async function findWord(db: Db, roomId: number, term: string): Promise<Wo
     .from(words)
     .where(and(eq(words.roomId, roomId), eq(words.termNormalized, normalizeTerm(term))));
   return word;
-}
-
-/** На каком языке слово — по его комнате (для фоновых задач: подсказки к слову — на языке слова, а не того, кто их запустил). */
-export async function wordLanguage(db: Db, wordId: number): Promise<LangCode> {
-  const [row] = await db.select({ language: rooms.language }).from(words).innerJoin(rooms, eq(words.roomId, rooms.id)).where(eq(words.id, wordId));
-  return isLangCode(row?.language) ? row.language : "en";
 }
 
 export async function getWord(db: Db, id: number): Promise<Word | undefined> {
@@ -287,7 +280,7 @@ export async function exampleTranslation(db: Db, enricher: WordEnricher, word: P
   if (word.exampleTranslation || !word.example) return parseExampleTranslation(word.exampleTranslation);
   const translate = enricher.translateExample;
   if (!translate) return "";
-  const translation = await withLang(await wordLanguage(db, word.id), () => translate.call(enricher, word.example, word.term));
+  const translation = await translate.call(enricher, word.example, word.term);
   // Пока модель думала, пример могли поменять — тогда перевод уже не к нему.
   await db.update(words).set({ exampleTranslation: translation }).where(and(eq(words.id, word.id), eq(words.example, word.example), eq(words.exampleTranslation, "")));
   return translation;

@@ -17,7 +17,6 @@ async function seed(h: ReturnType<typeof botHarness>, topic = GRAMMAR_TOPICS[0])
     slug: topic.slug,
     title: topic.title,
     level: topic.level,
-    language: "en",
     category: topic.category,
     rule: topic.rule,
     examples: topic.examples.join("\n"),

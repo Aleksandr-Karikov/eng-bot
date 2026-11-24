@@ -11,7 +11,7 @@ export const users = sqliteTable("users", {
   reminderTime: text("reminder_time").notNull().default("20:00"),
   timezone: text("timezone").notNull().default("Europe/Moscow"),
   currentRoomId: integer("current_room_id"),
-  /** Последняя текущая комната каждого языка, JSON {"en": id, "ko": id}: /lang возвращает туда, где человек был. */
+  /** Последняя текущая комната, JSON {"en": id}. Поле оставлено ради совместимости со старыми строками. */
   lastRooms: text("last_rooms").notNull().default("{}"),
   lastReminderDate: text("last_reminder_date"),
   canDm: integer("can_dm", { mode: "boolean" }).notNull().default(false),
@@ -133,8 +133,6 @@ export const rooms = sqliteTable("rooms", {
    * Пусто (старые комнаты) — пояс по умолчанию, чтобы миграция не гадала.
    */
   timezone: text("timezone").notNull().default("Asia/Novosibirsk"),
-  /** Какой язык учат в комнате (lang.ts): en — английский, ko — корейский. */
-  language: text("language").notNull().default("en"),
   /**
    * Личный словарь «Мои слова» этого человека — по одному на язык: создаётся сам, друзей в него не зовут
    * (для них — общие комнаты). Отдельная колонка, а не personal_of: та уникальна на человека, и снять это в SQLite
@@ -145,7 +143,7 @@ export const rooms = sqliteTable("rooms", {
   legacyPersonalOf: integer("personal_of").unique().references(() => users.id),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
-}, (t) => [uniqueIndex("rooms_personal_lang_idx").on(t.personalOf, t.language)]);
+}, (t) => [uniqueIndex("rooms_personal_idx").on(t.personalOf)]);
 
 export const roomMembers = sqliteTable(
   "room_members",
@@ -423,8 +421,6 @@ export const wordSets = sqliteTable("word_sets", {
   title: text("title").notNull(),
   /** level — уровень A1…C1; topic — тема. */
   kind: text("kind").notNull(),
-  /** Язык слов набора (lang.ts). */
-  language: text("language").notNull().default("en"),
   description: text("description").notNull().default(""),
   position: integer("position").notNull().default(0),
   createdAt: createdAt(),
@@ -477,7 +473,6 @@ export const grammarTopics = sqliteTable("grammar_topics", {
    * в двух несвязанных местах и в карточки подмешивались бы только половина.
    */
   category: text("category").notNull().default("другое"),
-  language: text("language").notNull().default("en"),
   /** Правило своими словами: что это и когда применять. Показывается перед упражнениями. */
   rule: text("rule").notNull().default(""),
   /** Разобранные примеры: «I have lived here since 2020 — since + точка отсчёта». По одному в строке. */

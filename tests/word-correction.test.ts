@@ -3,7 +3,7 @@ import { sign } from "@telegram-apps/init-data-node";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app/server";
 import { cards, rooms, words } from "../src/db/schema";
-import { currentLang } from "../src/lang";
+import { EN } from "../src/lang";
 import { ClaudeCodeEnricher } from "../src/llm/claude-code";
 import { parseCorrection } from "../src/llm/enricher";
 import { prepareWord } from "../src/services/prepare-word";
@@ -98,16 +98,6 @@ describe("исправление слова из Mini App", () => {
     expect(await getWord(h.db, word.id)).toEqual(word);
   });
 
-  it("uses the word's language even if the user's current room is different", async () => {
-    const { h, user, word, room, post } = await setup();
-    await h.db.update(rooms).set({ language: "ko" }).where(eq(rooms.id, room.id));
-    await createRoom(h.db, { name: "English", createdBy: user.id, now: T0 });
-    h.deps.enricher.correctWord = async () => {
-      expect(currentLang().code).toBe("ko");
-      return { message: "Исправлено", patch: { ...corrected, term: "이", translation: "зуб" } };
-    };
-    expect((await post({ instruction: "Исправь" }, word.id)).status).toBe(200);
-  });
 });
 
 describe("словарная форма при добавлении", () => {

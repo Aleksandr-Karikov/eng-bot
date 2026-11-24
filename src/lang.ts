@@ -1,28 +1,36 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
 /**
- * Язык, который учат в комнате. Интерфейс бота всегда русский; меняется изучаемый язык — в промптах,
- * транскрипции, озвучке, подписях. Английский — как было до появления языков, корейский — второй.
+ * Изучаемый язык бота — только английский.
+ *
+ * Раньше здесь жила машинерия двух языков: тип кода языка, таблица `LANGUAGES`, `currentLang` через
+ * `AsyncLocalStorage`, `withLang`, `langForms`, `pickAccent`, `capStem`. Корейский был экспериментом и
+ * оказался не нужен (в проде на 24 ноября — 2 комнаты и 9 слов, ни одного ответа), поэтому язык убран
+ * целиком, а не оставлен «одним кодом с развилкой» (E23).
+ *
+ * Машинерия контекста тоже удалена: она существовала, чтобы протаскивать язык операции через
+ * обработчики, минуя параметры. Когда язык один, протаскивать нечего — поэтому `withLang`/`currentLang`
+ * больше нет, а промпты и тексты говорят про английский явно.
+ *
+ * Что осталось: значение `Language` для английского — флаг, название, основа прилагательного, варианты
+ * произношения, голос macOS, код Whisper и регулярка «есть ли в тексте буквы языка». Эти поля нужны
+ * не ради выбора языка, а потому что их читают озвучка, транскрипция и проверка «это английское слово
+ * или русское, которое просят перевести».
  */
-export type LangCode = "en" | "ko";
-
-export const LANG_CODES: LangCode[] = ["en", "ko"];
 
 export interface Language {
-  code: LangCode;
+  readonly code: "en";
   flag: string;
   /** «английский» — для текстов бота. */
   name: string;
   /**
    * Основа прилагательного: «английск» → английский, английское, английского, на английском, по-английски.
-   * У «корейский» те же окончания — так промпты меняют язык подстановкой основы, а английский текст не меняется.
+   * Промпты подставляют её, поэтому английский текст остаётся прежним.
    */
   stem: string;
-  /** Варианты произношения: у английского — британский и американский, у корейского один (хранится в слоте uk). */
+  /** Варианты произношения: британский и американский. */
   accents: Array<"uk" | "us">;
   /** Подпись варианта на кнопке озвучки и у транскрипции. */
   accentLabel: Record<"uk" | "us", string>;
-  /** Голос macOS для озвучки (у английского — Kokoro, если поставлен). */
+  /** Голос macOS для озвучки (Kokoro, если поставлен, подменяет его). */
   macVoice: Record<"uk" | "us", string>;
   /** Код языка для Whisper. */
   whisper: string;
@@ -30,76 +38,43 @@ export interface Language {
   script: RegExp;
 }
 
-export const LANGUAGES: Record<LangCode, Language> = {
-  en: {
-    code: "en",
-    flag: "🇬🇧",
-    name: "английский",
-    stem: "английск",
-    accents: ["uk", "us"],
-    accentLabel: { uk: "🇬🇧 UK", us: "🇺🇸 US" },
-    macVoice: { uk: "Daniel", us: "Samantha" },
-    whisper: "en",
-    script: /[a-z]/i,
-  },
-  ko: {
-    code: "ko",
-    flag: "🇰🇷",
-    name: "корейский",
-    stem: "корейск",
-    accents: ["uk"],
-    accentLabel: { uk: "🇰🇷", us: "🇰🇷" },
-    macVoice: { uk: "Yuna", us: "Yuna" },
-    whisper: "ko",
-    script: /[ㄱ-ㆎ가-힣]/,
-  },
+export const EN: Language = {
+  code: "en",
+  flag: "🇬🇧",
+  name: "английский",
+  stem: "английск",
+  accents: ["uk", "us"],
+  accentLabel: { uk: "🇬🇧 UK", us: "🇺🇸 US" },
+  macVoice: { uk: "Daniel", us: "Samantha" },
+  whisper: "en",
+  script: /[a-z]/i,
 };
 
-export const EN = LANGUAGES.en;
-
-export function isLangCode(value: unknown): value is LangCode {
-  return typeof value === "string" && (LANG_CODES as string[]).includes(value);
-}
-
-export function languageOf(code: string | null | undefined): Language {
-  return isLangCode(code) ? LANGUAGES[code] : EN;
-}
-
 /** «английск» → «Английск»: для начала предложения в промптах. */
-export const capStem = (lang: Language) => lang.stem[0].toUpperCase() + lang.stem.slice(1);
+export const capStem = (lang: Language = EN) => lang.stem[0].toUpperCase() + lang.stem.slice(1);
 
 /**
- * Язык текущей операции (апдейта бота, запроса приложения, фоновой задачи по слову) — чтобы не протаскивать
- * его параметром через все обработчики. Ставит его тот, кто знает комнату: middleware бота, API приложения,
- * генераторы по слову. Вне такого контекста — английский, как было всегда.
+ * Формы названия языка для текстов бота.
+ *
+ * Оставлено функцией, а не зашитыми строками: промпты и подписи подставляют эти формы десятками, и
+ * одна точка, где они собираются из основы, дешевле правки в каждом месте.
  */
-const current = new AsyncLocalStorage<LangCode>();
-
-export function currentLang(): Language {
-  return LANGUAGES[current.getStore() ?? "en"];
-}
-
-export function withLang<T>(code: LangCode, fn: () => T): T {
-  return current.run(code, fn);
-}
-
-/** Название языка в нужной форме — для текстов бота: для английского строки остаются прежними. */
-export const langForms = (lang: Language = currentLang()) => ({
+export const langForms = () => ({
   /** по-английски */
-  adv: `по-${lang.stem}и`,
+  adv: "по-английски",
   /** на английском */
-  prep: `на ${lang.stem}ом`,
+  prep: "на английском",
   /** английский (что? на что?) */
-  acc: `${lang.stem}ий`,
+  acc: "английский",
   /** английское (слово) */
-  neut: `${lang.stem}ое`,
+  neut: "английское",
   /** английского */
-  gen: `${lang.stem}ого`,
+  gen: "английского",
   /** английских (субтитров) */
-  genPl: `${lang.stem}их`,
+  genPl: "английских",
 });
 
-/** Случайный вариант произношения языка (у корейского он один). */
-export function pickAccent(random: () => number, lang: Language = currentLang()): "uk" | "us" {
-  return lang.accents.length === 1 ? lang.accents[0] : random() < 0.5 ? "uk" : "us";
+/** Случайный вариант произношения: UK или US. */
+export function pickAccent(random: () => number): "uk" | "us" {
+  return random() < 0.5 ? "uk" : "us";
 }

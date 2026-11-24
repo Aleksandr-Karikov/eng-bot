@@ -1,5 +1,4 @@
 import type { MiddlewareFn } from "grammy";
-import { isLangCode, withLang, type LangCode } from "../lang";
 import { ensurePersonalRoom, findRoomByChat, getRoom, isMember, joinRoom } from "../services/rooms";
 import { getUser, updateUser, upsertUser } from "../services/users";
 import { HTML, type BotContext, type Deps } from "./context";
@@ -14,7 +13,7 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
     // умолчанию, а слова ищем по всем комнатам человека (см. src/services/inline.ts).
     if (!ctx.chat) {
       ctx.user = await upsertUser(deps.db, ctx.from, deps.now());
-      return await withLang("en", () => next());
+      return await next();
     }
     let user = await upsertUser(deps.db, ctx.from, deps.now());
     if (ctx.chat?.type === "private" && !user.canDm) user = await updateUser(deps.db, user.id, { canDm: true });
@@ -42,10 +41,8 @@ export function userMiddleware(deps: Deps): MiddlewareFn<BotContext> {
         ctx.user = await updateUser(deps.db, user.id, { groupHintSent: true });
       }
     }
-    // Язык апдейта — язык комнаты, о которой речь: в группе — её комнаты, в личке — текущей. Дальше его видят
-    // промпты, озвучка и распознавание (lang.ts), не протаскивая через каждый обработчик.
-    const room = ctx.chat?.type === "private" ? (user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined) : ctx.groupRoom;
-    const lang: LangCode = isLangCode(room?.language) ? room.language : "en";
-    await withLang(lang, () => next());
+    // Язык апдейта больше не вычисляется: он один — английский (E23). Контекст `AsyncLocalStorage`
+    // удалён вместе с ним, поэтому апдейт обрабатывается как есть.
+    await next();
   };
 }

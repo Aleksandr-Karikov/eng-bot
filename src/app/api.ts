@@ -28,8 +28,7 @@ import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId, updateUser } from "../services/users";
-import { wordLanguage } from "../services/words";
-import { currentLang, langForms, withLang } from "../lang";
+import { EN, langForms } from "../lang";
 import type { Answer } from "../srs/srs";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
@@ -116,9 +115,9 @@ export async function appMe(deps: Deps, user: User) {
     bankDamage: user.bankDamage && bossEnabled(user, deps.bossEnabled),
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
     language: {
-      code: currentLang().code,
-      flag: currentLang().flag,
-      accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })),
+      code: EN.code,
+      flag: EN.flag,
+      accents: EN.accents.map((a) => ({ key: a, label: EN.accentLabel[a] })),
       adv: langForms().adv,
       neut: langForms().neut,
     },
@@ -292,8 +291,7 @@ export async function appAudio(deps: Deps, word: { id: number | string; term: st
   const file = join(AUDIO_DIR, `${word.id}-${accent}-${Buffer.from(word.term).toString("hex").slice(0, 24)}.m4a`);
   if (existsSync(file)) return readFile(file);
   // Слово словаря — на языке своей комнаты; слово из набора — на языке текущей операции.
-  const lang = typeof word.id === "number" ? await wordLanguage(deps.db, word.id) : currentLang().code;
-  const audio = await withLang(lang, () => deps.speech.synthesize(word.term, accent, "m4a"));
+  const audio = await deps.speech.synthesize(word.term, accent, "m4a");
   await mkdir(AUDIO_DIR, { recursive: true });
   await writeFile(file, audio);
   return audio;
@@ -465,10 +463,10 @@ export async function appCombat(deps: Deps, user: User, input: {
  * один раз, если человек ещё не выбирал. `needsChoice` — есть выбор из чего выбирать и он не сделан.
  */
 export async function appSets(deps: Deps, user: User) {
-  const lang = currentLang().code;
+  const lang = EN.code;
   const [target, choices] = await Promise.all([
     setTarget(deps.db, user, lang, deps.now()),
-    setTargetChoices(deps.db, user, lang),
+    setTargetChoices(deps.db, user),
   ]);
   return {
     target: { roomId: target.roomId, roomName: target.roomName, personal: target.personal },
@@ -488,10 +486,10 @@ export async function appSets(deps: Deps, user: User) {
 
 /** Куда «учу» кладёт слово в этом наборе — приложение показывает это до первого свайпа. */
 export async function appSetTarget(deps: Deps, user: User) {
-  const lang = currentLang().code;
+  const lang = EN.code;
   const [target, choices] = await Promise.all([
     setTarget(deps.db, user, lang, deps.now()),
-    setTargetChoices(deps.db, user, lang),
+    setTargetChoices(deps.db, user),
   ]);
   return {
     ok: true as const,

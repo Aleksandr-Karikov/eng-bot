@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { currentLang } from "../lang";
+import { EN } from "../lang";
 import { JsonLineWorker } from "./worker";
 
 const run = promisify(execFile);
@@ -44,7 +44,7 @@ export async function macSay(text: string, voice: string, format: "ogg" | "m4a" 
     const out = join(dir, `speech.${format}`);
     await writeFile(input, speakableText(text), "utf8");
     if (process.platform === "linux") {
-      const lang = voice === RUSSIAN_VOICE ? "ru" : voice === "Yuna" ? "ko" : voice === VOICES.uk ? "en-gb" : "en-us";
+      const lang = voice === RUSSIAN_VOICE ? "ru" : voice === VOICES.uk ? "en-gb" : "en-us";
       await run("espeak-ng", ["-v", lang, "-f", input, "-w", audio], { timeout: 20_000 });
     } else {
       await run("say", ["-v", voice, "-f", input, "-o", audio], { timeout: 20_000 });
@@ -70,8 +70,8 @@ export class LanguageAwareSynth implements SpeechSynth {
   constructor(readonly english: SpeechSynth) {}
 
   synthesize(text: string, accent: Accent, format: "ogg" | "m4a" = "ogg"): Promise<Buffer> {
-    const lang = currentLang();
-    return lang.code === "en" ? this.english.synthesize(text, accent, format) : macSay(text, lang.macVoice[accent], format);
+    // Корейская ветка (macSay) ушла вместе с языком: озвучка только английская (E23).
+    return this.english.synthesize(text, accent, format);
   }
 }
 

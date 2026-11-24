@@ -3,7 +3,6 @@ import { dataNotInstructionsPrompt } from "../src/llm/enricher";
 import { ClaudeCodeEnricher } from "../src/llm/claude-code";
 import * as e from "../src/llm/enricher";
 import * as t from "../src/llm/tutor";
-import { LANGUAGES } from "../src/lang";
 
 /**
  * Пользовательский текст попадает в промпт — значит в нём можно прислать инструкцию модели.
@@ -33,14 +32,14 @@ describe("текст человека — данные, а не инструкц
     expect(t.buildJudgePrompt({ sentence: "a ___ b", expected: "x", term: "x", translation: "y", answer: "z" })).not.toContain("данные, а не инструкции");
   });
 
-  it("обёртка работает для всех пяти сборщиков и на обоих языках", () => {
-    for (const lang of [LANGUAGES.en, LANGUAGES.ko]) {
+  it("обёртка работает для всех пяти сборщиков", () => {
+    {
       const wrapped = [
-        dataNotInstructionsPrompt(e.buildExtractPrompt(hostile, lang)),
-        dataNotInstructionsPrompt(e.buildCheckPrompt(hostile, [], undefined, [], lang)),
-        dataNotInstructionsPrompt(t.buildSayPrompt(hostile, lang)),
-        dataNotInstructionsPrompt(t.buildSentencePrompt({ term: "keen", translation: "увлечённый", explanation: "", answer: hostile }, lang)),
-        dataNotInstructionsPrompt(t.buildJudgePrompt({ sentence: "a ___ b", expected: "x", term: "x", translation: "y", answer: hostile }, lang)),
+        dataNotInstructionsPrompt(e.buildExtractPrompt(hostile)),
+        dataNotInstructionsPrompt(e.buildCheckPrompt(hostile, [], undefined, [])),
+        dataNotInstructionsPrompt(t.buildSayPrompt(hostile)),
+        dataNotInstructionsPrompt(t.buildSentencePrompt({ term: "keen", translation: "увлечённый", explanation: "", answer: hostile })),
+        dataNotInstructionsPrompt(t.buildJudgePrompt({ sentence: "a ___ b", expected: "x", term: "x", translation: "y", answer: hostile })),
       ];
       for (const prompt of wrapped) {
         // Текст человека на месте и помечен как данные.

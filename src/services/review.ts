@@ -5,7 +5,6 @@ import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
 import { streakBuff } from "./streak-buff";
-import { inCurrentLanguage } from "./language";
 import { and, asc, count, desc, eq, gte, isNull, lt, lte, ne, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { State } from "ts-fsrs";
@@ -131,7 +130,7 @@ async function dueItems(db: Db, userId: number, until: Date): Promise<DueItem[]>
     .from(cards)
     .innerJoin(words, eq(cards.wordId, words.id))
     .where(and(eq(cards.userId, userId), lte(cards.due, until)));
-  return (await inCurrentLanguage(db, rows)).sort(compareQueue);
+  return ((rows)).sort(compareQueue);
 }
 
 export async function nextDue(db: Db, userId: number, now: Date): Promise<DueItem | undefined> {

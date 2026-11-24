@@ -2,7 +2,6 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, stormStarts, words } from "../db/schema";
-import { inCurrentLanguage } from "./language";
 import { HARD_AFTER_LAPSES } from "./hard-words";
 
 export const STORM_SIZE = 5;
@@ -15,8 +14,8 @@ export function isStormHard(ratings: string[]): boolean {
 
 /** Кандидат появляется после 4 провалов; после штурма нужен новый обычный провал. */
 export async function stormCandidates(db: Db, userId: number): Promise<Array<{ cardId: number; triggerLogId: number }>> {
-  const own = (await inCurrentLanguage(db, await db.select({ card: cards, word: words }).from(cards)
-    .innerJoin(words, eq(cards.wordId, words.id)).where(eq(cards.userId, userId))))
+  const own = (await db.select({ card: cards, word: words }).from(cards)
+    .innerJoin(words, eq(cards.wordId, words.id)).where(eq(cards.userId, userId)))
     .filter(({ card, word }) => card.state !== State.New && word.usefulness !== 1);
   const logs = await db.select({ id: reviewLogs.id, cardId: reviewLogs.cardId, rating: reviewLogs.rating })
     .from(reviewLogs).where(eq(reviewLogs.userId, userId)).orderBy(asc(reviewLogs.id));

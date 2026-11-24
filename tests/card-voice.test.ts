@@ -54,18 +54,6 @@ describe("🗣 озвучка карточек", () => {
     expect(String(h.calls.at(-1)?.payload.text)).toContain("Сейчас: <b>выключена</b>");
   });
 
-  it("offers one variant for a language with a single pronunciation (Korean)", async () => {
-    const h = botHarness();
-    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
-    const room = await createRoom(h.db, { name: "Корейский", createdBy: user.id, now: T0, language: "ko" });
-    await joinRoom(h.db, { roomId: room.id, userId: user.id, now: T0, makeCurrent: true });
-    await h.bot.handleUpdate(h.message(100, "/settings"));
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🗣 Озвучка карточек")));
-    // У корейского вариант один, и это тот же слот uk, что и default: выбор уже стоит.
-    expect(lastButtons(h.calls).map((b) => b.text)).toEqual(["✅ 🔊 🇰🇷", "⬜️ 🔇 Не включать", "◀ Назад"]);
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🔊 🇰🇷")));
-    expect((await getUser(h.db, 1))!.voiceAccent).toBe(""); // второе нажатие — выключить
-  });
 });
 
 describe("🗣 озвучка в Mini App", () => {

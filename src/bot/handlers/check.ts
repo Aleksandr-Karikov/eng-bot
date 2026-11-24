@@ -1,4 +1,4 @@
-import { currentLang, langForms } from "../../lang";
+import { EN, langForms } from "../../lang";
 import { InlineKeyboard, type Bot } from "grammy";
 import type { CheckResult } from "../../llm/enricher";
 import { background, HTML, type BotContext, type Deps } from "../context";
@@ -10,7 +10,7 @@ import { checkText, mistakesAskText, mistakesNotSavedText, mistakesSavedText } f
 import { allowQuota } from "./quota";
 
 const usage = () =>
-  currentLang().code === "en"
+  true
     ? "Ответь командой /check на сообщение на английском — проверю ошибки.\nИли пришли текст сразу: /check he go to work"
     : `Ответь командой /check на сообщение ${langForms().prep} — проверю ошибки.\nИли пришли текст сразу: /check текст`;
 /** Сколько предыдущих сообщений отдавать Claude как контекст и насколько они могут быть старше проверяемого. */

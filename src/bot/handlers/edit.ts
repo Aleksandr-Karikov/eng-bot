@@ -1,4 +1,4 @@
-import { currentLang } from "../../lang";
+import { EN } from "../../lang";
 import { rateUsefulness } from "../../services/usefulness";
 import type { Bot } from "grammy";
 import type { Word } from "../../db/schema";
@@ -29,7 +29,7 @@ async function applyEdit(ctx: BotContext, deps: Deps, pending: PendingEdit, text
 
   const parsed = parseAddInput(text);
   // «слово — перевод» переименовывает слово, только если слева английский; «сдаться — уступить» — это просто перевод.
-  const rename = Boolean(parsed?.translation && currentLang().script.test(parsed.term));
+  const rename = Boolean(parsed?.translation && EN.script.test(parsed.term));
   let term = rename && parsed ? parsed.term : word.term;
   let translation = rename && parsed?.translation ? parsed.translation : text.trim();
   const clash = normalizeTerm(term) !== word.termNormalized ? await findWord(deps.db, word.roomId, term) : undefined;

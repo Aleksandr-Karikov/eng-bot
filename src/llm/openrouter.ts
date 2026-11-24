@@ -43,7 +43,7 @@ export class OpenRouterBackend implements LlmBackend {
           model,
           max_tokens: 8000,
           messages: [
-            { role: "system", content: systemPrompt(lang) },
+            { role: "system", content: systemPrompt() },
             { role: "user", content: images.length ? contentWithImages(prompt, images) : prompt },
           ],
         }),

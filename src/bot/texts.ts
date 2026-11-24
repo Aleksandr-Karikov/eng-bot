@@ -1,4 +1,4 @@
-import { currentLang, langForms } from "../lang";
+import { EN, langForms } from "../lang";
 import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
@@ -34,8 +34,6 @@ const ipa = (s: string) => `/${s.trim().replace(/^[/[\]\s]+|[/[\]\s]+$/g, "")}/`
 
 /** «🇬🇧 /…/ · 🇺🇸 /…/», одна запись с двумя флагами, если они совпадают, или "" если транскрипции нет. */
 export function transcriptionLine(d: { transcriptionUk?: string; transcriptionUs?: string }): string {
-  // Не английский: в слоте uk — романизация (사랑 → [sa-rang]), без флагов и слешей IPA.
-  if (currentLang().code !== "en") return d.transcriptionUk?.trim() ? `[${esc(d.transcriptionUk.trim().replace(/^[/[\]\s]+|[/[\]\s]+$/g, ""))}]` : "";
   const uk = d.transcriptionUk?.trim() ? ipa(d.transcriptionUk) : "";
   const us = d.transcriptionUs?.trim() ? ipa(d.transcriptionUs) : "";
   if (uk && uk === us) return `🇬🇧🇺🇸 ${esc(uk)}`;
@@ -462,7 +460,7 @@ export function batchDoneText(words: Array<{ term: string }>, refused = false): 
 /** Объяснение до ответа — только по-русски: slay тоже выдаёт slain, хотя основы не совпадают. */
 export function reverseHint(word: Pick<WordDraft, "term" | "explanation">): string {
   const explanation = word.explanation?.trim() ?? "";
-  return currentLang().script.test(explanation) ? "" : explanation;
+  return EN.script.test(explanation) ? "" : explanation;
 }
 
 export function reverseCardText(word: WordDraft & { collocations?: string; moreContexts?: string }, view: CardView = ALL_PARTS): string {
@@ -772,7 +770,7 @@ export function sayText(phrase: string, answer: SayAnswer): string {
   const learn = answer.learn.length
     ? `\n\n📚 Стоит запомнить:\n${answer.learn.map((l) => `• ${esc(l.term)} — ${esc(l.translation)}`).join("\n")}`
     : "";
-  return `${currentLang().flag} Как сказать «${esc(phrase)}»:\n\n${variants.join("\n")}${learn}`;
+  return `${EN.flag} Как сказать «${esc(phrase)}»:\n\n${variants.join("\n")}${learn}`;
 }
 
 export function talkReviewText(r: TalkReview, words: Array<{ term: string }>): string {

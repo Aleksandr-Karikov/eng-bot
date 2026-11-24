@@ -1,7 +1,6 @@
 import { InputFile, type Bot } from "grammy";
 import type { Word } from "../../db/schema";
-import { withLang } from "../../lang";
-import { getWord, setAudioFileId, wordLanguage } from "../../services/words";
+import { getWord, setAudioFileId } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, type BotContext, type Deps } from "../context";
 import { allowQuota } from "./quota";
@@ -14,8 +13,7 @@ export async function wordVoice(deps: Deps, word: Word, accent: Accent): Promise
   if (cached) return cached;
   try {
     // Язык — по комнате слова: его могут озвучивать и из другой комнаты (слово друга, «знаешь?»).
-    const lang = await wordLanguage(deps.db, word.id);
-    return new InputFile(await withLang(lang, () => deps.speech.synthesize(word.term, accent)), "pronunciation.ogg");
+    return new InputFile(await deps.speech.synthesize(word.term, accent), "pronunciation.ogg");
   } catch (err) {
     console.error("Speech synthesis failed", word.term, err);
     return undefined;

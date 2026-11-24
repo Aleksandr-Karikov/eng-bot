@@ -95,7 +95,7 @@ describe("инлайн-режим", () => {
     const h = botHarness();
     const { user } = await withWords(h, 100, [["gauge", "датчик"]]);
     // Вторая комната того же человека с тем же словом.
-    const second = await ensurePersonalRoom(h.db, user.id, T0, "en");
+    const second = await ensurePersonalRoom(h.db, user.id, T0);
     await saveWord(h.db, { roomId: second.id, addedBy: user.id, draft: { term: "gauge", translation: "датчик", explanation: "", example: "" }, now: T0 });
 
     await h.bot.handleUpdate(h.inlineQuery(100, "gau"));

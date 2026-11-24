@@ -1,4 +1,4 @@
-import { currentLang } from "../lang";
+import { EN } from "../lang";
 import type { Deps } from "../bot/context";
 import { isRussian, type Enrichment } from "../llm/enricher";
 import { rateUsefulness } from "./usefulness";
@@ -22,7 +22,7 @@ export async function prepareWord(
   input: { term: string; translation?: string },
 ): Promise<PreparedWord> {
   let { term, translation } = input;
-  const lang = currentLang();
+  const lang = EN;
   if (translation && isRussian(term, lang) && !isRussian(translation, lang)) [term, translation] = [translation, term];
   const fromRussian = isRussian(term, lang);
   if (!fromRussian && (await findWord(deps.db, roomId, term))) return { status: "exists", term };

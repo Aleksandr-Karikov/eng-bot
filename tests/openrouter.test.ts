@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { OpenRouterBackend } from "../src/llm/openrouter";
-import { LANGUAGES } from "../src/lang";
+import { EN } from "../src/lang";
 
 /** Ответ OpenAI-совместимого API в том виде, в каком его ждёт бэкенд. */
 const reply = (content: string) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });
@@ -14,7 +14,7 @@ function setup(responses: Array<unknown>, opts: { apiKey?: string; title?: strin
 }
 
 const ask = (backend: OpenRouterBackend, prompt = "переведи bank", images: Parameters<OpenRouterBackend["ask"]>[3] = [], model = "anthropic/claude-haiku-5.5") =>
-  backend.ask(prompt, 5_000, model, images, LANGUAGES.en);
+  backend.ask(prompt, 5_000, model, images, EN);
 
 describe("OpenRouterBackend", () => {
   it("sends the model, the key and the system prompt, and returns the answer", async () => {
@@ -76,6 +76,6 @@ describe("OpenRouterBackend", () => {
         init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
       })) as unknown as typeof fetch;
     const backend = new OpenRouterBackend({ apiKey: "sk-or-test", fetchImpl });
-    await expect(backend.ask("долго", 10, "m", [], LANGUAGES.en)).rejects.toThrow("aborted");
+    await expect(backend.ask("долго", 10, "m", [], EN)).rejects.toThrow("aborted");
   });
 });

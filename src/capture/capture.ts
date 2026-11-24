@@ -8,7 +8,6 @@ import { cards, users, words, type User, type Word } from "../db/schema";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { ensurePersonalRoom, getRoom, isMember, listMembers } from "../services/rooms";
-import { isLangCode, withLang } from "../lang";
 
 /** Что прислало расширение: выделенное слово или фраза и реплика, где оно встретилось. */
 export interface CaptureInput {
@@ -52,7 +51,7 @@ export async function capture(deps: Deps, input: CaptureInput): Promise<CaptureR
   // Без комнаты — в личный словарь.
   const roomId = user.currentRoomId ?? (await ensurePersonalRoom(deps.db, user.id, deps.now())).id;
   // Перевод и подсказки — на языке комнаты, куда слово попадёт.
-  return withLang(await roomLanguage(deps, roomId), () => captureInto(deps, input, user, roomId));
+  return captureInto(deps, input, user, roomId);
 }
 
 /** Разобрать выделение в его реплике, не сохраняя слово в словарь. */
@@ -67,17 +66,12 @@ export async function explainSelection(deps: Deps, input: CaptureInput) {
     if (!quota.allowed) return { ok: false as const, status: 429, error: quota.refusal };
   }
   try {
-    const answer = await withLang(await roomLanguage(deps, user.currentRoomId), () => deps.enricher.enrich(text, undefined, context || undefined));
+    const answer = await deps.enricher.enrich(text, undefined, context || undefined);
     return { ok: true as const, translation: answer.translation, explanation: answer.explanation, example: answer.example };
   } catch (err) {
     console.error("Explain selection failed", err instanceof Error ? err.name : "unknown error");
     return { ok: false as const, status: 502, error: "Не получилось объяснить — попробуй ещё раз" };
   }
-}
-
-async function roomLanguage(deps: Deps, roomId: number | null) {
-  const room = roomId != null ? await getRoom(deps.db, roomId) : undefined;
-  return isLangCode(room?.language) ? room.language : "en";
 }
 
 async function captureInto(deps: Deps, input: CaptureInput, user: User, roomId: number): Promise<CaptureResult> {
@@ -183,7 +177,7 @@ export async function readImage(deps: Deps, input: { key: string; image: string 
   if (data.length === 0 || data.length > MAX_IMAGE_BYTES) return { ok: false, status: 400, error: "Слишком большая область — выдели поменьше" };
   try {
     const image = { data, mediaType: match[1] as "image/jpeg" | "image/png" | "image/webp" };
-    const text = await withLang(await roomLanguage(deps, user.currentRoomId), () => deps.enricher.readImage!(image));
+    const text = await deps.enricher.readImage!(image);
     return { ok: true, text: text.slice(0, 2000) };
   } catch (err) {
     console.error("Read image failed", err);

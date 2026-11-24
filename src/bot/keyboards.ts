@@ -1,5 +1,5 @@
-import { currentLang, LANG_CODES, LANGUAGES, languageOf, type LangCode } from "../lang";
 import { InlineKeyboard } from "grammy";
+import { EN } from "../lang";
 import type { Room, User } from "../db/schema";
 import type { DrillQuestion } from "../llm/tutor";
 import { cardView, type CardPart } from "../services/card-view";
@@ -25,7 +25,7 @@ export function restoreCardKeyboard(wordId: number): InlineKeyboard {
 /** Две оценки — «не вспомнил / вспомнил»: «С трудом» убрана, а в старых сообщениях она по-прежнему обрабатывается. */
 /** Ряд «🔊 UK / 🔊 US»; у языка с одним произношением — одна кнопка «🔊 Озвучка». */
 export function addAudioRow(kb: InlineKeyboard, wordId: number): InlineKeyboard {
-  const lang = currentLang();
+  const lang = EN;
   if (lang.accents.length === 1) return kb.text("🔊 Озвучка", encodeCb({ k: "audio", wordId, accent: lang.accents[0] })).row();
   return kb
     .text("🔊 UK", encodeCb({ k: "audio", wordId, accent: "uk" }))
@@ -138,38 +138,20 @@ export function batchKeyboard(batch: Batch): InlineKeyboard {
     .text("❌ Отмена", encodeCb({ k: "batch", id: batch.id, action: "cancel" }));
 }
 
-/** Название комнаты с флагом языка, если это не английский и флага в названии ещё нет («Мои слова 🇰🇷» — уже с ним). */
+/** Название комнаты. Флаг языка больше не добавляется: язык у бота один (E23). */
 export function roomTitle(room: Room): string {
-  const flag = languageOf(room.language).flag;
-  return room.language === "en" || room.name.includes(flag) ? room.name : `${room.name} ${flag}`;
+  return room.name;
 }
 
-/** Кнопки «🇰🇷 Учить корейский» — для языков, словаря которых у человека ещё нет. */
-export function addLearnLangButtons(kb: InlineKeyboard, langs: LangCode[]): InlineKeyboard {
-  for (const code of langs) kb.row().text(`${LANGUAGES[code].flag} Учить ${LANGUAGES[code].name}`, encodeCb({ k: "learnLang", lang: code }));
-  return kb;
-}
-
-/** Что учим: под приветствием /start и в /lang (current — отмечен ✓). */
-export function learnLangKeyboard(current?: LangCode): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  for (const code of LANG_CODES) {
-    const { flag, name } = LANGUAGES[code];
-    kb.text(`${code === current ? "✓ " : ""}${flag} ${name[0].toUpperCase()}${name.slice(1)}`, encodeCb({ k: "learnLang", lang: code }));
-  }
-  return kb;
-}
-
-/** 🔗 Комната группы: на какую из своих общих комнат сменить или завести новую (на выбранном языке). */
+/** 🔗 Комната группы: на какую из своих общих комнат сменить или завести новую. */
 export function groupLinkKeyboard(rooms: Room[]): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const room of rooms) kb.text(`→ ${roomTitle(room)}`, encodeCb({ k: "groupLink", roomId: room.id })).row();
-  for (const code of LANG_CODES) kb.text(`➕ Новая ${LANGUAGES[code].flag}`, encodeCb({ k: "groupNew", lang: code }));
   return kb;
 }
 
-/** canManage — переименовать и удалить текущую комнату может только её создатель. missingLangs — языки без словаря. */
-export function roomKeyboard(otherRooms: Room[], current?: Room, canManage = false, missingLangs: LangCode[] = []): InlineKeyboard {
+/** canManage — переименовать и удалить текущую комнату может только её создатель. */
+export function roomKeyboard(otherRooms: Room[], current?: Room, canManage = false): InlineKeyboard {
   const kb = new InlineKeyboard();
   // Личный словарь — без приглашения: позвать друзей можно в общую комнату (➕).
   if (current && current.personalOf == null) kb.text("🔗 Пригласить", encodeCb({ k: "room", action: "invite" }));
@@ -180,7 +162,7 @@ export function roomKeyboard(otherRooms: Room[], current?: Room, canManage = fal
       .text("✏️ Переименовать", encodeCb({ k: "roomRename", roomId: current.id }))
       .text("🗑 Удалить комнату", encodeCb({ k: "roomDel", roomId: current.id }));
   }
-  return addLearnLangButtons(kb, missingLangs);
+  return kb;
 }
 
 export function confirmRoomDeleteKeyboard(roomId: number): InlineKeyboard {
@@ -317,8 +299,8 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
   if (screen === "voice") {
     // Варианты — по языку комнаты: у корейского произношение одно, выбирать не из чего.
     const kb = new InlineKeyboard();
-    for (const accent of currentLang().accents) {
-      kb.text(`${user.voiceAccent === accent ? "✅" : "⬜️"} 🔊 ${currentLang().accentLabel[accent]}`, encodeCb({ k: "voice", accent })).row();
+    for (const accent of EN.accents) {
+      kb.text(`${user.voiceAccent === accent ? "✅" : "⬜️"} 🔊 ${EN.accentLabel[accent]}`, encodeCb({ k: "voice", accent })).row();
     }
     kb.text(`${user.voiceAccent ? "⬜️" : "✅"} 🔇 Не включать`, encodeCb({ k: "voice", accent: "off" }));
     return back(kb);
@@ -355,7 +337,7 @@ export function mistakesAskKeyboard(id: number): InlineKeyboard {
 export function mistakesKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🧠 Вопросы по ошибкам", encodeCb({ k: "mistakesGo", to: "drill" }))
-    .text(`🇷🇺→${currentLang().flag} Перевод`, encodeCb({ k: "mistakesGo", to: "translate" }))
+    .text(`🇷🇺→${EN.flag} Перевод`, encodeCb({ k: "mistakesGo", to: "translate" }))
     .row()
     .text("🗑 Сбросить", encodeCb({ k: "mistakesClear" }));
 }

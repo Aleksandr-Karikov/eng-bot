@@ -162,12 +162,12 @@ describe("лимиты: комнаты", () => {
     expect(gate.allowed === false && gate.refusal).toContain("3 комнаты");
   });
 
-  it("личные словари не считаются: английский и корейский не съедают место для друзей", async () => {
+  it("личный словарь не съедает место для комнат друзей", async () => {
     const db = await testDb();
     const user = await makeUser(db, 100);
 
-    await createRoom(db, { name: "English", createdBy: user.id, now: T0, personal: true });
-    await createRoom(db, { name: "Korean", createdBy: user.id, now: T0, personal: true, language: "ko" });
+    // Личный словарь один: язык у бота теперь только английский (E23).
+    await createRoom(db, { name: "Мои слова", createdBy: user.id, now: T0, personal: true });
 
     expect((await roomCreationAllowed(db, user.id)).allowed).toBe(true);
   });

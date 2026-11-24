@@ -1,4 +1,3 @@
-import { isLangCode, type LangCode } from "../lang";
 import { CARD_PARTS, type CardPart } from "../services/card-view";
 import { VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { STAGES, type Stage } from "../services/exercises";
@@ -90,9 +89,7 @@ export type Cb =
   | { k: "inlineCopyNew"; query: string }
   | { k: "room"; action: "new" | "invite" }
   | { k: "roomsw"; roomId: number }
-  | { k: "learnLang"; lang: LangCode }
   | { k: "groupLink"; roomId: number }
-  | { k: "groupNew"; lang: LangCode }
   | { k: "roomRename"; roomId: number }
   | { k: "roomDel"; roomId: number }
   | { k: "roomDelOk"; roomId: number }
@@ -205,9 +202,7 @@ export function encodeCb(cb: Cb): string {
     case "inlineCopy": return `iw:${cb.wordId}`;
     case "inlineCopyNew": return `in:${clampText(cb.query)}`;
     case "roomsw": return `rs:${cb.roomId}`;
-    case "learnLang": return `ll:${cb.lang}`;
     case "groupLink": return `gl:${cb.roomId}`;
-    case "groupNew": return `gn:${cb.lang}`;
     case "roomRename": return `rn:${cb.roomId}`;
     case "roomDel": return `rx:${cb.roomId}`;
     case "roomDelOk": return `rxo:${cb.roomId}`;
@@ -321,8 +316,6 @@ export function decodeCb(data: string): Cb | null {
     }
     case "te": return { k: "talkEnd" };
     case "pn": return { k: "pronNext" };
-    case "ll": return isLangCode(a) ? { k: "learnLang", lang: a } : null;
-    case "gn": return isLangCode(a) ? { k: "groupNew", lang: a } : null;
     case "gl": {
       const roomId = int(a);
       return roomId !== null ? { k: "groupLink", roomId } : null;

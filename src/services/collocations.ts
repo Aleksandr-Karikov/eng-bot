@@ -4,8 +4,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { words } from "../db/schema";
 import type { Collocations, ExerciseTutor } from "../llm/tutor";
-import { withLang } from "../lang";
-import { getWord, wordLanguage } from "./words";
+import { getWord } from "./words";
 
 const tokens = (s: string) => s.toLowerCase().replace(/[’‘`]/g, "'").split(/[^\p{L}']+/u).filter(Boolean);
 
@@ -52,8 +51,7 @@ export class CollocationGenerator {
   }
 
   private async generate(word: { id: number; term: string; translation: string }): Promise<void> {
-    const lang = await wordLanguage(this.db, word.id);
-    const generated = await withLang(lang, () => this.tutor.collocations(word.term, word.translation));
+    const generated = await this.tutor.collocations(word.term, word.translation);
     const result = generated.quiz && !validQuiz(generated.quiz, word.term) ? { items: generated.items } : generated;
     const fresh = await getWord(this.db, word.id);
     // Пока Claude думал, слово могли изменить — тогда сочетания уже не к нему.

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { reverseHint, reverseCardText, usefulnessLine } from "../src/bot/texts";
-import { withLang } from "../src/lang";
 import { ClaudeCodeEnricher } from "../src/llm/claude-code";
 import type { LlmBackend } from "../src/llm/backend";
 import { parseDrillReview } from "../src/llm/tutor";
@@ -16,7 +15,9 @@ describe("bug #14: hidden answer is not leaked by another word form", () => {
     expect(reverseHint(word)).toBe("");
     expect(reverseCardText(word).split("<tg-spoiler>")[0]).not.toContain("slay");
     expect(reverseHint({ ...word, explanation: "Убитый в бою." })).toBe("Убитый в бою.");
-    expect(withLang("ko", () => reverseHint({ term: "갔어요", explanation: "Форма глагола 가다." }))).toBe("");
+    // Объяснение без английских букв показывается: это подсказка, а не утечка ответа.
+    // (Раньше здесь был корейский пример — он ушёл вместе с языком, E23.)
+    expect(reverseHint({ term: "went", explanation: "Прошедшее время." })).toBe("Прошедшее время.");
   });
 });
 

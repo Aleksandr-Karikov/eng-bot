@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { isLangCode, withLang } from "../lang";
 import { getRoom } from "../services/rooms";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -43,7 +42,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     c.set("user", user);
     // Как в боте: язык запроса — язык текущей комнаты (lang.ts).
     const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
-    await withLang(isLangCode(room?.language) ? room.language : "en", () => next());
+    await next();
   });
 
   app.get("/api/me", async (c) => c.json({ ok: true, ...(await appMe(deps, c.get("user"))) }));

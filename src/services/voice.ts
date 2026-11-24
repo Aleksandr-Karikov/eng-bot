@@ -1,4 +1,4 @@
-import { currentLang, type Language } from "../lang";
+import { EN, type Language } from "../lang";
 
 /**
  * Озвучка карточек в Mini App. В боте звук всегда по нажатию кнопки — там настройки нет.
@@ -19,7 +19,7 @@ export const VOICE_ACCENTS: readonly VoiceAccent[] = ["uk", "us"];
 export const DEFAULT_VOICE_ACCENT: VoiceAccent = "uk";
 
 /** Вариант произношения, который играть самому; undefined — озвучка выключена. */
-export function autoVoice(user: { voiceAccent: string }, lang: Language = currentLang()): VoiceAccent | undefined {
+export function autoVoice(user: { voiceAccent: string }, lang: Language = EN): VoiceAccent | undefined {
   return lang.accents.find((a) => a === user.voiceAccent);
 }
 
@@ -32,7 +32,7 @@ export function toggleVoiceAccent(current: string, pick: VoiceAccent | "off"): s
 }
 
 /** Подпись выбранного варианта для настроек: «🇬🇧 UK», «🇺🇸 US» или «выключена». */
-export function voiceLabel(user: { voiceAccent: string }, lang: Language = currentLang()): string {
+export function voiceLabel(user: { voiceAccent: string }, lang: Language = EN): string {
   const accent = autoVoice(user, lang);
   return accent ? lang.accentLabel[accent] : "выключена";
 }

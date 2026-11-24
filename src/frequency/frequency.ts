@@ -26,13 +26,11 @@ export class WordfreqSource implements FrequencySource {
 
   async zipf(terms: string[]): Promise<Map<string, number>> {
     const missing = [...new Set(terms.filter((t) => !this.cache.has(t)))];
-    // Язык — по самому слову: хангыль — корейский (wordfreq с MeCab), остальное — английский, как всегда.
-    const korean = missing.filter((t) => HANGUL.test(t));
-    const english = missing.filter((t) => !HANGUL.test(t));
-    for (const [list, lang] of [[english, undefined], [korean, "ko"]] as const) {
-      if (!list.length) continue;
+    // Считаем частотность только для английского: корейский язык убран (E23). Хангыль в тексте
+    // больше не встречается, поэтому делить слова на списки по письменности не нужно.
+    if (missing.length) {
       // Слова — одним JSON-аргументом, без shell.
-      const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(list), ...(lang ? [lang] : [])], { timeout: 30_000 });
+      const { stdout } = await run(this.python, ["-I", this.script, JSON.stringify(missing)], { timeout: 30_000 });
       for (const [term, z] of Object.entries(JSON.parse(stdout) as Record<string, number>)) this.cache.set(term, z);
     }
     return new Map(terms.filter((t) => this.cache.has(t)).map((t) => [t, this.cache.get(t)!]));

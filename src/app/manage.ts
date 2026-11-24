@@ -1,4 +1,4 @@
-import { currentLang, langForms, withLang } from "../lang";
+import { EN, langForms } from "../lang";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
@@ -13,7 +13,7 @@ import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
-import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord, wordLanguage, findWord, normalizeTerm } from "../services/words";
+import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord, findWord, normalizeTerm } from "../services/words";
 import type { CorrectionWord } from "../llm/enricher";
 import { prepareWord } from "../services/prepare-word";
 import { broadcastWord } from "../bot/word-flow";
@@ -136,7 +136,7 @@ export async function appCorrectWord(deps: Deps, word: Word, instruction: string
     transcriptionUk: base.transcriptionUk, transcriptionUs: base.transcriptionUs, mnemonic: base.mnemonic,
     collocations: base.collocations, leechHelp: base.leechHelp, context: base.context, moreContexts: base.moreContexts,
   };
-  const correction = await withLang(await wordLanguage(deps.db, word.id), () => deps.enricher.correctWord!(input, request));
+  const correction = await deps.enricher.correctWord!(input, request);
   const before = previous?.before ?? word;
   const after = { ...base, ...correction.patch };
   if ((normalizeTerm(before.term) !== normalizeTerm(after.term) || before.translation.trim() !== after.translation.trim()) && after.collocations) {
@@ -186,7 +186,7 @@ export async function appSettings(deps: Deps, user: User) {
     newPerDay: user.newPerDay,
     newPerDayChoices: NEW_PER_DAY_CHOICES.map((c) => c.value),
     // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
-    voice: { accent: autoVoice(user) ?? null, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
+    voice: { accent: autoVoice(user) ?? null, accents: EN.accents.map((a) => ({ key: a, label: EN.accentLabel[a] })) },
   };
 }
 

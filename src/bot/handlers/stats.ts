@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { currentLang } from "../../lang";
+import { EN } from "../../lang";
 import { bossEnabled, bossFeed, bossOf, buyUpgrade, coinState, personalDamage } from "../../services/boss";
 import { findRoomByChat, getRoom } from "../../services/rooms";
 import { goalProgress, setWeeklyGoal } from "../../services/goals";
@@ -186,7 +186,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "voice") return void (await ctx.answerCallbackQuery());
     const user = await updateUser(deps.db, ctx.user.id, { voiceAccent: toggleVoiceAccent(ctx.user.voiceAccent, cb.accent) });
     const accent = autoVoice(user);
-    await ctx.answerCallbackQuery({ text: accent ? `Буду включать ${currentLang().accentLabel[accent]}` : "Озвучка карточек выключена" });
+    await ctx.answerCallbackQuery({ text: accent ? `Буду включать ${EN.accentLabel[accent]}` : "Озвучка карточек выключена" });
     await ctx.editMessageText(settingsText(user, "voice"), { reply_markup: settingsKeyboard(user, "voice") });
   });
 

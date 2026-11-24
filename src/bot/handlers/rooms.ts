@@ -1,15 +1,15 @@
-import { currentLang, LANG_CODES, LANGUAGES, langForms, languageOf, type LangCode } from "../../lang";
+import { EN, langForms } from "../../lang";
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Room, User } from "../../db/schema";
 import {
-  createRoom, deleteRoom, findRoomByChat, roomForLanguage, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed, updateRoomTimezone,
+  createRoom, deleteRoom, findRoomByChat, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed, updateRoomTimezone,
 } from "../../services/rooms";
 import { getUser, setSourceOnce, updateUser } from "../../services/users";
 import { parseStartPayload } from "../../services/source";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, inviteLink, type BotContext, type Deps } from "../context";
-import { confirmRoomDeleteKeyboard, groupLinkKeyboard, learnLangKeyboard, roomKeyboard, roomTitle } from "../keyboards";
+import { confirmRoomDeleteKeyboard, groupLinkKeyboard, roomKeyboard, roomTitle } from "../keyboards";
 import { clearPendingInputs } from "../pending";
 import { esc, plural, welcomeText } from "../texts";
 
@@ -33,15 +33,12 @@ async function roomMenu(deps: Deps, user: User) {
   }
   const current = rooms.find((r) => r.id === user.currentRoomId) ?? rooms[0];
   const members = await listMembers(deps.db, current.id);
-  // Языки, словаря которых ещё нет (английский личный словарь есть у всех): «🇰🇷 Учить корейский».
-  const missing: LangCode[] = [];
-  for (const code of LANG_CODES) if (!rooms.some((r) => r.language === code)) missing.push(code);
   if (current.personalOf === user.id) {
     const text = [
       `📒 Сейчас: <b>${esc(roomTitle(current))}</b> — твой личный словарь.`,
       "Учить вместе с друзьями — в общей комнате: создай её (➕) и позови их ссылкой, или вступи по ссылке друга.",
     ].join("\n");
-    return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id, missing) };
+    return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
   }
   const text = [
     `🏠 Текущая комната: <b>${esc(roomTitle(current))}</b>`,
@@ -50,7 +47,7 @@ async function roomMenu(deps: Deps, user: User) {
     // Пояс виден тому, кто может его менять: от него зависит, когда кончается неделя босса.
     current.createdBy === user.id ? `🕐 Пояс: ${esc(roomTimezoneLabel(current.timezone))} — /roomtz` : "",
   ].filter(Boolean).join("\n");
-  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id, missing) };
+  return { text, kb: roomKeyboard(rooms.filter((r) => r.id !== current.id), current, current.createdBy === user.id) };
 }
 
 /** «Asia/Novosibirsk (UTC+07:00)» — понятнее, чем голое имя пояса. */
@@ -80,8 +77,7 @@ async function createNamedRoom(ctx: BotContext, deps: Deps, name: string) {
   // и «нажал десять раз → десять неотличимых комнат» — именно то, от чего лимит и стоит.
   const gate = await roomCreationAllowed(deps.db, ctx.user.id, { isAdmin: isAdmin(ctx, deps) });
   if (!gate.allowed) return void (await ctx.reply(gate.refusal, HTML));
-  // Комната для друзей — на языке, который человек сейчас учит.
-  const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now(), language: currentLang().code });
+  const room = await createRoom(deps.db, { name, createdBy: ctx.user.id, now: deps.now() });
   await ctx.reply(
     `🎉 Комната «${esc(room.name)}» создана и выбрана текущей.\nПришли друзьям ссылку: ${inviteLink(deps.botUsername, room)}`,
     HTML,
@@ -134,46 +130,8 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     // Видео грузится несколько секунд — в фоне, а текст после него, чтобы шли по порядку.
     background(ctx, async () => {
       await sendWelcomeVideo(ctx);
-      // Под приветствием — что учим: английский или корейский.
-      await ctx.reply(welcomeText(), ctx.chat.type === "private" ? { ...HTML, reply_markup: learnLangKeyboard() } : HTML);
+      await ctx.reply(welcomeText(), HTML);
     });
-  });
-
-  // /lang — какой язык учим: переключает в комнату выбранного языка.
-  bot.command("lang", async (ctx) => {
-    if (ctx.chat.type !== "private") return void (await ctx.reply(`Язык переключается в личке: https://t.me/${deps.botUsername}. Язык группы — её комната: /link`));
-    const current = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
-    const lang = languageOf(current?.language);
-    const where = current ? ` — «${esc(roomTitle(current))}»` : "";
-    await ctx.reply(`Сейчас учишь: ${lang.flag} ${lang.name}${where}.\nНа какой язык переключиться?`, { ...HTML, reply_markup: learnLangKeyboard(lang.code) });
-  });
-
-  // 🇰🇷 Учить корейский (и обратно): /start, /room, /lang — в комнату выбранного языка.
-  bot.callbackQuery(/^ll:/, async (ctx) => {
-    const cb = decodeCb(ctx.callbackQuery.data);
-    await ctx.answerCallbackQuery();
-    if (cb?.k !== "learnLang" || ctx.chat?.type !== "private") return;
-    const lang = LANGUAGES[cb.lang];
-    const forms = langForms(lang);
-    const current = ctx.user.currentRoomId != null ? await getRoom(deps.db, ctx.user.currentRoomId) : undefined;
-    if (current?.language === cb.lang) {
-      return void (await ctx.reply(`${lang.flag} Ты и так учишь ${lang.name} — сейчас в «${esc(roomTitle(current))}». Пришли слово, и начнём 🙂`, HTML));
-    }
-    // Туда, где человек был последним на этом языке; первый раз — заводим личный словарь.
-    const { room, created } = await roomForLanguage(deps.db, ctx.user, cb.lang, deps.now());
-    await updateUser(deps.db, ctx.user.id, { currentRoomId: room.id });
-    if (!created) {
-      return void (await ctx.reply(`${lang.flag} Учим ${lang.name} — комната «${esc(roomTitle(room))}». Обратно — /lang`, HTML));
-    }
-    await ctx.reply(
-      [
-        `${lang.flag} Учим ${lang.name}! Текущая комната — «${esc(roomTitle(room))}», твой личный словарь.`,
-        "",
-        `Пришли слово ${forms.adv} или по-русски — подберу перевод, транскрипцию, пример и озвучку. Потом повторяй в /learn или /app.`,
-        "Вернуться к другому языку — /lang.",
-      ].join("\n"),
-      HTML,
-    );
   });
 
   bot.command("help", (ctx) => ctx.reply(welcomeText(), HTML));
@@ -304,11 +262,11 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     await ctx.reply(text, { ...HTML, ...(kb ? { reply_markup: kb } : {}) });
   });
 
-  /** Привязать группу к комнате: своей общей (gl:) или новой на выбранном языке (gn:). */
-  bot.callbackQuery(/^g[ln]:/, async (ctx) => {
+  /** Привязать группу к комнате: своей общей (gl:) или новой (gn: — без языка, он теперь один). */
+  bot.callbackQuery(/^gl:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     const chat = ctx.chat;
-    if (!chat || chat.type === "private" || (cb?.k !== "groupLink" && cb?.k !== "groupNew")) return void (await ctx.answerCallbackQuery());
+    if (!chat || chat.type === "private" || cb?.k !== "groupLink") return void (await ctx.answerCallbackQuery());
     const linked = await findRoomByChat(deps.db, chat.id);
     if (!(await canRelink(ctx, linked))) {
       return void (await ctx.answerCallbackQuery({ text: "Сменить комнату группы может админ группы или создатель комнаты", show_alert: true }));
@@ -337,13 +295,11 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
         createdBy: ctx.user.id,
         now: deps.now(),
         telegramChatId: chat.id,
-        language: cb.lang,
       });
     }
     await ctx.answerCallbackQuery({ text: "Готово" });
-    const lang = languageOf(room.language);
     await ctx.editMessageText(
-      `🔗 Группа теперь учит ${lang.flag} ${lang.name} — комната «${esc(roomTitle(room))}». Добавляйте слова через /add`,
+      `🔗 Группа привязана к «${esc(roomTitle(room))}». Добавляйте слова через /add`,
       HTML,
     );
   });
@@ -353,8 +309,7 @@ export function registerRooms(bot: Bot<BotContext>, deps: Deps): void {
     const linked = await findRoomByChat(deps.db, ctx.chat!.id);
     const options = (await listUserRooms(deps.db, ctx.user.id)).filter((r) => r.personalOf == null && r.telegramChatId == null);
     if (!linked) return { text: "К какой комнате привязать группу? Новые слова и «знаешь?» пойдут в неё.", kb: groupLinkKeyboard(options) };
-    const lang = languageOf(linked.language);
-    const now = `🔗 Группа привязана к «${esc(roomTitle(linked))}» — учит ${lang.flag} ${lang.name}.`;
+    const now = `🔗 Группа привязана к «${esc(roomTitle(linked))}».`;
     if (!(await canRelink(ctx, linked))) return { text: `${now}\nСменить комнату может админ группы или создатель комнаты.` };
     return { text: `${now}\nСменить комнату группы — на свою общую или новую:`, kb: groupLinkKeyboard(options) };
   }

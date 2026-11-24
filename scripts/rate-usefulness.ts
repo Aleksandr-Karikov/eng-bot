@@ -9,13 +9,11 @@ import { loadConfig } from "../src/config";
 import { createDb } from "../src/db/client";
 import { words } from "../src/db/schema";
 import { WordfreqSource } from "../src/frequency/frequency";
-import { withLang } from "../src/lang";
 import { redactLogs } from "../src/log-redact";
 import { OpenRouterBackend } from "../src/llm/openrouter";
 import { ProviderRouter } from "../src/llm/provider";
 import { initialProvider } from "../src/llm/provider-store";
 import { rateUsefulness } from "../src/services/usefulness";
-import { wordLanguage } from "../src/services/words";
 
 try { process.loadEnvFile(".env"); } catch { /* .env необязателен */ }
 const config = loadConfig({ ...process.env, BOT_TOKEN: process.env.BOT_TOKEN || "unused-by-this-script" });
@@ -38,7 +36,7 @@ const todo = (await db.select().from(words)).filter((w) => w.usefulnessNote !== 
 console.log(`${todo.length} words to rate; provider=${llm.provider}; dryRun=${dryRun}`);
 for (const word of todo) {
   try {
-    const enrichment = await withLang(await wordLanguage(db, word.id), () => llm.enrich(word.term, word.translation));
+    const enrichment = await llm.enrich(word.term, word.translation);
     const [rated] = await rateUsefulness([{ ...enrichment, term: word.term }], frequency);
     if (!rated.usefulness) {
       console.log(`#${word.id}: недостаточно данных для оценки`);

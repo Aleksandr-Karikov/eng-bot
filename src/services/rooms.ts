@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
-import { LANGUAGES, type LangCode } from "../lang";
 import { createCards } from "./cards";
 import { ROOM_LIMITS, ROOM_REFUSALS } from "./limits";
 import { getUser, parseLastRooms, updateUser } from "./users";
@@ -11,9 +10,8 @@ import { isTimeZone } from "../time";
 
 export async function createRoom(
   db: Db,
-  input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean; language?: LangCode },
+  input: { name: string; createdBy: number; now: Date; telegramChatId?: number; personal?: boolean },
 ): Promise<Room> {
-  const language = input.language ?? "en";
   // Пояс комнаты — пояс автора на момент создания: по нему считаются границы недели и слово дня.
   const author = await getUser(db, input.createdBy);
   const [room] = await db
@@ -22,11 +20,10 @@ export async function createRoom(
       name: input.name,
       inviteCode: randomBytes(6).toString("base64url"),
       telegramChatId: input.telegramChatId ?? null,
-      language,
       ...(author?.timezone ? { timezone: author.timezone } : {}),
       personalOf: input.personal ? input.createdBy : null,
-      // Английский личный словарь отмечаем и по-старому — чтобы код до появления языков (при откате) его видел.
-      legacyPersonalOf: input.personal && language === "en" ? input.createdBy : null,
+      // Прежняя отметка личного словаря — чтобы код до появления языков (при откате) его видел.
+      legacyPersonalOf: input.personal ? input.createdBy : null,
       createdBy: input.createdBy,
       createdAt: input.now,
     })
@@ -39,13 +36,13 @@ export async function createRoom(
 
 export const PERSONAL_ROOM_NAME = "Мои слова";
 
-/** «Мои слова» — английский, как было; для других языков с флагом: «Мои слова 🇰🇷». */
-export function personalRoomName(language: LangCode = "en"): string {
-  return language === "en" ? PERSONAL_ROOM_NAME : `${PERSONAL_ROOM_NAME} ${LANGUAGES[language].flag}`;
+/** Название личного словаря. Одно на человека: язык у бота теперь только английский (E23). */
+export function personalRoomName(): string {
+  return PERSONAL_ROOM_NAME;
 }
 
-export async function personalRoom(db: Db, userId: number, language: LangCode = "en"): Promise<Room | undefined> {
-  const [room] = await db.select().from(rooms).where(and(eq(rooms.personalOf, userId), eq(rooms.language, language)));
+export async function personalRoom(db: Db, userId: number): Promise<Room | undefined> {
+  const [room] = await db.select().from(rooms).where(eq(rooms.personalOf, userId));
   return room;
 }
 
@@ -53,23 +50,11 @@ export async function personalRoom(db: Db, userId: number, language: LangCode = 
  * Личный словарь «Мои слова»: есть у каждого, создаётся сам — одиночке не нужно разбираться с комнатами,
  * а слова из готовых наборов идут сюда, а не в общую комнату с друзьями.
  */
-export async function ensurePersonalRoom(db: Db, userId: number, now: Date, language: LangCode = "en"): Promise<Room> {
+export async function ensurePersonalRoom(db: Db, userId: number, now: Date): Promise<Room> {
   return (
-    (await personalRoom(db, userId, language)) ??
-    createRoom(db, { name: personalRoomName(language), createdBy: userId, now, personal: true, language })
+    (await personalRoom(db, userId)) ??
+    createRoom(db, { name: personalRoomName(), createdBy: userId, now, personal: true })
   );
-}
-
-/**
- * Куда вернуть человека, когда он переключается на язык (/lang): в последнюю комнату этого языка, где он был;
- * нет такой — в общую комнату этого языка; нет и её — в личный словарь (created — его только что завели).
- */
-export async function roomForLanguage(db: Db, user: User, language: LangCode, now: Date): Promise<{ room: Room; created: boolean }> {
-  const mine = (await listUserRooms(db, user.id)).filter((r) => r.language === language);
-  const last = parseLastRooms(user.lastRooms)[language];
-  const room = mine.find((r) => r.id === last) ?? mine.find((r) => r.personalOf == null) ?? mine.find((r) => r.personalOf === user.id);
-  if (room) return { room, created: false };
-  return { room: await ensurePersonalRoom(db, user.id, now, language), created: true };
 }
 
 export async function isMember(db: Db, roomId: number, userId: number): Promise<boolean> {

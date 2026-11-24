@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { words } from "../db/schema";
 import type { ExerciseTutor } from "../llm/tutor";
-import { withLang } from "../lang";
-import { getWord, wordLanguage } from "./words";
+import { getWord } from "./words";
 
 /** Формы слова, синонимы и антонимы — как и сочетания, готовятся в фоне. */
 export interface WordGrammarRow {
@@ -54,8 +53,7 @@ export class GrammarGenerator {
   }
 
   private async generate(word: WordGrammarRow): Promise<void> {
-    const lang = await wordLanguage(this.db, word.id);
-    const generated = await withLang(lang, () => this.tutor.grammar!(word.term, word.translation));
+    const generated = await this.tutor.grammar!(word.term, word.translation);
     const fresh = await getWord(this.db, word.id);
     // Пока Claude думал, слово могли изменить — тогда часть речи и родня уже не к нему.
     if (!fresh || ready(fresh) || fresh.term !== word.term || fresh.translation !== word.translation) return;

@@ -1,4 +1,3 @@
-import { wordIdsInCurrentLanguage } from "./language";
 import { eq } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -10,7 +9,7 @@ const PRACTICE_SIZE = 20;
 /** Карточки для тренировки вне зачёта: уже изученные слова, сначала трудные, потом самые слабые. */
 export async function practiceQueue(db: Db, userId: number): Promise<number[]> {
   const all = (await db.select().from(cards).where(eq(cards.userId, userId))).filter((c) => c.state !== State.New);
-  const ours = await wordIdsInCurrentLanguage(db, all.map((c) => c.wordId));
+  const ours = new Set(all.map((c) => c.wordId));
   const own = all.filter((c) => ours.has(c.wordId));
   const forgot = await db
     .select({ cardId: reviewLogs.cardId })

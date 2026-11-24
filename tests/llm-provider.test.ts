@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ProviderRouter } from "../src/llm/provider";
 import type { LlmBackend } from "../src/llm/backend";
-import { withLang } from "../src/lang";
 import { modelsFor, OPENROUTER_MODEL_HINT, type ModelSets } from "../src/llm/models";
 
 const MODELS: ModelSets = {
@@ -174,11 +173,13 @@ describe("ProviderRouter", () => {
     expect(openRouter.calls[0].prompt).toBe(claudeCode.calls[0].prompt);
   });
 
-  it("carries the operation language into the backend", async () => {
+  it("передаёт в бэкенд английский язык — он теперь единственный (E23)", async () => {
     const backend = recording();
     const llm = router({ openRouter: backend, provider: "openrouter" });
-    await withLang("ko", () => llm.enrich("사과"));
-    expect(backend.calls[0].lang).toBe("ko");
+    await llm.enrich("apple");
+    // Раньше здесь проверялась корейская комната (사과). Язык убран, но сигнатура `ask` осталась:
+    // бэкенд по-прежнему получает `Language`, и это должен быть английский.
+    expect(backend.calls[0].lang).toBe("en");
   });
 
   it("делегирует каждый метод интерфейса, включая опциональные", () => {

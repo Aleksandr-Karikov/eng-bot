@@ -189,17 +189,11 @@ describe("📦 куда «учу» кладёт слово (setTarget)", () => {
     expect(await setSetTarget(h.db, user, strangerRoom.id)).toMatchObject({ ok: false, error: "Ты не в этой комнате" });
   });
 
-  it("в комнату другого языка слова не положить: там другой словарь и другие наборы", async () => {
-    const { h, user } = await setup();
-    const korean = await createRoom(h.db, { name: "Korean", createdBy: user.id, now: T0, language: "ko" });
-    expect(await setSetTarget(h.db, user, korean.id)).toMatchObject({ ok: false });
-  });
-
   it("в списке выбора личный словарь идёт последним", async () => {
     const { h, user, shared } = await setup();
     await ensurePersonalRoom(h.db, user.id, T0);
     const inShared = await updateUser(h.db, user.id, { currentRoomId: shared.id });
-    const choices = await setTargetChoices(h.db, inShared, "en");
+    const choices = await setTargetChoices(h.db, inShared);
     expect(choices.length).toBeGreaterThan(1);
     expect(choices.at(-1)?.personal).toBe(true);
   });
