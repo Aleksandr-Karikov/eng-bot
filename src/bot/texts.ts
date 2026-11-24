@@ -324,9 +324,17 @@ export function trophiesText(earned: Array<{ emoji: string; title: string; how: 
   return [head, "", ...lines, "", "Вся коллекция — в приложении на вкладке 🐉"].join("\n");
 }
 
-export function goalReachedText(roomName: string, g: GoalProgress): string {
+/**
+ * 🎯🎉 Комната добила цель недели — сообщение в чат.
+ *
+ * Добивающий удар называется по имени: без него текст читался как отчёт («выполнила цель»), а
+ * в пошаговой игре важен момент, когда босс упал, и кто это сделал. `finalBlow` есть только у
+ * добивания; если его нет (цель закрыли суммой многих ударов), текст остаётся счётом.
+ */
+export function goalReachedText(roomName: string, g: GoalProgress, finalBlow?: { name: string }): string {
   const top = g.byUser[0] ? ` Больше всех — ${esc(g.byUser[0].name)} (${g.byUser[0].count})` : "";
-  return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} HP!${top}`;
+  const blow = finalBlow ? `\n⚔️ Добил(а): <b>${esc(finalBlow.name)}</b> — босс повержен!` : "";
+  return `🎯🎉 «${esc(roomName)}» выполнила цель недели: ${g.done}/${g.target} HP!${top}${blow}`;
 }
 
 /**

@@ -248,6 +248,8 @@ const stopReminders = startReminderLoop({
   db,
   notifier,
   now,
+  // Рубильник нужен и фоновым поздравлениям: выключившим режим не пишем про босса в личку.
+  bossEnabled: config.bossEnabled,
   story: async (room) => room.telegramChatId != null && publishStory(bot.api, deps, room.telegramChatId, room),
 });
 const stopMeetingPolls = startMeetingPollLoop(db, now, bot.api);

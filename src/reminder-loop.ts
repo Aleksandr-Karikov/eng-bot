@@ -8,6 +8,7 @@ import { collectTrophies } from "./services/trophies";
 import { collectWordsOfDay, markWordOfDaySent } from "./services/word-of-day";
 import { collectDigests, markDigestSent } from "./services/digest";
 import { listMembers } from "./services/rooms";
+import { bossEnabled, bossFeed } from "./services/boss";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
 import { collectDueNotices, collectReminders, markDueNotice, markReminded } from "./services/reminders";
@@ -40,6 +41,12 @@ export interface DigestDeps {
   db: Db;
   notifier: Pick<Notifier, "dm" | "group">;
   now: () => Date;
+  /**
+   * Общий рубильник `BOSS_ENABLED`: false — режим выключен всем, и поздравления про босса в личку
+   * не уходят тем, кто его не видит (E12). В группу сообщение всё равно отправляется: комната — не
+   * адресат настройки, и историю недели терять незачем.
+   */
+  bossEnabled?: boolean;
   /** История из слов недели — в группу вслед за дайджестом. Пишется около минуты, поэтому не ждём. */
   story?: (room: Room) => Promise<unknown>;
 }
@@ -83,12 +90,22 @@ export async function sendDigests(deps: DigestDeps): Promise<void> {
 /** Комната выполнила цель недели — поздравляем один раз: в группу, а если её нет — каждому в личку. */
 export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
   for (const { room, progress, date } of await collectGoalsReached(deps.db, deps.now())) {
-    const text = goalReachedText(room.name, progress);
+    const now = deps.now();
+    // Добивающий удар — из той же ленты, что видит Mini App: иначе чат говорит «выполнила цель»,
+    // а приложение показывает имя того, кто её закрыл (E12). Ошибку расчёта не превращаем в потерю
+    // поздравления: без удара текст всё равно верный.
+    const blow = await bossFeed(deps.db, room, now, 1, progress.target)
+      .then((feed) => feed.finalBlow)
+      .catch(() => undefined);
+    const text = goalReachedText(room.name, progress, blow);
     try {
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
       let delivered = posted;
       if (!posted) {
-        for (const member of await listMembers(deps.db, room.id)) delivered = (await deps.notifier.dm(member, text, HTML)) || delivered;
+        // В личку — только тем, у кого режим включён: остальным это сообщение про игру, которую они
+        // выключили себе в /settings. В группу шлём всем: там читают и те, кто играет (E12).
+        const recipients = (await listMembers(deps.db, room.id)).filter((member) => bossEnabled(member, deps.bossEnabled));
+        for (const member of recipients) delivered = (await deps.notifier.dm(member, text, HTML)) || delivered;
       }
       if (delivered) await markGoalReached(deps.db, room.id, date);
     } catch (err) {
