@@ -67,7 +67,7 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       </Section>
 
       {data.goal && (
-        <Section header={`🎯 Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель подобрана сама по прошлой неделе. Своя — /goal в группе." : undefined}>
+        <Section header={`🎯 Цель «${data.goal.room}» на неделю`} footer={data.goal.auto ? "Цель одна для всех — 100 HP. Своя — /goal в группе." : undefined}>
           <div className="goal">
             <Text weight="2">
               {data.goal.done} / {data.goal.target} {plural(data.goal.target, "ответ", "ответа", "ответов")}

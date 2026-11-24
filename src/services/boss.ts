@@ -208,9 +208,9 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
   const end = weekStart.getTime() + WEEK_MS;
   const elapsed = (now.getTime() - weekStart.getTime()) / WEEK_MS;
   // База ладдера — цель комнаты, если её задали руками (/goal), иначе фиксированные LADDER_BASE_HP.
-  // Автоцель сюда НЕ идёт: она считается от прошлой активности и растёт на 10% в неделю, то есть
-  // база уезжала бы вверх вместе с прогрессом, и глубина не росла бы никогда. С фиксированной базой
-  // боссы каждую неделю одни и те же, а доходить дальше позволяет прокачка — как в рогалике.
+  // Обе величины фиксированы и не зависят от прошлой недели (E3, E4): боссы каждую неделю одни и те же,
+  // а доходить дальше позволяет прокачка — как в рогалике. Раньше общая цель считалась от прошлой
+  // активности и росла на 10% в неделю, то есть база уезжала вверх вместе с прогрессом.
   const ladderBase = room.weeklyGoal > 0 ? room.weeklyGoal : LADDER_BASE_HP;
   const { round, kills, progress: current, hp: bossHp, tier, cycle } = bossRound(progress.done, ladderBase);
   const hp = Math.max(0, Math.round((bossHp - current) * 10) / 10);

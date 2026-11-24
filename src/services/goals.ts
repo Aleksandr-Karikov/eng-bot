@@ -4,17 +4,27 @@ import { cards, reviewLogs, rooms, users, words, type Room } from "../db/schema"
 import { latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
 import { bossStrikes } from "./combat-ledger";
 
-/** Автоцель не меньше этого — иначе после пустой недели цель стала бы нулевой. */
-const MIN_AUTO_GOAL = 50;
-/** Автоцель — на 10% больше прошлой недели, округлённо до десятков. */
-const AUTO_GROWTH = 1.1;
+/**
+ * Цель недели по умолчанию — фиксированная, 100 HP.
+ *
+ * Раньше она считалась от числа ответов прошлой недели (`autoGoal(raw) × BASE_WEIGHT`), и это ломало игру
+ * с двух сторон. Усиление поднимает урон за ответ, поэтому для той же цели нужно меньше ответов: `raw`
+ * падал, и следующая цель становилась МЕНЬШЕ — человек не «доходил дальше», а откатывался (E3). А `raw`
+ * считал все ответы подряд, включая «Забыл», то есть честность повышала цель следующей недели (E4).
+ *
+ * Теперь цель одна для всех и не зависит ни от прокачки, ни от прошлой недели. Глубину даёт ладдер
+ * боссов (`LADDER_BASE_HP`, `tierHp`): база фиксирована, а доходить дальше позволяет прокачка — как
+ * в рогалике. 100 HP ≈ 50 ответов «Помню»; это ровно то число, с которого в проде активная комната
+ * добивала босса, а не упиралась в 2220–3980 HP, которые давала прежняя формула.
+ */
+export const DEFAULT_GOAL_HP = 100;
 
 export interface GoalProgress {
   target: number;
   done: number;
   /** Урон конкретного человека, если спросили про него: на нём считаются монеты (усиление личное). */
   mine?: number;
-  /** Цель задана сама, по прошлой неделе. */
+  /** Цель не задана руками — действует общая `DEFAULT_GOAL_HP`. */
   auto: boolean;
   /** Вклад участников в HP, больше — выше. */
   byUser: Array<{ name: string; count: number }>;
@@ -90,10 +100,13 @@ export function answerWeight(rating: string, stage?: string | null, level = 0, l
 }
 
 /**
- * Ответы на карточки слов комнаты в [from, to): сырое число и HP, по участникам.
+ * Урон комнаты в [from, to) по участникам: HP, уже с усилением на момент ответа.
  *
  * Считаем по userId, а не по имени: усиление личное, поэтому урон каждого свой, и два тёзки в одной
  * комнате не должны сливаться в одного — раньше сливались, хотя вклад в цель это искажало.
+ *
+ * Сырого числа ответов здесь нет намеренно: цель недели от него больше не зависит (E3, E4), и держать
+ * неиспользуемый счётчик значило бы оставить вход, через который связь вернётся.
  */
 async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
   const rows = await db
@@ -103,26 +116,23 @@ async function roomReviews(db: Db, roomId: number, from: Date, to: Date) {
     .innerJoin(words, eq(cards.wordId, words.id))
     .innerJoin(users, eq(reviewLogs.userId, users.id))
     .where(and(eq(words.roomId, roomId), gte(reviewLogs.reviewedAt, from), lt(reviewLogs.reviewedAt, to)));
-  const raw = new Map<number, number>();
   const hp = new Map<number, number>();
   const names = new Map<number, string>();
   for (const r of rows) {
     names.set(r.userId, r.name);
-    raw.set(r.userId, (raw.get(r.userId) ?? 0) + 1);
     if (!r.banked) hp.set(r.userId, (hp.get(r.userId) ?? 0) + (r.damageDeci ?? Math.round(answerWeight(r.rating, r.stage) * 10)));
   }
-  return { raw, hp, names };
+  return { hp, names };
 }
 
 const total = (m: Map<number, number>) => Math.round([...m.values()].reduce((a, b) => a + b, 0) * 10) / 10;
 
-export function autoGoal(lastWeek: number): number {
-  return Math.max(MIN_AUTO_GOAL, Math.ceil(Math.round(lastWeek * AUTO_GROWTH) / 10) * 10);
-}
-
 /**
- * Цель недели в HP. Считается от **числа ответов** прошлой недели, а не от нанесённого урона:
- * иначе усиление раздувало бы следующего босса и обесценивало себя.
+ * Цель недели в HP — только из явной настройки комнаты, иначе `DEFAULT_GOAL_HP`.
+ *
+ * Прошлая неделя в расчёт не входит вовсе: иначе прокачка сжимала бы следующую цель (E3), а честные
+ * «Забыл» её раздували бы (E4). Число одно для всех комнат, и это то же число, что база ладдера боссов,
+ * поэтому `/goal` и `/boss` показывают согласованные величины.
  *
  * Границы недели — по поясу комнаты (`roomTimeZone`): у комнаты в Москве неделя кончается в 20:00 МСК.
  */
@@ -140,9 +150,9 @@ export async function goalProgress(
     current.hp.set(strike.userId, (current.hp.get(strike.userId) ?? 0) + strike.damageDeci);
   }
   for (const [id, deci] of current.hp) current.hp.set(id, deci / 10);
-  const prev = await roomReviews(db, room.id, new Date(weekStart.getTime() - WEEK_MS), weekStart);
   // Цель — в HP и хранится в HP: одно число в /goal, дайджесте и на вкладке босса.
-  const target = room.weeklyGoal > 0 ? room.weeklyGoal : autoGoal(total(prev.raw)) * BASE_WEIGHT;
+  // Прошлую неделю не читаем вовсе — см. DEFAULT_GOAL_HP.
+  const target = room.weeklyGoal > 0 ? room.weeklyGoal : DEFAULT_GOAL_HP;
   const byUser = [...current.hp.entries()]
     .map(([userId, count]) => ({ name: current.names.get(userId) ?? "?", count }))
     .sort((a, b) => b.count - a.count);

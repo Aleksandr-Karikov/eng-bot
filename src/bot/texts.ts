@@ -277,7 +277,7 @@ export function goalText(roomName: string, g: GoalProgress, timeZone?: string): 
   if (g.byUser.length) lines.push(`Вклад: ${g.byUser.map((u) => `${esc(u.name)} ${u.count}`).join(" · ")}`);
   lines.push(
     "",
-    g.auto ? "Цель подобрана по прошлой неделе (+10%). Своя — /goal 600" : "Вернуть автоцель — /goal auto",
+    g.auto ? "Цель одна для всех — 100 HP. Своя — /goal 600" : "Вернуть общую цель — /goal auto",
     weekEndNote(timeZone),
   );
   return lines.join("\n");
