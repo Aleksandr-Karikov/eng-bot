@@ -34,6 +34,7 @@ import { KokoroSynth, LanguageAwareSynth, MacSaySynth } from "./speech/tts";
 import { LocalRecognizer } from "./speech/stt";
 import { VoiceStore } from "./bot/voices";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Server } from "node:http";
 import { TranscriptSubtitles } from "./youtube/subtitles";
 import { dbExercisePersistence } from "./services/pending-exercises";
@@ -249,6 +250,9 @@ const stopReminders = startReminderLoop({
   now,
   // Рубильник нужен и фоновым поздравлениям: выключившим режим не пишем про босса в личку.
   bossEnabled: config.bossEnabled,
+  // Пути для уборки (E29): кэш озвучки и голосовые записи.
+  audioDir: resolve("data/audio"),
+  voiceSamplesDir: deps.voiceSamplesDir,
   story: async (room) => room.telegramChatId != null && publishStory(bot.api, deps, room.telegramChatId, room),
 });
 const stopMeetingPolls = startMeetingPollLoop(db, now, bot.api);

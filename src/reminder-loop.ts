@@ -12,6 +12,7 @@ import { bossEnabled, bossFeed } from "./services/boss";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
 import { collectDueNotices, collectReminders, markDueNotice, markReminded } from "./services/reminders";
+import { sweep } from "./services/sweep";
 
 export interface ReminderDeps {
   db: Db;
@@ -47,6 +48,9 @@ export interface DigestDeps {
    * адресат настройки, и историю недели терять незачем.
    */
   bossEnabled?: boolean;
+  /** Папка кэша озвучки и голосовых записей — для уборки (E29). Не заданы — файлы не трогаем. */
+  audioDir?: string;
+  voiceSamplesDir?: string;
   /** История из слов недели — в группу вслед за дайджестом. Пишется около минуты, поэтому не ждём. */
   story?: (room: Room) => Promise<unknown>;
 }
@@ -155,8 +159,12 @@ export async function sendWordsOfDay(deps: DigestDeps): Promise<void> {
   }
 }
 
+/** Уборка — раз в сутки, а не каждую минуту: она не срочная, а полный проход читает таблицы целиком. */
+const SWEEP_EVERY_MS = 24 * 60 * 60_000;
+
 export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => void {
   let running = false;
+  let sweptAt = 0;
   const tick = async () => {
     if (running) return;
     running = true;
@@ -168,6 +176,27 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
       await sendWeeklyReports(deps);
       await sendTrophies(deps);
       await sendWordsOfDay(deps);
+      // Уборка накопившегося (E29): служебные таблицы и осиротевшие файлы. Не чаще раза в сутки
+      // и без влияния на остальной тик — сбой уборки не должен мешать напоминаниям.
+      if (deps.now().getTime() - sweptAt > SWEEP_EVERY_MS) {
+        sweptAt = deps.now().getTime();
+        try {
+          const result = await sweep(deps.db, {
+            now: deps.now(),
+            audioDir: deps.audioDir,
+            voiceSamplesDir: deps.voiceSamplesDir,
+          });
+          const total = result.usageCounters + result.dailySpend + result.combatSpends + result.duelPoints;
+          if (total > 0 || result.audioFiles > 0 || result.voiceFiles > 0) {
+            console.log(
+              `Sweep: счётчики ${result.usageCounters}, расход ${result.dailySpend}, бой ${result.combatSpends}, ` +
+              `дуэли ${result.duelPoints}, before ${result.beforeCleared}, аудио ${result.audioFiles}, голос ${result.voiceFiles}`,
+            );
+          }
+        } catch (err) {
+          console.error("Sweep failed", err);
+        }
+      }
     } catch (err) {
       console.error("Reminder tick failed", err);
     } finally {
