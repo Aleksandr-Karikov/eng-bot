@@ -1,0 +1,1 @@
+CREATE INDEX `cards_user_due_idx` ON `cards` (`user_id`,`due`);

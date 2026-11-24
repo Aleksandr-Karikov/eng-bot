@@ -234,7 +234,11 @@ export const cards = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index("cards_word_idx").on(t.wordId),uniqueIndex("cards_user_word_idx").on(t.userId, t.wordId)],
+    index("cards_word_idx").on(t.wordId),uniqueIndex("cards_user_word_idx").on(t.userId, t.wordId),
+    // Составной (user_id, due): закрывает выборку очереди и `nextReviewAt` без временной сортировки.
+    // С `(user_id, wordId)` запрос `WHERE user_id = ? ORDER BY due LIMIT 1` сортировал ВСЕ карточки
+    // человека, чтобы взять одну (E33).
+    index("cards_user_due_idx").on(t.userId, t.due)],
 );
 
 /** Предложения с пропуском для ступени «вставь по смыслу»; общие для всех участников комнаты. */
