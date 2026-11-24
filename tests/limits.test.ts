@@ -105,6 +105,41 @@ describe("лимиты: счёт и отказ", () => {
 
     expect(await quotaUsed(db, { userId: user.id, kind: "inline_translate", timeZone: MSK, now: T0 })).toBe(10);
   });
+
+  it("одновременные запросы не проскакивают сверх лимита", async () => {
+    // Главная проверка E15. До правки: лимит 10 — разрешено 30, счётчик 30. Проверка и запись были
+    // разными запросами, и между ними успевали все параллельные вызовы. Путь не теоретический:
+    // /check и картинки идут через background(), а Mini App приходит отдельными HTTP-запросами.
+    const db = testDb();
+    const user = await makeUser(db, 100);
+    const limit = 10;
+
+    const results = await Promise.all(
+      Array.from({ length: limit * 3 }, () => checkAndCount(db, { userId: user.id, kind: "image", timeZone: MSK, now: T0 })),
+    );
+
+    const allowed = results.filter((r) => r.allowed).length;
+    expect(allowed).toBeLessThanOrEqual(limit);
+    expect(allowed).toBe(limit);
+    expect(await quotaUsed(db, { userId: user.id, kind: "image", timeZone: MSK, now: T0 })).toBeLessThanOrEqual(limit);
+    // Отказ не тратит попытку — иначе счётчик уехал бы вверх.
+    expect(await quotaUsed(db, { userId: user.id, kind: "image", timeZone: MSK, now: T0 })).toBe(limit);
+  });
+
+  it("нулевой лимит запрещает всё, а не одну попытку", async () => {
+    // /explainlimit 0 ставит человеку limit = 0. Вставка новой строки идёт мимо `WHERE` у UPDATE,
+    // поэтому нулевой лимит проверяется отдельно — иначе он открывал бы ровно одну попытку.
+    const db = testDb();
+    const user = await makeUser(db, 100);
+
+    const first = await checkAndCount(db, { userId: user.id, kind: "explain", timeZone: MSK, now: T0, limit: 0 });
+    expect(first.allowed).toBe(false);
+    expect(await quotaUsed(db, { userId: user.id, kind: "explain", timeZone: MSK, now: T0 })).toBe(0);
+
+    const second = await checkAndCount(db, { userId: user.id, kind: "explain", timeZone: MSK, now: T0, limit: 1 });
+    expect(second.allowed).toBe(true);
+    expect(second.used).toBe(1);
+  });
 });
 
 describe("общий потолок бота: картинки на всех", () => {
@@ -153,6 +188,18 @@ describe("общий потолок бота: картинки на всех", (
     // 40 «одновременных» нажатий в потолок 200: счёт должен стать ровно 40, без потерь.
     await Promise.all(Array.from({ length: 40 }, () => checkAndSpend(db, "image", T0)));
     expect(await budgetUsed(db, "image", T0)).toBe(40);
+  });
+
+  it("одновременные запросы не пробивают потолок", async () => {
+    // Потолок — предохранитель от аварии и он про деньги. До правки замер давал 300 при 200:
+    // лишние сто картинок сверх потолка. Путь реальный: drawAndSend работает в background().
+    const db = testDb();
+    const limit = BUDGETS.image.limit;
+
+    const results = await Promise.all(Array.from({ length: limit + 100 }, () => checkAndSpend(db, "image", T0)));
+
+    expect(results.filter((r) => r.allowed).length).toBe(limit);
+    expect(await budgetUsed(db, "image", T0)).toBe(limit);
   });
 
   it("потолок общий и не сбрасывается новым человеком", async () => {

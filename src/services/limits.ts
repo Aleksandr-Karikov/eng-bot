@@ -239,11 +239,20 @@ export async function quotaUsed(
 /**
  * Проверить лимит и, если можно, сразу записать попытку.
  *
- * Проверка и запись — рядом намеренно: между чтением счётчика (`quotaUsed`) и инкрементом нет ничего,
- * кроме самого `await`, поэтому два одновременных запроса могут проскочить вдвоём — окно в один тик,
- * и это осознанный размен ради переносимости. Потерять счётчик при этом нельзя: инкремент идёт одним
- * UPDATE (`count + 1`), а не «прочитал, прибавил, записал», поэтому гонка не затирает чужой расход.
- * В SQLite запись сериализуется базой.
+ * Проверка и запись — **одна** инструкция, а не «прочитал, потом записал». Раньше здесь читался
+ * счётчик, и только потом шёл инкремент: между ними оставался `await`, за который проходили
+ * параллельные вызовы. Это не теория — замер на тридцати одновременных вызовах при лимите 10 давал
+ * «разрешено 30, счётчик 30». Путь реальный: `drawAndSend` и `/check` работают в `background()`,
+ * а Mini App приходит отдельными HTTP-запросами, поэтому обработчики друг друга не ждут.
+ *
+ * Теперь `ON CONFLICT … DO UPDATE SET count = count + 1 WHERE count < :limit` — обычный
+ * `DO UPDATE … WHERE`, который есть и в SQLite, и в Postgres, поэтому инвариант переносимости цел.
+ * Если условие не выполнено, `UPDATE` не срабатывает и `returning()` не возвращает строк — это и есть
+ * отказ. Счётчик при отказе не растёт, как и раньше.
+ *
+ * `limit <= 0` проверяется отдельно: при нулевом лимите вставки новой строки быть не должно
+ * (`VALUES count = 1` не проходит через `WHERE` у `UPDATE`), иначе админский `/explainlimit 0`
+ * открывал бы ровно одну попытку вместо запрета.
  */
 export async function checkAndCount(
   db: Db,
@@ -251,25 +260,30 @@ export async function checkAndCount(
 ): Promise<QuotaState> {
   const quota = QUOTAS[input.kind];
   const limit = input.limit ?? quota.limit;
+  const refusal = { allowed: false, limit, refusal: quota.refusal } as const;
+  if (limit <= 0) return { ...refusal, used: 0 };
+
   const period = periodKey(quota.period, input.timeZone, input.now);
   const scope = scopeOf(quota, input.wordId);
   const key = { userId: input.userId, period, kind: input.kind, scope };
-  const used = await quotaUsed(db, input);
 
-  if (used >= limit) {
-    return { allowed: false, used, limit, refusal: quota.refusal };
-  }
-
-  // ON CONFLICT … DO UPDATE SET count = count + 1 — переносимо между SQLite и Postgres.
-  await db
+  const [written] = await db
     .insert(usageCounters)
     .values({ ...key, count: 1, updatedAt: input.now })
     .onConflictDoUpdate({
       target: [usageCounters.userId, usageCounters.period, usageCounters.kind, usageCounters.scope],
       set: { count: sql`${usageCounters.count} + 1`, updatedAt: input.now },
-    });
+      setWhere: sql`${usageCounters.count} < ${limit}`,
+    })
+    .returning({ count: usageCounters.count });
 
-  return { allowed: true, used: used + 1, limit, refusal: quota.refusal };
+  // Условие не выполнено — значит, лимит уже выбран. Строку не пишем и попытку не тратим.
+  if (!written) {
+    return { ...refusal, used: await quotaUsed(db, input) };
+  }
+  // `used` — сколько стало после этой попытки (счётчик в базе уже включает её). Так его и читают
+  // `quotaLine` и `/status`: «сделано 5 из 30», а не «было 4».
+  return { allowed: true, used: written.count, limit, refusal: quota.refusal };
 }
 
 /**
@@ -409,27 +423,31 @@ export async function budgetUsed(db: Db, kind: BudgetKind, now: Date): Promise<n
 /**
  * Проверить общий потолок и записать расход — одной операцией, как `checkAndCount`.
  *
+ * Условный инкремент здесь важнее, чем у личных квот: это **общий** потолок на весь бот и он про деньги.
+ * Замер на трёхстах одновременных вызовах при потолке 200 давал «разрешено 300, счётчик 300» —
+ * то есть лишние сто картинок сверх предохранителя. Теперь `UPDATE … WHERE count < limit`
+ * в одной инструкции, и лишние вызовы не проходят.
+ *
  * Отказ не увеличивает счётчик: смысла в этом нет, за отказом не стоит никакой работы, а растущий
  * счётчик мешал бы понять, сколько нарисовано на самом деле.
  */
 export async function checkAndSpend(db: Db, kind: BudgetKind, now: Date): Promise<QuotaState> {
   const budget = BUDGETS[kind];
   const day = spendDay(now);
-  const used = await budgetUsed(db, kind, now);
+  const refusal = { allowed: false, limit: budget.limit, refusal: budget.refusal } as const;
 
-  if (used >= budget.limit) {
-    return { allowed: false, used, limit: budget.limit, refusal: budget.refusal };
-  }
-
-  await db
+  const [written] = await db
     .insert(dailySpend)
     .values({ day, kind, count: 1, updatedAt: now })
     .onConflictDoUpdate({
       target: [dailySpend.day, dailySpend.kind],
       set: { count: sql`${dailySpend.count} + 1`, updatedAt: now },
-    });
+      setWhere: sql`${dailySpend.count} < ${budget.limit}`,
+    })
+    .returning({ count: dailySpend.count });
 
-  return { allowed: true, used: used + 1, limit: budget.limit, refusal: budget.refusal };
+  if (!written) return { ...refusal, used: await budgetUsed(db, kind, now) };
+  return { allowed: true, used: written.count, limit: budget.limit, refusal: budget.refusal };
 }
 
 /**
