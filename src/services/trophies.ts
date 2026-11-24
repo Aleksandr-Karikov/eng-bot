@@ -240,7 +240,20 @@ function closeToEnd(killedAt: Date, week: string, timeZone: string): boolean {
  * Неделя считается по поясу каждой комнаты, поэтому отбор идёт внутри цикла, а не одним ключом на всех:
  * у комнаты в Москве и в Новосибирске это разные даты воскресенья.
  */
-export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boolean; weeklyOnly?: boolean } = {}): Promise<Array<{ user: User; earned: TrophyDef[] }>> {
+export interface CollectTrophiesOptions {
+  dryRun?: boolean;
+  weeklyOnly?: boolean;
+  /**
+   * Считать только комнаты, которых не было в прошлый тик: у них `trophiesWeek` не равен текущей неделе.
+   *
+   * Включает фоновый цикл; скрипт бэкфилла (`scripts/backfill-trophies.ts`) выключает, потому что там
+   * намеренно пересчитываются прошлые недели. Без этого различия бэкфилл после первого прогона
+   * перестал бы находить что-либо.
+   */
+  onlyFreshWeeks?: boolean;
+}
+
+export async function collectTrophies(db: Db, now: Date, options: CollectTrophiesOptions = {}): Promise<Array<{ user: User; earned: TrophyDef[] }>> {
   const already = await db.select({ userId: trophies.userId, kind: trophies.kind, week: trophies.week }).from(trophies);
   const onceHad = new Map<number, Set<string>>();
   for (const row of already) {
@@ -257,9 +270,17 @@ export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boo
 
   const result: Array<{ user: User; earned: TrophyDef[] }> = [];
   for (const room of await db.select().from(rooms)) {
+    // Недельный расчёт дорогой: читает всю таблицу trophies и считает weekFacts по каждой комнате.
+    // Фоновый тик идёт раз в минуту, поэтому комнату, за которую неделя уже посчитана, пропускаем
+    // до всякой работы (E11). Отметку ставит вызывающий — после того как трофеи реально выданы.
+    const week = weekKey(now, roomTimeZone(room));
+    if (options.onlyFreshWeeks && room.trophiesWeek === week) continue;
     const facts = await weekFacts(db, room, now);
-    if (facts.done === 0) continue;
-    const week = facts.week;
+    if (facts.done === 0) {
+      // Пустая неделя: пересчитывать её каждый тик незачем — отмечаем, что смотрели.
+      if (options.onlyFreshWeeks && !options.dryRun) await markTrophiesWeek(db, room.id, week);
+      continue;
+    }
     const weeksThis = mintedThisWeek.get(week) ?? new Set<string>();
     mintedThisWeek.set(week, weeksThis);
     const members = await db.select({ userId: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, room.id));
@@ -282,8 +303,21 @@ export async function collectTrophies(db: Db, now: Date, options: { dryRun?: boo
       const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (user) result.push({ user, earned: fresh.map((f) => TROPHY_BY_KIND.get(f.kind)!).filter(Boolean) });
     }
+    // Неделя посчитана — вторую попытку делать не нужно. Ставится здесь, а не до расчёта: если упасть
+    // посередине, отметки не будет, и следующий тик повторит работу, а не потеряет трофеи.
+    if (options.onlyFreshWeeks && !options.dryRun) await markTrophiesWeek(db, room.id, week);
   }
   return result;
+}
+
+/**
+ * Отметить неделю, за которую трофеи комнаты посчитаны.
+ *
+ * Нужна только фоновому циклу (см. `onlyFreshWeeks`). Бэкфилл её не ставит и не читает: он намеренно
+ * пересчитывает прошлые недели, и отметка «уже смотрели» там была бы ошибкой.
+ */
+export async function markTrophiesWeek(db: Db, roomId: number, week: string): Promise<void> {
+  await db.update(rooms).set({ trophiesWeek: week }).where(eq(rooms.id, roomId));
 }
 
 /** Коллекция человека: что получено и сколько раз, новые сверху. */

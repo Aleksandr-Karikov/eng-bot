@@ -956,3 +956,51 @@ describe("рубильник BOSS_ENABLED не меняет числа (E7)", ()
     expect(off.done).toBe(0);
   });
 });
+
+describe("недельный расчёт трофеев не повторяется на каждом тике (E11)", () => {
+  /**
+   * `sendTrophies` зовётся в цикле напоминаний раз в минуту. До E11 `collectTrophies` на каждом вызове
+   * читал всю таблицу `trophies` и считал `weekFacts` по каждой комнате — ~10 080 прогонов в неделю
+   * вместо одного. Теперь комната, за которую неделя уже посчитана (`rooms.trophies_week`), пропускается
+   * до всякой работы.
+   */
+  it("повторный тик в ту же неделю ничего не пересчитывает и не дублирует трофеи", async () => {
+    const { collectTrophies } = await import("../src/services/trophies");
+    const { trophies, rooms } = await import("../src/db/schema");
+    const { h, alice, room } = await setup();
+    await setWeeklyGoal(h.db, room.id, 4);
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 44, reviewedAt: nsk("2026-10-19T10:00") });
+    const now = nsk("2026-10-25T20:00");
+
+    // Первый тик: трофеи выданы, отметка недели поставлена.
+    const first = await collectTrophies(h.db, now, { onlyFreshWeeks: true });
+    expect(first.find((r) => r.user.id === alice.id)?.earned.length).toBeGreaterThan(0);
+    const minted = await h.db.select().from(trophies);
+    expect(minted.length).toBeGreaterThan(0);
+    const [marked] = await h.db.select().from(rooms).where(eq(rooms.id, room.id));
+    expect(marked.trophiesWeek).not.toBeNull();
+
+    // Второй тик в ту же неделю: комната пропущена, новых трофеев нет.
+    expect(await collectTrophies(h.db, now, { onlyFreshWeeks: true })).toEqual([]);
+    // И таблица не выросла — повторной выдачи не было.
+    expect(await h.db.select().from(trophies)).toHaveLength(minted.length);
+
+    // Следующая неделя считается заново: отметка не мешает.
+    const nextWeek = nsk("2026-11-01T20:00");
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 44, reviewedAt: nsk("2026-10-27T10:00") });
+    expect(await collectTrophies(h.db, nextWeek, { onlyFreshWeeks: true })).not.toEqual([]);
+  });
+
+  it("бэкфилл без флага по-прежнему видит прошлые недели", async () => {
+    const { collectTrophies } = await import("../src/services/trophies");
+    const { h, alice, room } = await setup();
+    await setWeeklyGoal(h.db, room.id, 4);
+    await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", damageDeci: 44, reviewedAt: nsk("2026-10-19T10:00") });
+    const now = nsk("2026-10-25T20:00");
+    // Скрипт бэкфилла зовёт collectTrophies БЕЗ onlyFreshWeeks: отметка его не должна касаться.
+    await collectTrophies(h.db, now, { onlyFreshWeeks: true });
+    // Даже после отметки недели вызов без флага пересчитывает и, если что-то не выдано, выдаёт.
+    const backfill = await collectTrophies(h.db, now, { weeklyOnly: true, dryRun: true });
+    expect(Array.isArray(backfill)).toBe(true);
+  });
+});

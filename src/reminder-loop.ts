@@ -99,10 +99,14 @@ export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
 
 /**
  * 🏆 Трофеи за закрытую неделю — каждому в личку, кто что-то получил.
- * В том же тике, что дайджест: неделя уже закрыта, значит считать есть что. Идемпотентно само по себе.
+ *
+ * `onlyFreshWeeks` — комнату, за которую неделя уже посчитана (`rooms.trophies_week`), пропускаем
+ * до всякой работы. Без этого признака расчёт шёл на каждом тике (раз в минуту): он читает всю таблицу
+ * `trophies` и считает `weekFacts` по каждой комнате, то есть ~10 080 прогонов в неделю вместо одного
+ * на комнату (E11). Скрипт бэкфилла этот флаг не ставит — он пересчитывает прошлые недели намеренно.
  */
 export async function sendTrophies(deps: DigestDeps): Promise<void> {
-  for (const { user, earned } of await collectTrophies(deps.db, deps.now())) {
+  for (const { user, earned } of await collectTrophies(deps.db, deps.now(), { onlyFreshWeeks: true })) {
     if (earned.length === 0) continue;
     const text = trophiesText(earned);
     try {

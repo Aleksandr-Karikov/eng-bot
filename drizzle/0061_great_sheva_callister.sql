@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `trophies_week` text;
