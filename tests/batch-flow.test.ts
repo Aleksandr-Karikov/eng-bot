@@ -4,6 +4,7 @@ import { cards, words } from "../src/db/schema";
 import type { ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
+import { checkAndCountWord, quotaUsed, QUOTAS } from "../src/services/limits";
 import { botHarness, type ApiCall } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
@@ -94,6 +95,30 @@ describe("/text batches", () => {
     await h.bot.handleUpdate(h.callback(100, button(h.calls, "✅ w29")));
     expect(lastKeyboard(h.calls).some((b) => b.text === "✅ Добавить (29)")).toBe(true);
     expect(lastKeyboard(h.calls).some((b) => b.text === "2/2")).toBe(true);
+  });
+
+  it("не сохраняет сверх лимита, если остаток ушёл между показом списка и «Добавить»", async () => {
+    // Проба из аудита: остаток 0 на момент нажатия — пачка всё равно сохранила 50 слов,
+    // потому что опиралась на снимок batch.left, а не на живой счётчик. Каждое слово — платные вызовы.
+    const many = Array.from({ length: 5 }, (_, i) => item(`w${i}`));
+    const h = botHarness({ enricher: enricher(many) });
+    const { author } = await room(h);
+    await h.bot.handleUpdate(h.message(100, "/text words"));
+    await vi.waitFor(() => expect(lastKeyboard(h.calls).some((b) => b.text === "✅ Добавить (5)")).toBe(true));
+
+    // Пока человек смотрел список, остаток израсходовали другим путём (Mini App, расширение).
+    for (let i = 0; i < QUOTAS.add_word.limit; i++) {
+      await checkAndCountWord(h.db, { userId: author.id, timeZone: author.timezone, now: T0 });
+    }
+
+    await h.bot.handleUpdate(h.callback(100, button(h.calls, "✅ Добавить")));
+    await vi.waitFor(() => expect(h.calls.some((c) => String(c.payload.text).includes("Лимит слов"))).toBe(true));
+
+    // Ни одного слова сверх лимита: всё, что сохранилось, укладывается в предел.
+    const saved = await h.db.select().from(words).where(eq(words.addedBy, author.id));
+    expect(saved.length).toBe(0);
+    const used = await quotaUsed(h.db, { userId: author.id, kind: "add_word", timeZone: author.timezone, now: T0 });
+    expect(used).toBeLessThanOrEqual(QUOTAS.add_word.limit);
   });
 
   it("ignores taps on someone else's batch", async () => {

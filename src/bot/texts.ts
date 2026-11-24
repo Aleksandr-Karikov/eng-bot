@@ -416,8 +416,16 @@ export function batchListText(n: number): string {
   return `🧺 Нашёл ${n} ${plural(n, "слово или фразу", "слова или фразы", "слов и фраз")}. Сними галочки с ненужного:`;
 }
 
-export function batchDoneText(words: Array<{ term: string }>): string {
-  return words.length ? `✅ Добавлено: ${words.length} — ${termsList(words)}` : "Ничего не добавлено";
+/**
+ * Итог пачки. `refused` — пачка остановилась на лимите, и человеку надо сказать это прямо:
+ * иначе он видит «Добавлено: 3» без объяснения, почему было отмечено десять.
+ */
+export function batchDoneText(words: Array<{ term: string }>, refused = false): string {
+  if (!words.length) {
+    return refused ? "Лимит слов на сегодня выбран — ничего не добавлено. Завтра продолжим, а пока повтори уже добавленное: /learn" : "Ничего не добавлено";
+  }
+  const done = `✅ Добавлено: ${words.length} — ${termsList(words)}`;
+  return refused ? `${done}\n\nОстальные не влезли в лимит слов — продолжим завтра.` : done;
 }
 
 /** Ступень 2: русский перевод виден, английское слово с транскрипцией и примером — под спойлером. */

@@ -12,8 +12,8 @@ import { batchDoneText, batchListText, esc } from "../texts";
 import { broadcastBatch, commandInput, resolveRoom, sendPreview } from "../word-flow";
 import { downloadImage, ImageTooBigError, imageOf, type ImageRef } from "../files";
 import { findYoutubeUrl, YoutubeBlockedError, type Subtitles } from "../../youtube/subtitles";
-import { allowQuota, spendWordQuota } from "./quota";
-import { QUOTAS, wordsLeft } from "../../services/limits";
+import { allowQuota } from "./quota";
+import { checkAndCountWord, QUOTAS, wordsLeft } from "../../services/limits";
 
 const USAGE =
   "Пришли текст или список слов после команды:\n/text It was pure serendipity that we met\nИли ответь командой /text на сообщение или фото — разберу его.";
@@ -94,7 +94,6 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
     chatId: ctx.chat.id,
     roomId: room.id,
     timezone: ctx.user.timezone,
-    left,
     items: fresh.slice(0, left),
   });
   await ctx.reply(batchListText(batch.items.length), { reply_markup: batchKeyboard(batch) });
@@ -103,25 +102,33 @@ async function offerExtracted(ctx: BotContext, deps: Deps, extract: () => Promis
 /**
  * Сохраняет слова из пачки, пропуская появившиеся тем временем дубли.
  *
- * Здесь же расходуется лимит на слова — на каждое **действительно сохранённое**: дубль и слово в
- * удалённую комнату места не занимают. Проверка лимита стоит в `offerExtracted`, то есть пачку вообще
- * не показывают, когда дневной лимит выбран; при частичном остатке пачка сохранит столько, сколько
- * помещается, и остановится — остальное человек добавит завтра.
+ * Лимит спрашивается **перед каждым** словом. Раньше пачка запоминала остаток при создании (`batch.left`)
+ * и опиралась на него при сохранении, но между показом списка и нажатием «✅ Добавить» остаток мог уйти
+ * другим путём — Mini App, расширение, второй телефон. Тогда пачка сохраняла слова сверх лимита (замер:
+ * остаток 0, сохранено 50), а каждое лишнее слово — это платные `enrich` и `mnemonics`. Снимок убран
+ * совсем: поле, которое никто не читает, выдавало бы себя за действующую защиту.
+ *
+ * Порядок на слово: сначала проверить и списать лимит, потом сохранять. Дубль, появившийся между показом
+ * и сохранением, попытку всё-таки потратит — но такого дубля почти не бывает (`filterNewItems` отсеивает
+ * их до создания пачки), а бесплатное слово дороже одной попытки.
  */
-async function saveItems(deps: Deps, batch: Batch, items: WordDraft[]): Promise<void> {
+async function saveItems(deps: Deps, batch: Batch, items: WordDraft[]): Promise<{ saved: number; refused: boolean }> {
+  let saved = 0;
   for (const draft of items) {
-    if (batch.saved.length >= batch.left) break;
+    // Именно `userId`: у `Batch.id` — номер пачки, а не человек, и счётчик ушёл бы не тому.
+    const quota = await checkAndCountWord(deps.db, { userId: batch.userId, timeZone: batch.timezone, now: deps.now() });
+    if (!quota.allowed) return { saved, refused: true };
     const result = await saveWord(deps.db, { roomId: batch.roomId, addedBy: batch.userId, draft, now: deps.now() });
     if (result.status !== "saved") continue;
-    // Именно `userId`: у `Batch.id` — номер пачки, а не человек, и счётчик ушёл бы не тому.
-    await spendWordQuota(deps, { userId: batch.userId, timezone: batch.timezone });
     batch.saved.push(result.word);
+    saved++;
   }
+  return { saved, refused: false };
 }
 
-async function finish(ctx: BotContext, deps: Deps, batch: Batch): Promise<void> {
+async function finish(ctx: BotContext, deps: Deps, batch: Batch, refused = false): Promise<void> {
   batch.finished = true;
-  await ctx.reply(batchDoneText(batch.saved), {
+  await ctx.reply(batchDoneText(batch.saved, refused), {
     ...HTML,
     reply_markup: batch.saved.length ? batchUndoKeyboard(batch.id, batch.saved.length) : undefined,
   });
@@ -146,9 +153,11 @@ export async function onBatchDraft(ctx: BotContext, deps: Deps, draft: Draft, ac
   deps.drafts.delete(draft.id);
   if (!batch || batch.finished) return void (await ctx.editMessageText("Эта пачка уже неактуальна"));
 
-  if (action === "ok") await saveItems(deps, batch, [toWordDraft(draft)]);
+  const result = action === "ok" ? await saveItems(deps, batch, [toWordDraft(draft)]) : undefined;
   // Пометка на прошлой карточке — косметика: не вышло (лимит Telegram) — следующую карточку всё равно показываем.
-  await ctx.editMessageText(`${action === "ok" ? "✅" : "⏭"} <b>${esc(draft.term)}</b>`, HTML).catch((err) => console.error("Batch card mark failed", err));
+  const mark = result?.refused ? "🚫" : action === "ok" ? "✅" : "⏭";
+  await ctx.editMessageText(`${mark} <b>${esc(draft.term)}</b>`, HTML).catch((err) => console.error("Batch card mark failed", err));
+  if (result?.refused) return finish(ctx, deps, batch, true);
   if (action === "stop") return finish(ctx, deps, batch);
   batch.position++;
   await showCurrent(ctx, deps, batch);
@@ -248,7 +257,7 @@ export function registerBatch(bot: Bot<BotContext>, deps: Deps): void {
       return showCurrent(ctx, deps, batch);
     }
     await ctx.editMessageText(batchListText(batch.items.length));
-    await saveItems(deps, batch, selected);
-    await finish(ctx, deps, batch);
+    const result = await saveItems(deps, batch, selected);
+    await finish(ctx, deps, batch, result.refused);
   });
 }
