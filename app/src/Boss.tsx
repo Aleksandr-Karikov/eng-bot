@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { buyUpgrade, fight, getBoss, type Boss, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
+import { bossScreen } from "../../src/app/boss-screen";
 
 const PHASE: Record<Boss["phase"], { title: string; art: string }> = {
   fresh: { title: "Спокоен", art: "boss-arena.webp" },
@@ -129,6 +130,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       <div className="center">
         <Spinner size="l" />
       </div>
+    );
+  }
+  // Выключенный режим отличается от «нет комнаты» и проверяется первым: во втором случае нужно завести
+  // комнату (/room), а в первом комната ни при чём — выключен сам режим (E9).
+  if (bossScreen(data).state === "disabled") {
+    return (
+      <Placeholder
+        header="Режим босса выключен"
+        description="Босс недели сейчас не показывается. Включить себе — /settings в боте, общий рубильник — у админа (BOSS_ENABLED). Слова и повторения работают как обычно."
+      />
     );
   }
   if (!data.boss) {
