@@ -1,5 +1,20 @@
-export function localPartsFormatter(timeZone: string): (now: Date) => { date: string; time: string } {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+/**
+ * Готовые форматтеры по поясу.
+ *
+ * `Intl.DateTimeFormat` — дорогой конструктор, а локальные даты считаются построчно: напоминания
+ * обходят всех людей на каждом тике, статистика и дайджест — каждую запись. Замер на копии
+ * прод-базы: 400 строк → 32.7 мс с новым форматтером на каждую против 1.3 мс с готовым, то есть
+ * **×15–24** (E32).
+ *
+ * Кеш на процесс: поясов в проекте единицы (по одному на комнату и на человека), поэтому карта не
+ * растёт. Ключ — сам пояс: форматтер зависит только от него, а не от момента.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  const cached = formatters.get(timeZone);
+  if (cached) return cached;
+  const made = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -8,6 +23,12 @@ export function localPartsFormatter(timeZone: string): (now: Date) => { date: st
     minute: "2-digit",
     hourCycle: "h23",
   });
+  formatters.set(timeZone, made);
+  return made;
+}
+
+export function localPartsFormatter(timeZone: string): (now: Date) => { date: string; time: string } {
+  const formatter = formatterFor(timeZone);
   return (now) => {
     const p = Object.fromEntries(formatter.formatToParts(now).map((x) => [x.type, x.value]));
     return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
@@ -15,7 +36,9 @@ export function localPartsFormatter(timeZone: string): (now: Date) => { date: st
 }
 
 export function localParts(timeZone: string, now: Date): { date: string; time: string } {
-  return localPartsFormatter(timeZone)(now);
+  const formatter = formatterFor(timeZone);
+  const p = Object.fromEntries(formatter.formatToParts(now).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
 }
 
 /**
