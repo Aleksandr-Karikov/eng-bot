@@ -252,7 +252,10 @@ export function digestText(
     if (r.streak) parts.push(`🔥 ${r.streak} ${plural(r.streak, "день", "дня", "дней")}`);
     return `${MEDALS[i] ?? "•"} <b>${esc(r.name)}</b> — ${parts.join(" · ")}`;
   });
-  const hero = rows[0] && rows[0].reviews7d > 0 ? `\n\nГерой недели: <b>${esc(rows[0].name)}</b> 🎉` : "";
+  // «Герой недели» — сравнение между людьми, поэтому в комнате с одним участником его нет: там первая
+  // строка таблицы всегда этот же человек, и поздравление «победил» приходит ему же (E8). Звание
+  // требует, чтобы было с кем сравнивать, а не только чтобы были повторения.
+  const hero = rows.length > 1 && rows[0] && rows[0].reviews7d > 0 ? `\n\nГерой недели: <b>${esc(rows[0].name)}</b> 🎉` : "";
   const duelLine = duels.length ? `\n⚔️ Дуэли: ${duels.map((d) => `${esc(d.name)} ${d.points}`).join(" · ")}` : "";
   const goalLine = goal ? `\n🎯 Цель недели: ${goal.done}/${goal.target} ${goal.done >= goal.target ? "✅" : "— в этот раз не дотянули"}` : "";
   return `🏆 <b>Итоги недели</b> в «${esc(roomName)}»\n\n${lines.join("\n")}${duelLine}${goalLine}${hero}\n\nНовая неделя — новые слова: /learn`;

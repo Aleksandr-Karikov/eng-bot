@@ -307,3 +307,31 @@ describe("«последний шанс» считается по поясу к�
     expect(dms[0]).toContain("5 часов");
   });
 });
+
+describe("«Герой недели» только когда есть с кем сравнивать (E8)", () => {
+  /**
+   * Звание «герой недели» — это сравнение между людьми: первая строка таблицы обошла остальных.
+   * В личном словаре участник один, и первая строка — он же, поэтому поздравление «победил»
+   * приходило человеку, который ни с кем не соревновался.
+   */
+  it("в комнате с одним участником строки героя нет, в комнате на двоих — есть", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, { canDm: true });
+    // Личный словарь: комната, где Alice — единственный участник (так создаёт /words).
+    const personal = await createRoom(db, { name: "Мои слова", createdBy: alice.id, now: nsk("2026-10-12T10:00"), personal: true });
+    await joinRoom(db, { roomId: personal.id, userId: alice.id, now: nsk("2026-10-12T10:00"), makeCurrent: true });
+    const saved = await saveWord(db, { roomId: personal.id, addedBy: alice.id, draft: { term: "solo", translation: "t", explanation: "", example: "" }, now: nsk("2026-10-12T10:00") });
+    if (saved.status !== "saved") throw new Error("fixture");
+    await answerCard(db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", now: nsk("2026-10-16T12:00") });
+
+    const [digest] = await collectDigests(db, nsk("2026-10-18T20:00"));
+    expect(digest).toBeDefined();
+    expect(digest.rows).toHaveLength(1);
+    const text = digestText(digest.room.name, digest.rows);
+    // Работа отражена: повторение и слово на месте.
+    expect(text).toContain("Alice");
+    expect(text).toContain("1 повт.");
+    // А «героя» нет: сравнивать не с кем.
+    expect(text).not.toContain("Герой недели");
+  });
+});
