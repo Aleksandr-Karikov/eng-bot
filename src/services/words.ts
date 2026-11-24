@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { newCard } from "../srs/srs";
 import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
-import { createCards } from "./cards";
 import { parseExampleTranslation, type WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
 import { removeReviewHistory } from "./combat-ledger";
@@ -87,31 +87,49 @@ export async function saveWord(
   // наборы), и забыть проверку в одном из них слишком легко.
   if (input.draft.term.trim().length > MAX_TERM) return { status: "too-long", limit: MAX_TERM };
   if (await findWord(db, input.roomId, input.draft.term)) return { status: "duplicate" };
-  const [word] = await db
-    .insert(words)
-    .values({
-      roomId: input.roomId,
-      addedBy: input.addedBy,
-      term: input.draft.term.trim(),
-      termNormalized: normalizeTerm(input.draft.term),
-      translation: input.draft.translation,
-      explanation: input.draft.explanation,
-      example: input.draft.example,
-      transcriptionUk: input.draft.transcriptionUk ?? "",
-      transcriptionUs: input.draft.transcriptionUs ?? "",
-      mnemonic: input.draft.mnemonic ?? "",
-      context: (input.draft.context ?? "").trim().slice(0, MAX_CONTEXT),
-      usefulness: input.draft.usefulness ?? null,
-      usefulnessNote: input.draft.usefulnessNote ?? "",
-      createdAt: input.now,
-    })
-    // Два почти одновременных добавления (двойной клик в расширении): второе — дубликат, а не ошибка.
-    .onConflictDoNothing()
-    .returning();
-  if (!word) return { status: "duplicate" };
   const members = await listMembers(db, input.roomId);
-  await createCards(db, members.map((m) => m.id), [word.id], input.now);
-  return { status: "saved", word, members };
+  // Слово и карточки — одно состояние. Раньше `INSERT words` и `createCards` шли порознь: падение
+  // между ними оставляло слово, невидимое участникам навсегда — оно есть в словаре комнаты, но ни у
+  // кого нет карточки, и в `/learn` оно не появится никогда (E28).
+  //
+  // Транзакция синхронная и намеренно: `better-sqlite3` не умеет ждать `async`-колбэк и коммитит
+  // то, что успело выполниться (проверено пробой — см. `saveAnswer`). Поэтому карточки вставляются
+  // здесь же, синхронно, а не через `createCards`, которая асинхронная.
+  // Вставка слова и карточек — ВНУТРИ одной транзакции: раньше слово вставлялось до неё, и падение
+  // на карточках оставляло слово без карточек навсегда (проверено тестом: слово оставалось в базе).
+  const created = db.transaction((tx) => {
+    const inserted = tx
+      .insert(words)
+      .values({
+        roomId: input.roomId,
+        addedBy: input.addedBy,
+        term: input.draft.term.trim(),
+        termNormalized: normalizeTerm(input.draft.term),
+        translation: input.draft.translation,
+        explanation: input.draft.explanation,
+        example: input.draft.example,
+        transcriptionUk: input.draft.transcriptionUk ?? "",
+        transcriptionUs: input.draft.transcriptionUs ?? "",
+        mnemonic: input.draft.mnemonic ?? "",
+        context: (input.draft.context ?? "").trim().slice(0, MAX_CONTEXT),
+        usefulness: input.draft.usefulness ?? null,
+        usefulnessNote: input.draft.usefulnessNote ?? "",
+        createdAt: input.now,
+      })
+      // Два почти одновременных добавления (двойной клик в расширении): второе — дубликат, а не ошибка.
+      .onConflictDoNothing()
+      .returning()
+      .all();
+    const word = inserted[0];
+    if (!word) return undefined;
+    const rows = members.map((m) => ({ userId: m.id, wordId: word.id, createdAt: input.now, ...newCard(input.now) }));
+    for (let i = 0; i < rows.length; i += 200) {
+      tx.insert(cards).values(rows.slice(i, i + 200)).onConflictDoNothing().run();
+    }
+    return word;
+  });
+  if (!created) return { status: "duplicate" };
+  return { status: "saved", word: created, members };
 }
 
 /**

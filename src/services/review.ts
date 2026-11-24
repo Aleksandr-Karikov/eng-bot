@@ -246,24 +246,40 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
   if (!card || card.reps !== input.expectedReps) return { result: "stale", damage: 0 };
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
   const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
-  // Условное обновление «если reps всё ещё прежний»: два почти одновременных ответа (кнопка и текст)
+  // Две записи — одно состояние. Раньше `UPDATE cards` и `INSERT review_logs` шли порознь: падение
+  // между ними сдвигало расписание повторений, но теряло урон, ленту боя, отмену и статистику —
+  // карточка «переехала», а ответа как будто не было (E28).
+  //
+  // Транзакция здесь СИНХРОННАЯ и намеренно: `better-sqlite3` — синхронный драйвер, его транзакция
+  // не умеет ждать `async`-колбэк и молча коммитит всё, что успело выполниться. Проверено пробой:
+  // `await db.transaction(async (tx) => …)` с исключением внутри оставлял и `reps = 5`, и запись
+  // в `review_logs`, то есть не откатывал ничего. Поэтому внутри — только синхронные `.run()`/`.all()`,
+  // а всё, что требует `await` (урон, чтение слова), посчитано до входа.
+  //
+  // Условное обновление «если reps всё ещё прежний» осталось: два почти одновременных ответа
   // не засчитаются дважды — второй увидит, что карточку уже обновили.
-  const [updated] = await db
-    .update(cards)
-    .set(review(card.fsrs, input.answer, input.now, word?.usefulness ?? null))
-    .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
-    .returning({ id: cards.id });
-  if (!updated) return { result: "stale", damage: 0 };
-  await db.insert(reviewLogs).values({
-    userId: card.userId,
-    cardId: card.id,
-    rating: input.answer,
-    ...damage,
-    stage: input.stage ?? null,
-    reviewedAt: input.now,
-    before: snapshotOf(card),
+  const outcome = db.transaction((tx) => {
+    const updated = tx
+      .update(cards)
+      .set(review(card.fsrs, input.answer, input.now, word?.usefulness ?? null))
+      .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
+      .returning({ id: cards.id })
+      .all();
+    if (!updated.length) return { result: "stale" as const, damage: 0 };
+    tx.insert(reviewLogs)
+      .values({
+        userId: card.userId,
+        cardId: card.id,
+        rating: input.answer,
+        ...damage,
+        stage: input.stage ?? null,
+        reviewedAt: input.now,
+        before: snapshotOf(card),
+      })
+      .run();
+    return { result: "ok" as const, damage: damage.damageDeci / 10 };
   });
-  return { result: "ok", damage: damage.damageDeci / 10 };
+  return outcome;
 }
 
 export async function answerCard(db: Db, input: Parameters<typeof recordAnswer>[1]): Promise<"ok" | "stale"> {
