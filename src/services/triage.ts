@@ -4,7 +4,9 @@ import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, users, words, type CardRow, type Word } from "../db/schema";
 import { dropCard, restoreCard } from "./cards";
+import { isMember } from "./rooms";
 import { markKnown, undoAnswer } from "./review";
+import { getWord } from "./words";
 
 /**
  * Колода «новые слова от друзей»: решить про каждое одним свайпом — учу, уже знаю или не для меня.
@@ -48,12 +50,26 @@ export async function triage(db: Db, input: { userId: number; cardId: number; ac
   return true;
 }
 
-/** ↩️ Отменить решение: слово снова новое и неразобранное. wordId нужен для «не для меня» — карточки тогда уже нет. */
+/**
+ * ↩️ Отменить решение: слово снова новое и неразобранное. wordId нужен для «не для меня» — карточки тогда уже нет.
+ *
+ * `wordId` приходит с клиента, поэтому ему нельзя верить: без проверки любой участник бота вернул бы
+ * себе чужое слово (оно стало бы карточкой и отдалось в очереди целиком) — то есть вычитал бы словарь
+ * чужой комнаты перебором id. Поэтому слово берётся из базы, проверяется членство в его комнате,
+ * а `cardId` сверяется с `wordId`: отменять можно только то, что действительно было решено.
+ */
 export async function undoTriage(db: Db, input: { userId: number; cardId: number; wordId: number; action: TriageAction; now: Date }): Promise<boolean> {
   if (input.action === "drop") {
-    await restoreCard(db, input.userId, input.wordId, input.now);
+    const word = await getWord(db, input.wordId);
+    if (!word || !(await isMember(db, word.roomId, input.userId))) return false;
+    await restoreCard(db, input.userId, word.id, input.now);
     return true;
   }
+  // Для остальных действий карточка ещё есть — по ней и сверяем: чужой cardId не пройдёт.
+  // wordId необязателен (клиент может его не прислать) — если прислан, он обязан совпасть со словом карточки.
+  const [card] = await db.select().from(cards).where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
+  if (!card) return false;
+  if (Number.isInteger(input.wordId) && card.wordId !== input.wordId) return false;
   if (input.action === "know" && !(await undoAnswer(db, { userId: input.userId, cardId: input.cardId }))) return false;
   const [updated] = await db
     .update(cards)

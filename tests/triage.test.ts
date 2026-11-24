@@ -71,4 +71,53 @@ describe("🆕 new words from friends, a swipe each", () => {
     await h.bot.handleUpdate(h.callback(100, `k:1:n`));
     expect((await triageQueue(h.db, me.id)).map((i) => i.word.term)).toEqual(["river"]);
   });
+
+  it("чужое слово нельзя вернуть себе отменой «не для меня»", async () => {
+    // Проба из аудита: пользователь вне комнаты возвращал себе чужое слово по его id и читал его в очереди.
+    const { h, me, bank, app, auth } = await setup();
+    const stranger = await makeUser(h.db, 300, "Чужой");
+    const strangerApp = createApp({ deps: h.deps, botToken: TOKEN });
+    const strangerAuth = {
+      authorization: `tma ${sign({ user: { id: 300, first_name: "Чужой" } }, TOKEN, new Date())}`,
+      "content-type": "application/json",
+    };
+
+    const res = await strangerApp.request("/api/triage", {
+      method: "POST",
+      headers: strangerAuth,
+      body: JSON.stringify({ cardId: 999_999, wordId: bank.id, action: "drop", undo: true }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await myCard(h, stranger.id, bank.id)).toBeUndefined();
+    const { cards: deck } = await (await strangerApp.request("/api/triage", { headers: strangerAuth })).json();
+    expect(deck).toEqual([]);
+    // Свой словарь не пострадал: у меня карточка на месте.
+    expect(await myCard(h, me.id, bank.id)).toBeDefined();
+    // И обычная отмена своей карточки продолжает работать.
+    await app.request("/api/triage", { method: "POST", headers: auth, body: JSON.stringify({ cardId: (await myCard(h, me.id, bank.id))!.id, action: "drop" }) });
+    const own = await app.request("/api/triage", {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({ cardId: (await myCard(h, me.id, bank.id))?.id ?? 0, wordId: bank.id, action: "drop", undo: true }),
+    });
+    expect(own.status).toBe(200);
+    expect(await myCard(h, me.id, bank.id)).toBeDefined();
+  });
+
+  it("отмена не срабатывает, если cardId от другой карточки", async () => {
+    const { h, me, bank, river, app, auth } = await setup();
+    const post = (body: object) => app.request("/api/triage", { method: "POST", headers: auth, body: JSON.stringify(body) });
+    const bankCard = await myCard(h, me.id, bank.id);
+    const riverCard = await myCard(h, me.id, river.id);
+
+    await post({ cardId: riverCard!.id, action: "know" });
+    const decided = await myCard(h, me.id, river.id);
+    // Отменяем «знаю» по river, но подсовываем wordId банка — сверка должна это отклонить.
+    const res = await post({ cardId: riverCard!.id, wordId: bank.id, action: "know", undo: true });
+    expect(res.status).toBe(409);
+    // Решение по river не отменено: карточка осталась разобранной, состояние и triagedAt как были.
+    expect(await myCard(h, me.id, river.id)).toMatchObject({ state: decided!.state, triagedAt: decided!.triagedAt });
+    expect(bankCard!.triagedAt).toBeNull();
+  });
 });
