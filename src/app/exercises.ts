@@ -40,7 +40,7 @@ export async function appCheck(
   const stage = String(body.stage) as TypedStage;
   const answer = typeof body.answer === "string" ? body.answer.trim().slice(0, 500) : "";
   const dunno = body.dunno === true;
-  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !STAGES.has(stage) || (!answer && !dunno)) return fail(400, "bad answer");
+  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !STAGES.has(stage) || (!answer && !dunno)) return fail(400, "Не получилось разобрать ответ — обнови карточку и попробуй ещё раз");
   const item = await getDueItemByCard(deps.db, user.id, cardId);
   if (!item) return fail(404, "Это слово уже удалили");
   const { word } = item;

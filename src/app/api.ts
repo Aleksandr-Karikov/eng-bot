@@ -255,7 +255,11 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
 
 /** Ответ на вопрос по ошибкам: счёт темы; отработанная тема — её оставшиеся вопросы больше не показываем. */
 export async function appDrillAnswer(deps: Deps, user: User, body: { category?: unknown; correct?: unknown }) {
-  if (typeof body.category !== "string" || typeof body.correct !== "boolean") return { status: 400, body: { ok: false, error: "bad answer" } };
+  if (typeof body.category !== "string" || typeof body.correct !== "boolean") {
+    // Текст уходит человеку: клиент показывает `error` как есть, поэтому он по-русски и говорит,
+    // что делать (E34). Техническая причина здесь не нужна — она не помогает и пугает.
+    return { status: 400, body: { ok: false, error: "Не получилось разобрать ответ — вернись к вопросам и попробуй ещё раз" } };
+  }
   const progress = await recordDrillAnswer(deps.db, user.id, body.category, body.correct, deps.now());
   const state = deps.drills.get(user.id);
   if (progress?.resolved && state) {
@@ -273,7 +277,9 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   const answer = String(body.answer) as Answer;
   // Задания с ответом текстом оценивает /api/check; сюда — когда проверить не вышло и человек оценил себя сам.
   const stage = typeof body.stage === "string" && ["ru_en", "collocation", "cloze", "listen", "sentence"].includes(body.stage) ? body.stage : "en_ru";
-  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
+  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) {
+    return { status: 400, body: { ok: false, error: "Не получилось разобрать ответ — обнови карточку и попробуй ещё раз" } };
+  }
   // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
   if (body.practice === true) return { status: 200, body: { ok: true, result: "practice", damage: 0 } };
   const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
@@ -346,7 +352,7 @@ const TRIAGE_ACTIONS = new Set<TriageAction>(["learn", "know", "drop"]);
 export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown; wordId?: unknown; action?: unknown; undo?: unknown }) {
   const action = String(body.action) as TriageAction;
   const cardId = Number(body.cardId);
-  if (!TRIAGE_ACTIONS.has(action) || !Number.isInteger(cardId)) return { status: 400, body: { ok: false, error: "bad action" } };
+  if (!TRIAGE_ACTIONS.has(action) || !Number.isInteger(cardId)) return { status: 400, body: { ok: false, error: "Не понял действие — обнови экран и попробуй ещё раз" } };
   const now = deps.now();
   const ok = body.undo
     ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
@@ -502,7 +508,7 @@ export async function appSetTarget(deps: Deps, user: User) {
 /** Сменить комнату для слов из наборов. Ошибка — текстом для человека. */
 export async function appSetSetTarget(deps: Deps, user: User, body: { roomId?: unknown }) {
   const roomId = Number(body.roomId);
-  if (!Number.isInteger(roomId)) return { status: 400 as const, body: { ok: false as const, error: "bad room" } };
+  if (!Number.isInteger(roomId)) return { status: 400 as const, body: { ok: false as const, error: "Не понял, о какой комнате речь — обнови экран" } };
   const result = await setSetTarget(deps.db, user, roomId);
   if (!result.ok) return { status: 409 as const, body: { ok: false as const, error: result.error } };
   const fresh = await getUserByTelegramId(deps.db, user.telegramId);
@@ -535,13 +541,13 @@ const SET_DECISIONS = new Set<SetDecision>(["learn", "know", "drop"]);
 
 export async function appSetDecide(deps: Deps, user: User, body: { itemId?: unknown; decision?: unknown; undo?: unknown }) {
   const itemId = Number(body.itemId);
-  if (!Number.isInteger(itemId)) return { status: 400, body: { ok: false, error: "bad item" } };
+  if (!Number.isInteger(itemId)) return { status: 400, body: { ok: false, error: "Не понял, о каком слове речь — обнови экран" } };
   if (body.undo === true) {
     const ok = await undoDecision(deps.db, { userId: user.id, itemId });
     return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
   }
   const decision = String(body.decision) as SetDecision;
-  if (!SET_DECISIONS.has(decision)) return { status: 400, body: { ok: false, error: "bad decision" } };
+  if (!SET_DECISIONS.has(decision)) return { status: 400, body: { ok: false, error: "Не понял выбор — обнови экран и попробуй ещё раз" } };
   const ok = await decide(deps.db, { user, itemId, decision, now: deps.now() });
   return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже разобрано" } };
 }
