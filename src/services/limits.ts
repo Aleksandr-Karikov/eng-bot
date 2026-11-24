@@ -370,30 +370,106 @@ export async function wordsLeft(
 /**
  * Проверить дневной и недельный лимиты на слова и, если оба позволяют, записать по попытке в каждый.
  *
- * Отказ **ничего** не пишет: если упёрся недельный, дневной счётчик тоже не растёт — иначе человек
+ * Отказ **ничего** не считает: если упёрся недельный, дневной счётчик тоже не растёт — иначе человек
  * сжигал бы дневной запас на отказах и после понедельника начинал бы день с нуля доступных слов.
  *
- * Поэтому проверка и запись разведены: сначала читаем оба счётчика (`quotaUsed`), и только убедившись,
- * что места хватает по обоим, пишем. Звать `checkAndCount` через `Promise.all` нельзя — он пишет сам,
- * и дневной счётчик вырос бы ещё до того, как выяснится отказ по недельному.
+ * Раньше здесь были чтение обоих счётчиков и две независимые записи через `Promise.all`: между чтением
+ * и записью оставался `await`, поэтому два параллельных добавления при остатке 1 могли оба пройти (E24).
+ *
+ * Как устроено теперь — два шага, и считает только второй:
+ *
+ * 1. `ensureWordCounters` идемпотентно заводит обе строки со счётчиком 0 (`ON CONFLICT DO NOTHING`).
+ *    Это не расход и не решение — если места нет, счётчики просто останутся нулевыми.
+ * 2. Один `UPDATE` обеих строк с общим гейтом `WITH … AS MATERIALIZED`, который проверяет **оба**
+ *    предела сразу. Либо обе строки получают +1, либо ни одна: гейт вычисляется до записи, и
+ *    `RETURNING` показывает, какие строки изменились.
+ *
+ * Почему не одной инструкцией `INSERT … ON CONFLICT … WHERE`: `DO UPDATE … WHERE` не действует на
+ * **вставку** — отсутствующая строка появлялась бы, не спросив условие. Проверено пробой: при
+ * исчерпанном недельном дневная строка вставлялась со счётчиком 1. Шаг `ensure` убирает этот случай.
+ *
+ * Почему `MATERIALIZED` обязателен: без него SQLite пересчитывает подзапрос для каждой строки уже
+ * после первой записи, и вторая видит изменённое значение. Проверено: без материализации на границе
+ * (49/199) проходила только одна строка.
+ *
+ * Переносимость сохранена: `WITH … MATERIALIZED`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE … RETURNING`
+ * есть и в SQLite, и в Postgres. `db.transaction` не нужен.
  */
 export async function checkAndCountWord(
   db: Db,
   input: { userId: number; timeZone: string; now: Date },
 ): Promise<QuotaState> {
+  const day = QUOTAS.add_word;
+  const week = QUOTAS.add_word_week;
+  const dayPeriod = periodKey(day.period, input.timeZone, input.now);
+  const weekPeriod = periodKey(week.period, input.timeZone, input.now);
+  await ensureWordCounters(db, { ...input, dayPeriod, weekPeriod });
+
+  /** Значение счётчика; отсутствующая строка считается нулём. */
+  const counter = (period: string, kind: QuotaKind) => sql`coalesce((
+    SELECT p.count FROM usage_counters p
+    WHERE p.user_id = ${input.userId} AND p.period = ${period} AND p.kind = ${kind} AND p.scope = ''
+  ), 0)`;
+  // Гейт — материализованный подзапрос: SQLite без `MATERIALIZED` пересчитывает его для каждой
+  // обновляемой строки уже после первой записи, и вторая видит изменённое значение.
+  const gate = sql`(SELECT g.ok FROM (WITH g AS MATERIALIZED (
+    SELECT (${counter(dayPeriod, "add_word")} < ${day.limit}
+      AND ${counter(weekPeriod, "add_word_week")} < ${week.limit}) AS ok
+  ) SELECT ok FROM g) AS g)`;
+
+  const written = await db
+    .update(usageCounters)
+    .set({ count: sql`${usageCounters.count} + 1`, updatedAt: input.now })
+    .where(and(
+      eq(usageCounters.userId, input.userId),
+      eq(usageCounters.scope, ""),
+      sql`${gate}`,
+      sql`((${usageCounters.period} = ${dayPeriod} AND ${usageCounters.kind} = 'add_word') OR (${usageCounters.period} = ${weekPeriod} AND ${usageCounters.kind} = 'add_word_week'))`,
+    ))
+    .returning({ kind: usageCounters.kind, count: usageCounters.count });
+
+  const dayRow = written.find((row) => row.kind === "add_word");
+  const weekRow = written.find((row) => row.kind === "add_word_week");
+  // Обе строки прошли — попытка засчитана. Иначе не прошла ни одна.
+  if (dayRow && weekRow) return { allowed: true, used: dayRow.count, limit: day.limit, refusal: day.refusal };
+
+  // Отказ: `returning` не говорит, какой предел упёрся, а человеку нужен верный текст.
   const [dayUsed, weekUsed] = await Promise.all([
     quotaUsed(db, { ...input, kind: "add_word" }),
     quotaUsed(db, { ...input, kind: "add_word_week" }),
   ]);
-  const day = QUOTAS.add_word;
-  const week = QUOTAS.add_word_week;
-  if (dayUsed >= day.limit) return { allowed: false, used: dayUsed, limit: day.limit, refusal: day.refusal };
   if (weekUsed >= week.limit) return { allowed: false, used: weekUsed, limit: week.limit, refusal: week.refusal };
-  const [state] = await Promise.all([
-    checkAndCount(db, { ...input, kind: "add_word" }),
-    checkAndCount(db, { ...input, kind: "add_word_week" }),
-  ]);
-  return state;
+  return { allowed: false, used: dayUsed, limit: day.limit, refusal: day.refusal };
+}
+
+/**
+ * Завести обе строки счётчиков со значением 0, если их ещё нет.
+ *
+ * Это подготовка, а не расход: `ON CONFLICT DO NOTHING` не трогает существующие строки, а отсутствие
+ * места здесь ничего не решает — решает гейт в `checkAndCountWord`. Нужна, чтобы тот мог обновлять
+ * строки, а не вставлять их: `DO UPDATE … WHERE` не проверяет условие при вставке.
+ */
+async function ensureWordCounters(
+  db: Db,
+  input: { userId: number; now: Date; dayPeriod: string; weekPeriod: string },
+): Promise<void> {
+  // Заводим строку, только если места хватает по ОБОИМ счётчикам: иначе отказ оставил бы в базе
+  // нулевую строку, то есть след отказа. `SELECT … WHERE` не даёт вставить лишнего.
+  const counter = (period: string, kind: QuotaKind) => sql`coalesce((
+    SELECT p.count FROM usage_counters p
+    WHERE p.user_id = ${input.userId} AND p.period = ${period} AND p.kind = ${kind} AND p.scope = ''
+  ), 0)`;
+  const room = sql`${counter(input.dayPeriod, "add_word")} < ${QUOTAS.add_word.limit}
+    AND ${counter(input.weekPeriod, "add_word_week")} < ${QUOTAS.add_word_week.limit}`;
+  // `values(...).where(...)` drizzle не поддерживает, поэтому строки заводятся `INSERT … SELECT`: у него
+  // условие есть, и при исчерпанном пределе он просто не вставит ничего.
+  await db.insert(usageCounters).select(sql`
+    SELECT ${input.userId} AS user_id, ${input.dayPeriod} AS period, 'add_word' AS kind, '' AS scope, 0 AS count, ${input.now.getTime()} AS updated_at
+    WHERE ${room}
+    UNION ALL
+    SELECT ${input.userId}, ${input.weekPeriod}, 'add_word_week', '', 0, ${input.now.getTime()}
+    WHERE ${room}
+  `).onConflictDoNothing();
 }
 
 /**

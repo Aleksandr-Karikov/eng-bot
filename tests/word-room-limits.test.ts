@@ -362,3 +362,50 @@ describe("лимиты: комнаты, заведённые до лимита",
     expect(gate.allowed === false && gate.refusal).not.toContain("уже создал 3");
   });
 });
+
+describe("два счётчика слов пишутся одной инструкцией (E24)", () => {
+  /**
+   * Раньше `checkAndCountWord` читал оба счётчика, потом писал оба через `Promise.all`. Между чтением
+   * и записью оставался `await`, поэтому два параллельных добавления при остатке 1 могли пройти оба.
+   * Теперь оба предела проверяются одним материализованным гейтом внутри единственного `UPDATE`:
+   * либо обе строки получают +1, либо ни одна.
+   */
+  it("параллельные попытки не сжигают дневной счётчик на отказах", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 100);
+    const now = at(2 * DAY);
+    // Остаток ровно 1 по НЕДЕЛЬНОМУ: на дневном есть запас (10 из 50).
+    await db.insert(usageCounters).values([
+      { userId: user.id, period: periodKey("day", MSK, now), kind: "add_word", scope: "", count: 10, updatedAt: now },
+      { userId: user.id, period: periodKey("week", MSK, now), kind: "add_word_week", scope: "", count: QUOTAS.add_word_week.limit - 1, updatedAt: now },
+    ]);
+
+    const results = await Promise.all([
+      checkAndCountWord(db, { userId: user.id, timeZone: MSK, now }),
+      checkAndCountWord(db, { userId: user.id, timeZone: MSK, now }),
+    ]);
+    // Прошла ровно одна попытка: вторую останавливает недельный предел.
+    expect(results.filter((r) => r.allowed)).toHaveLength(1);
+
+    // Главное: отказ НЕ сжёг дневной запас. Старый код писал дневной до того, как выяснялся отказ
+    // по недельному, и здесь получалось 12 вместо 11 — человек терял место на день за то, что
+    // упёрся совсем в другой лимит.
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(11);
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word_week", timeZone: MSK, now })).toBe(QUOTAS.add_word_week.limit);
+  });
+
+  it("при исчерпанном недельном дневной не растёт", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 101);
+    const now = at(2 * DAY);
+    // Недельный забит под потолок, дневной пуст.
+    await db.insert(usageCounters).values({
+      userId: user.id, period: periodKey("week", MSK, now), kind: "add_word_week", scope: "", count: QUOTAS.add_word_week.limit, updatedAt: now,
+    });
+    const state = await checkAndCountWord(db, { userId: user.id, timeZone: MSK, now });
+    expect(state.allowed).toBe(false);
+    expect(state.refusal).toBe(QUOTAS.add_word_week.refusal);
+    // Дневной не тронут: отказ ничего не считает.
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(0);
+  });
+});
