@@ -5,6 +5,7 @@ import type { LlmBackend } from "./backend";
 import {
   buildCheckPrompt,
   buildExampleTranslationPrompt,
+  dataNotInstructionsPrompt,
   dictionaryFormPrompt,
   buildCorrectionPrompt,
   parseCorrection,
@@ -193,7 +194,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async extract(text: string): Promise<ExtractedItem[]> {
-    return parseExtraction(await this.ask(dictionaryFormPrompt(buildExtractPrompt(text, currentLang()), currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
+    return parseExtraction(await this.ask(dictionaryFormPrompt(dataNotInstructionsPrompt(buildExtractPrompt(text, currentLang())), currentLang()), Math.max(this.opts.timeoutMs, EXTRACT_TIMEOUT_MS)));
   }
 
   async extractImage(image: ImageInput, note?: string): Promise<ExtractedItem[]> {
@@ -222,7 +223,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async check(text: string, context?: ContextMessage[], author?: string, leadIn?: string[]): Promise<CheckResult> {
-    return parseCheck(await this.ask(buildCheckPrompt(text, context, author, leadIn, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseCheck(await this.ask(dataNotInstructionsPrompt(buildCheckPrompt(text, context, author, leadIn, currentLang())), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async cloze(term: string, translation: string): Promise<ClozeDraft[]> {
@@ -274,7 +275,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   /** Естественные варианты — сильной моделью: Haiku склонен переводить дословно. */
   async say(phrase: string): Promise<SayAnswer> {
-    return parseSayAnswer(await this.ask(buildSayPrompt(phrase, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
+    return parseSayAnswer(await this.ask(dataNotInstructionsPrompt(buildSayPrompt(phrase, currentLang())), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 
   async talkReply(input: TalkInput): Promise<string> {
@@ -297,11 +298,11 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   async reviewSentence(input: SentenceInput): Promise<SentenceReview> {
-    return parseSentenceReview(await this.ask(buildSentencePrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseSentenceReview(await this.ask(dataNotInstructionsPrompt(buildSentencePrompt(input, currentLang())), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
-    return parseJudgement(await this.ask(buildJudgePrompt(input, currentLang()), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+    return parseJudgement(await this.ask(dataNotInstructionsPrompt(buildJudgePrompt(input, currentLang())), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
   /** Один запрос к провайдеру без инструментов; возвращает текст ответа. */
