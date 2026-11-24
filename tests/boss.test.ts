@@ -180,6 +180,34 @@ async function bossTab() {
 }
 
 describe("урон из запаса", () => {
+  // Настройка по умолчанию: ручной удар недоступен, потому что копить выключено. Экран обязан объяснить
+  // это и предложить включить — тест фиксирует состояние сервера, на котором держится объяснение (E1).
+  it("при выключенном «Копить урон» ручной удар недоступен, и это видно по состоянию", async () => {
+    const { app, headers, alice, room } = await bossTab();
+    const state = await (await app.request("/api/boss", { headers })).json();
+    expect(state.combat.bank).toBe(false);
+    expect(state.combat.balance).toBe(0);
+    expect(state.combat.hit).toMatchObject({ spend: 0, damage: 0 });
+    expect(state.boss.hp).toBeGreaterThan(0);
+
+    // Ответ всё равно идёт в босса комнаты напрямую — поэтому человек и не должен видеть пустой запас
+    // как «сломалось»: урон начислен, просто потратить его ударом нечего.
+    const post = async (path: string, body: object) => (await app.request(path, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    })).json();
+    expect(await post("/api/answer", { cardId: 1, reps: 0, answer: "good" })).toMatchObject({ result: "ok" });
+    const after = await (await app.request("/api/boss", { headers })).json();
+    expect(after.combat.balance).toBe(0);
+    expect(after.boss.hp).toBeLessThan(state.boss.hp);
+
+    // Кнопка «Включить копить урон» делает запас ненулевым: следующий ответ уже копится.
+    const { combat } = await post("/api/boss/combat", { bank: true });
+    expect(combat).toMatchObject({ bank: true, balance: 0, roomId: room.id });
+    expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good" })).toMatchObject({ result: "ok" });
+    const banked = await (await app.request("/api/boss", { headers })).json();
+    expect(banked.combat.balance).toBeGreaterThan(0);
+  });
+
   it("зачисляет ответ один раз, применяет ручной удар к боссу и защищает потраченный запас от отмены", async () => {
     const { h, app, headers, room } = await bossTab();
     await setWeeklyGoal(h.db, room.id, 2);

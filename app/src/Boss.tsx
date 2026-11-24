@@ -401,6 +401,17 @@ function CombatPanel({ combat, hp, busy, fighting, onAction }: {
           {hit.damage > 0 ? `Ударить босса на ${hpFormat.format(hit.damage)} HP` : "Ударить босса из запаса"}
         </Button>
       )}
+      {/* Запас пуст, а копить выключено: без этого человек видит мёртвую кнопку и не знает причины. */}
+      {hp > 0 && hit.spend <= 0 && !combat.bank && (
+        <>
+          <Text className="hint">
+            Запас пуст: урон за карточки сразу уходит в босса, а не копится. Включи «Копить урон», чтобы ответы снова можно было тратить ударом.
+          </Text>
+          <Button size="m" mode="bezeled" stretched loading={fighting === "bank"} disabled={busy} onClick={() => onAction("bank")}>
+            Включить копить урон
+          </Button>
+        </>
+      )}
       {hit.damage > hit.spend && <Text className="hint">Из запаса спишется {hpFormat.format(hit.spend)} HP.</Text>}
       <details className="combat-mobs">
         <summary>Мобы недели</summary>
