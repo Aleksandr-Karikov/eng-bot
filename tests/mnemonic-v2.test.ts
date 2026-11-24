@@ -97,3 +97,35 @@ describe("where mnemonics come from", () => {
     expect((await getWord(db, ids[2]))?.mnemonic).toBe("m-c");
   });
 });
+
+describe("запоминалки не сдвигаются при нумерации от нуля (E27)", () => {
+  /**
+   * Раньше сопоставление шло по номеру `i === k + 1`. Модель, начавшая нумерацию с нуля, сдвигала
+   * все запоминалки на один пункт — и чужая запоминалка сохранялась в слово навсегда. Теперь главный
+   * ключ — `term`: он есть в ответе и не зависит от того, как модель считает.
+   */
+  it("по term: нумерация от 0 не сдвигает запоминалки", () => {
+    const raw = JSON.stringify([
+      { i: 0, term: "bank", final: "банк — берег реки" },
+      { i: 1, term: "river", final: "река течёт" },
+    ]);
+    expect(parseMnemonics(raw, 2, ["bank", "river"])).toEqual(["банк — берег реки", "река течёт"]);
+  });
+
+  it("по term: перемешанный порядок тоже верен", () => {
+    const raw = JSON.stringify([
+      { i: 2, term: "кролик", final: "второе" },
+      { i: 1, term: "заяц", final: "первое" },
+    ]);
+    expect(parseMnemonics(raw, 2, ["заяц", "кролик"])).toEqual(["первое", "второе"]);
+  });
+
+  it("без term работает прежнее правило по номеру", () => {
+    const raw = JSON.stringify([{ i: 1, final: "первое" }, { i: 2, final: "второе" }]);
+    expect(parseMnemonics(raw, 2)).toEqual(["первое", "второе"]);
+  });
+
+  it("промпт просит скопировать term дословно", () => {
+    expect(buildMnemonicPrompt([{ term: "bank", translation: "берег" }])).toContain("В term скопируй слово из списка ДОСЛОВНО");
+  });
+});

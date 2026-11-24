@@ -41,7 +41,11 @@ export class OpenRouterBackend implements LlmBackend {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 8000,
+          // Потолок вывода согласован с `MAX_EXTRACT`: один пункт разбора — это ~321 символ JSON
+          // с кириллицей, то есть 107–128 токенов. На 100 пунктов нужно 10 700–12 800, а стояло 8000 —
+          // поэтому длинный `/text` обрезался, и человек терял часть слов (E27). 16000 даёт запас
+          // и на обёртку ответа, и на случаи, когда модель пишет объяснения длиннее.
+          max_tokens: 16000,
           messages: [
             { role: "system", content: systemPrompt() },
             { role: "user", content: images.length ? contentWithImages(prompt, images) : prompt },

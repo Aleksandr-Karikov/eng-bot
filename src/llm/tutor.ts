@@ -788,7 +788,8 @@ export function buildMnemonicPrompt(items: MnemonicItem[], lang: Language = EN):
     "- scene: короткая живая сценка употребления.",
     "Шаг 2 — итог (final). Собери запоминалку из лучших кандидатов: один, если сильный только один; два, если оба со score ≥ 7",
     "и дополняют друг друга (например, образ + происхождение). По-русски, 1–3 предложения, понятно с первого прочтения, без натяжек.",
-    'Верни JSON-массив: [{"i": 1, "candidates": [{"technique": "image", "text": "...", "score": 8}, ...], "final": "...", "used": ["image", "parts"]}]',
+    'Верни JSON-массив: [{"i": 1, "term": "...", "candidates": [{"technique": "image", "text": "...", "score": 8}, ...], "final": "...", "used": ["image", "parts"]}]',
+    "В term скопируй слово из списка ДОСЛОВНО — по нему ответ сопоставляется с пунктом; номер i модель иногда начинает с нуля.",
     "",
     ...items.map(
       (w, i) =>
@@ -798,12 +799,30 @@ export function buildMnemonicPrompt(items: MnemonicItem[], lang: Language = EN):
   ].join("\n");
 }
 
-const mnemonicAnswer = z.array(z.object({ i: z.number(), final: z.string().trim() }).passthrough());
+const mnemonicAnswer = z.array(
+  z.object({ i: z.number(), term: z.string().trim().optional(), final: z.string().trim() }).passthrough(),
+);
 
-/** Итоговые запоминалки по порядку пунктов; "" там, где модель ничего не вернула. */
-export function parseMnemonics(text: string, count: number): string[] {
+/**
+ * Итоговые запоминалки по порядку пунктов; "" там, где модель ничего не вернула.
+ *
+ * Сопоставление — по `term`, а не по номеру `i`. Раньше стояло `a.i === k + 1`, и модель, начавшая
+ * нумерацию с нуля (или пропустившая пункт), сдвигала все запоминалки: чужая сохранялась в слово
+ * навсегда — а запоминалка это то, по чему человек учит (E27).
+ *
+ * Номер остаётся запасным путём: если `term` нет (старый ответ, другая модель) — работает прежнее
+ * правило по `i`, а если и его нет — по позиции в массиве.
+ */
+export function parseMnemonics(text: string, count: number, terms: string[] = []): string[] {
   const answer = mnemonicAnswer.parse(jsonArray(text));
-  return Array.from({ length: count }, (_, k) => answer.find((a) => a.i === k + 1)?.final ?? "");
+  const byTerm = new Map<string, string>();
+  for (const a of answer) if (a.term) byTerm.set(a.term.trim().toLowerCase(), a.final);
+  return Array.from({ length: count }, (_, k) => {
+    const wanted = terms[k]?.trim().toLowerCase();
+    if (wanted && byTerm.has(wanted)) return byTerm.get(wanted)!;
+    // Термина нет или он не совпал — по номеру, затем по позиции.
+    return answer.find((a) => a.i === k + 1)?.final ?? answer[k]?.final ?? "";
+  });
 }
 
 /**

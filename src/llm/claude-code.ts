@@ -241,7 +241,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   async mnemonics(items: MnemonicItem[]): Promise<string[]> {
     if (items.length === 0) return [];
     const raw = await this.ask(buildMnemonicPrompt(items), Math.max(this.opts.timeoutMs, 30_000 + items.length * 6_000), this.opts.mnemonicModel ?? "sonnet");
-    return parseMnemonics(raw, items.length);
+    return parseMnemonics(raw, items.length, items.map((w) => w.term));
   }
 
   /** Сцена для картинки — тоже сильной моделью: Haiku часто рисует случайную обстановку вместо смысла. */
