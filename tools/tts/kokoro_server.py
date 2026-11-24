@@ -2,16 +2,25 @@
 Озвучка Kokoro для бота: постоянный процесс, чтобы модель грузилась один раз.
 Читает со stdin строки JSON {"id", "text", "accent": "uk"|"us", "out": путь к .wav},
 пишет на stdout {"id", "ok": true} или {"id", "ok": false, "error"} — по строке на запрос.
+
+Модель ОДНА на оба акцента (E36). Раньше здесь было два `KPipeline`, и каждый держал свою копию
+весов: на VPS с 4 ГБ процесс занимал 1714 МБ и попадал под OOM-killer вместе с ботом. `KModel`
+загружается один раз, а `KPipeline` получает её параметром — так обвязка на каждый язык своя
+(свой фонемайзер), а веса общие. Замер: 1714 МБ → 1299 МБ, оба акцента озвучиваются.
 """
 import json
 import sys
 
 import numpy as np
 import soundfile as sf
-from kokoro import KPipeline
+from kokoro import KModel, KPipeline
 
 VOICES = {"uk": ("b", "bm_george"), "us": ("a", "af_heart")}
-pipelines = {accent: KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M") for accent, (lang, _) in VOICES.items()}
+model = KModel(repo_id="hexgrad/Kokoro-82M")
+pipelines = {
+    accent: KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M", model=model)
+    for accent, (lang, _voice) in VOICES.items()
+}
 
 print(json.dumps({"ready": True}), flush=True)
 for line in sys.stdin:

@@ -1,4 +1,5 @@
 import type { StudyLanguage } from "./language";
+import { retryServerDown } from "./retry";
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
 export type { CombatTarget } from "../../src/combat-mobs";
@@ -112,6 +113,20 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T>(path: string, body: object = {}) =>
   call<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
+/**
+ * POST, который не страшно повторить, если сервер не ответил (E36).
+ *
+ * Пока процесс бота перезапускается после падения, Nginx отдаёт 502. Без повтора ответ человека
+ * пропадал молча; с ним он доходит со второй попытки. Повторяем только то, что сервер сам защищает
+ * от двойного срабатывания: оценка карточки сверяет `reps`, бой босса — `requestId`, диктант и cloze —
+ * тоже `reps`, а покупка усиления проверяет баланс.
+ *
+ * Чего здесь нет намеренно: черновики и квоты (`/prepare`, `/mnemonic`, генерация) — повтор потратил бы
+ * лимит дважды, и «сохранить ошибки» — повтор дописал бы их ещё раз.
+ */
+const postRetry = <T>(path: string, body: object = {}) =>
+  retryServerDown(() => post<T>(path, body));
+
 export const getMe = () => call<Me & { ok: true }>("/api/me");
 
 /**
@@ -158,8 +173,8 @@ export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: Answer) =>
-  post<{ result: "ok" | "stale" | "practice"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
-export const undoAnswer = (card: Card) => post("/api/undo", { cardId: card.cardId });
+  postRetry<{ result: "ok" | "stale" | "practice"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
+export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Новое слово друга в колоде на разбор. */
 export interface TriageCard {
@@ -314,7 +329,7 @@ export interface CheckResult {
 }
 
 export const checkAnswer = (card: Card, answer: string, dunno = false) =>
-  post<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno, practice: card.practice });
+  postRetry<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno, practice: card.practice });
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
 
 export interface Progress {
@@ -372,7 +387,7 @@ export interface GrammarAnswer {
 export const getGrammar = () => call<{ topics: GrammarTopic[]; passed: number; total: number; ok: true }>("/api/grammar");
 export const getGrammarTopic = (id: number) => call<{ topic: GrammarTopicView; ok: true }>(`/api/grammar/${id}`);
 export const sendGrammarAnswer = (exerciseId: number, answer: string) =>
-  post<{ result: GrammarAnswer; ok: true }>("/api/grammar/answer", { exerciseId, answer });
+  postRetry<{ result: GrammarAnswer; ok: true }>("/api/grammar/answer", { exerciseId, answer });
 
 /** Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
 export interface BossHit {
@@ -471,10 +486,10 @@ export interface BossState {
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
-  post<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
+  postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
 /** Купить усиление; в ответ приходит новое состояние босса. */
-export const buyUpgrade = (kind: BossPurchase) => post<BossState & { ok: true }>("/api/boss/upgrade", { kind });
+export const buyUpgrade = (kind: BossPurchase) => postRetry<BossState & { ok: true }>("/api/boss/upgrade", { kind });
 
 /** Черновик нового слова — как в /add: всё, что подготовила модель; перевод и объяснение можно поправить. */
 export interface WordDraft {
