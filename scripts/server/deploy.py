@@ -25,6 +25,10 @@ if not any(c["name"] == "checks" and c["conclusion"] == "success" for c in check
     print(f"CI not passed for {latest[:12]}")
     raise SystemExit(0)
 
+# Запоминаем, что было до деплоя: при провале healthcheck откатываемся сюда.
+# Без этого сломанный main оставался развёрнутым, а Restart=always крутил падения до ручного вмешательства.
+previous = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
+
 run("git", "fetch", "origin", "main")
 fetched = subprocess.check_output(["git", "rev-parse", "FETCH_HEAD"], cwd=REPO, text=True).strip()
 if fetched != latest:
@@ -42,5 +46,13 @@ for attempt in range(15):
     except OSError:
         time.sleep(1)
 else:
-    raise RuntimeError("Mini App did not become healthy")
+    # Откат: возвращаем код и перезапускаем сервис, иначе бот остаётся в нерабочем состоянии,
+    # а systemd бесконечно его перезапускает.
+    print(f"healthcheck failed for {latest[:12]}, rolling back to {previous[:12]}")
+    run("git", "reset", "--hard", previous)
+    run("npm", "ci", "--no-audit", "--no-fund")
+    run("npm", "ci", "--no-audit", "--no-fund", cwd=f"{REPO}/app")
+    run("npm", "run", "build", cwd=f"{REPO}/app")
+    run("sudo", "-n", "systemctl", "restart", "eng-bot.service")
+    raise RuntimeError(f"Mini App did not become healthy on {latest[:12]}; rolled back to {previous[:12]}")
 print(f"deployed {latest[:12]}")

@@ -9,12 +9,21 @@ import type { PictureStore } from "./store";
 
 const run = promisify(execFile);
 
-/** Мак на зарядке? На батарее фоновая генерация (~12 ГБ памяти, нагрев) не запускается. */
-export async function onAcPower(): Promise<boolean> {
+/**
+ * Мак на зарядке? На батарее фоновая генерация (~12 ГБ памяти, нагрев) не запускается.
+ *
+ * Проверка имеет смысл только на macOS: `pmset` есть только там. Раньше `catch` возвращал `true`,
+ * и на Linux (то есть на VPS) «не смог проверить» превращалось в «работать всегда» — фоновая
+ * отрисовка шла круглосуточно, хотя всё это затевалось ради экономии батареи на ноутбуке.
+ * Теперь вне macOS — `false`: фон не запускается, пока это не решено явно.
+ */
+export async function onAcPower(platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  if (platform !== "darwin") return false;
   try {
     const { stdout } = await run("pmset", ["-g", "batt"], { timeout: 5_000 });
     return stdout.includes("AC Power");
   } catch {
+    // На macOS не смогли прочитать — считаем, что можно: там это осмысленный вопрос про батарею.
     return true;
   }
 }

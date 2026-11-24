@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 
-/** Где пульс. Сторож (scripts/watchdog.ts) читает тот же путь. */
+/** Где пульс. Пишется раз в 30 с; по времени файла видно, когда процесс перестал работать. */
 export const HEARTBEAT_FILE = "data/heartbeat";
 
 /**

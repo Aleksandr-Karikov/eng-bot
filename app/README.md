@@ -35,7 +35,7 @@ npm run build      # tsc --noEmit && vite build → app/dist
 1. Правите фронтенд → `cd app && npm run build`. **Обязательно:** бот раздаёт только `dist`,
    а он в `.gitignore` и в репозитории не лежит.
 2. `cd app && npm run typecheck` — при правке типов. У `app/` свой `tsconfig.json`, корневой `tsc` его не покрывает.
-3. `scripts/launchd/restart.sh` — бот подхватит новый бандл.
+3. Перезапустить бота — он подхватит новый бандл (на VPS это делает деплой, локально — перезапуск процесса).
 
 ## Проверки
 
