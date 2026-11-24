@@ -1,6 +1,6 @@
 import { currentLang, langForms } from "../../lang";
 import type { Bot } from "grammy";
-import { QUOTAS, wordsLeft } from "../../services/limits";
+import { checkAndCount, QUOTAS, wordsLeft } from "../../services/limits";
 import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { prepareWord } from "../../services/prepare-word";
 import { termPattern } from "../../services/word-uses";
@@ -22,10 +22,16 @@ export async function startAdd(ctx: BotContext, deps: Deps, input: string, conte
   const room = await resolveRoom(ctx, deps);
   if (!room || !ctx.chat) return;
   // Лимит проверяется до `prepareWord`: иначе человек ждал бы перевод от модели и только потом узнавал,
-  // что слов на сегодня больше нет. Счётчик при этом **не растёт** — слово ещё не добавлено, и отказаться
-  // от черновика человек вправе. Расход — в `spendWordQuota`, уже после сохранения.
+  // что слов на сегодня больше нет. Расход `add_word` — в `spendWordQuota`, уже после сохранения:
+  // отказаться от черновика человек вправе и место в лимите слов за это не теряет.
+  //
+  // Но черновик сам стоит денег — это два вызова модели (`enrich` и `mnemonics`). Без счётчика `draft`
+  // цикл `/add` по разным словам давал неограниченные платные вызовы: `wordsLeft` только читает,
+  // а сохранять человек не обязан.
   const left = await wordsLeft(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
   if (left.left <= 0) return void (await ctx.reply(QUOTAS[left.kind].refusal, HTML));
+  const draftQuota = await checkAndCount(deps.db, { userId: ctx.user.id, kind: "draft", timeZone: ctx.user.timezone, now: deps.now() });
+  if (!draftQuota.allowed) return void (await ctx.reply(draftQuota.refusal, HTML));
   await ctx.replyWithChatAction("typing");
   const prepared = await prepareWord(deps, room.id, parsed);
   if (prepared.status === "exists") return void (await ctx.reply(`«${esc(prepared.term)}» уже есть в комнате`, HTML));

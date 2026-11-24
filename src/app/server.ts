@@ -243,8 +243,8 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/words/:id/mnemonic", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
-    const r = await appNewMnemonic(deps, word);
-    return c.json(r.body, r.status as 200 | 502);
+    const r = await appNewMnemonic(deps, c.get("user"), word);
+    return c.json(r.body, r.status as 200 | 429 | 502);
   });
   const ACTIONS = new Set<WordAction>(["drop", "restore", "promote", "delete"]);
   app.post("/api/words/:id/:action", async (c) => {

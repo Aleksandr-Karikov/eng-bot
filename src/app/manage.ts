@@ -9,7 +9,7 @@ import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from ".
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
 import { isStormHard } from "../services/storm";
-import { checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
+import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
 import { updateUser, type UserPatch } from "../services/users";
@@ -225,10 +225,14 @@ export async function appPrepareWord(deps: Deps, user: User, body: { text?: unkn
   const parsed = typeof body.text === "string" ? parseAddInput(body.text.slice(0, 200)) : null;
   if (!parsed) return { status: 400, body: { ok: false, error: "Напиши слово или фразу" } };
   if (user.currentRoomId == null) return { status: 400, body: { ok: false, error: "Сначала выбери комнату в настройках" } };
-  // Лимит проверяется здесь, как и в боте: перевод от модели стоит денег, и узнавать об отказе после
-  // него незачем. Счётчик пока не растёт — расход в `appAddWord`, после реального сохранения.
+  // Два лимита, и оба нужны. `wordsLeft` отвечает на «есть ли куда сохранять» — иначе человек
+  // готовил бы черновик, зная, что сохранить не сможет. `draft` считает сам вызов модели: без него
+  // `prepare` зовёт `enrich` и `mnemonics`, но ничего не записывает, поэтому перебор разных слов
+  // давал неограниченные платные вызовы.
   const left = await wordsLeft(deps.db, { userId: user.id, timeZone: user.timezone, now: deps.now() });
   if (left.left <= 0) return { status: 429, body: { ok: false, error: QUOTAS[left.kind].refusal } };
+  const draftQuota = await checkAndCount(deps.db, { userId: user.id, kind: "draft", timeZone: user.timezone, now: deps.now() });
+  if (!draftQuota.allowed) return { status: 429, body: { ok: false, error: draftQuota.refusal } };
   const prepared = await prepareWord(deps, user.currentRoomId, parsed);
   if (prepared.status === "exists") return { status: 409, body: { ok: false, error: `«${prepared.term}» уже есть в комнате` } };
   if (prepared.status === "no-english") return { status: 422, body: { ok: false, error: `Не получилось подобрать ${langForms().neut} слово для «${prepared.term}» — напиши ${langForms().adv}` } };
@@ -269,7 +273,16 @@ export async function appAddWord(deps: Deps, user: User, body: Record<string, un
 }
 
 /** 💡 Другая запоминалка для слова — для всей комнаты, как и прежняя. */
-export async function appNewMnemonic(deps: Deps, word: Word) {
+/**
+ * 💡 Другая запоминалка. Слово «другая» здесь существенно: в отличие от кнопки в боте, которая отдаёт
+ * готовую из базы, этот путь **всегда** зовёт модель и перезаписывает запоминалку для всей комнаты —
+ * иначе кнопка не выполняла бы своего обещания.
+ *
+ * Поэтому квота `draft`: это тот же вызов модели, что в черновике.
+ */
+export async function appNewMnemonic(deps: Deps, user: User, word: Word) {
+  const quota = await checkAndCount(deps.db, { userId: user.id, kind: "draft", timeZone: user.timezone, now: deps.now() });
+  if (!quota.allowed) return { status: 429, body: { ok: false, error: quota.refusal } };
   try {
     const [mnemonic] = await deps.tutor.mnemonics([{ term: word.term, translation: word.translation, instead: word.mnemonic || undefined }]);
     if (!mnemonic) return { status: 502, body: { ok: false, error: "Не получилось придумать — попробуй ещё раз" } };

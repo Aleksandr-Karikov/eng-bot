@@ -139,6 +139,11 @@ export interface AppDrill extends AppQuiz {
 export type AppItem = AppCard | AppDrill;
 
 const DRILL_EVERY = 5;
+/**
+ * Сколько карточек за один запрос очереди готовить в фоне. Остальные подготовятся, когда до них дойдёт
+ * дело: очередь запрашивается заново по мере прохождения, и следующая пачка получит свою порцию.
+ */
+const PREPARE_AHEAD = 5;
 
 function quizOf(q: { question: string; options: string[]; correct: number; explanation: string }): AppQuiz {
   return { question: q.question, options: q.options, correct: q.correct, explanation: q.explanation, filled: gapParts(q.question, q.options[q.correct] ?? "") };
@@ -180,16 +185,24 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     listen: user.modeListen,
   };
   const cards: AppCard[] = [];
+  // Фоновая подготовка — только для первых карточек, а не для всей очереди. Очередь приходит пачкой
+  // (до QUEUE_SIZE), и раньше на каждую карточку запускалось до трёх вызовов модели: человек открывал
+  // приложение и получал десятки платных запросов, которых не просил. Генераторы дедуплицируют себя
+  // по слову (`inFlight`), но не ограничивают, сколько слов берут за раз — это и делает счётчик.
+  let prepared = 0;
   for (const { card, word } of items) {
     const isNew = card.state === State.New;
     const optional = word.usefulness === 1;
     const collocations = storedCollocations(word);
     const sentences = modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];
     // Как в /learn: упражнения на употребление готовятся в фоне, пока их нет.
-    if (!isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
-    if (!isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
-    // Часть речи и родня есть в карточке любого режима, даже у необязательного слова.
-    void deps.grammarGen.ensure(word);
+    if (prepared < PREPARE_AHEAD) {
+      if (!isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
+      if (!isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
+      // Часть речи и родня есть в карточке любого режима, даже у необязательного слова.
+      void deps.grammarGen.ensure(word);
+      prepared++;
+    }
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
     const stage = optional
       ? "en_ru"

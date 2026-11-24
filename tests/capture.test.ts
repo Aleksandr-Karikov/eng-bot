@@ -9,7 +9,7 @@ import { rooms, words } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
 import { capture, cleanSelection, explainSelection, readImage } from "../src/capture/capture";
-import { quotaUsed } from "../src/services/limits";
+import { quotaUsed, QUOTAS } from "../src/services/limits";
 import { usageCounters } from "../src/db/schema";
 import { startCaptureServer } from "../src/capture/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
@@ -123,6 +123,23 @@ describe("words from the browser extension", () => {
     expect(await readImage(h.deps, { key: "secret-key", image: "not an image" })).toMatchObject({ ok: false, status: 400 });
     expect(await readImage(h.deps, { key: "secret-key", image })).toEqual({ ok: true, text: "Cracking on nicely, I gather." });
     expect(readImageMock).toHaveBeenCalledWith({ data: Buffer.from("fake-jpeg"), mediaType: "image/jpeg" });
+  });
+
+  it("🔲 распознавание области считается квотой, а не бесплатным доступом к модели", async () => {
+    // Vision-вызов дороже текстового, а ключ расширения едет в query и /ext/* проксируется наружу:
+    // без счётчика утёкший ключ давал бы неограниченные платные вызовы.
+    const { h, user } = await setup();
+    const readImageMock = vi.fn(async () => "some text");
+    h.deps.enricher = { ...h.deps.enricher, readImage: readImageMock };
+    const image = `data:image/jpeg;base64,${Buffer.from("fake-jpeg").toString("base64")}`;
+
+    for (let i = 0; i < QUOTAS.read_image.limit; i++) {
+      expect(await readImage(h.deps, { key: "secret-key", image })).toMatchObject({ ok: true });
+    }
+    const refused = await readImage(h.deps, { key: "secret-key", image });
+    expect(refused).toMatchObject({ ok: false, status: 429 });
+    // Модель не звалась сверх лимита.
+    expect(readImageMock).toHaveBeenCalledTimes(QUOTAS.read_image.limit);
   });
 
   it("listens on localhost: /ping checks the key, /capture adds", async () => {

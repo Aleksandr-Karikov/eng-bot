@@ -173,6 +173,10 @@ export async function readImage(deps: Deps, input: { key: string; image: string 
   const user = await userByCaptureKey(deps, input.key);
   if (!user) return { ok: false, status: 401, error: "Неверный ключ — возьми новый в боте: /extension" };
   if (!deps.enricher.readImage) return { ok: false, status: 501, error: "Распознавание недоступно" };
+  // Vision-вызов дороже текстового и раньше не считался вовсе: ключ расширения едет в query,
+  // а /ext/* проксируется наружу, поэтому утёкший ключ давал бы неограниченный доступ к модели.
+  const quota = await checkAndCount(deps.db, { userId: user.id, kind: "read_image", timeZone: user.timezone, now: deps.now() });
+  if (!quota.allowed) return { ok: false, status: 429, error: quota.refusal };
   const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(input.image);
   if (!match) return { ok: false, status: 400, error: "Нет картинки" };
   const data = Buffer.from(match[2], "base64");

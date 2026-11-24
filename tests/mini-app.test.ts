@@ -7,6 +7,7 @@ import { cards, reviewLogs, words } from "../src/db/schema";
 import { createApp } from "../src/app/server";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { getUser } from "../src/services/users";
+import { quotaUsed, QUOTAS } from "../src/services/limits";
 import { getWord } from "../src/services/words";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
@@ -214,6 +215,41 @@ describe("📚 Mini App API", () => {
       expect(h.calls.some((c) => c.method === "sendMessage" && c.payload.chat_id === 200 && String(c.payload.text).includes("tooth"))).toBe(true);
       // Второй раз — уже есть.
       expect((await post("/api/words/prepare", { text: "tooth" })).status).toBe(409);
+    });
+
+    it("черновики разных слов упираются в свою квоту, а не в квоту слов", async () => {
+      // Дыра из аудита: prepare звал enrich и mnemonics, но счётчик не рос — цикл по разным словам
+      // давал неограниченные платные вызовы, при этом слова не сохранялись.
+      let enriched = 0;
+      const h = botHarness({
+        enricher: {
+          enrich: async (term: string) => {
+            enriched++;
+            return { term, translation: "перевод", explanation: "", example: "" };
+          },
+          extract: async () => [], extractImage: async () => [], check: async () => ({ corrected: "", fixes: [], natural: "" }),
+        },
+      });
+      const me = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+      const room = await createRoom(h.db, { name: "R", createdBy: me.id, now: T0 });
+      await joinRoomFor(h, room.id, me.id);
+      const app = createApp({ deps: h.deps, botToken: TOKEN });
+      const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, TOKEN, new Date())}`, "content-type": "application/json" };
+      const post = (path: string, body: object) => app.request(path, { method: "POST", headers, body: JSON.stringify(body) });
+
+      // Первый черновик проходит и тратит ровно одну попытку.
+      expect((await post("/api/words/prepare", { text: "one" })).status).toBe(200);
+      expect(await quotaUsed(h.db, { userId: me.id, kind: "draft", timeZone: me.timezone, now: h.deps.now() })).toBe(1);
+
+      // Дальше до самого предела, потом отказ — и модель больше не зовётся.
+      const rest = QUOTAS.draft.limit - 1;
+      for (let i = 0; i < rest; i++) await post("/api/words/prepare", { text: `w${i}` });
+      const refused = await post("/api/words/prepare", { text: "over" });
+      expect(refused.status).toBe(429);
+      expect((await refused.json()).error).toContain("Черновиков");
+      // Лимит слов при этом не тронут: черновики — своя квота.
+      expect(await quotaUsed(h.db, { userId: me.id, kind: "add_word", timeZone: me.timezone, now: h.deps.now() })).toBe(0);
+      expect(enriched).toBe(QUOTAS.draft.limit);
     });
   });
 
