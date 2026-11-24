@@ -72,6 +72,7 @@ describe("simpler menus", () => {
     await h.bot.handleUpdate(h.message(100, "/settings"));
     expect((h.calls.at(-1)?.payload.reply_markup as { inline_keyboard: Array<Array<{ text: string }>> }).inline_keyboard.flat().map((b) => b.text)).toEqual([
       "⏰ Напоминания",
+      "🆕 Новые слова в день",
       "🎯 Упражнения",
       "🃏 Карточка",
       "🗣 Озвучка карточек",

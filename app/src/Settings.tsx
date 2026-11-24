@@ -62,6 +62,17 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         <SwitchCell label="Итог недели в воскресенье" on={settings.weeklyReport} onChange={() => void change({ weeklyReport: !settings.weeklyReport })} />
       </Section>
 
+      <Section
+        header="🆕 Новые слова в день"
+        footer="Считаются только новые слова; повторения приходят всегда. Остальные новые ждут очереди в следующие дни — сначала самые полезные."
+      >
+        {settings.newPerDayChoices.map((value) => (
+          <Cell key={value} after={settings.newPerDay === value ? "✓" : undefined} onClick={() => void change({ newPerDay: value })}>
+            {value === 0 ? "Без ограничения" : `${value} в день`}
+          </Cell>
+        ))}
+      </Section>
+
       <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">
         {toggles(settings.modes, (t) => ({ mode: t.key, on: !t.on }))}
         <SwitchCell label="Вопросы по ошибкам в /learn" on={settings.drill} onChange={() => void change({ drill: !settings.drill })} />

@@ -11,7 +11,7 @@ import { updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
-import { bossKeyboard, settingsKeyboard } from "../keyboards";
+import { NEW_PER_DAY_CHOICES, bossKeyboard, settingsKeyboard } from "../keyboards";
 import { bossHitsText, bossText, goalText, settingsText, statsText } from "../texts";
 import type { Stage } from "../../services/exercises";
 import type { User } from "../../db/schema";
@@ -188,6 +188,17 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const accent = autoVoice(user);
     await ctx.answerCallbackQuery({ text: accent ? `Буду включать ${currentLang().accentLabel[accent]}` : "Озвучка карточек выключена" });
     await ctx.editMessageText(settingsText(user, "voice"), { reply_markup: settingsKeyboard(user, "voice") });
+  });
+
+  bot.callbackQuery(/^np:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "newPerDay") return void (await ctx.answerCallbackQuery());
+    // Значение приходит из кнопки, поэтому сверяем со списком вариантов: чужое число не должно
+    // попасть в колонку, по которой считается очередь.
+    if (!NEW_PER_DAY_CHOICES.some((c) => c.value === cb.value)) return void (await ctx.answerCallbackQuery({ text: "Нет такого варианта" }));
+    const user = await updateUser(deps.db, ctx.user.id, { newPerDay: cb.value });
+    await ctx.answerCallbackQuery({ text: cb.value === 0 ? "Без ограничения" : `${cb.value} в день` });
+    await ctx.editMessageText(settingsText(user, "new"), { ...HTML, reply_markup: settingsKeyboard(user, "new") });
   });
 
   bot.callbackQuery(/^ss:/, async (ctx) => {

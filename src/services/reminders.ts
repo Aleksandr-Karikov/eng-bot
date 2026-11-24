@@ -14,8 +14,8 @@ export interface FriendToday {
 
 export interface Reminder {
   user: User;
-  /** К повторению и новые — по отдельности. */
-  due: { review: number; fresh: number };
+  /** К повторению и новые — по отдельности (новые — уже с учётом дневной порции, E30). */
+  due: { review: number; fresh: number; waiting: number };
   /** Самый активный сегодня участник комнат пользователя — для мотивашки. */
   friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */

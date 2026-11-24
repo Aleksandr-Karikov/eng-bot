@@ -232,6 +232,10 @@ export interface Settings {
   /** Босс недели — режим-игра поверх цели комнаты. Нет поля — режим выключен целиком (BOSS_ENABLED=0). */
   boss?: boolean;
   card: Toggle[];
+  /** 🆕 Сколько новых слов показывать за день (E30). 0 — без ограничения. */
+  newPerDay: number;
+  /** Варианты порции, чтобы приложение и бот показывали один список. */
+  newPerDayChoices: number[];
   /** Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
   voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
 }
@@ -246,6 +250,7 @@ export type SettingChange =
   | { boss: boolean }
   | { mode: string; on: boolean }
   | { cardPart: string; on: boolean }
+  | { newPerDay: number }
   /** Повторный выбор того же варианта и "off" — выключить. */
   | { voice: VoiceAccent | "off" };
 

@@ -209,27 +209,32 @@ export function knowPrompt(adderName: string, word: Word, roomName: string): str
 
 /**
  * due — число к повторению или по отдельности: к повторению и новые.
+ * `fresh` — новые, которые **можно** показать сегодня (уже с учётом дневной порции, E30);
+ * `waiting` — сколько новых ждёт своей очереди сверх неё. Про очередь говорим отдельной строкой и
+ * спокойно: «ещё 105 ждут» — это не «105 слов просрочено», их не надо догонять сегодня.
  * `lastChance` — до конца недели комнаты осталось мало: об этом говорим в том же сообщении, потому что
  * отдельное напоминание за пару часов до сброса человек прочитает уже после него.
  */
 export function reminderText(
-  due: number | { review: number; fresh: number },
+  due: number | { review: number; fresh: number; waiting?: number },
   friend?: { name: string; reviews: number },
   lastChance?: { roomName: string; hours: number },
 ): string {
-  const { review, fresh } = typeof due === "number" ? { review: due, fresh: 0 } : due;
+  const { review, fresh, waiting } = typeof due === "number" ? { review: due, fresh: 0, waiting: 0 } : due;
   const waits = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут");
   const newWords = `${fresh} ${plural(fresh, "новое слово", "новых слова", "новых слов")}`;
   const base = review
     ? `🔔 ${review} ${plural(review, "слово", "слова", "слов")} ${waits(review)} повторения${fresh ? ` + ${newWords}` : ""}`
     : `🆕 ${newWords} ${waits(fresh)} знакомства`;
+  // Очередь — отдельной строкой и только когда она есть: это запас, а не долг.
+  const queue = waiting ? `\n📚 Ещё ${waiting} ${plural(waiting, "новое слово ждёт", "новых слова ждут", "новых слов ждут")} своей очереди — придут в следующие дни.` : "";
   const withFriend = friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
-  if (!lastChance) return withFriend;
+  if (!lastChance) return withFriend + queue;
   // Часы в поясе КОМНАТЫ: неделя кончается у неё, а не у человека.
   const left = lastChance.hours <= 1
     ? "меньше часа"
     : `${lastChance.hours} ${plural(lastChance.hours, "час", "часа", "часов")}`;
-  return `${withFriend}\n\n⏳ До конца недели в «${esc(lastChance.roomName)}» — ${left}. Успей добить босса.`;
+  return `${withFriend}\n\n⏳ До конца недели в «${esc(lastChance.roomName)}» — ${left}. Успей добить босса.${queue}`;
 }
 
 export function dueNoticeText(n: number): string {
@@ -639,6 +644,19 @@ export function settingsText(user: User, screen: SettingsScreen = "main"): strin
       "В боте слово всегда звучит по кнопке. В приложении (Mini App) выбранный вариант играет сам — как только карточка показала ответ.",
       "",
       `Сейчас: <b>${esc(voiceLabel(user))}</b>.`,
+    ].join("\n");
+  }
+  if (screen === "new") {
+    // Число называем словами, а не только галочкой в кнопке: «сколько это в ответах» — вопрос, который
+    // возникает сразу, и на него лучше ответить здесь, чем оставлять человека гадать.
+    const now = user.newPerDay <= 0 ? "без ограничения — все новые слова сразу" : `${user.newPerDay} ${plural(user.newPerDay, "новое слово", "новых слова", "новых слов")} в день`;
+    return [
+      "🆕 <b>Сколько новых слов в день.</b>",
+      "",
+      "Считаются только <b>новые</b> слова: первую встречу с каждым словом занимает порция. Повторения приходят всегда и от порции не зависят — их нельзя отложить.",
+      "",
+      `Сейчас: <b>${esc(now)}</b>.`,
+      user.newPerDay <= 0 ? "⚠️ Вся пачка от друзей падает сразу — при большом словаре так легко утонуть." : "Остальные новые слова ждут своей очереди в следующие дни: сначала самые полезные, ничего не теряется.",
     ].join("\n");
   }
   return `⚙️ Настройки\n\n⏰ Напоминание в ${user.reminderTime}`;

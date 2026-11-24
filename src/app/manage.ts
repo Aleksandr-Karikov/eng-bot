@@ -2,7 +2,7 @@ import { currentLang, langForms, withLang } from "../lang";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
-import { CARD_PART_LABELS, MODE_LABELS } from "../bot/keyboards";
+import { CARD_PART_LABELS, MODE_LABELS, NEW_PER_DAY_CHOICES } from "../bot/keyboards";
 import { cards, reviewLogs, type User, type Word } from "../db/schema";
 import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services/card-view";
 import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
@@ -181,6 +181,10 @@ export async function appSettings(deps: Deps, user: User) {
     // 🐉 Рубильник выключен — переключателя нет вовсе: настройка, которая ничего не меняет, только путает.
     ...(deps.bossEnabled === false ? {} : { boss: user.modeBoss }),
     card: CARD_PART_LABELS.map(([key, label]) => ({ key, label, on: view[key] })),
+    // 🆕 Дневная порция новых слов (E30): 0 — без ограничения. Список вариантов отдаём с сервера,
+    // чтобы бот и приложение не разошлись в том, какие числа бывают.
+    newPerDay: user.newPerDay,
+    newPerDayChoices: NEW_PER_DAY_CHOICES.map((c) => c.value),
     // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
     voice: { accent: autoVoice(user) ?? null, accents: currentLang().accents.map((a) => ({ key: a, label: currentLang().accentLabel[a] })) },
   };
@@ -210,6 +214,10 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
     patch = { [field]: body.on };
   } else if (typeof body.voice === "string" && (body.voice === "off" || (VOICE_ACCENTS as readonly string[]).includes(body.voice))) {
     patch = { voiceAccent: toggleVoiceAccent(user.voiceAccent, body.voice as VoiceAccent | "off") };
+  } else if (typeof body.newPerDay === "number") {
+    // Только варианты из списка: значение приходит с клиента, а по этой колонке считается очередь.
+    if (!NEW_PER_DAY_CHOICES.some((c) => c.value === body.newPerDay)) return { ok: false, error: "Нет такого варианта порции" };
+    patch = { newPerDay: body.newPerDay };
   } else if (typeof body.cardPart === "string" && typeof body.on === "boolean") {
     const part = body.cardPart as CardPart;
     if (!CARD_PARTS.includes(part)) return { ok: false, error: "Нет такой части карточки" };

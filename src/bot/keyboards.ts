@@ -261,7 +261,23 @@ export const MODE_LABELS: Array<[Stage, string, keyof User]> = [
 ];
 
 /** Часы напоминания + переключатели режимов тренажёра. */
-export type SettingsScreen = "main" | "remind" | "modes" | "card" | "voice";
+export type SettingsScreen = "main" | "remind" | "modes" | "card" | "voice" | "new";
+
+/**
+ * Варианты дневной порции новых слов (E30). `0` — без ограничения.
+ *
+ * Лестница короткая и с явным «без ограничения» на конце: это выбор про собственную нагрузку,
+ * а не про режим бота, и человек должен видеть границы. Пятнадцать по умолчанию — столько новых
+ * вместе с их повторениями занимает сессию целиком, но не превращается в долг.
+ */
+export const NEW_PER_DAY_CHOICES: Array<{ value: number; label: string }> = [
+  { value: 5, label: "5" },
+  { value: 10, label: "10" },
+  { value: 15, label: "15" },
+  { value: 25, label: "25" },
+  { value: 30, label: "30" },
+  { value: 0, label: "без ограничения" },
+];
 
 /** /settings по экранам: на одном сообщении было ~27 кнопок. */
 export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): InlineKeyboard {
@@ -270,11 +286,20 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
     return new InlineKeyboard()
       .text("⏰ Напоминания", encodeCb({ k: "settingsScreen", screen: "remind" }))
       .row()
+      .text("🆕 Новые слова в день", encodeCb({ k: "settingsScreen", screen: "new" }))
+      .row()
       .text("🎯 Упражнения", encodeCb({ k: "settingsScreen", screen: "modes" }))
       .row()
       .text("🃏 Карточка", encodeCb({ k: "settingsScreen", screen: "card" }))
       .row()
       .text("🗣 Озвучка карточек", encodeCb({ k: "settingsScreen", screen: "voice" }));
+  }
+  if (screen === "new") {
+    const kb = new InlineKeyboard();
+    for (const choice of NEW_PER_DAY_CHOICES) {
+      kb.text(`${user.newPerDay === choice.value ? "✅" : "⬜️"} ${choice.label}`, encodeCb({ k: "newPerDay", value: choice.value })).row();
+    }
+    return back(kb);
   }
   if (screen === "remind") {
     const kb = hoursKeyboard().row();

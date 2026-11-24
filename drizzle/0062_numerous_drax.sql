@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `new_per_day` integer DEFAULT 15 NOT NULL;
