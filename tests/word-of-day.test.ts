@@ -4,7 +4,7 @@ import type { User } from "../src/db/schema";
 import { cards, words } from "../src/db/schema";
 import { wordOfDayText } from "../src/bot/texts";
 import { sendWordsOfDay } from "../src/reminder-loop";
-import { collectWordsOfDay, wordOfDayDue } from "../src/services/word-of-day";
+import { collectWordsOfDay, markWordOfDaySent, wordOfDayDue } from "../src/services/word-of-day";
 import { createRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
 import { DAY, makeUser, testDb } from "./helpers";
@@ -36,6 +36,8 @@ describe("word of the day", () => {
     const { db } = await setup(-900);
     const day1 = await collectWordsOfDay(db, nsk("2026-10-17T10:00"));
     expect(day1.map((w) => w.word.term)).toEqual(["hard"]);
+    // Коллектор не помечает сам — отметка после доставки, как в sendWordsOfDay.
+    for (const d of day1) await markWordOfDaySent(db, d.room.id, d.word.id, d.date, nsk("2026-10-17T10:00"));
     expect(await collectWordsOfDay(db, nsk("2026-10-17T11:00"))).toEqual([]);
     const day2 = await collectWordsOfDay(db, nsk("2026-10-18T10:00"));
     expect(day2.map((w) => w.word.term)).toEqual(["medium"]);

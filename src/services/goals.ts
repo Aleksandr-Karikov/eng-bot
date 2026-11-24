@@ -123,15 +123,21 @@ export async function setWeeklyGoal(db: Db, roomId: number, goal: number): Promi
  * общему `week.date`: у комнаты в Москве и комнаты в Новосибирске это разные даты воскресенья, и общий
  * фильтр поздравил бы одну из них дважды либо не поздравил вовсе.
  */
-export async function collectGoalsReached(db: Db, now: Date): Promise<Array<{ room: Room; progress: GoalProgress }>> {
-  const result: Array<{ room: Room; progress: GoalProgress }> = [];
+export async function collectGoalsReached(db: Db, now: Date): Promise<Array<{ room: Room; progress: GoalProgress; date: string }>> {
+  const result: Array<{ room: Room; progress: GoalProgress; date: string }> = [];
   for (const room of await db.select().from(rooms)) {
     const week = latestDigestMoment(now, roomTimeZone(room));
     if (room.goalReachedWeek === week.date) continue;
     const progress = await goalProgress(db, room, now, week.at);
     if (progress.done < progress.target) continue;
-    await db.update(rooms).set({ goalReachedWeek: week.date }).where(eq(rooms.id, room.id));
-    result.push({ room, progress });
+    // Не помечаем здесь: отметка после доставки (`markGoalReached`). Иначе сбой Telegram съедал
+    // поздравление навсегда — неделя записана как поздравленная, а сообщения не было.
+    result.push({ room, progress, date: week.date });
   }
   return result;
+}
+
+/** Отметить комнату поздравленной с целью недели. Ставится после доставки — см. `collectGoalsReached`. */
+export async function markGoalReached(db: Db, roomId: number, date: string): Promise<void> {
+  await db.update(rooms).set({ goalReachedWeek: date }).where(eq(rooms.id, roomId));
 }

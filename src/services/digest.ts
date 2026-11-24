@@ -91,19 +91,31 @@ export async function weeklyDigest(db: Db, roomId: number, now: Date, timeZone: 
   return rows.sort((a, b) => b.reviews7d - a.reviews7d || b.added - a.added);
 }
 
-/** Комнаты, которым пора отправить дайджест; помечает их, а пустые недели (без активности) пропускает. */
+/**
+ * Комнаты, которым пора отправить дайджест. **Не помечает** — дата возвращается наружу, и отметку
+ * ставит `markDigestSent` уже после успешной доставки.
+ *
+ * Так же сделано в напоминаниях (`markReminded` после `notifier.dm === true`), и это не формальность:
+ * раньше отметка стояла здесь, до отправки, и сбой Telegram (или бота убрали из чата) означал, что
+ * недельный итог не придёт **никогда** — дата уже записана, следующий тик её пропускал. Пустые недели
+ * без активности по-прежнему пропускаются: там нечего отправлять.
+ */
 export async function collectDigests(
   db: Db,
   now: Date,
-): Promise<Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[] }>> {
-  const result: Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[] }> = [];
+): Promise<Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[]; date: string }>> {
+  const result: Array<{ room: Room; rows: DigestRow[]; duels: DuelScore[]; date: string }> = [];
   for (const room of await db.select().from(rooms)) {
     const date = digestDue(room, now);
     if (!date) continue;
-    await db.update(rooms).set({ lastDigestDate: date }).where(eq(rooms.id, room.id));
     const rows = await weeklyDigest(db, room.id, now, roomTimeZone(room));
     const duels = await weeklyDuelPoints(db, room.id, now);
-    if (rows.some((r) => r.added > 0 || r.reviews7d > 0 || r.used > 0) || duels.length) result.push({ room, rows, duels });
+    if (rows.some((r) => r.added > 0 || r.reviews7d > 0 || r.used > 0) || duels.length) result.push({ room, rows, duels, date });
   }
   return result;
+}
+
+/** Отметить дайджест отправленным. Ставится после доставки — см. `collectDigests`. */
+export async function markDigestSent(db: Db, roomId: number, date: string): Promise<void> {
+  await db.update(rooms).set({ lastDigestDate: date }).where(eq(rooms.id, roomId));
 }

@@ -2,11 +2,11 @@ import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
 import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
 import { digestText, dueNoticeText, goalReachedText, reminderText, trophiesText, weeklyReportText, wordOfDayText } from "./bot/texts";
-import { collectWeeklyReports } from "./services/weekly-report";
-import { collectGoalsReached, lastWeekProgress } from "./services/goals";
+import { collectWeeklyReports, markWeeklyReportSent } from "./services/weekly-report";
+import { collectGoalsReached, lastWeekProgress, markGoalReached } from "./services/goals";
 import { collectTrophies } from "./services/trophies";
-import { collectWordsOfDay } from "./services/word-of-day";
-import { collectDigests } from "./services/digest";
+import { collectWordsOfDay, markWordOfDaySent } from "./services/word-of-day";
+import { collectDigests, markDigestSent } from "./services/digest";
 import { listMembers } from "./services/rooms";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
@@ -62,28 +62,37 @@ export async function sendDueNotices(deps: ReminderDeps): Promise<number> {
 
 /** Еженедельный дайджест: в привязанную группу, а если её нет — каждому участнику в личку. */
 export async function sendDigests(deps: DigestDeps): Promise<void> {
-  for (const { room, rows, duels } of await collectDigests(deps.db, deps.now())) {
+  for (const { room, rows, duels, date } of await collectDigests(deps.db, deps.now())) {
     const text = digestText(room.name, rows, duels, await lastWeekProgress(deps.db, room, deps.now()));
     try {
       // Если в группу отправить не вышло (бота убрали из чата), шлём каждому в личку, чтобы итоги не потерялись.
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
-      if (!posted) for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+      let delivered = posted;
+      if (!posted) {
+        for (const member of await listMembers(deps.db, room.id)) delivered = (await deps.notifier.dm(member, text, HTML)) || delivered;
+      }
+      // Отмечаем только то, что действительно ушло: иначе сбой Telegram съедал итог навсегда.
+      if (delivered) await markDigestSent(deps.db, room.id, date);
       if (posted && deps.story) void deps.story(room).catch((err) => console.error("Weekly story failed", room.id, err));
     } catch (err) {
-      console.error("Digest failed", room.id, err);
+      console.error("Digest failed, will retry next tick", room.id, err);
     }
   }
 }
 
 /** Комната выполнила цель недели — поздравляем один раз: в группу, а если её нет — каждому в личку. */
 export async function sendGoalsReached(deps: DigestDeps): Promise<void> {
-  for (const { room, progress } of await collectGoalsReached(deps.db, deps.now())) {
+  for (const { room, progress, date } of await collectGoalsReached(deps.db, deps.now())) {
     const text = goalReachedText(room.name, progress);
     try {
       const posted = room.telegramChatId != null && (await deps.notifier.group(room.telegramChatId, text, HTML));
-      if (!posted) for (const member of await listMembers(deps.db, room.id)) await deps.notifier.dm(member, text, HTML);
+      let delivered = posted;
+      if (!posted) {
+        for (const member of await listMembers(deps.db, room.id)) delivered = (await deps.notifier.dm(member, text, HTML)) || delivered;
+      }
+      if (delivered) await markGoalReached(deps.db, room.id, date);
     } catch (err) {
-      console.error("Goal message failed", room.id, err);
+      console.error("Goal message failed, will retry next tick", room.id, err);
     }
   }
 }
@@ -106,20 +115,22 @@ export async function sendTrophies(deps: DigestDeps): Promise<void> {
 
 /** Личный итог недели — каждому в личку. */
 export async function sendWeeklyReports(deps: DigestDeps): Promise<void> {
-  for (const { user, report } of await collectWeeklyReports(deps.db, deps.now())) {
+  for (const { user, report, date } of await collectWeeklyReports(deps.db, deps.now())) {
     try {
-      await deps.notifier.dm(user, weeklyReportText(report), HTML);
+      if (await deps.notifier.dm(user, weeklyReportText(report), HTML)) await markWeeklyReportSent(deps.db, user.id, date);
     } catch (err) {
-      console.error("Weekly report failed", user.telegramId, err);
+      console.error("Weekly report failed, will retry next tick", user.telegramId, err);
     }
   }
 }
 
 /** Слово дня — в привязанные группы. */
 export async function sendWordsOfDay(deps: DigestDeps): Promise<void> {
-  for (const { room, word } of await collectWordsOfDay(deps.db, deps.now())) {
+  for (const { room, word, date } of await collectWordsOfDay(deps.db, deps.now())) {
     if (room.telegramChatId == null) continue;
-    await deps.notifier.group(room.telegramChatId, wordOfDayText(word), { ...HTML, reply_markup: audioKeyboard(word.id) });
+    const sent = await deps.notifier.group(room.telegramChatId, wordOfDayText(word), { ...HTML, reply_markup: audioKeyboard(word.id) });
+    // Пометка после доставки: иначе сбой терял слово дня навсегда и выбивал слово из выбора на месяц.
+    if (sent) await markWordOfDaySent(deps.db, room.id, word.id, date, deps.now());
   }
 }
 

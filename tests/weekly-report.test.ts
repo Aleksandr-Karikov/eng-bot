@@ -4,7 +4,7 @@ import { cards, mistakes, reviewLogs } from "../src/db/schema";
 import { createRoom } from "../src/services/rooms";
 import { getUser, updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
-import { collectWeeklyReports, weeklyReport } from "../src/services/weekly-report";
+import { collectWeeklyReports, markWeeklyReportSent, weeklyReport } from "../src/services/weekly-report";
 import { makeUser, testDb } from "./helpers";
 
 // Новосибирск = UTC+7. Неделя: вс 11.10 20:00 — вс 18.10 20:00.
@@ -49,7 +49,10 @@ describe("📬 personal week", () => {
   it("is sent once on Sunday evening, only to those who want it and were active", async () => {
     const { db, user } = await setup();
     expect(await collectWeeklyReports(db, nsk("2026-10-18T19:00"))).toEqual([]);
-    expect((await collectWeeklyReports(db, nsk("2026-10-18T20:30"))).map((r) => r.user.id)).toEqual([user.id]);
+    const due = await collectWeeklyReports(db, nsk("2026-10-18T20:30"));
+    expect(due.map((r) => r.user.id)).toEqual([user.id]);
+    // Отметка — после доставки, как в sendWeeklyReports.
+    for (const r of due) await markWeeklyReportSent(db, r.user.id, r.date);
     expect(await collectWeeklyReports(db, nsk("2026-10-18T21:00"))).toEqual([]);
 
     const quiet = await setup();

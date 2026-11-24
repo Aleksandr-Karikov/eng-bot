@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { digestText } from "../src/bot/texts";
 import { reviewLogs } from "../src/db/schema";
-import { autoGoal, collectGoalsReached, goalProgress, setWeeklyGoal } from "../src/services/goals";
+import { autoGoal, collectGoalsReached, goalProgress, markGoalReached, setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
@@ -43,8 +43,11 @@ describe("🎯 room goal for the week", () => {
     await setWeeklyGoal(h.db, room.id, 8);
     const fresh = (await getRoom(h.db, room.id))!;
     expect((await goalProgress(h.db, fresh, now)).target).toBe(8);
-    // Цель выполнена — поздравляем один раз за неделю.
-    expect((await collectGoalsReached(h.db, now)).map((r) => r.room.id)).toEqual([room.id]);
+    // Цель выполнена — поздравляем один раз за неделю. Отметка ставится после доставки,
+    // а не в коллекторе: иначе сбой Telegram съедал поздравление навсегда.
+    const reached = await collectGoalsReached(h.db, now);
+    expect(reached.map((r) => r.room.id)).toEqual([room.id]);
+    for (const r of reached) await markGoalReached(h.db, r.room.id, r.date);
     expect(await collectGoalsReached(h.db, now)).toEqual([]);
   });
 

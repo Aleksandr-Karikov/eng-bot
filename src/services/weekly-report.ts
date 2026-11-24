@@ -77,16 +77,24 @@ export async function weeklyReport(db: Db, user: User, now: Date): Promise<Weekl
   };
 }
 
-/** Кому пора прислать личный итог (воскресенье 20:00, догоняет двое суток); помечает. Тихие недели пропускаются. */
-export async function collectWeeklyReports(db: Db, now: Date): Promise<Array<{ user: User; report: WeeklyReport }>> {
-  const result: Array<{ user: User; report: WeeklyReport }> = [];
+/**
+ * Кому пора прислать личный итог (воскресенье 20:00, догоняет двое суток). **Не помечает** — отметка
+ * после доставки (`markWeeklyReportSent`), как в напоминаниях: иначе сбой Telegram терял личный итог
+ * навсегда. Тихие недели пропускаются: там нечего отправлять.
+ */
+export async function collectWeeklyReports(db: Db, now: Date): Promise<Array<{ user: User; report: WeeklyReport; date: string }>> {
+  const result: Array<{ user: User; report: WeeklyReport; date: string }> = [];
   const candidates = await db.select().from(users).where(and(eq(users.canDm, true), eq(users.weeklyReport, true))).orderBy(desc(users.id));
   for (const user of candidates) {
     const date = digestDue({ lastDigestDate: user.lastReportDate, timezone: user.timezone }, now);
     if (!date) continue;
-    await db.update(users).set({ lastReportDate: date }).where(eq(users.id, user.id));
     const report = await weeklyReport(db, user, now);
-    if (report.reviews > 0 || report.usedInChat > 0) result.push({ user, report });
+    if (report.reviews > 0 || report.usedInChat > 0) result.push({ user, report, date });
   }
   return result;
+}
+
+/** Отметить личный итог отправленным. Ставится после доставки — см. `collectWeeklyReports`. */
+export async function markWeeklyReportSent(db: Db, userId: number, date: string): Promise<void> {
+  await db.update(users).set({ lastReportDate: date }).where(eq(users.id, userId));
 }

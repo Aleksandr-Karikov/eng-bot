@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { User } from "../src/db/schema";
 import { digestText, reminderText } from "../src/bot/texts";
 import { sendDigests, sendReminders } from "../src/reminder-loop";
-import { collectDigests, digestDue } from "../src/services/digest";
+import { collectDigests, digestDue, markDigestSent } from "../src/services/digest";
 import { answerCard, nextDue } from "../src/services/review";
 import { createRoom, joinRoom, linkGroup } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
@@ -66,7 +66,35 @@ describe("weekly digest", () => {
     const text = digestText(digest.room.name, digest.rows);
     expect(text).toContain("Итоги недели");
     expect(text).toContain("Герой недели: <b>Bob</b>");
+    // Коллектор больше не помечает сам: отметка ставится после доставки, поэтому до неё кандидат
+    // возвращается снова (это и позволяет повторить отправку, если Telegram отказал).
+    expect(await collectDigests(db, nsk("2026-10-18T20:05"))).toHaveLength(1);
+    await markDigestSent(db, digest.room.id, digest.date);
     expect(await collectDigests(db, nsk("2026-10-18T20:05"))).toEqual([]);
+  });
+
+  it("не теряет итог, если Telegram отказал: отметка только после доставки", async () => {
+    // Раньше collectDigests писал lastDigestDate до отправки, и сбой превращался в
+    // «этого сообщения не будет никогда»: следующий тик видел дату и пропускал комнату.
+    const a = await setup();
+    await review(a.db, a.bob.id, 1, nsk("2026-10-17T12:00"));
+    const now = () => nsk("2026-10-18T20:00");
+
+    // Первый тик: Telegram отказывает — ни группа, ни личка не принимают.
+    const failing = {
+      dms: [] as unknown[],
+      groups: [] as unknown[],
+      dm: async () => false,
+      group: async () => false,
+    };
+    await sendDigests({ db: a.db, notifier: failing, now });
+    expect(await collectDigests(a.db, now())).toHaveLength(1);
+
+    // Второй тик: доставка проходит — и только теперь отметка ставится.
+    const working = fakeNotifier();
+    await sendDigests({ db: a.db, notifier: working, now });
+    expect(working.groups.length + working.dms.length).toBeGreaterThan(0);
+    expect(await collectDigests(a.db, now())).toEqual([]);
   });
 
   it("skips a room where nobody did anything this week", async () => {
@@ -160,6 +188,8 @@ describe("week boundary follows the room's own timezone", () => {
     const at14 = new Date("2026-10-18T14:00:00Z");
     const first = await collectDigests(db, at14);
     expect(first.map((d) => d.room.name)).toEqual(["Новосибирск"]);
+    // Отметка ставится после доставки — здесь её изображаем явно, как это делает sendDigests.
+    for (const d of first) await markDigestSent(db, d.room.id, d.date);
     // Через три часа закрывается и московская.
     const later = await collectDigests(db, new Date("2026-10-18T17:00:00Z"));
     expect(later.map((d) => d.room.name)).toEqual(["Москва"]);

@@ -30,17 +30,25 @@ export async function pickWordOfDay(db: Db, roomId: number, now: Date): Promise<
   return fresh.sort((a, b) => avg(a.id) - avg(b.id) || a.id - b.id)[0];
 }
 
-/** Группы, которым пора отправить слово дня; помечает и комнату, и слово. */
-export async function collectWordsOfDay(db: Db, now: Date): Promise<Array<{ room: Room; word: Word }>> {
-  const result: Array<{ room: Room; word: Word }> = [];
+/**
+ * Группы, которым пора отправить слово дня. **Не помечает** — отметка после доставки
+ * (`markWordOfDaySent`), как в напоминаниях. Иначе сбой отправки терял слово дня навсегда,
+ * и слово ещё и выпадало из выбора на месяц вперёд.
+ */
+export async function collectWordsOfDay(db: Db, now: Date): Promise<Array<{ room: Room; word: Word; date: string }>> {
+  const result: Array<{ room: Room; word: Word; date: string }> = [];
   for (const room of await db.select().from(rooms).where(isNotNull(rooms.telegramChatId))) {
     const date = wordOfDayDue(room, now);
     if (!date) continue;
-    await db.update(rooms).set({ lastWordOfDayDate: date }).where(eq(rooms.id, room.id));
     const word = await pickWordOfDay(db, room.id, now);
     if (!word) continue;
-    await db.update(words).set({ featuredAt: now }).where(eq(words.id, word.id));
-    result.push({ room, word });
+    result.push({ room, word, date });
   }
   return result;
+}
+
+/** Отметить слово дня отправленным: комната — дату, слово — что оно уже было. Ставится после доставки. */
+export async function markWordOfDaySent(db: Db, roomId: number, wordId: number, date: string, now: Date): Promise<void> {
+  await db.update(rooms).set({ lastWordOfDayDate: date }).where(eq(rooms.id, roomId));
+  await db.update(words).set({ featuredAt: now }).where(eq(words.id, wordId));
 }
