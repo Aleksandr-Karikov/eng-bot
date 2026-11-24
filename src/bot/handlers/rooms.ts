@@ -5,7 +5,7 @@ import {
   createRoom, deleteRoom, findRoomByChat, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed, updateRoomTimezone,
 } from "../../services/rooms";
 import { getUser, setSourceOnce, updateUser } from "../../services/users";
-import { parseStartPayload } from "../../services/source";
+import { parseStartPayload } from "../../services/start-payload";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";
 import { background, HTML, inviteLink, type BotContext, type Deps } from "../context";

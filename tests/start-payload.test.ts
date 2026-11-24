@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { users } from "../src/db/schema";
 import { getUser } from "../src/services/users";
-import { DIRECT_SOURCE, MAX_SOURCE, parseStartPayload } from "../src/services/source";
+import { DIRECT_SOURCE, MAX_SOURCE, parseStartPayload } from "../src/services/start-payload";
 import { sourceLines, sourceSummary } from "../src/services/sources";
 import { createRoom } from "../src/services/rooms";
 import { botHarness } from "./bot-harness";
