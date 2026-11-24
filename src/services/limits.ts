@@ -349,21 +349,43 @@ export function quotaLine(kind: QuotaKind, used: number): string {
 }
 
 /**
+ * Два счётчика, которые образуют ОДНО правило про слова: «50 в день И 200 в неделю».
+ *
+ * Список один на весь файл: его читают отображение (`wordsLeft`), проверка (`checkAndCountWord`) и
+ * подготовка строк (`ensureWordCounters`). Раньше формула была выписана в трёх местах отдельно, и они
+ * могли разойтись: человек видел бы один остаток, а отказ приходил бы по другому числу (E25).
+ */
+const WORD_QUOTAS = ["add_word", "add_word_week"] as const;
+type WordQuotaKind = (typeof WORD_QUOTAS)[number];
+
+/** Период и предел каждого из двух счётчиков — тоже из одного места. */
+function wordQuota(kind: WordQuotaKind): { period: QuotaPeriod; limit: number } {
+  const quota = QUOTAS[kind];
+  return { period: quota.period, limit: quota.limit };
+}
+
+/**
  * Сколько новых слов человек может добавить прямо сейчас — по дневному и недельному лимитам вместе.
  *
  * Два счётчика, а решение одно: показать остаток нужно там, где меньше запас, иначе человек увидит
  * «можно ещё 40», упрётся в недельный лимит на третьем слове и решит, что бот врёт.
+ *
+ * Это единственное место, где остаток **показывается**. Проверка (`checkAndCountWord`) считает то же
+ * правило по-своему — в SQL, одной инструкцией, — но берёт имена счётчиков и пределы из `WORD_QUOTAS`,
+ * поэтому разойтись они могут только вместе с этим списком.
  */
 export async function wordsLeft(
   db: Db,
   input: { userId: number; timeZone: string; now: Date },
 ): Promise<{ left: number; kind: QuotaKind; used: number; limit: number }> {
-  const [dayUsed, weekUsed] = await Promise.all([
-    quotaUsed(db, { ...input, kind: "add_word" }),
-    quotaUsed(db, { ...input, kind: "add_word_week" }),
-  ]);
-  const day = { left: QUOTAS.add_word.limit - dayUsed, kind: "add_word" as const, used: dayUsed, limit: QUOTAS.add_word.limit };
-  const week = { left: QUOTAS.add_word_week.limit - weekUsed, kind: "add_word_week" as const, used: weekUsed, limit: QUOTAS.add_word_week.limit };
+  const used = await Promise.all(WORD_QUOTAS.map((kind) => quotaUsed(db, { ...input, kind })));
+  const [day, week] = WORD_QUOTAS.map((kind, i) => ({
+    left: wordQuota(kind).limit - used[i],
+    kind: kind as QuotaKind,
+    used: used[i],
+    limit: wordQuota(kind).limit,
+  }));
+  // Показываем тот лимит, который кончится раньше: иначе «можно ещё 40» упирается в недельный на третьем.
   return week.left < day.left ? week : day;
 }
 
@@ -401,8 +423,10 @@ export async function checkAndCountWord(
 ): Promise<QuotaState> {
   const day = QUOTAS.add_word;
   const week = QUOTAS.add_word_week;
-  const dayPeriod = periodKey(day.period, input.timeZone, input.now);
-  const weekPeriod = periodKey(week.period, input.timeZone, input.now);
+  // Периоды и пределы — из `wordQuota`, того же источника, что у `wordsLeft`: иначе отображение
+  // и проверка могут разойтись, показывая остаток по одному лимиту и отказывая по другому.
+  const dayPeriod = periodKey(wordQuota("add_word").period, input.timeZone, input.now);
+  const weekPeriod = periodKey(wordQuota("add_word_week").period, input.timeZone, input.now);
   await ensureWordCounters(db, { ...input, dayPeriod, weekPeriod });
 
   /** Значение счётчика; отсутствующая строка считается нулём. */
@@ -443,6 +467,40 @@ export async function checkAndCountWord(
 }
 
 /**
+ * Вернуть место в лимите слов, если слово так и не сохранилось.
+ *
+ * Нужен потому, что место занимается **до** записи: если `saveWord` отказал (дубль, слишком длинное
+ * слово, комната исчезла), списанное место было бы потеряно зря. Счётчик уменьшается, но не ниже нуля —
+ * `max(0, …)`, чтобы повторный возврат не сделал его отрицательным.
+ *
+ * Неудача возврата не бросает исключение: вызывающий уже сообщает человеку об отказе сохранения, и
+ * вторая ошибка в логе была бы шумом. Худшее последствие сбоя — потерянное место в лимите, а не
+ * превышение.
+ */
+export async function refundWordQuota(
+  db: Db,
+  input: { userId: number; timeZone: string; now: Date },
+): Promise<void> {
+  const periods = {
+    add_word: periodKey(wordQuota("add_word").period, input.timeZone, input.now),
+    add_word_week: periodKey(wordQuota("add_word_week").period, input.timeZone, input.now),
+  };
+  try {
+    await db
+      .update(usageCounters)
+      .set({ count: sql`max(0, ${usageCounters.count} - 1)`, updatedAt: input.now })
+      .where(and(
+        eq(usageCounters.userId, input.userId),
+        eq(usageCounters.scope, ""),
+        sql`((${usageCounters.period} = ${periods.add_word} AND ${usageCounters.kind} = 'add_word')
+          OR (${usageCounters.period} = ${periods.add_word_week} AND ${usageCounters.kind} = 'add_word_week'))`,
+      ));
+  } catch (err) {
+    console.error("Refund word quota failed", input.userId, err);
+  }
+}
+
+/**
  * Завести обе строки счётчиков со значением 0, если их ещё нет.
  *
  * Это подготовка, а не расход: `ON CONFLICT DO NOTHING` не трогает существующие строки, а отсутствие
@@ -459,8 +517,8 @@ async function ensureWordCounters(
     SELECT p.count FROM usage_counters p
     WHERE p.user_id = ${input.userId} AND p.period = ${period} AND p.kind = ${kind} AND p.scope = ''
   ), 0)`;
-  const room = sql`${counter(input.dayPeriod, "add_word")} < ${QUOTAS.add_word.limit}
-    AND ${counter(input.weekPeriod, "add_word_week")} < ${QUOTAS.add_word_week.limit}`;
+  const room = sql`${counter(input.dayPeriod, "add_word")} < ${wordQuota("add_word").limit}
+    AND ${counter(input.weekPeriod, "add_word_week")} < ${wordQuota("add_word_week").limit}`;
   // `values(...).where(...)` drizzle не поддерживает, поэтому строки заводятся `INSERT … SELECT`: у него
   // условие есть, и при исчерпанном пределе он просто не вставит ничего.
   await db.insert(usageCounters).select(sql`

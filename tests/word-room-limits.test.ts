@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { rooms, usageCounters, users } from "../src/db/schema";
-import { QUOTAS, checkAndCountWord, periodKey, quotaUsed, wordsLeft } from "../src/services/limits";
+import { rooms, usageCounters, users, words } from "../src/db/schema";
+import { QUOTAS, checkAndCountWord, periodKey, quotaUsed, refundWordQuota, wordsLeft } from "../src/services/limits";
 import { createRoom, deleteRoom, joinAllowed, joinRoom, memberCount, roomCreationAllowed } from "../src/services/rooms";
+import { updateUser } from "../src/services/users";
 import { makeUser, T0, at, DAY, testDb } from "./helpers";
-import { botHarness, type ApiCall } from "./bot-harness";
+import { botHarness, buttonData, type ApiCall } from "./bot-harness";
 
 /**
  * Лимиты на слова и на комнаты (docs/limits.md, «Особые случаи»).
@@ -406,6 +407,114 @@ describe("два счётчика слов пишутся одной инстр�
     expect(state.allowed).toBe(false);
     expect(state.refusal).toBe(QUOTAS.add_word_week.refusal);
     // Дневной не тронут: отказ ничего не считает.
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(0);
+  });
+});
+
+describe("остаток и проверка — одно правило (E25)", () => {
+  /**
+   * Правило «50 в день и 200 в неделю» раньше было выписано отдельно в трёх местах: `wordsLeft`
+   * (показывает остаток), `checkAndCountWord` (проверяет и пишет) и подготовка строк. Разойтись они
+   * могли молча: человек видел бы «можно ещё 40», а отказ приходил по другому числу. Теперь пределы
+   * берутся из одного списка `WORD_QUOTAS`/`wordQuota`, и тест это фиксирует.
+   */
+  it("wordsLeft показывает тот лимит, по которому откажет проверка", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 200);
+    const now = at(2 * DAY);
+    // Дневной на пределе, недельный с запасом: отказ обязан быть про дневной, и остаток — ноль.
+    await db.insert(usageCounters).values([
+      { userId: user.id, period: periodKey("day", MSK, now), kind: "add_word", scope: "", count: QUOTAS.add_word.limit, updatedAt: now },
+      { userId: user.id, period: periodKey("week", MSK, now), kind: "add_word_week", scope: "", count: 10, updatedAt: now },
+    ]);
+    const left = await wordsLeft(db, { userId: user.id, timeZone: MSK, now });
+    const check = await checkAndCountWord(db, { userId: user.id, timeZone: MSK, now });
+    expect(left.left).toBe(0);
+    expect(left.kind).toBe("add_word");
+    expect(check.allowed).toBe(false);
+    expect(check.refusal).toBe(QUOTAS.add_word.refusal);
+  });
+
+  it("и наоборот: упёрся недельный — оба говорят про недельный", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 201);
+    const now = at(2 * DAY);
+    await db.insert(usageCounters).values([
+      { userId: user.id, period: periodKey("day", MSK, now), kind: "add_word", scope: "", count: 0, updatedAt: now },
+      { userId: user.id, period: periodKey("week", MSK, now), kind: "add_word_week", scope: "", count: QUOTAS.add_word_week.limit, updatedAt: now },
+    ]);
+    const left = await wordsLeft(db, { userId: user.id, timeZone: MSK, now });
+    const check = await checkAndCountWord(db, { userId: user.id, timeZone: MSK, now });
+    expect(left.left).toBe(0);
+    expect(left.kind).toBe("add_word_week");
+    expect(check.allowed).toBe(false);
+    expect(check.refusal).toBe(QUOTAS.add_word_week.refusal);
+  });
+
+  it("пока место есть, остаток уменьшается на единицу с каждым добавлением", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 202);
+    const now = at(2 * DAY);
+    const before = await wordsLeft(db, { userId: user.id, timeZone: MSK, now });
+    expect(before.left).toBe(QUOTAS.add_word.limit);
+    const state = await checkAndCountWord(db, { userId: user.id, timeZone: MSK, now });
+    expect(state.allowed).toBe(true);
+    const after = await wordsLeft(db, { userId: user.id, timeZone: MSK, now });
+    // Отображение и проверка читают один и тот же счётчик — расходиться нечему.
+    expect(after.left).toBe(before.left - 1);
+    expect(after.used).toBe(state.used);
+  });
+});
+
+describe("слово не сохраняется, если места уже нет (E25)", () => {
+  /**
+   * `spendWordQuota` звался **после** `saveWord` и возвращал `void`: отказ ничего не останавливал.
+   * Слово оставалось в базе, а счётчик переваливал за предел. Проверка на входе (`startAdd`) этого
+   * не закрывает — между черновиком и подтверждением место мог забрать другой путь.
+   *
+   * Теперь место занимается до записи, и отказ её предотвращает.
+   */
+  it("подтверждение черновика не сохраняет слово, если место забрали за это время", async () => {
+    // Настоящее окно: `startAdd` проверил место и создал черновик, человек читает перевод,
+    // а место тем временем израсходовано другим путём (инлайн, второй телефон, Mini App).
+    const h = botHarness({
+      enricher: {
+        enrich: async () => ({ translation: "удача", explanation: "", example: "" }),
+        extractImage: async () => [], extract: async () => [],
+        check: async () => ({ corrected: "", fixes: [], natural: "" }),
+      },
+    });
+    const author = await updateUser(h.db, (await makeUser(h.db, 300, "Ann")).id, { canDm: true });
+    const room = await createRoom(h.db, { name: "R", createdBy: author.id, now: T0 });
+    await joinRoom(h.db, { roomId: room.id, userId: author.id, now: T0, makeCurrent: true });
+
+    await h.bot.handleUpdate(h.message(300, "/add serendipity — удача"));
+    await vi.waitFor(() => expect(() => buttonData(h.calls, "➕ Добавить")).not.toThrow());
+
+    // Пока черновик на экране, лимит выбирают до предела.
+    for (let i = 0; i < QUOTAS.add_word.limit; i++) {
+      await checkAndCountWord(h.db, { userId: author.id, timeZone: author.timezone, now: T0 });
+    }
+
+    await h.bot.handleUpdate(h.callback(300, buttonData(h.calls, "➕ Добавить")));
+    await vi.waitFor(() => expect(h.calls.some((c) => String(c.payload.text).includes("достаточно"))).toBe(true));
+    // Слово не сохранилось: отказ пришёл ДО записи, а не после неё.
+    expect(await h.db.select().from(words).where(eq(words.roomId, room.id))).toHaveLength(0);
+  });
+
+  it("отказ возвращает место, если сохранение всё же не удалось", async () => {
+    const db = testDb();
+    const user = await makeUser(db, 301);
+    const now = at(2 * DAY);
+    // Место занято (как будто его списали до сохранения), а слово не легло.
+    await checkAndCountWord(db, { userId: user.id, timeZone: MSK, now });
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(1);
+    await refundWordQuota(db, { userId: user.id, timeZone: MSK, now });
+    // Вернулось ровно одно место, и счётчик не ушёл в минус.
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(0);
+    expect(await quotaUsed(db, { userId: user.id, kind: "add_word_week", timeZone: MSK, now })).toBe(0);
+    // Повторный возврат не делает счётчик отрицательным.
+    await refundWordQuota(db, { userId: user.id, timeZone: MSK, now });
     expect(await quotaUsed(db, { userId: user.id, kind: "add_word", timeZone: MSK, now })).toBe(0);
   });
 });

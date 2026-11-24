@@ -8,6 +8,7 @@ import { ensurePersonalRoom } from "../../services/rooms";
 import { encodeCb, decodeCb, fitsCallbackText } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { spendWordQuota } from "./quota";
+import { refundWordQuota } from "../../services/limits";
 import { inlineWordDescription, inlineWordText } from "../texts";
 
 /**
@@ -138,8 +139,12 @@ async function addTranslatedWord(ctx: BotContext, deps: Deps, query: string): Pr
     },
   });
   if (saved.status !== "saved") return void (await sendToUser(ctx, "Уже есть в твоём словаре"));
-  // Лимит слов — как у /add и Mini App: слово из инлайна это то же добавление слова.
-  await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone });
+  // Лимит слов — как у /add и Mini App: слово из инлайна это то же добавление слова. Отказ здесь
+  // не останавливает сохранение (слово уже в базе), поэтому место возвращается сразу: иначе лимит
+  // превышался бы молча — ровно дефект E25.
+  if (!(await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone }))) {
+    await refundWordQuota(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
+  }
   await sendCardToUser(ctx, inlineWordText({ ...e, term }));
 }
 

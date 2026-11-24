@@ -1,6 +1,6 @@
 import { currentLang, langForms } from "../../lang";
 import type { Bot } from "grammy";
-import { checkAndCount, QUOTAS, wordsLeft } from "../../services/limits";
+import { checkAndCount, QUOTAS, refundWordQuota, wordsLeft } from "../../services/limits";
 import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";
 import { prepareWord } from "../../services/prepare-word";
 import { termPattern } from "../../services/word-uses";
@@ -99,6 +99,14 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
     if (cb.action !== "ok") return void (await ctx.answerCallbackQuery());
 
     deps.drafts.delete(draft.id);
+    // Место в лимите занимается ДО записи: иначе отказ приходил бы после сохранения, и не превысить
+    // лимит можно было бы только удалением уже добавленного слова (E25).
+    if (!(await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone }))) {
+      const left = await wordsLeft(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
+      const kind = left.left <= 0 ? left.kind : "add_word";
+      await ctx.answerCallbackQuery({ text: "Лимит слов" });
+      return void (await ctx.editMessageText(QUOTAS[kind].refusal, HTML));
+    }
     const result = await saveWord(deps.db, {
       roomId: draft.roomId,
       addedBy: ctx.user.id,
@@ -106,19 +114,22 @@ export function registerAdd(bot: Bot<BotContext>, deps: Deps): void {
       now: deps.now(),
     });
     if (result.status === "no-room") {
+      // Место уже занято, а слова нет — возвращаем, иначе оно потеряно зря.
+      await refundWordQuota(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText("Комнату уже удалили — слово не сохранено. Твои комнаты — /room"));
     }
     if (result.status === "duplicate") {
+      await refundWordQuota(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`«${esc(draft.term)}» уже есть в комнате`, HTML));
     }
     if (result.status === "too-long") {
+      await refundWordQuota(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now() });
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`Слишком длинно: до ${result.limit} символов. Для фразы такого размера лучше добавить отдельные слова`, HTML));
     }
     await ctx.answerCallbackQuery({ text: "Добавлено!" });
-    await spendWordQuota(deps, { userId: ctx.user.id, timezone: ctx.user.timezone });
     await ctx.editMessageText(`✅ Добавлено\n\n${draftText(result.word)}`, { ...HTML, reply_markup: wordActionsKeyboard(result.word.id, Boolean(deps.images)) });
     const { word, members } = result;
     background(ctx, () => broadcastWord(deps, word, members, ctx.user));
