@@ -412,8 +412,7 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
 
 async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: "good" | "again"): Promise<boolean> {
   const result = await answerCard(deps.db, {
-    bossEnabled: deps.bossEnabled,
-    userId: ctx.user.id,
+        userId: ctx.user.id,
     cardId: pending.cardId,
     expectedReps: pending.reps,
     answer,
@@ -611,8 +610,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const pending = current?.cardId === cb.cardId ? current : undefined;
     const sentence = pending ? undefined : pickCloze(await listCloze(deps.db, item.word.id), cb.reps);
     const result = await answerCard(deps.db, {
-      bossEnabled: deps.bossEnabled,
-      userId: ctx.user.id,
+            userId: ctx.user.id,
       cardId: cb.cardId,
       expectedReps: cb.reps,
       answer: "again",
@@ -662,8 +660,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     const correct = cb.index === collocations.quiz.correct;
     if (!cb.practice) {
       const result = await answerCard(deps.db, {
-        bossEnabled: deps.bossEnabled,
-        userId: ctx.user.id,
+                userId: ctx.user.id,
         cardId: cb.cardId,
         expectedReps: cb.reps,
         answer: correct ? "good" : "again",
@@ -724,8 +721,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "rate") return void (await ctx.answerCallbackQuery());
     const stage = cb.stage;
     const result = await answerCard(deps.db, {
-      bossEnabled: deps.bossEnabled,
-      userId: ctx.user.id,
+            userId: ctx.user.id,
       cardId: cb.cardId,
       expectedReps: cb.reps,
       answer: cb.answer,
@@ -790,7 +786,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`${draftText(word)}\n\n📚 Добавлено в изучение — встретится в /learn`, HTML));
     }
-    const result = await markKnown(deps.db, { bossEnabled: deps.bossEnabled, userId: ctx.user.id, wordId: word.id, now: deps.now() });
+    const result = await markKnown(deps.db, { userId: ctx.user.id, wordId: word.id, now: deps.now() });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await markTriaged(deps.db, ctx.user.id, word.id, deps.now());
     await ctx.answerCallbackQuery({ text: "👍" });

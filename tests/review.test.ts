@@ -87,7 +87,7 @@ async function damageAt(db: ReturnType<typeof testDb>, cardId: number): Promise<
 /** Ответ на карточку в боевом режиме: `answerCard` с текущим `reps` и включённым уроном. */
 const damageOf = async (db: ReturnType<typeof testDb>, userId: number, cardId: number, rating: "again" | "good", now: Date) => {
   const [c] = await db.select().from(cardsTable).where(eq(cardsTable.id, cardId));
-  return answerCard(db, { userId, cardId, expectedReps: c.reps, answer: rating, now, bossEnabled: true });
+  return answerCard(db, { userId, cardId, expectedReps: c.reps, answer: rating, now });
 };
 
 describe("урон за «Забыл» затухает по серии подряд", () => {
@@ -139,7 +139,7 @@ describe("«уже знаю» — знакомство, а не работа (E5
     const word = await add("familiar");
     await setBossMode(db, bob.id);
     const before = await goalProgress(db, (await getRoom(db, room.id))!, T0);
-    expect(await markKnown(db, { userId: bob.id, wordId: word.id, now: T0, bossEnabled: true })).toBe("ok");
+    expect(await markKnown(db, { userId: bob.id, wordId: word.id, now: T0 })).toBe("ok");
 
     // Карточка ушла из очереди — знакомство засчитано.
     expect(await countDue(db, bob.id, T0)).toBe(0);

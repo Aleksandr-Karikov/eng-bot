@@ -75,7 +75,7 @@ async function checkAnswer(ctx: BotContext, deps: Deps, session: TranslateSessio
     : undefined;
   if (task.card && review.usedWord) {
     const item = await getDueItemByCard(deps.db, ctx.user.id, task.card.cardId);
-    if (item) await answerCard(deps.db, { bossEnabled: deps.bossEnabled, userId: ctx.user.id, cardId: item.card.id, expectedReps: item.card.reps, answer: "good", now, stage: "translate" });
+    if (item) await answerCard(deps.db, { userId: ctx.user.id, cardId: item.card.id, expectedReps: item.card.reps, answer: "good", now, stage: "translate" });
   }
   // Верно и без поправок — одной строкой в шапку следующего задания; иначе разбор ждёт «▶ Дальше».
   const quiet = review.correct && real.length === 0 && !review.natural && !progress?.resolved;

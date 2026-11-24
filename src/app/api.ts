@@ -277,7 +277,7 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
   if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) return { status: 400, body: { ok: false, error: "bad answer" } };
   // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
   if (body.practice === true) return { status: 200, body: { ok: true, result: "practice", damage: 0 } };
-  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}`, bossEnabled: deps.bossEnabled });
+  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
   return { status: 200, body: { ok: true, ...result } };
 }
 
@@ -352,7 +352,7 @@ export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown
   const now = deps.now();
   const ok = body.undo
     ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
-    : await triage(deps.db, { userId: user.id, cardId, action, now, bossEnabled: deps.bossEnabled });
+    : await triage(deps.db, { userId: user.id, cardId, action, now });
   return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
 }
 

@@ -105,7 +105,7 @@ export function registerLearnWidget(bot: Bot<BotContext>, deps: Deps): void {
     try {
       if (ANSWERS.has(answer as Answer) && q.chat && q.message_id) {
         const now = deps.now();
-        const res = await answerCard(deps.db, { bossEnabled: deps.bossEnabled, userId: ctx.user.id, cardId: Number(cardId), expectedReps: Number(reps), answer: answer as Answer, now });
+        const res = await answerCard(deps.db, { userId: ctx.user.id, cardId: Number(cardId), expectedReps: Number(reps), answer: answer as Answer, now });
         const next = await nextDue(deps.db, ctx.user.id, now);
         await raw(ctx).editMessageWidgetData({ chat_id: q.chat.id, message_id: q.message_id, chat_data: cardData(next, res === "ok" ? n + 1 : n) });
       }

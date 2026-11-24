@@ -78,9 +78,18 @@ export async function getDueItemByCard(db: Db, userId: number, cardId: number): 
 const snapshotOf = (card: CardRow) =>
   JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
 
-async function reviewDamage(db: Db, userId: number, roomId: number | null | undefined, answer: Answer, now: Date, cardId: number, stage?: string, enabled?: boolean) {
+/**
+ * Урон ответа. Глобальный рубильник `BOSS_ENABLED` сюда НЕ передаётся намеренно.
+ *
+ * Он управляет только показом режима (вкладка, /boss, строка под «Готово»). Числа при его выключении
+ * обязаны остаться прежними — это обещание ранбука, и на нём держится возможность снять игру без
+ * последствий. Раньше флаг просачивался сюда и гасил бонусы (реликвии, серия дней) и флаг `banked`:
+ * ответ того же человека давал 21 HP при включённом режиме и 20 при выключенном, а недельный прогресс
+ * от выключения удваивался (E7). Личная настройка `modeBoss` остаётся: она про выбор человека.
+ */
+async function reviewDamage(db: Db, userId: number, roomId: number | null | undefined, answer: Answer, now: Date, cardId: number, stage?: string) {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
-  const active = enabled !== false && user?.modeBoss === true;
+  const active = user?.modeBoss === true;
   const skill = damageSkill(stage);
   // Комната нужна и для недели (пояс комнаты), и для бонуса Дракона — читаем один раз.
   const room = active && roomId != null ? await getRoom(db, roomId) : undefined;
@@ -107,11 +116,13 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   const again = answer === "again" ? await againStreak(db, cardId, now) : 1;
   return {
     damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0), again) * 10),
+    // `banked` — личная настройка «Копить урон» у того, кто играет. Рубильник сюда не входит (см. выше):
+    // иначе выключение режима сбрасывало флаг в false, и весь накопленный запас разом попадал в /goal.
     banked: active && user.bankDamage,
   };
 }
 
-type RecordAnswerInput = { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string; bossEnabled?: boolean };
+type RecordAnswerInput = { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string };
 type RecordedAnswer = { result: "ok" | "stale"; damage: number };
 
 export function recordAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAnswer> {
@@ -125,7 +136,7 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return { result: "stale", damage: 0 };
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
-  const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage, input.bossEnabled);
+  const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
   // Условное обновление «если reps всё ещё прежний»: два почти одновременных ответа (кнопка и текст)
   // не засчитаются дважды — второй увидит, что карточку уже обновили.
   const [updated] = await db
@@ -182,7 +193,7 @@ async function undoRecordedAnswer(db: Db, input: { userId: number; cardId: numbe
 
 export async function markKnown(
   db: Db,
-  input: { userId: number; wordId: number; now: Date; bossEnabled?: boolean },
+  input: { userId: number; wordId: number; now: Date },
 ): Promise<"ok" | "stale"> {
   const [card] = await db
     .select()
@@ -190,7 +201,7 @@ export async function markKnown(
     .where(and(eq(cards.wordId, input.wordId), eq(cards.userId, input.userId)));
   if (!card || card.state !== State.New || card.reps !== 0) return "stale";
   return answerCard(db, {
-    userId: input.userId, cardId: card.id, expectedReps: 0, answer: "easy", now: input.now, stage: KNOW_STAGE, bossEnabled: input.bossEnabled,
+    userId: input.userId, cardId: card.id, expectedReps: 0, answer: "easy", now: input.now, stage: KNOW_STAGE,
   });
 }
 

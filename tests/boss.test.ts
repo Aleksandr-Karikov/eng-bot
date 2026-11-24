@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { bossFeed, bossOf, bossPace, bossPhase, bossRound, roundOpponent, tierHp, LADDER_BASE_HP, upgradePrice, MAX_UPGRADE } from "../src/services/boss";
-import { setWeeklyGoal } from "../src/services/goals";
+import { goalProgress, setWeeklyGoal } from "../src/services/goals";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
 import { combatSpends, reviewLogs } from "../src/db/schema";
@@ -11,7 +11,7 @@ import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import { botHarness, buttonData } from "./bot-harness";
-import { at, DAY, HOUR, makeUser, T0 } from "./helpers";
+import { at, DAY, HOUR, makeUser, testDb, T0 } from "./helpers";
 import { getUserByTelegramId, updateUser } from "../src/services/users";
 import { latestDigestMoment } from "../src/services/digest";
 import { damageBalanceDeci } from "../src/services/combat-ledger";
@@ -900,5 +900,59 @@ describe("🎲 the ladder is the same every week, depth comes from power", () =>
     for (let l = 0; l < MAX_UPGRADE; l++) total += upgradePrice(l);
     const weeksAt200 = total / 200;
     expect(weeksAt200).toBeLessThan(60);
+  });
+});
+
+
+describe("рубильник BOSS_ENABLED не меняет числа (E7)", () => {
+  /**
+   * Ранбук обещает: `BOSS_ENABLED=0` выключает показ режима, но числа в `/goal` остаются прежними,
+   * а после `BOSS_ENABLED=1` возвращается ровно то, что было. Дефект был в том, что флаг просачивался
+   * в расчёт ответа (через `deps.bossEnabled`) и там гасил две вещи:
+   *
+   * 1. `banked: active && user.bankDamage` — запас переставал копиться, и весь накопленный урон разом
+   *    попадал в `/goal`;
+   * 2. бонусы (`active ? mobHuntWeeks : 0`, `active ? streakBuff : undefined`) — реликвия и серия дней
+   *    переставали усиливать ответ: 21 HP при включённом режиме против 20 при выключенном.
+   *
+   * Тест идёт через реальный HTTP-путь Mini App с `deps.bossEnabled = false`, потому что именно оттуда
+   * флаг и попадал в сервис.
+   */
+  const answerVia = async (bossEnabled: boolean) => {
+    const { h, app, headers } = await bossTab();
+    h.deps.bossEnabled = bossEnabled;
+    const { db } = h;
+    const alice = (await getUserByTelegramId(db, 100))!;
+    await updateUser(db, alice.id, { modeBoss: true, bankDamage: true });
+    // «Знак охотника» (+5% ко всему): две недели охоты до текущей недели.
+    await db.insert(combatSpends).values([
+      { userId: alice.id, target: "golem", mobWeek: "2026-09-06", requestId: "r1", damageDeci: 300, at: nsk("2026-09-01T11:00") },
+      { userId: alice.id, target: "ghost", mobWeek: "2026-09-13", requestId: "r2", damageDeci: 450, at: nsk("2026-09-08T11:00") },
+    ]);
+    const post = async (path: string, body: object) => (await app.request(path, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    })).json();
+    const res = await post("/api/answer", { cardId: 1, reps: 0, answer: "good" });
+    const [log] = await db.select().from(reviewLogs).where(eq(reviewLogs.cardId, 1));
+    const goal = await goalProgress(db, (await getRoom(db, 1))!, nsk("2026-10-19T13:00"));
+    return { res, damageDeci: log.damageDeci, banked: log.banked, done: goal.done };
+  };
+
+  it("урон с реликвией одинаков при включённом и выключенном режиме", async () => {
+    const on = await answerVia(true);
+    const off = await answerVia(false);
+    // +5% от 20 HP = 21 в десятых. Раньше при выключенном рубильнике бонус пропадал (20).
+    expect(off.damageDeci).toBe(on.damageDeci);
+    expect(off.damageDeci).toBe(21);
+  });
+
+  it("запас копится независимо от рубильника, поэтому /goal не прыгает", async () => {
+    const on = await answerVia(true);
+    const off = await answerVia(false);
+    // Копить включено у человека — значит урон идёт в запас, а не в цель, при любом рубильнике.
+    expect(on.banked).toBe(true);
+    expect(off.banked).toBe(true);
+    expect(on.done).toBe(off.done);
+    expect(off.done).toBe(0);
   });
 });
