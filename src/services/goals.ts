@@ -81,6 +81,9 @@ export async function againStreak(db: Db, cardId: number, now: Date, limit = 3):
   return streak + 1;
 }
 
+/** Стадия «уже знаю»: знакомство с чужим словом, а не проверка памяти (E5). */
+export const KNOW_STAGE = "know";
+
 /**
  * Вес ответа в HP. «Забыл» — тоже 1, а не 0: ноль наказывал бы за честность, и стало бы выгодно
  * врать себе «помню», чтобы босс дох. Признался — уже работа.
@@ -88,8 +91,13 @@ export async function againStreak(db: Db, cardId: number, now: Date, limit = 3):
  * Но за серию «Забыл» подряд урон падает (`againDecay`): FSRS возвращает такую карточку через минуту,
  * и без затухания одна карточка кормит босса бесконечно, награждая нажатия вместо памяти (E2).
  * `againStreak` — который это «Забыл» подряд по этой карточке, начиная с 1.
+ *
+ * «Уже знаю» не даёт урона вовсе: это свайп «слово знакомо», без единого вопроса, и раньше он давал
+ * максимум базовой таблицы (3 HP за `easy`) за нажатие — больше, чем «Помню» после раздумий.
+ * Карточка при этом закрывается как обычно: знакомство засчитывается, вклад в цель — нет (E5).
  */
 export function answerWeight(rating: string, stage?: string | null, level = 0, listenLevel = 0, writingLevel = 0, relicPercent = 0, againStreak = 1): number {
+  if (stage === KNOW_STAGE) return 0;
   const base = rating === "easy" ? 3 : rating === "hard" ? 2 : rating === "good" ? 2 : 1;
   const decay = rating === "again" ? againDecay(againStreak) : 1;
   // Сложное упражнение — вдвое: человек не узнал слово, а воспроизвёл.

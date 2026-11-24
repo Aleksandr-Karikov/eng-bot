@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import { cards as cardsTable, reviewLogs } from "../src/db/schema";
 import { updateUser } from "../src/services/users";
-import { createRoom, joinRoom } from "../src/services/rooms";
+import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
+import { goalProgress } from "../src/services/goals";
 import { answerCard, countDue, markKnown, nextDue, nextReviewAt } from "../src/services/review";
 import { saveWord } from "../src/services/words";
 import { DAY, MIN, T0, at, makeUser, testDb } from "./helpers";
@@ -83,17 +84,18 @@ async function damageAt(db: ReturnType<typeof testDb>, cardId: number): Promise<
   return rows.map((row) => row.damageDeci ?? -1);
 }
 
+/** Ответ на карточку в боевом режиме: `answerCard` с текущим `reps` и включённым уроном. */
+const damageOf = async (db: ReturnType<typeof testDb>, userId: number, cardId: number, rating: "again" | "good", now: Date) => {
+  const [c] = await db.select().from(cardsTable).where(eq(cardsTable.id, cardId));
+  return answerCard(db, { userId, cardId, expectedReps: c.reps, answer: rating, now, bossEnabled: true });
+};
+
 describe("урон за «Забыл» затухает по серии подряд", () => {
   /**
    * FSRS возвращает «Забыл» через минуту, поэтому одна карточка давала урон сколько угодно раз:
    * игрок жал «Забыл», получал HP за нажатие, и память тут ни при чём (E2). Затухание 1 → 0.5 → 0.25 → 0
    * привязано к серии подряд по этой карточке, а не к общему числу провалов.
    */
-  const damageOf = async (db: ReturnType<typeof testDb>, bob: number, cardId: number, rating: "again" | "good", now: Date) => {
-    const [c] = await db.select().from(cardsTable).where(eq(cardsTable.id, cardId));
-    const res = await answerCard(db, { userId: bob, cardId, expectedReps: c.reps, answer: rating, now, bossEnabled: true });
-    return res;
-  };
 
   it("снижает урон с каждым «Забыл» подряд и обнуляет с четвёртого", async () => {
     const { db, bob, add } = await setup();
@@ -123,5 +125,40 @@ describe("урон за «Забыл» затухает по серии подр
     await damageOf(db, bob.id, cardId, "good", at(2 * MIN));
     await damageOf(db, bob.id, cardId, "again", at(3 * MIN));
     expect(await damageAt(db, cardId)).toEqual([10, 5, 20, 10]);
+  });
+});
+
+describe("«уже знаю» — знакомство, а не работа (E5)", () => {
+  /**
+   * markKnown отправляет `easy` для новой карточки, поэтому раньше давал 3 HP за нажатие — максимум
+   * базовой таблицы и больше, чем «Помню» после раздумий. Свайп «слово знакомо» не проверяет память,
+   * значит и вклада в цель недели давать не должен. Карточка при этом закрывается как обычно.
+   */
+  it("не двигает цель комнаты, но убирает карточку из очереди", async () => {
+    const { db, bob, add, room } = await setup();
+    const word = await add("familiar");
+    await setBossMode(db, bob.id);
+    const before = await goalProgress(db, (await getRoom(db, room.id))!, T0);
+    expect(await markKnown(db, { userId: bob.id, wordId: word.id, now: T0, bossEnabled: true })).toBe("ok");
+
+    // Карточка ушла из очереди — знакомство засчитано.
+    expect(await countDue(db, bob.id, T0)).toBe(0);
+    // Цель не сдвинулась ни на HP.
+    const after = await goalProgress(db, (await getRoom(db, room.id))!, T0);
+    expect(after.done).toBe(before.done);
+    // Запись ответа есть, и урона в ней ноль: карточка закрылась, вклад в цель — нет.
+    const [card] = await db.select().from(cardsTable).where(eq(cardsTable.userId, bob.id));
+    expect(await damageAt(db, card.id)).toEqual([0]);
+  });
+
+  it("«Помню» на той же карточке цель двигает", async () => {
+    const { db, bob, add } = await setup();
+    await add("real");
+    await setBossMode(db, bob.id);
+    const item = (await nextDue(db, bob.id, T0))!;
+    await damageOf(db, bob.id, item.card.id, "good", T0);
+    expect(await damageAt(db, item.card.id)).toEqual([20]);
+    const after = await goalProgress(db, (await getRoom(db, 1))!, T0);
+    expect(after.done).toBe(2);
   });
 });

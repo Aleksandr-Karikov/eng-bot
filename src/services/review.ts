@@ -1,5 +1,5 @@
 import { HUNTER_RELICS, MOBS } from "../combat-mobs";
-import { answerWeight, againStreak, damageSkill } from "./goals";
+import { KNOW_STAGE, answerWeight, againStreak, damageSkill } from "./goals";
 import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
 import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
@@ -190,7 +190,7 @@ export async function markKnown(
     .where(and(eq(cards.wordId, input.wordId), eq(cards.userId, input.userId)));
   if (!card || card.state !== State.New || card.reps !== 0) return "stale";
   return answerCard(db, {
-    userId: input.userId, cardId: card.id, expectedReps: 0, answer: "easy", now: input.now, stage: "know", bossEnabled: input.bossEnabled,
+    userId: input.userId, cardId: card.id, expectedReps: 0, answer: "easy", now: input.now, stage: KNOW_STAGE, bossEnabled: input.bossEnabled,
   });
 }
 
