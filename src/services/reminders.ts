@@ -4,6 +4,7 @@ import { reviewLogs, users, type User } from "../db/schema";
 import { localParts } from "../time";
 import { countDueSplit } from "./review";
 import { listMembers, listUserRooms } from "./rooms";
+import { nearWeekEnd, roomWeekMoment } from "./digest";
 import { updateUser } from "./users";
 
 export interface FriendToday {
@@ -19,6 +20,14 @@ export interface Reminder {
   friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */
   date: string;
+  /**
+   * «Последний шанс»: у одной из комнат человека неделя кончается в ближайшие часы.
+   *
+   * Считается по поясу КОМНАТЫ, а не человека: неделя кончается у комнаты, и предупреждать надо до её
+   * сброса. Раньше это не учитывалось, и в комнате с НСК-поясом напоминание человеку в МСК приходило
+   * в 20:00 МСК — то есть через 4 часа ПОСЛЕ того, как неделя уже закрылась (E6).
+   */
+  lastChance?: { roomName: string; hours: number };
 }
 
 /**
@@ -32,10 +41,33 @@ export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
     const { date, time } = localParts(user.timezone, now);
     if (time < user.reminderTime || user.lastReminderDate === date) continue;
     const due = await countDueSplit(db, user.id, now);
-    if (due.review + due.fresh > 0) reminders.push({ user, due, date, friend: await friendToday(db, user, date, now) });
-    else await markReminded(db, user.id, date);
+    if (due.review + due.fresh > 0) {
+      reminders.push({
+        user, due, date, friend: await friendToday(db, user, date, now),
+        lastChance: await lastChanceFor(db, user, now),
+      });
+    } else await markReminded(db, user.id, date);
   }
   return reminders;
+}
+
+/**
+ * Ближайший конец недели среди комнат человека — по поясу каждой комнаты.
+ *
+ * Возвращает только если до сброса меньше `LAST_CHANCE_HOURS`: смысл предупреждения в том, чтобы человек
+ * успел, а не в том, чтобы сообщить факт. Недели у комнат могут кончаться в разное время, поэтому берём
+ * самую близкую — она и диктует срочность.
+ */
+const LAST_CHANCE_HOURS = 6;
+
+export async function lastChanceFor(db: Db, user: User, now: Date): Promise<Reminder["lastChance"]> {
+  let best: Reminder["lastChance"];
+  for (const room of await listUserRooms(db, user.id)) {
+    if (!nearWeekEnd(room, now, LAST_CHANCE_HOURS)) continue;
+    const hours = Math.max(0, Math.round((roomWeekMoment(room, now).at.getTime() + 7 * 24 * 60 * 60_000 - now.getTime()) / 3_600_000));
+    if (!best || hours < best.hours) best = { roomName: room.name, hours };
+  }
+  return best;
 }
 
 export async function markReminded(db: Db, userId: number, date: string): Promise<void> {

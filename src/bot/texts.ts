@@ -207,15 +207,29 @@ export function knowPrompt(adderName: string, word: Word, roomName: string): str
   return `📥 ${esc(adderName)} добавил(а) в «${esc(roomName)}»:\n\n<b>${esc(word.term)}</b> — <tg-spoiler>${esc(word.translation)}</tg-spoiler>${withTranscription(word)}\n\nЗнаешь это слово?`;
 }
 
-/** due — число к повторению или по отдельности: к повторению и новые. */
-export function reminderText(due: number | { review: number; fresh: number }, friend?: { name: string; reviews: number }): string {
+/**
+ * due — число к повторению или по отдельности: к повторению и новые.
+ * `lastChance` — до конца недели комнаты осталось мало: об этом говорим в том же сообщении, потому что
+ * отдельное напоминание за пару часов до сброса человек прочитает уже после него.
+ */
+export function reminderText(
+  due: number | { review: number; fresh: number },
+  friend?: { name: string; reviews: number },
+  lastChance?: { roomName: string; hours: number },
+): string {
   const { review, fresh } = typeof due === "number" ? { review: due, fresh: 0 } : due;
   const waits = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "ждёт" : "ждут");
   const newWords = `${fresh} ${plural(fresh, "новое слово", "новых слова", "новых слов")}`;
   const base = review
     ? `🔔 ${review} ${plural(review, "слово", "слова", "слов")} ${waits(review)} повторения${fresh ? ` + ${newWords}` : ""}`
     : `🆕 ${newWords} ${waits(fresh)} знакомства`;
-  return friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
+  const withFriend = friend ? `${base} · ${esc(friend.name)} сегодня уже повторил(а) ${friend.reviews} 🔥` : base;
+  if (!lastChance) return withFriend;
+  // Часы в поясе КОМНАТЫ: неделя кончается у неё, а не у человека.
+  const left = lastChance.hours <= 1
+    ? "меньше часа"
+    : `${lastChance.hours} ${plural(lastChance.hours, "час", "часа", "часов")}`;
+  return `${withFriend}\n\n⏳ До конца недели в «${esc(lastChance.roomName)}» — ${left}. Успей добить босса.`;
 }
 
 export function dueNoticeText(n: number): string {

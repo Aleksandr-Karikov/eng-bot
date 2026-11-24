@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { User } from "../src/db/schema";
 import { digestText, reminderText } from "../src/bot/texts";
 import { sendDigests, sendReminders } from "../src/reminder-loop";
-import { collectDigests, digestDue, markDigestSent } from "../src/services/digest";
+import { collectDigests, digestDue, latestDigestMoment, markDigestSent, nearWeekEnd, roomWeekMoment } from "../src/services/digest";
 import { answerCard, nextDue } from "../src/services/review";
-import { createRoom, joinRoom, linkGroup } from "../src/services/rooms";
+import { createRoom, getRoom, joinRoom, linkGroup } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
 import { DAY, makeUser, testDb } from "./helpers";
+import { eq } from "drizzle-orm";
+import { rooms as roomsTable } from "../src/db/schema";
+import { localParts } from "../src/time";
 
 // Новосибирск = UTC+7. 2026-10-18 — воскресенье.
 const nsk = (iso: string) => new Date(`${iso}+07:00`);
@@ -193,5 +196,114 @@ describe("week boundary follows the room's own timezone", () => {
     // Через три часа закрывается и московская.
     const later = await collectDigests(db, new Date("2026-10-18T17:00:00Z"));
     expect(later.map((d) => d.room.name)).toEqual(["Москва"]);
+  });
+});
+
+describe("пояс недели — комнаты, пояс напоминания — человека (E6)", () => {
+  /**
+   * Комната в Новосибирске: неделя кончается в воскресенье 20:00 НСК. Человек в Москве получает
+   * ежедневное напоминание в 20:00 МСК — это уже 00:00 понедельника в НСК, то есть на 4 часа ПОЗЖЕ
+   * сброса недели. Так «последний шанс» приходил после конца, и предупреждать было не о чем.
+   */
+  it("неделя комнаты считается по её поясу, а не по поясу человека", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, { timezone: "Europe/Moscow" });
+    const room = await createRoom(db, { name: "R", createdBy: alice.id, now: nsk("2026-10-12T10:00") });
+    // Комната унаследовала пояс автора, а он в Москве; ставим НСК явно — так бывает при /roomtz.
+    await db.update(roomsTable).set({ timezone: "Asia/Novosibirsk" }).where(eq(roomsTable.id, room.id));
+    const fresh = (await getRoom(db, room.id))!;
+
+    // 22.11.2026 19:59 НСК = 12:59 UTC: неделя комнаты ещё не сменилась — она кончится через минуту.
+    const before = new Date("2026-11-22T12:59:00Z");
+    expect(localParts("Asia/Novosibirsk", before).time.slice(0, 2)).toBe("19");
+    expect(roomWeekMoment(fresh, before).date).toBe("2026-11-15");
+
+    // 20:00 НСК = 13:00 UTC: неделя сменилась, хотя в Москве только 16:00 того же воскресенья.
+    const now = new Date("2026-11-22T13:00:00Z");
+    expect(localParts("Europe/Moscow", now).time.slice(0, 2)).toBe("16");
+    expect(localParts("Asia/Novosibirsk", now).time.slice(0, 2)).toBe("20");
+    expect(roomWeekMoment(fresh, now).date).toBe("2026-11-22");
+
+    // А за час до сброса недели комнаты «последний шанс» ещё уместен.
+    const beforeEnd = new Date("2026-11-22T12:00:00Z"); // 19:00 НСК
+    expect(nearWeekEnd(fresh, beforeEnd, 6)).toBe(true);
+    // И не уместен за сутки до него.
+    expect(nearWeekEnd(fresh, new Date("2026-11-21T12:00:00Z"), 6)).toBe(false);
+  });
+
+  it("«последний шанс» приходит до сброса недели, даже если пояс человека другой", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, {
+      canDm: true, timezone: "Europe/Moscow", reminderTime: "19:00",
+    });
+    const room = await createRoom(db, { name: "R", createdBy: alice.id, now: nsk("2026-10-12T10:00") });
+    await db.update(roomsTable).set({ timezone: "Asia/Novosibirsk" }).where(eq(roomsTable.id, room.id));
+    await linkGroup(db, room.id, -100);
+    const saved = await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: "w", translation: "t", explanation: "", example: "" }, now: nsk("2026-10-12T10:00") });
+    if (saved.status !== "saved") throw new Error("fixture");
+
+    // 19:00 МСК = 23:00 НСК — уже после сброса недели комнаты (20:00 НСК). Это и есть прежний дефект.
+    const late = new Date("2026-11-22T16:00:00Z");
+    expect(localParts("Asia/Novosibirsk", late).time.slice(0, 2)).toBe("23");
+    const fresh = (await getRoom(db, room.id))!;
+    expect(nearWeekEnd(fresh, late, 6)).toBe(false);
+
+    // А вот 14:00 МСК = 21:00 НСК — уже поздно тоже; берём момент ДО 20:00 НСК: 12:00 НСК = 05:00 МСК.
+    const early = new Date("2026-11-22T05:00:00Z");
+    expect(localParts("Asia/Novosibirsk", early).time.slice(0, 2)).toBe("12");
+    expect(nearWeekEnd(fresh, early, 9)).toBe(true);
+  });
+});
+
+describe("«последний шанс» считается по поясу комнаты (E6)", () => {
+  it("предупреждает за несколько часов до сброса недели комнаты, а не после", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, {
+      canDm: true, timezone: "Europe/Moscow", reminderTime: "00:00",
+    });
+    const room = await createRoom(db, { name: "Друзья", createdBy: alice.id, now: nsk("2026-10-12T10:00") });
+    await db.update(roomsTable).set({ timezone: "Asia/Novosibirsk" }).where(eq(roomsTable.id, room.id));
+    await joinRoom(db, { roomId: room.id, userId: alice.id, now: nsk("2026-10-12T10:00"), makeCurrent: true });
+    const saved = await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: "w", translation: "t", explanation: "", example: "" }, now: nsk("2026-10-12T10:00") });
+    if (saved.status !== "saved") throw new Error("fixture");
+    const fresh = (await getRoom(db, room.id))!;
+
+    // 15:00 НСК = 08:00 МСК в воскресенье: до сброса (20:00 НСК) пять часов — предупреждаем.
+    const fiveHoursBefore = new Date("2026-11-22T08:00:00Z");
+    expect(localParts("Asia/Novosibirsk", fiveHoursBefore).time).toBe("15:00");
+    expect(nearWeekEnd(fresh, fiveHoursBefore, 6)).toBe(true);
+
+    // 22:00 НСК: неделя уже закрылась час назад — предупреждать поздно.
+    const afterEnd = new Date("2026-11-22T15:00:00Z");
+    expect(localParts("Asia/Novosibirsk", afterEnd).time).toBe("22:00");
+    expect(nearWeekEnd(fresh, afterEnd, 6)).toBe(false);
+
+    // Текст напоминания говорит про неделю комнаты и называет её.
+    const text = reminderText({ review: 3, fresh: 0 }, undefined, { roomName: "Друзья", hours: 5 });
+    expect(text).toContain("До конца недели в «Друзья»");
+    expect(text).toContain("5 часов");
+    // Без lastChance текста про неделю нет — обычное напоминание не пугает.
+    expect(reminderText({ review: 3, fresh: 0 })).not.toContain("Успей");
+  });
+
+  // Сквозная проверка: предупреждение действительно доходит до отправки, а не живёт отдельной функцией.
+  it("предупреждение попадает в отправленное сообщение через sendReminders", async () => {
+    const db = testDb();
+    const alice = await updateUser(db, (await makeUser(db, 1, "Alice")).id, {
+      canDm: true, timezone: "Europe/Moscow", reminderTime: "00:00",
+    });
+    const room = await createRoom(db, { name: "Друзья", createdBy: alice.id, now: nsk("2026-10-12T10:00") });
+    await db.update(roomsTable).set({ timezone: "Asia/Novosibirsk" }).where(eq(roomsTable.id, room.id));
+    await joinRoom(db, { roomId: room.id, userId: alice.id, now: nsk("2026-10-12T10:00"), makeCurrent: true });
+    const saved = await saveWord(db, { roomId: room.id, addedBy: alice.id, draft: { term: "w", translation: "t", explanation: "", example: "" }, now: nsk("2026-10-12T10:00") });
+    if (saved.status !== "saved") throw new Error("fixture");
+
+    const dms: string[] = [];
+    const notifier = { dm: async (_user: User, text: string) => (dms.push(text), true) };
+    // 15:00 НСК = 08:00 МСК в воскресенье — пять часов до сброса недели комнаты.
+    await sendReminders({ db, notifier: notifier as never, now: () => new Date("2026-11-22T08:00:00Z") });
+    expect(dms).toHaveLength(1);
+    expect(dms[0]).toContain("До конца недели в «Друзья»");
+    expect(dms[0]).toContain("5 часов");
   });
 });
