@@ -172,6 +172,18 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   grammar(term: string, translation: string): Promise<WordGrammar> {
     return this.active.grammar(term, translation);
   }
+  /**
+   * «Почему так» в /grammar — единственное место, где модель объясняет правило.
+   *
+   * Метод опциональный в интерфейсе, и именно из-за этого однажды потерялся здесь: `active.explainGrammar`
+   * компилятор не требовал, а вызывающий код проверяет `if (deps.tutor.explainGrammar)`, поэтому кнопка
+   * молча деградировала до объяснения из контента. Делегируем с той же необязательностью, но явно.
+   */
+  explainGrammar(input: { rule: string; task: string; answer: string }): Promise<string> {
+    // `active` — конкретный ClaudeCodeEnricher, где метод реализован всегда; опциональность живёт
+    // только в интерфейсе ради тестовых подмен.
+    return this.active.explainGrammar(input);
+  }
   say(phrase: string): Promise<SayAnswer> {
     return this.active.say(phrase);
   }

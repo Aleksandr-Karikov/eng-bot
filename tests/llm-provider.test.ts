@@ -181,6 +181,29 @@ describe("ProviderRouter", () => {
     expect(backend.calls[0].lang).toBe("ko");
   });
 
+  it("делегирует каждый метод интерфейса, включая опциональные", () => {
+    // Страж от потери метода. Так уже случилось с explainGrammar: он опционален в ExerciseTutor,
+    // поэтому роутер без него компилировался, а вызывающий код (`if (deps.tutor.explainGrammar)`)
+    // молча уходил в ветку «модель не нужна» — кнопка «Почему так» не звала модель никогда.
+    const llm = router();
+    const required = ["enrich", "extract", "extractImage", "check", "cloze", "judge", "translationTask",
+      "reviewTranslation", "collocations", "grammar", "say", "talkReply", "talkReview", "untangle",
+      "story", "reviewSentence", "drill", "mnemonics", "imagePrompt"];
+    const optional = ["enrichFast", "correctWord", "translateExample", "readImage", "explainGrammar"];
+    for (const method of [...required, ...optional]) {
+      expect(typeof (llm as unknown as Record<string, unknown>)[method], `метод ${method}`).toBe("function");
+    }
+  });
+
+  it("explainGrammar действительно доходит до бэкенда", async () => {
+    // Не только «метод есть», но и «он работает»: промпт уходит, ответ разбирается.
+    const backend = recording();
+    const llm = router({ claudeCode: backend });
+    const answer = await llm.explainGrammar({ rule: "Present Simple", task: "She ___ here.", answer: "works" });
+    expect(typeof answer).toBe("string");
+    expect(backend.calls.at(-1)!.prompt).toContain("Present Simple");
+  });
+
   it("fails clearly when a request reaches an unconfigured OpenRouter", async () => {
     // Такого не должно случаться (use() не пускает), но если состояние перевели руками — ошибка понятная.
     const llm = new ProviderRouter({ models: MODELS, timeoutMs: 1_000, provider: "openrouter" });
