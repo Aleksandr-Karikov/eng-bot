@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { State } from "ts-fsrs";
-import { reviewLogs } from "../src/db/schema";
+import { cards as cardsTable, reviewLogs } from "../src/db/schema";
+import { updateUser } from "../src/services/users";
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { answerCard, countDue, markKnown, nextDue, nextReviewAt } from "../src/services/review";
 import { saveWord } from "../src/services/words";
@@ -69,5 +71,57 @@ describe("review", () => {
     const again = await nextDue(db, bob.id, T0);
     expect(again?.card.id).toBe(item.card.id);
     expect(again?.card.state).not.toBe(State.New);
+  });
+});
+
+/** Боевой режим включён: без него урон не начисляется и затухание нечего проверять. */
+const setBossMode = (db: ReturnType<typeof testDb>, userId: number) => updateUser(db, userId, { modeBoss: true });
+
+/** Урон в десятых HP по всем ответам карточки, в порядке ответов. */
+async function damageAt(db: ReturnType<typeof testDb>, cardId: number): Promise<number[]> {
+  const rows = await db.select().from(reviewLogs).where(eq(reviewLogs.cardId, cardId)).orderBy(reviewLogs.id);
+  return rows.map((row) => row.damageDeci ?? -1);
+}
+
+describe("урон за «Забыл» затухает по серии подряд", () => {
+  /**
+   * FSRS возвращает «Забыл» через минуту, поэтому одна карточка давала урон сколько угодно раз:
+   * игрок жал «Забыл», получал HP за нажатие, и память тут ни при чём (E2). Затухание 1 → 0.5 → 0.25 → 0
+   * привязано к серии подряд по этой карточке, а не к общему числу провалов.
+   */
+  const damageOf = async (db: ReturnType<typeof testDb>, bob: number, cardId: number, rating: "again" | "good", now: Date) => {
+    const [c] = await db.select().from(cardsTable).where(eq(cardsTable.id, cardId));
+    const res = await answerCard(db, { userId: bob, cardId, expectedReps: c.reps, answer: rating, now, bossEnabled: true });
+    return res;
+  };
+
+  it("снижает урон с каждым «Забыл» подряд и обнуляет с четвёртого", async () => {
+    const { db, bob, add } = await setup();
+    await add("word");
+    const item = (await nextDue(db, bob.id, T0))!;
+    // Комнату делаем боевой: без этого урон не считается вовсе.
+    await setBossMode(db, bob.id);
+    const cardId = item.card.id;
+    // Первый провал — полный урон 1 HP, дальше 0.5, 0.25 и 0.
+    const first = await damageOf(db, bob.id, cardId, "again", T0);
+    expect(first).toBe("ok");
+    expect(await damageAt(db, cardId)).toEqual([10]);
+    await damageOf(db, bob.id, cardId, "again", at(MIN));
+    await damageOf(db, bob.id, cardId, "again", at(2 * MIN));
+    await damageOf(db, bob.id, cardId, "again", at(3 * MIN));
+    expect(await damageAt(db, cardId)).toEqual([10, 5, 3, 0]);
+  });
+
+  it("после «Помню» серия обрывается, и следующий «Забыл» снова полный", async () => {
+    const { db, bob, add } = await setup();
+    await add("word");
+    const item = (await nextDue(db, bob.id, T0))!;
+    await setBossMode(db, bob.id);
+    const cardId = item.card.id;
+    await damageOf(db, bob.id, cardId, "again", T0);
+    await damageOf(db, bob.id, cardId, "again", at(MIN));
+    await damageOf(db, bob.id, cardId, "good", at(2 * MIN));
+    await damageOf(db, bob.id, cardId, "again", at(3 * MIN));
+    expect(await damageAt(db, cardId)).toEqual([10, 5, 20, 10]);
   });
 });

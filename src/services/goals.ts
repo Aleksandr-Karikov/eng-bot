@@ -1,4 +1,4 @@
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, rooms, users, words, type Room } from "../db/schema";
 import { latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
@@ -35,16 +35,58 @@ export function damageSkill(stage?: string | null): "listen" | "writing" | undef
 }
 
 /**
+ * Множитель урона за «Забыл» по счёту подряд: 1 → 0.5 → 0.25 → 0.
+ *
+ * Первый провал стоит полного урона: признаться честно всё ещё выгодно. Дальше цена падает, потому что
+ * FSRS возвращает такую карточку через минуту — повторные нажатия «Забыл» не показывают память, а
+ * прокручивают одну карточку. С четвёртого подряд урон нулевой: до повторения с интервалом дело так и
+ * не дошло, значит и работы не было.
+ */
+export function againDecay(streak: number): number {
+  if (streak <= 1) return 1;
+  if (streak === 2) return 0.5;
+  if (streak === 3) return 0.25;
+  return 0;
+}
+
+/**
+ * Сколько раз подряд эта карточка получала «Забыл», включая текущий ответ.
+ *
+ * Считается по `review_logs`: последние ответы по карточке, подряд идущие `again`. Новой таблицы не
+ * нужно — история уже есть, и она переживает перезапуск. `rating != 'again'` обрывает серию, потому что
+ * тогда интервал вырос и следующее «Забыл» снова первый провал.
+ */
+export async function againStreak(db: Db, cardId: number, now: Date, limit = 3): Promise<number> {
+  const rows = await db
+    .select({ rating: reviewLogs.rating })
+    .from(reviewLogs)
+    .where(and(eq(reviewLogs.cardId, cardId), lt(reviewLogs.reviewedAt, now)))
+    .orderBy(desc(reviewLogs.reviewedAt), desc(reviewLogs.id))
+    .limit(limit);
+  let streak = 0;
+  for (const row of rows) {
+    if (row.rating !== "again") break;
+    streak += 1;
+  }
+  return streak + 1;
+}
+
+/**
  * Вес ответа в HP. «Забыл» — тоже 1, а не 0: ноль наказывал бы за честность, и стало бы выгодно
  * врать себе «помню», чтобы босс дох. Признался — уже работа.
+ *
+ * Но за серию «Забыл» подряд урон падает (`againDecay`): FSRS возвращает такую карточку через минуту,
+ * и без затухания одна карточка кормит босса бесконечно, награждая нажатия вместо памяти (E2).
+ * `againStreak` — который это «Забыл» подряд по этой карточке, начиная с 1.
  */
-export function answerWeight(rating: string, stage?: string | null, level = 0, listenLevel = 0, writingLevel = 0, relicPercent = 0): number {
+export function answerWeight(rating: string, stage?: string | null, level = 0, listenLevel = 0, writingLevel = 0, relicPercent = 0, againStreak = 1): number {
   const base = rating === "easy" ? 3 : rating === "hard" ? 2 : rating === "good" ? 2 : 1;
+  const decay = rating === "again" ? againDecay(againStreak) : 1;
   // Сложное упражнение — вдвое: человек не узнал слово, а воспроизвёл.
   const skill = damageSkill(stage);
   // +10% за уровень усиления — личное, поэтому применяется к своим ответам, а не к комнате целиком.
   const skillLevel = skill === "listen" ? listenLevel : skill === "writing" ? writingLevel : 0;
-  return (skill ? base * 2 : base) * (100 + 10 * level + 20 * skillLevel + relicPercent) / 100;
+  return (skill ? base * 2 : base) * decay * (100 + 10 * level + 20 * skillLevel + relicPercent) / 100;
 }
 
 /**

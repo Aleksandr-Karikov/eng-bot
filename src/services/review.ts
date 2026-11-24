@@ -1,5 +1,5 @@
 import { HUNTER_RELICS, MOBS } from "../combat-mobs";
-import { answerWeight, damageSkill } from "./goals";
+import { answerWeight, againStreak, damageSkill } from "./goals";
 import { damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
 import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
@@ -78,7 +78,7 @@ export async function getDueItemByCard(db: Db, userId: number, cardId: number): 
 const snapshotOf = (card: CardRow) =>
   JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
 
-async function reviewDamage(db: Db, userId: number, roomId: number | null | undefined, answer: Answer, now: Date, stage?: string, enabled?: boolean) {
+async function reviewDamage(db: Db, userId: number, roomId: number | null | undefined, answer: Answer, now: Date, cardId: number, stage?: string, enabled?: boolean) {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   const active = enabled !== false && user?.modeBoss === true;
   const skill = damageSkill(stage);
@@ -103,8 +103,10 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   if (skill === "listen" && week && room) {
     if (weeklyOpponent(week.at).id === "dragon" && (await bossOf(db, room, now)).phase === "furious") dragonBonus = 20;
   }
+  // Затухание за серию «Забыл»: без него FSRS отдаёт карточку через минуту, и она кормит босса вечно.
+  const again = answer === "again" ? await againStreak(db, cardId, now) : 1;
   return {
-    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0)) * 10),
+    damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0), again) * 10),
     banked: active && user.bankDamage,
   };
 }
@@ -123,7 +125,7 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return { result: "stale", damage: 0 };
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
-  const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, input.stage, input.bossEnabled);
+  const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage, input.bossEnabled);
   // Условное обновление «если reps всё ещё прежний»: два почти одновременных ответа (кнопка и текст)
   // не засчитаются дважды — второй увидит, что карточку уже обновили.
   const [updated] = await db
