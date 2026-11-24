@@ -2,7 +2,11 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <!-- viewport-fit=cover обязателен, чтобы env(safe-area-inset-*) вообще был не нулевым: без него
+         браузер считает отступы выреза нулевыми, и любой запас под системную панель молча пропадает.
+         Взамен контент уходит под вырез и home indicator, поэтому отступы safe-area добавляются
+         в styles.css (.screen, .actions.fixed) — без них шапка уезжала бы под вырез. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>WordBoss</title>
     <!-- Ярлык на главном экране: манифест и иконки. Сейчас запуск с ярлыка упирается в авторизацию
          (нужен initData от Telegram), поэтому пока это только оформление. -->

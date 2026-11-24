@@ -9,8 +9,29 @@ body {
   color: var(--tg-theme-text-color, #1a1a1a);
   overscroll-behavior: none;
 }
-.center { height: 100%; display: grid; place-items: center; }
-.screen { min-height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 20px; box-sizing: border-box; }
+/* Спиннер/заглушка по центру: при viewport-fit=cover без отступов выреза элемент может уехать под него. */
+.center {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing: border-box;
+}
+/*
+ * Отступы считаются от safe-area: при `viewport-fit=cover` (см. index.html) контент уходит под вырез
+ * и home indicator, и без этого запаса шапка уезжала бы под чёлку, а низ — под панель.
+ * `max()` сохраняет прежний вид там, где выреза нет: env() там равен нулю.
+ */
+.screen {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding:
+    max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    20px max(16px, env(safe-area-inset-left));
+  box-sizing: border-box;
+}
 .top { display: flex; justify-content: space-between; align-items: center; }
 .hint { color: var(--tg-theme-hint-color, #8e8e93); }
 .deck { position: relative; flex: 1; display: flex; flex-direction: column; gap: 14px; }
@@ -66,14 +87,15 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  padding: 10px max(16px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background: var(--tg-theme-secondary-bg-color, #f1f1f4);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
   z-index: 10;
 }
-.screen { padding-bottom: 96px; }
+/* 96 px — место под `.actions.fixed`; высота панели растёт на safe-area, значит и запас тоже. */
+.screen { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 /* Предпросмотр карточки со страницы слова: постоянной панели кнопок нет — и место под неё не нужно. */
-.screen.preview { padding-bottom: 20px; }
+.screen.preview { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 
 /* Кнопки в углу — вместо вкладок, чтобы карточке оставалось место. */
 .top { gap: 8px; }
@@ -374,7 +396,19 @@ body {
 .fold-icon.open { transform: rotate(180deg); }
 
 /* Тёмная арена в обеих темах, панели под ней используют цвета Telegram. */
-.boss-screen { max-width: 620px; margin-inline: auto; gap: 14px; padding-bottom: 24px; }
+/*
+ * Экран босса — обычная прокручиваемая страница, без панели кнопок поверх контента (в отличие от /learn,
+ * где `.actions.fixed` занимает низ). Поэтому 96 px от `.screen` ему не нужны — но и 24 px без запаса
+ * под системную панель мало: на телефоне с home indicator последняя строка ленты ударов уезжала под неё.
+ *
+ * Запас складывается с собственным отступом: 24 px воздуха плюс высота системной панели. Там, где выреза
+ * нет (браузер вне Telegram, Android без него), `env()` равен нулю и остаются ровно прежние 24 px.
+ *
+ * `env(safe-area-inset-*)` не равен нулю только при `viewport-fit=cover` в `index.html` — он появился
+ * в E10 вместе с этими отступами. До него `env()` молча возвращал нули, поэтому запас под панель не
+ * работал ни на одной странице, включая `.actions.fixed`.
+ */
+.boss-screen { max-width: 620px; margin-inline: auto; gap: 14px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .boss-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 0 4px; }
 .boss-head .hint { font-size: 13px; }
 .boss-stage {
