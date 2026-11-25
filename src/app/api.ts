@@ -19,7 +19,7 @@ import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { gapParts, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
-import { pickStage } from "../services/exercises";
+import { pickStage, reviewStages } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
@@ -30,6 +30,7 @@ import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId, updateUser } from "../services/users";
 import { EN, langForms } from "../lang";
 import type { Answer } from "../srs/srs";
+import { CHOICE_INDEX, scheduleExercises } from "./exercise-mix";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
 const QUEUE_SIZE = 20;
@@ -128,7 +129,7 @@ function hasPicture(deps: Deps, word: Word): boolean {
   return Boolean(word.imageFileId || deps.pictures?.find(word));
 }
 
-/** 🧠 Вопрос по ошибкам, подмешанный в очередь (как в /learn — после каждых DRILL_EVERY карточек). */
+/** 🧠 Вопрос по ошибкам, который занимает место вопроса с вариантами в очереди. */
 export interface AppDrill extends AppQuiz {
   kind: "drill";
   id: string;
@@ -137,7 +138,6 @@ export interface AppDrill extends AppQuiz {
 
 export type AppItem = AppCard | AppDrill;
 
-const DRILL_EVERY = 5;
 /**
  * Сколько карточек за один запрос очереди готовить в фоне. Остальные подготовятся, когда до них дойдёт
  * дело: очередь запрашивается заново по мере прохождения, и следующая пачка получит свою порцию.
@@ -148,10 +148,6 @@ function quizOf(q: { question: string; options: string[]; correct: number; expla
   return { question: q.question, options: q.options, correct: q.correct, explanation: q.explanation, filled: gapParts(q.question, q.options[q.correct] ?? "") };
 }
 
-/**
- * Очередь: тот же порядок, что в /learn. Вид — как там: новое и необязательное слово — EN → RU, остальное — случайно
- * из того, что умеет приложение (EN → RU, RU → EN, сочетания), и после каждых 5 карточек — вопрос по ошибкам, если готов.
- */
 /**
  * Режим тренировки: all — как /learn; reviews — только повторения; fresh — только новые слова;
  * hard — самые слабые слова, даже если ещё рано, вне зачёта (как «🔁 Потренироваться»): ответы не оцениваются.
@@ -183,7 +179,9 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     sentence: user.modeSentence,
     listen: user.modeListen,
   };
-  const cards: AppCard[] = [];
+  const mixed = modes.en_ru || modes.ru_en;
+  const swipeModes = { ...modes, collocation: false, cloze: false, sentence: false, listen: false };
+  const candidates = [];
   // Фоновая подготовка — только для первых карточек, а не для всей очереди. Очередь приходит пачкой
   // (до QUEUE_SIZE), и раньше на каждую карточку запускалось до трёх вызовов модели: человек открывал
   // приложение и получал десятки платных запросов, которых не просил. Генераторы дедуплицируют себя
@@ -203,11 +201,41 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
       prepared++;
     }
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
-    const stage = optional
+    const quizReady = Boolean(collocations?.quiz);
+    const stages = mixed && !isNew && !optional ? reviewStages(card, modes, sentences.length > 0, quizReady) : [];
+    const fallback = optional
       ? "en_ru"
-      : pickStage(card, modes, sentences.length > 0, deps.random, Boolean(collocations?.quiz), weak.get(card.id));
+      : pickStage(card, mixed ? swipeModes : modes, sentences.length > 0, deps.random, quizReady, weak.get(card.id));
+    candidates.push({ card, word, isNew, stages, fallback, sentences, collocations });
+  }
+
+  let drill: AppDrill | undefined;
+  if (candidates.length >= CHOICE_INDEX && user.modeDrill && (mode === "all" || mode === "reviews") && !deps.drills.get(user.id)?.standalone) {
+    ensureDrillFor(deps, user);
+    const question = deps.drills.get(user.id)?.questions.shift();
+    if (question) {
+      rememberAsked(user.id, question.question);
+      drill = { kind: "drill", id: `${deps.now().getTime()}-${CHOICE_INDEX}`, category: question.category, ...quizOf(question) };
+    }
+  }
+
+  const withDrill = drill !== undefined;
+  const size = Math.min(QUEUE_SIZE, candidates.length + Number(withDrill));
+  const exercises = scheduleExercises(candidates.map(({ stages }) => stages), size, withDrill);
+  const usedCards = new Set(Array.from(exercises.values(), ({ cardIndex }) => cardIndex));
+  const remaining = candidates.filter((_, i) => !usedCards.has(i));
+  const queue: AppItem[] = [];
+  let nextCard = 0;
+  for (let index = 0; index < size; index++) {
+    if (drill && index === CHOICE_INDEX) {
+      queue.push(drill);
+      continue;
+    }
+    const exercise = exercises.get(index);
+    const { card, word, isNew, fallback, sentences, collocations } = exercise ? candidates[exercise.cardIndex] : remaining[nextCard++];
+    const stage = exercise?.stage ?? fallback;
     const cloze = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
-    cards.push({
+    queue.push({
       kind: "card",
       ...(practice ? { practice: true } : {}),
       quiz: stage === "collocation" && collocations?.quiz ? { ...quizOf(collocations.quiz), items: collocations.items } : undefined,
@@ -238,18 +266,6 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
       },
     });
   }
-  // Вопросы по ошибкам готовятся в фоне (как в /learn); готовые — между карточками (во «Всё» и «Повторениях»).
-  ensureDrillFor(deps, user);
-  const drills = user.modeDrill && (mode === "all" || mode === "reviews") ? deps.drills.get(user.id) : undefined;
-  const queue: AppItem[] = [];
-  cards.forEach((card, i) => {
-    queue.push(card);
-    const q = (i + 1) % DRILL_EVERY === 0 && drills && !drills.standalone ? drills.questions.shift() : undefined;
-    if (q) {
-      rememberAsked(user.id, q.question);
-      queue.push({ kind: "drill", id: `${Date.now()}-${i}`, category: q.category, ...quizOf(q) });
-    }
-  });
   return queue;
 }
 

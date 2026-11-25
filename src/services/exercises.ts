@@ -11,6 +11,18 @@ const FIRST_MEETING: Stage[] = ["en_ru", "ru_en", "listen"];
 /** «Своё предложение» — когда слово хоть немного знакомо: после пары повторений. */
 const SENTENCE_MIN_REPS = 2;
 
+export function reviewStages(
+  card: { reps?: number }, modes: StageModes, clozeReady: boolean, collocationReady: boolean,
+): Stage[] {
+  return STAGES.filter(
+    (s) =>
+      modes[s] &&
+      (s !== "cloze" || clozeReady) &&
+      (s !== "collocation" || collocationReady) &&
+      (s !== "sentence" || (card.reps ?? 0) >= SENTENCE_MIN_REPS),
+  );
+}
+
 /**
  * Вариант упражнения для карточки — без лесенки по сложности, для разнообразия:
  * новое слово сначала EN → RU (вспомнить незнакомое нельзя), дальше — случайно из включённых.
@@ -26,13 +38,7 @@ export function pickStage(
   weakDirection?: "en_ru" | "ru_en",
 ): Stage {
   if (card.state === State.New) return FIRST_MEETING.find((s) => modes[s]) ?? "en_ru";
-  const available = STAGES.filter(
-    (s) =>
-      modes[s] &&
-      (s !== "cloze" || clozeReady) &&
-      (s !== "collocation" || collocationReady) &&
-      (s !== "sentence" || (card.reps ?? 0) >= SENTENCE_MIN_REPS),
-  );
+  const available = reviewStages(card, modes, clozeReady, collocationReady);
   if (available.length === 0) return "en_ru";
   if (weakDirection && available.includes(weakDirection) && random() < 0.5) return weakDirection;
   return available[Math.min(available.length - 1, Math.floor(random() * available.length))];
