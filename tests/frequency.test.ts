@@ -29,8 +29,14 @@ describe("usefulness by rules", () => {
   it("phrases use the model's bucket; without any data a word stays unrated", () => {
     expect(scoreUsefulness({ term: "nail it", phraseFrequency: "common" }, undefined)).toEqual({ usefulness: 3, usefulnessNote: "частое выражение" });
     expect(scoreUsefulness({ term: "keep plates spinning", phraseFrequency: "occasional", register: "informal" }, undefined)?.usefulness).toBe(2);
-    expect(scoreUsefulness({ term: "zzyzx" }, 0)).toBeUndefined();
-    expect(singleWord("over-deliver")).toBeUndefined();
+    // Слово, которого нет ни в одном корпусе (опечатка, выдумка), — это ⚪️, а не «нет данных»:
+    // раньше такие слова оставались без значка, и человек видел «не у всех слов есть полезность» (#17).
+    expect(scoreUsefulness({ term: "zzyzx" }, 0)?.usefulness).toBe(1);
+    // Без частотности и без корзины модели оценки по-прежнему нет — выдумывать нечего.
+    expect(scoreUsefulness({ term: "zzyzx" }, undefined)).toBeUndefined();
+    // Дефисное слово — это слово: wordfreq его знает (heads-up 4.66, well-intentioned 2.91).
+    expect(singleWord("over-deliver")).toBe("over-deliver");
+    expect(singleWord("heads-up")).toBe("heads-up");
     expect(singleWord("to ensure")).toBe("ensure");
   });
 
