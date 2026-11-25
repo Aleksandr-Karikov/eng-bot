@@ -157,22 +157,21 @@ export async function dueQueue(db: Db, userId: number, now: Date, limit: number)
 }
 
 export type StudyScope = "all" | "fresh" | "reviews";
+export const EXTRA_BATCH_SIZE = 15;
 
-/** Одно доступное слово сверх плана по явному выбору после обычной очереди. */
-export async function nextExtra(db: Db, userId: number, now: Date, scope: StudyScope = "all"): Promise<DueItem | undefined> {
+/** Доступные слова сверх плана по явному выбору, отложенные повторы впереди новых. */
+export async function extraQueue(db: Db, userId: number, now: Date, scope: StudyScope = "all"): Promise<DueItem[]> {
   const selection = await learningSelection(db, userId);
-  if (scope !== "fresh") {
-    const paused = selection.waiting.find((card) => card.state !== State.New && card.due <= now);
-    if (paused) return getDueItemByCard(db, userId, paused.id);
-    if (scope === "reviews") return undefined;
-  }
+  const paused = scope === "fresh" ? [] : selection.waiting.filter((card) => card.state !== State.New && card.due <= now).slice(0, EXTRA_BATCH_SIZE);
+  const batch = (await Promise.all(paused.map(({ id }) => getDueItemByCard(db, userId, id)))).filter((item) => item !== undefined);
+  if (scope === "reviews" || batch.length === EXTRA_BATCH_SIZE) return batch;
   const { left } = await newPortion(db, userId, now);
-  if (left !== 0 && selection.active.length < selection.limit) return undefined;
+  if (left !== 0 && selection.active.length < selection.limit) return batch;
   const pending = await db.select({ card: cards, word: words }).from(cards)
     .innerJoin(words, eq(cards.wordId, words.id))
     .where(and(eq(cards.userId, userId), eq(cards.state, State.New), lte(cards.due, now),
       left === 0 ? undefined : notInArray(cards.id, selection.active.map(({ id }) => id))));
-  return pending.sort(compareQueue)[0];
+  return [...batch, ...pending.sort(compareQueue).slice(0, EXTRA_BATCH_SIZE - batch.length)];
 }
 
 export async function countDue(db: Db, userId: number, now: Date): Promise<number> {
@@ -195,7 +194,7 @@ export async function countDueSplit(db: Db, userId: number, now: Date) {
   const reserved = fresh.filter(({ id }) => activeIds.includes(id)).length;
   const regular = fresh.filter(({ id, priority }) => priority <= 0 && !activeIds.includes(id)).length;
   const available = Math.min(left ?? Infinity, reserved + Math.min(slots, regular));
-  const pausedDue = selection.waiting.some((card) => card.state !== State.New && card.due <= now);
+  const pausedDue = selection.waiting.filter((card) => card.state !== State.New && card.due <= now).length;
   return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0, dailyFull: left === 0, pausedDue };
 }
 

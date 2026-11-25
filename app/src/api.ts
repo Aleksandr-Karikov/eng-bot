@@ -57,6 +57,7 @@ export interface Me {
   room: string | null;
   due: { review: number; fresh: number; waiting: number; activeFull: boolean };
   limitNotices?: Partial<Record<Exclude<QueueMode, "hard">, string>>;
+  extraLabels?: Record<Exclude<QueueMode, "hard">, string>;
   /** Сколько слов у человека вообще: по нему `/learn` отличает «всё повторил» от «нечего учить». */
   total?: number;
   /** Набор, с которого начать: приходит только когда слов нет совсем. */

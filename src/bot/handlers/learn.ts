@@ -17,7 +17,7 @@ import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/sto
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
-import { answerCard, countDueSplit, getDueItemByCard, markKnown, nextDue, nextExtra, nextReviewAt, undoAnswer } from "../../services/review";
+import { answerCard, countDueSplit, extraQueue, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
 import { bossEnabled, bossOf } from "../../services/boss";
 import { getRoom } from "../../services/rooms";
@@ -53,6 +53,7 @@ import {
   draftText,
   LEARNING_FULL_TEXT,
   learningLimitNotice,
+  extraBatchLabel,
   PRACTICE_HEADER,
   practiceDoneText,
   drillResultText,
@@ -148,6 +149,19 @@ const sessionCountsOf = perBot<number>();
 /** Последняя оценка кнопкой — её можно отменить с ближайшей следующей карточки («↩️ Отменить «Забыл»»). */
 type LastAnswer = { cardId: number; answer: string; stage?: Stage; extra?: boolean };
 const lastAnswerOf = perBot<LastAnswer>();
+const extraBatchesOf = perBot<Array<Pick<CardRow, "id" | "reps">>>();
+
+async function currentExtraCard(deps: Deps, userId: number) {
+  const batches = extraBatchesOf(deps);
+  const batch = batches.get(userId);
+  while (batch?.length) {
+    const head = batch[0];
+    const item = await getDueItemByCard(deps.db, userId, head.id);
+    if (item && item.card.reps === head.reps && item.card.due <= deps.now()) return item;
+    batch.shift();
+  }
+  batches.delete(userId);
+}
 
 
 /** Лимит подписи к фото в Telegram. */
@@ -267,14 +281,16 @@ async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
   return true;
 }
 
-/** forced — показать эту карточку (после «↩️ Отменить»), а не очередную; stage — в том же виде, что была. */
-async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?: { item: { card: CardRow; word: Word }; stage?: Stage; extra?: boolean }): Promise<void> {
+/** retry — карточка после отмены, в том же виде, что и до ответа. */
+async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, retry?: { item: { card: CardRow; word: Word }; stage?: Stage; extra?: boolean }): Promise<void> {
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   clearPendingInputs(deps, ctx.user.id);
   // Отменить прошлую оценку можно только с ближайшего следующего сообщения.
   const undo = lastAnswerOf(deps).get(ctx.user.id);
   lastAnswerOf(deps).delete(ctx.user.id);
+  const extraItem = retry ? undefined : await currentExtraCard(deps, ctx.user.id);
+  const forced = retry ?? (extraItem ? { item: extraItem, extra: true } : undefined);
   // Разбор трудного слова встал после прошлой карточки — у неё убираем кнопки, следующая придёт по «▶ Дальше» под разбором.
   if (!forced && (await flushLeech(ctx, deps))) {
     if (mode === "replace") await ctx.editMessageReplyMarkup().catch(() => {});
@@ -289,10 +305,10 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
   if (item) {
     const { card, word } = item;
     const modes = userModes(ctx);
-    const sentences = modes.cloze ? await listCloze(deps.db, word.id) : [];
+    const sentences = modes.cloze && !forced?.extra ? await listCloze(deps.db, word.id) : [];
     const optional = word.usefulness === 1;
-    if (modes.cloze && sentences.length === 0 && card.state !== State.New && !optional) void deps.clozeGen.ensure(word);
-    if (modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
+    if (!forced?.extra && modes.cloze && sentences.length === 0 && card.state !== State.New && !optional) void deps.clozeGen.ensure(word);
+    if (!forced?.extra && modes.collocation && card.state !== State.New && !optional) void deps.collocationGen.ensure(word);
     void deps.grammarGen.ensure(word);
     // Необязательное слово учим только на узнавание: EN → RU, без упражнений на употребление.
     const again = forced?.stage === "en_ru" || forced?.stage === "ru_en" ? forced.stage : forced ? "en_ru" : undefined;
@@ -336,7 +352,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
     replyMarkup = addUndoRow(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length), undo);
     if (notice) replyMarkup.row()
-      .text("Ещё одна карточка", encodeCb({ k: "learnExtra" }))
+      .text(extraBatchLabel(due), encodeCb({ k: "learnExtra" }))
       .row().text("⚙️ Лимиты обучения", encodeCb({ k: "settingsScreen", screen: "main" }));
     sessionCountsOf(deps).delete(ctx.user.id);
   }
@@ -406,6 +422,7 @@ async function startSession(ctx: BotContext, deps: Deps): Promise<void> {
   if (ctx.chat?.type !== "private") {
     return void (await ctx.reply(`Учиться удобнее в личке: https://t.me/${deps.botUsername}`));
   }
+  extraBatchesOf(deps).delete(ctx.user.id);
   endLongModes(deps, ctx.user.id);
   deps.practice.stop(ctx.user.id);
   stormStartsOf(deps).delete(ctx.user.id);
@@ -550,10 +567,13 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery("lx", async (ctx) => {
     await ctx.answerCallbackQuery();
     if (ctx.chat?.type !== "private") return startSession(ctx, deps);
+    const batches = extraBatchesOf(deps);
+    if (batches.has(ctx.user.id)) return showNext(ctx, deps, "replace");
     const now = deps.now();
     if (await nextDue(deps.db, ctx.user.id, now)) return showNext(ctx, deps, "replace");
-    const item = await nextExtra(deps.db, ctx.user.id, now);
-    return showNext(ctx, deps, "replace", item ? { item, stage: "en_ru", extra: true } : undefined);
+    const batch = await extraQueue(deps.db, ctx.user.id, now);
+    if (batch.length) batches.set(ctx.user.id, batch.map(({ card }) => ({ id: card.id, reps: card.reps })));
+    return showNext(ctx, deps, "replace");
   });
 
   bot.command("drill", (ctx) => background(ctx, () => startDrill(ctx, deps)));
@@ -785,7 +805,11 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       stage,
       extra: cb.extra,
     });
-    if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+    if (result === "stale") {
+      await ctx.answerCallbackQuery({ text: "Уже учтено" });
+      if (cb.extra) return showNext(ctx, deps, "replace");
+      return;
+    }
     if (result === "waiting") {
       await ctx.answerCallbackQuery({ text: LEARNING_FULL_TEXT });
       return showNext(ctx, deps, "replace");

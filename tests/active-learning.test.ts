@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppCard } from "../src/app/api";
 import type { AppWordItem } from "../src/app/manage";
 import { createApp } from "../src/app/server";
+import { decodeCb } from "../src/bot/callbacks";
 import { cards, reviewLogs } from "../src/db/schema";
 import { countDueSplit, nextDue } from "../src/services/review";
 import { createRoom } from "../src/services/rooms";
@@ -17,11 +18,11 @@ import { at, DAY, makeUser, T0 } from "./helpers";
 
 const DEFAULT_LIMIT = 15;
 
-async function setup(started: number) {
+async function setup(started: number, fresh = 3) {
   const h = botHarness();
   const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { newPerDay: 0, modeDrill: false });
   const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
-  for (let index = 0; index < started + 3; index++) {
+  for (let index = 0; index < started + fresh; index++) {
     await saveWord(h.db, {
       roomId: room.id, addedBy: user.id, now: T0,
       draft: { term: `word ${index}`, translation: "перевод", explanation: "", example: "" },
@@ -254,7 +255,7 @@ describe("лимит одновременно изучаемых слов", () =
     expect((await post(`/api/words/${foreign.word.id}/learn`, { replaceWordId: rows[0].wordId })).status).toBe(404);
   });
 
-  it("объясняет дневной предел и зачтёт одно сверхплановое знакомство по явному выбору", async () => {
+  it("объясняет дневной предел и предлагает оставшиеся слова сверх плана", async () => {
     const { h, user, rows, queue, answer, get, post, list, getCard } = await setup(0);
     await updateUser(h.db, user.id, { newPerDay: 1 });
     expect((await queue("fresh", true))[0]).not.toHaveProperty("extra");
@@ -263,11 +264,13 @@ describe("лимит одновременно изучаемых слов", () =
     expect(await answer(rows[1].id, "good")).toMatchObject({ result: "waiting" });
     expect(await (await get("/api/me")).json()).toMatchObject({
       limitNotices: { fresh: expect.stringContaining("Дневная порция новых слов исчерпана (1 в день)") },
+      extraLabels: { fresh: "Ещё 2 карточки" },
     });
 
-    const [next, unexpected] = await queue("fresh", true);
+    const batch = await queue("fresh", true);
+    expect(batch.map(({ cardId }) => cardId)).toEqual(rows.slice(1).map(({ id }) => id));
+    const [next] = batch;
     expect(next).toMatchObject({ cardId: rows[1].id, extra: true, stage: "en_ru" });
-    expect(unexpected).toBeUndefined();
     const saved = await post("/api/answer", { cardId: next.cardId, reps: next.reps, answer: "good", extra: true });
     expect(await saved.json()).toMatchObject({ result: "ok" });
     expect((await getCard(next.cardId)).reps).toBe(1);
@@ -290,11 +293,12 @@ describe("лимит одновременно изучаемых слов", () =
     expect(text).toContain("/settings");
     expect(buttonData(h.calls, "⚙️ Лимиты обучения")).toBeTruthy();
 
-    const continueData = buttonData(h.calls, "Ещё одна карточка");
+    const continueData = buttonData(h.calls, "Ещё 4 карточки");
     await h.bot.handleUpdate(h.callback(100, continueData));
     expect(h.calls.filter(({ method }) => method === "sendMessage").at(-1)?.payload.text).toContain("Сверх плана");
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
     expect(await getCard(paused.id)).toMatchObject({ reps: 2, relearningAtLimit: null });
+    expect(decodeCb(buttonData(h.calls, "😎 Помню"))).toMatchObject({ cardId: fresh.id, extra: true });
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "↩️ Отменить «Забыл»")));
     expect((await getCard(paused.id)).reps).toBe(1);
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
@@ -309,5 +313,30 @@ describe("лимит одновременно изучаемых слов", () =
     expect(await queue("all")).toEqual([]);
     expect((await post("/api/undo", { cardId: fresh.id })).status).toBe(200);
     expect(await getCard(fresh.id)).toMatchObject({ reps: 0, learningPriority: 0 });
+  });
+
+  it("проходит ровно 15 сверхплановых карточек после одного согласия и предлагает остаток", async () => {
+    const { h, rows, queue } = await setup(DEFAULT_LIMIT + 1, 16);
+    const ordinary = rows.slice(0, DEFAULT_LIMIT);
+    const extra = rows.slice(DEFAULT_LIMIT);
+    await h.db.update(cards).set({ due: at(DAY) }).where(inArray(cards.id, ordinary.map(({ id }) => id)));
+    await h.db.update(cards).set({ due: T0 }).where(eq(cards.id, extra[0].id));
+
+    const batch = await queue("all", true);
+    expect(batch.map(({ cardId }) => cardId)).toEqual(extra.slice(0, 15).map(({ id }) => id));
+    expect(batch.every((card) => card.extra && card.stage === "en_ru")).toBe(true);
+    expect((await queue("reviews", true)).map(({ cardId }) => cardId)).toEqual([extra[0].id]);
+
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "Ещё 15 карточек")));
+    for (const card of batch) {
+      const rating = buttonData(h.calls, "😎 Помню");
+      expect(decodeCb(rating)).toMatchObject({ cardId: card.cardId, extra: true });
+      await h.bot.handleUpdate(h.callback(100, rating));
+    }
+    const last = h.calls.filter(({ method }) => method === "sendMessage").at(-1);
+    expect(last?.payload.text).toContain("Повторено: 15");
+    expect(buttonData(last ? [last] : [], "Ещё 2 карточки")).toBeTruthy();
+    expect(await h.db.select().from(reviewLogs)).toHaveLength(15);
   });
 });

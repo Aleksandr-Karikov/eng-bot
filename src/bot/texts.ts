@@ -10,7 +10,7 @@ import type { BossPace, BossPhase, BossState } from "../services/boss";
 import type { WeeklyReport } from "../services/weekly-report";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
-import type { countDueSplit, StudyScope } from "../services/review";
+import { EXTRA_BATCH_SIZE, type countDueSplit, type StudyScope } from "../services/review";
 import type { WordDraft } from "../services/words";
 import { voiceLabel } from "../services/voice";
 import type { SettingsScreen } from "./keyboards";
@@ -419,12 +419,18 @@ export function learningLimitNotice(
   scope: StudyScope = "all",
 ): string | undefined {
   const fresh = scope !== "reviews" && due.fresh === 0 && due.waiting > 0;
-  const paused = scope !== "fresh" && due.review === 0 && due.pausedDue;
+  const paused = scope !== "fresh" && due.review === 0 && due.pausedDue > 0;
   const reasons = [];
   if (fresh && due.dailyFull) reasons.push(`Дневная порция новых слов исчерпана (${user.newPerDay} в день).`);
   if (paused || (fresh && due.activeFull)) reasons.push(`Подборка «Учу» заполнена. Предел — ${user.activeLearningLimit} слов одновременно.`);
   if (!reasons.length) return undefined;
   return [...reasons, "Лимиты оставляют время на повторение и закрепление слов. Можно продолжить сверх плана, но в длинной сессии слова могут запоминаться хуже."].join(" ");
+}
+
+export function extraBatchLabel(due: Awaited<ReturnType<typeof countDueSplit>>, scope: StudyScope = "all"): string {
+  const count = Math.min(EXTRA_BATCH_SIZE,
+    (scope === "fresh" ? 0 : due.pausedDue) + (scope === "reviews" ? 0 : due.waiting));
+  return `Ещё ${count} ${plural(count, "карточка", "карточки", "карточек")}`;
 }
 
 export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow[], goal?: GoalProgress): string {

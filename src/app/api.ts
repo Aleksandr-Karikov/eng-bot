@@ -18,13 +18,13 @@ import { answerExercise, listTopics, topicView } from "../services/grammar-topic
 import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
-import { gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
+import { extraBatchLabel, gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
 import { pickStage, reviewStages } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { KNOW_STAGE } from "../services/goals";
-import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard, nextExtra, type StudyScope } from "../services/review";
+import { recordAnswer, countDueSplit, dueQueue, extraQueue, getDueItemByCard, type StudyScope } from "../services/review";
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
@@ -112,6 +112,7 @@ export async function appMe(deps: Deps, user: User) {
       fresh: learningLimitNotice(due, user, "fresh"),
       reviews: learningLimitNotice(due, user, "reviews"),
     },
+    extraLabels: { all: extraBatchLabel(due), fresh: extraBatchLabel(due, "fresh"), reviews: extraBatchLabel(due, "reviews") },
     total,
     // Чем занять новичка: пустой `/learn` предлагает именно этот набор (см. `starterSet`).
     ...(starter ? { starterSet: { id: starter.set.id, title: starter.set.title, total: starter.total } } : {}),
@@ -176,8 +177,9 @@ async function queueItems(deps: Deps, user: User, mode: QueueMode) {
 
 export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all", continueExtra = false): Promise<AppItem[]> {
   const ordinary = await queueItems(deps, user, mode);
-  const extra = continueExtra && ordinary.length === 0 && mode !== "hard" ? await nextExtra(deps.db, user.id, deps.now(), mode) : undefined;
-  const items = extra ? [extra] : ordinary;
+  const batch = continueExtra && ordinary.length === 0 && mode !== "hard" ? await extraQueue(deps.db, user.id, deps.now(), mode) : [];
+  const extra = batch.length > 0;
+  const items = extra ? batch : ordinary;
   const practice = mode === "hard";
   // Пустая карта для тренировки должна быть того же типа, что и настоящая, иначе `weak.get()`
   // становится `any` и проверка типов дальше по функции перестаёт что-либо значить.
@@ -205,11 +207,11 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all", 
     const needsDecision = isNew && card.reps === 0 && card.learningPriority <= 0 && card.relearningAtLimit === null && card.triagedAt === null && word.addedBy !== user.id;
     const optional = word.usefulness === 1;
     const collocations = storedCollocations(word);
-    const sentences = modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];
+    const sentences = !extra && modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];
     // Как в /learn: упражнения на употребление готовятся в фоне, пока их нет.
     if (prepared < PREPARE_AHEAD) {
-      if (!isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
-      if (!isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
+      if (!extra && !isNew && !optional && modes.collocation && !collocations) void deps.collocationGen.ensure(word);
+      if (!extra && !isNew && !optional && modes.cloze && sentences.length === 0) void deps.clozeGen.ensure(word);
       // Часть речи и родня есть в карточке любого режима, даже у необязательного слова.
       void deps.grammarGen.ensure(word);
       prepared++;
@@ -224,7 +226,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all", 
   }
 
   let drill: AppDrill | undefined;
-  if (candidates.length >= CHOICE_INDEX && user.modeDrill && (mode === "all" || mode === "reviews") && !deps.drills.get(user.id)?.standalone) {
+  if (!extra && candidates.length >= CHOICE_INDEX && user.modeDrill && (mode === "all" || mode === "reviews") && !deps.drills.get(user.id)?.standalone) {
     ensureDrillFor(deps, user);
     const question = deps.drills.get(user.id)?.questions.shift();
     if (question) {

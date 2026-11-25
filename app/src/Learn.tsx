@@ -132,7 +132,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
     setDone((n) => n + 1);
     const [current, next] = queue;
     // Ответ на повтор мог вернуть слово в изучение и занять свободное место.
-    const nextIsFirstNew = next?.kind === "card" && next.isNew && (current?.kind !== "card" || !current.isNew);
+    const nextIsFirstNew = next?.kind === "card" && next.isNew && !next.extra && (current?.kind !== "card" || !current.isNew);
     if (!next || nextIsFirstNew) {
       setQueue([]);
       void load();
@@ -175,6 +175,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
         if (version !== loadVersion.current) return;
         if (result?.result === "ok") advance();
         if (result?.result === "stale" || result?.result === "waiting") {
+          if (card.extra) return advance();
           setQueue([]);
           void load();
         }
@@ -456,6 +457,7 @@ function Done({ done, me, mode, onSets, onExtra, onSettings }: {
   }
 
   const notice = mode !== "hard" ? me?.limitNotices?.[mode] : undefined;
+  const extraLabel = mode !== "hard" ? me?.extraLabels?.[mode] : undefined;
   const message = notice ? `${notice} Лимиты можно изменить в настройках.` : "Новые слова и повторения появятся сами — бот напомнит.";
   const header = notice ? "Лимит обучения достигнут" : mode === "fresh" ? "Сейчас нет новых карточек" : "Сейчас нечего повторять";
   return (
@@ -470,7 +472,7 @@ function Done({ done, me, mode, onSets, onExtra, onSettings }: {
         <div className="actions">
           {notice ? (
             <>
-              <Button mode="bezeled" size="m" stretched onClick={onExtra}>Ещё одна карточка</Button>
+              <Button mode="bezeled" size="m" stretched onClick={onExtra}>{extraLabel ?? "Ещё карточки"}</Button>
               <Button mode="plain" size="m" stretched onClick={onSettings}>Настройки лимитов</Button>
             </>
           ) : (
