@@ -233,6 +233,8 @@ export const cards = sqliteTable(
     fsrs: text("fsrs").notNull(),
     /** Когда человек решил про новое слово друга: «учу», «знаю» (в «знаешь?» или колодой в приложении); null — ещё не решал. */
     triagedAt: integer("triaged_at", { mode: "timestamp_ms" }),
+    /** Ручной порядок в подборке. Выбранные идут первыми, отложенные после остальных начатых. */
+    learningPriority: integer("learning_priority").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [

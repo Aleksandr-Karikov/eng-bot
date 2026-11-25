@@ -1,10 +1,11 @@
-import { and, eq, lt, ne, or, isNull } from "drizzle-orm";
+import { and, eq, inArray, lt, ne, or, isNull } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, words } from "../db/schema";
 import type { TranslationInput } from "../llm/tutor";
 import { mistakeProfile, recentMistakes } from "./mistakes";
 import { LEARNED_STABILITY_DAYS } from "./stats";
+import { learningSelection } from "./learning";
 
 const TOPICS = 4;
 const WORDS = 6;
@@ -17,6 +18,7 @@ export interface TranslationMaterial extends TranslationInput {
 /** Из чего строить предложения: открытые темы ошибок и слова, которые ещё учатся (не необязательные). */
 export async function translationMaterial(db: Db, userId: number, now: Date, random: () => number, avoid: string[]): Promise<TranslationMaterial> {
   const profile = mistakeProfile(await recentMistakes(db, userId, now));
+  const { active } = await learningSelection(db, userId);
   const learning = await db
     .select({ cardId: cards.id, wordId: words.id, term: words.term, translation: words.translation })
     .from(cards)
@@ -24,6 +26,7 @@ export async function translationMaterial(db: Db, userId: number, now: Date, ran
     .where(
       and(
         eq(cards.userId, userId),
+        inArray(cards.id, active.map(({ id }) => id)),
         ne(cards.state, State.New),
         lt(cards.stability, LEARNED_STABILITY_DAYS),
         or(isNull(words.usefulness), ne(words.usefulness, 1)),

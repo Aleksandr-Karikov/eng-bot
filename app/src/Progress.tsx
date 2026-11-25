@@ -47,7 +47,7 @@ export function ProgressScreen({ onExit }: { onExit: () => void }) {
       <div className="tiles">
         <Tile icon="🔥" value={stats.streak} label={plural(stats.streak, "день подряд", "дня подряд", "дней подряд")} />
         <Tile icon="✅" value={stats.learned} label="выучено" />
-        <Tile icon="📚" value={stats.learning} label="учу" />
+        <Tile icon="📚" value={data.activeLearning} label="в подборке" />
         <Tile icon="🆕" value={stats.fresh} label="ещё не начато" />
       </div>
       <Text className="hint week-line">

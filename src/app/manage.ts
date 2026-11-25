@@ -3,12 +3,13 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import { CARD_PART_LABELS, MODE_LABELS, NEW_PER_DAY_CHOICES } from "../bot/keyboards";
-import { cards, reviewLogs, type User, type Word } from "../db/schema";
+import { cards, reviewLogs, rooms, words, type User, type Word } from "../db/schema";
 import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services/card-view";
 import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
 import { KNOW_STAGE } from "../services/goals";
+import { learningSelection } from "../services/learning";
 import { isStormHard } from "../services/storm";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
@@ -20,7 +21,7 @@ import { prepareWord } from "../services/prepare-word";
 import { broadcastWord } from "../bot/word-flow";
 
 /** Как слово идёт у этого человека: нет карточки — убрал у себя («🙈 Не для меня»). */
-export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";
+export type WordStatus = "new" | "learning" | "known" | "hard" | "paused" | "dropped";
 
 export interface AppWordItem {
   id: number;
@@ -28,12 +29,14 @@ export interface AppWordItem {
   translation: string;
   usefulness: number | null;
   status: WordStatus;
+  room?: string;
 }
 
-/** Слова текущей комнаты, новые сверху, со статусом по карточкам этого человека. */
-export async function appWords(deps: Deps, user: User): Promise<{ room: string | null; words: AppWordItem[] }> {
+/** Слова текущей комнаты и общая личная подборка активного обучения. */
+export async function appWords(deps: Deps, user: User) {
+  const { limit, active } = await learningSelection(deps.db, user.id);
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
-  if (!room) return { room: null, words: [] };
+  if (!room) return { room: null, words: [], active: [], limit };
   const list = await listRoomWords(deps.db, room.id);
   const ids = list.map((w) => w.id);
   const mine = ids.length ? await deps.db.select().from(cards).where(and(eq(cards.userId, user.id), inArray(cards.wordId, ids))) : [];
@@ -51,20 +54,32 @@ export async function appWords(deps: Deps, user: User): Promise<{ room: string |
     }
   }
   const byWord = new Map(mine.map((c) => [c.wordId, c]));
-  return {
-    room: room.name,
-    words: list.map((w) => {
-      const card = byWord.get(w.id);
-      const status: WordStatus = !card
-        ? "dropped"
+  const activeIds = new Set(active.map(({ id }) => id));
+  const roomItems = list.map((w): AppWordItem => {
+    const card = byWord.get(w.id);
+    const status: WordStatus = !card
+      ? "dropped"
+      : activeIds.has(card.id)
+        ? isStormHard(history.get(card.id) ?? []) ? "hard" : "learning"
         : card.state === State.New
           ? "new"
           : isLearned(card) || (card.reps === 1 && markedKnown.has(card.id))
             ? "known"
-            : isStormHard(history.get(card.id) ?? [])
-              ? "hard"
-              : "learning";
-      return { id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status };
+            : "paused";
+    return { id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status };
+  });
+  const activeRows = await deps.db.select({ id: words.id, term: words.term, translation: words.translation, usefulness: words.usefulness, room: rooms.name })
+    .from(words).innerJoin(rooms, eq(words.roomId, rooms.id))
+    .where(inArray(words.id, active.map(({ wordId }) => wordId)));
+  const statusByWord = new Map(roomItems.map(({ id, status }) => [id, status]));
+  const activeByWord = new Map(activeRows.map((word) => [word.id, word]));
+  return {
+    room: room.name,
+    words: roomItems,
+    limit,
+    active: active.flatMap(({ wordId }): AppWordItem[] => {
+      const word = activeByWord.get(wordId);
+      return word ? [{ ...word, status: statusByWord.get(wordId) ?? "learning" }] : [];
     }),
   };
 }

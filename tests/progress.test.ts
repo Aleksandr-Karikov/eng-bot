@@ -26,6 +26,7 @@ describe("📊 progress", () => {
     expect(r.calendar).toHaveLength(84);
     expect(r.calendar.at(-1)).toEqual({ date: localParts(user.timezone, T0).date, count: 2 });
     expect(r.started7d).toBe(2);
+    expect(r.activeLearning).toBe(2);
     expect(r.forecast).toHaveLength(7);
     // Ответили на две карточки — в прогнозе только они, третья (новая) не считается.
     expect(r.forecast.reduce((a, d) => a + d.count, 0)).toBe(2);

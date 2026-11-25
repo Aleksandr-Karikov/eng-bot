@@ -166,6 +166,7 @@ describe("📚 Mini App API", () => {
 
     it("spaces out six exercises in twenty items and fills the remaining places with swipe cards", async () => {
       const { h, app, auth } = await setup();
+      await updateUser(h.db, 1, { activeLearningLimit: 20 });
       const [bank] = await h.db.select().from(words);
       for (let i = 1; i < 20; i++) {
         await saveWord(h.db, { roomId: bank.roomId, addedBy: 1,

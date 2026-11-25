@@ -194,7 +194,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
   let prepared = 0;
   for (const { card, word } of items) {
     const isNew = card.state === State.New;
-    const needsDecision = isNew && card.reps === 0 && card.triagedAt === null && word.addedBy !== user.id;
+    const needsDecision = isNew && card.reps === 0 && card.learningPriority <= 0 && card.triagedAt === null && word.addedBy !== user.id;
     const optional = word.usefulness === 1;
     const collocations = storedCollocations(word);
     const sentences = modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];

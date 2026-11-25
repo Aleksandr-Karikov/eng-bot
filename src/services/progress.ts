@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, gte, isNull, ne } from "drizzle-orm";
-import { State } from "ts-fsrs";
+import { and, asc, desc, eq, gte, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { cards, drillAnswers, mistakes, reviewLogs, type Room, type User } from "../db/schema";
 import { localParts, nextDate, previousDate } from "../time";
 import { goalProgress, type GoalProgress } from "./goals";
 import { RESOLVE_STREAK, resolvedTopics } from "./mistakes";
 import { personalStats, type PersonalStats } from "./stats";
+import { learningSelection, reviewableCards } from "./learning";
 
 /** Сколько дней показывать в календаре занятий (12 недель) и вперёд в прогнозе. */
 const CALENDAR_DAYS = 84;
@@ -14,6 +14,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 export interface ProgressReport {
   stats: PersonalStats;
+  activeLearning: number;
   /** Новых слов начато за 7 дней (первый ответ по карточке). */
   started7d: number;
   /** Ответов по дням (локальная дата → сколько), последние CALENDAR_DAYS дней, старые первыми. */
@@ -56,10 +57,11 @@ export async function progressReport(db: Db, user: User, room: Room | undefined,
   }
   const started7d = [...firstAnswer.values()].filter((t) => t >= weekAgo).length;
 
+  const { active } = await learningSelection(db, user.id);
   const due = await db
     .select({ due: cards.due })
     .from(cards)
-    .where(and(eq(cards.userId, user.id), ne(cards.state, State.New)));
+    .where(and(eq(cards.userId, user.id), reviewableCards(db, active.map(({ id }) => id))));
   const forecastDays: string[] = [];
   for (let i = 0, d = today; i < FORECAST_DAYS; i++, d = nextDate(d)) forecastDays.push(d);
   const perDue = new Map<string, number>();
@@ -71,6 +73,7 @@ export async function progressReport(db: Db, user: User, room: Room | undefined,
 
   return {
     stats: await personalStats(db, user, now),
+    activeLearning: active.length,
     started7d,
     calendar,
     forecast,

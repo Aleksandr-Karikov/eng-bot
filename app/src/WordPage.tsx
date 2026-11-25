@@ -2,9 +2,9 @@ import { CorrectionForm } from "./CorrectionForm";
 import { CardPreview } from "./CardPreview";
 import { playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
-import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
+import { Button, Cell, Input, List, Placeholder, Section, Select, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { editWord, getWord, newMnemonic, wordAction, wordPictureUrl, type WordAction, type WordDetails } from "./api";
+import { editWord, getWord, newMnemonic, takeWord, wordAction, wordPictureUrl, type WordAction, type WordDetails, type WordItem } from "./api";
 import { transcription } from "./format";
 import { UsefulDot } from "./icons";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
@@ -14,7 +14,11 @@ function play(id: number, accent: "uk" | "us") {
 }
 
 /** Страница слова: всё, что есть на карточке, и действия «Управление словом» из бота. */
-export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
+export function WordPage({ id, onClose, learning }: {
+  id: number;
+  onClose: () => void;
+  learning?: { active: WordItem[]; limit: number; onSaved: () => void };
+}) {
   const [word, setWord] = useState<WordDetails>();
   const [error, setError] = useState<string>();
   const [picture, setPicture] = useState<string>();
@@ -23,6 +27,9 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
   const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [outgoing, setOutgoing] = useState("");
+  const [takeError, setTakeError] = useState<string>();
   // Одна кнопка «Назад» на экран: из правки и предпросмотра — к слову, со слова — к списку.
   const back = useCallback(
     () => (previewing ? setPreviewing(false) : correcting ? undefined : editing ? setEditing(false) : onClose()),
@@ -57,6 +64,22 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
     } catch (err) {
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const take = async (replaceWordId?: number) => {
+    if (!learning || busy) return;
+    setBusy(true);
+    setTakeError(undefined);
+    try {
+      await takeWord(id, replaceWordId);
+      haptic.done(true);
+      learning.onSaved();
+    } catch (err) {
+      haptic.done(false);
+      setTakeError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -185,6 +208,26 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
       {word.hasPicture && <div className="picture word-picture">{picture && <img src={picture} alt="" />}</div>}
 
       <Section header="Управление словом">
+        {learning && !replacing && (
+          <Cell Component="button" type="button" className="word-list-control" disabled={busy} onClick={() => {
+            if (learning.active.length >= learning.limit) setReplacing(true);
+            else void take();
+          }}>Взять в обучение</Cell>
+        )}
+        {learning && replacing && (
+          <>
+            <Select header="Какое слово отложить" aria-label="Какое слово отложить" value={outgoing} disabled={busy} onChange={(event) => setOutgoing(event.target.value)}>
+              <option value="" disabled>Выбери слово из «Учу»</option>
+              {learning.active.map((item) => <option key={item.id} value={item.id}>{item.term} · {item.room}</option>)}
+            </Select>
+            <div className="row form-buttons">
+              <Button mode="bezeled" size="m" stretched disabled={busy} onClick={() => { setReplacing(false); setTakeError(undefined); }}>Отмена</Button>
+              <Button size="m" stretched disabled={!outgoing || busy} onClick={() => void take(Number(outgoing))}>Заменить</Button>
+            </div>
+            <Cell multiline>Отложенное слово вернётся в очередь с прежним прогрессом.</Cell>
+          </>
+        )}
+        {takeError && <Cell multiline><span className="danger" role="alert">{takeError}</span></Cell>}
         <Cell onClick={() => setCorrecting(true)}>Исправить с ИИ</Cell>
         <Cell onClick={() => setEditing(true)}>Изменить перевод и объяснение</Cell>
         {word.usefulness === 1 && <Cell onClick={() => void act("promote")}>Сделать полезным — учить полностью</Cell>}

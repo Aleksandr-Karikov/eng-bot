@@ -177,7 +177,7 @@ export const sendAnswer = (card: Card, answer: CardAnswer) =>
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
-export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";
+export type WordStatus = "new" | "learning" | "known" | "hard" | "paused" | "dropped";
 
 export interface WordItem {
   id: number;
@@ -185,6 +185,7 @@ export interface WordItem {
   translation: string;
   usefulness: number | null;
   status: WordStatus;
+  room?: string;
 }
 
 export interface WordDetails extends Omit<Card["word"], "id"> {
@@ -204,7 +205,7 @@ export interface WordDetails extends Omit<Card["word"], "id"> {
 
 export type WordAction = "drop" | "restore" | "promote" | "delete";
 
-export const getWords = () => call<{ room: string | null; words: WordItem[] }>("/api/words");
+export const getWords = () => call<{ room: string | null; words: WordItem[]; active: WordItem[]; limit: number }>("/api/words");
 export const getWord = (id: number) => call<{ word: WordDetails }>(`/api/words/${id}`).then((r) => r.word);
 export interface CorrectionPreview {
   draftId: string;
@@ -217,6 +218,7 @@ export const correctWord = (id: number, instruction: string, draftId?: string) =
 export const applyCorrection = (id: number, draftId: string) => post(`/api/words/${id}/correct/apply`, { draftId });
 export const editWord = (id: number, patch: { translation: string; explanation: string }) => post(`/api/words/${id}/edit`, patch);
 export const wordAction = (id: number, action: WordAction) => post(`/api/words/${id}/${action}`);
+export const takeWord = (id: number, replaceWordId?: number) => post(`/api/words/${id}/learn`, { replaceWordId });
 
 export interface Toggle {
   key: string;
@@ -342,6 +344,7 @@ export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes",
 
 export interface Progress {
   stats: { total: number; learned: number; learning: number; fresh: number; reviews7d: number; streak: number };
+  activeLearning: number;
   started7d: number;
   calendar: Array<{ date: string; count: number }>;
   forecast: Array<{ date: string; count: number }>;

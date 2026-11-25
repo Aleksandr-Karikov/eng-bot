@@ -5,7 +5,7 @@ import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
 import { streakBuff } from "./streak-buff";
-import { and, asc, count, desc, eq, gte, isNull, lt, lte, ne, notExists, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, lte, ne, notExists, or, desc, count, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -13,7 +13,8 @@ import { cards, combatArchive, reviewLogs, words, users, type CardRow, type Word
 import { localMoment, localParts, nextDate } from "../time";
 import { DEFAULT_TIMEZONE } from "./users";
 import { review, type Answer } from "../srs/srs";
-import { LEARNED_STABILITY_DAYS } from "./stats";
+import { isLearned } from "./stats";
+import { learningSelection, reviewableCards } from "./learning";
 
 export interface DueItem {
   card: CardRow;
@@ -28,10 +29,7 @@ export const DEFAULT_NEW_PER_DAY = 15;
 /**
  * Дневная порция новых слов (E30).
  *
- * Повторения не ограничены никогда: просроченное — это то, что уже начало забываться, и отложить его
- * значит потерять. Ограничение касается только знакомства с новыми словами: друзья добавляют пачками,
- * и без потолка либо новые не доходят никогда (`compareQueue` ставит повторения впереди), либо падают
- * все разом и не успевают заучиваться.
+ * Дневная порция действует при первом знакомстве. Состав повторений задаёт подборка.
  */
 export interface NewPortion {
   /** Потолок новых на день; 0 — без ограничения. */
@@ -98,24 +96,6 @@ export async function newPortion(db: Db, userId: number, now: Date): Promise<New
   return { limit, introduced, left: Math.max(0, limit - introduced) };
 }
 
-/** Свободные места с учётом всех начатых слов, включая карточки с повтором в будущем. */
-async function learningSlots(db: Db, userId: number): Promise<number> {
-  const active = db.select({ n: count() }).from(cards).where(and(
-    eq(cards.userId, userId),
-    ne(cards.state, State.New),
-    or(ne(cards.state, State.Review), lt(cards.stability, LEARNED_STABILITY_DAYS)),
-    // «Уже знаю» занимает место только если обычное повторение вернёт слово в изучение.
-    notExists(db.select({ id: reviewLogs.id }).from(reviewLogs).where(and(
-      eq(cards.reps, 1),
-      eq(reviewLogs.cardId, cards.id),
-      eq(reviewLogs.stage, KNOW_STAGE),
-    ))),
-  ));
-  const [row] = await db.select({ remaining: sql<number>`${users.activeLearningLimit} - (${active})` })
-    .from(users).where(eq(users.id, userId));
-  return Math.max(0, row?.remaining ?? 0);
-}
-
 /**
  * Убирает из очереди новые сверх доступных мест. Повторения проходят все.
  * Порядок не меняется: очередь уже отсортирована `compareQueue`, и знакомство идёт по полезности.
@@ -138,17 +118,27 @@ function compareQueue(a: DueItem, b: DueItem): number {
   const bNew = b.card.state === State.New ? 1 : 0;
   if (aNew !== bNew) return aNew - bNew;
   // Новые — сначала самые полезные: время на зубрёжку тратится на то, что пригодится.
-  if (aNew) return (b.word.usefulness ?? 2) - (a.word.usefulness ?? 2) || a.card.createdAt.getTime() - b.card.createdAt.getTime() || a.card.id - b.card.id;
+  if (aNew) return b.card.learningPriority - a.card.learningPriority || (b.word.usefulness ?? 2) - (a.word.usefulness ?? 2) || a.card.createdAt.getTime() - b.card.createdAt.getTime() || a.card.id - b.card.id;
   return a.card.due.getTime() - b.card.due.getTime();
 }
 
-async function dueItems(db: Db, userId: number, until: Date, includeNew: boolean): Promise<DueItem[]> {
+type LearningSelection = Awaited<ReturnType<typeof learningSelection>>;
+
+async function dueItems(db: Db, userId: number, until: Date, selection: LearningSelection, left: number): Promise<DueItem[]> {
+  const activeIds = selection.active.map(({ id }) => id);
+  const reserved = selection.active.filter((card) => card.state === State.New).map(({ id }) => id);
+  const slots = selection.limit - selection.active.length;
   const rows = await db
     .select({ card: cards, word: words })
     .from(cards)
     .innerJoin(words, eq(cards.wordId, words.id))
-    .where(and(eq(cards.userId, userId), lte(cards.due, until), includeNew ? undefined : ne(cards.state, State.New)));
-  return rows.sort(compareQueue);
+    .where(and(eq(cards.userId, userId), lte(cards.due, until), or(
+      reviewableCards(db, activeIds),
+      left > 0 ? inArray(cards.id, reserved) : undefined,
+      left > 0 && slots > 0 ? and(eq(cards.state, State.New), lte(cards.learningPriority, 0)) : undefined,
+    )));
+  const dueReserved = rows.filter(({ card }) => card.state === State.New && card.learningPriority > 0).length;
+  return withinPortion(rows.sort(compareQueue), Math.min(left, dueReserved + slots));
 }
 
 export async function nextDue(db: Db, userId: number, now: Date): Promise<DueItem | undefined> {
@@ -158,16 +148,15 @@ export async function nextDue(db: Db, userId: number, now: Date): Promise<DueIte
 
 /** Очередь /learn целиком (с тем же запасом «на 20 минут вперёд», что у nextDue) — для Mini App, которое грузит карточки заранее. */
 export async function dueQueue(db: Db, userId: number, now: Date, limit: number): Promise<DueItem[]> {
-  const [{ left }, slots] = await Promise.all([newPortion(db, userId, now), learningSlots(db, userId)]);
-  const available = Math.min(left ?? slots, slots);
-  const items = await dueItems(db, userId, now, available > 0);
-  const list = items.length ? items : await dueItems(db, userId, new Date(now.getTime() + LEARN_AHEAD_MS), available > 0);
-  return withinPortion(list, available).slice(0, limit);
+  const [{ left }, selection] = await Promise.all([newPortion(db, userId, now), learningSelection(db, userId)]);
+  const items = await dueItems(db, userId, now, selection, left ?? Infinity);
+  const list = items.length ? items : await dueItems(db, userId, new Date(now.getTime() + LEARN_AHEAD_MS), selection, left ?? Infinity);
+  return list.slice(0, limit);
 }
 
 export async function countDue(db: Db, userId: number, now: Date): Promise<number> {
-  const [row] = await db.select({ n: count() }).from(cards).where(and(eq(cards.userId, userId), lte(cards.due, now)));
-  return row?.n ?? 0;
+  const { review, fresh } = await countDueSplit(db, userId, now);
+  return review + fresh;
 }
 
 /**
@@ -176,13 +165,16 @@ export async function countDue(db: Db, userId: number, now: Date): Promise<numbe
  * `fresh` — сколько новых можно показать с учётом дневной порции и свободных мест.
  */
 export async function countDueSplit(db: Db, userId: number, now: Date) {
+  const [{ left }, selection] = await Promise.all([newPortion(db, userId, now), learningSelection(db, userId)]);
   const due = and(eq(cards.userId, userId), lte(cards.due, now));
-  const [review] = await db.select({ n: count() }).from(cards).where(and(due, ne(cards.state, State.New)));
-  const [fresh] = await db.select({ n: count() }).from(cards).where(and(due, eq(cards.state, State.New)));
-  const dueNew = fresh?.n ?? 0;
-  const [{ left }, slots] = await Promise.all([newPortion(db, userId, now), learningSlots(db, userId)]);
-  const available = Math.min(dueNew, left ?? slots, slots);
-  return { review: review?.n ?? 0, fresh: available, waiting: dueNew - available, activeFull: slots === 0 };
+  const activeIds = selection.active.map(({ id }) => id);
+  const [review] = await db.select({ n: count() }).from(cards).where(and(due, reviewableCards(db, activeIds)));
+  const fresh = await db.select({ id: cards.id, priority: cards.learningPriority }).from(cards).where(and(due, eq(cards.state, State.New)));
+  const slots = selection.limit - selection.active.length;
+  const reserved = fresh.filter(({ id }) => activeIds.includes(id)).length;
+  const regular = fresh.filter(({ priority }) => priority <= 0).length;
+  const available = Math.min(left ?? Infinity, reserved + Math.min(slots, regular));
+  return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0 };
 }
 
 export async function getDueItemByCard(db: Db, userId: number, cardId: number): Promise<DueItem | undefined> {
@@ -255,9 +247,11 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
     .from(cards)
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return { result: "stale", damage: 0 };
-  // Пачка Mini App и бот могут показать новое слово на одно место. Проверяем внутри общей блокировки ответов.
-  if (card.state === State.New && input.stage !== KNOW_STAGE && await learningSlots(db, input.userId) === 0) {
-    return { result: "waiting", damage: 0 };
+  // Другой экран мог занять место или заменить эту карточку после загрузки очереди.
+  if (input.stage !== KNOW_STAGE && !isLearned(card)) {
+    const { limit, active, waiting } = await learningSelection(db, input.userId);
+    const outside = card.state === State.New && active.length >= limit && !active.some(({ id }) => id === card.id);
+    if (outside || waiting.some(({ id }) => id === card.id)) return { result: "waiting", damage: 0 };
   }
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
   const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
@@ -347,10 +341,11 @@ export async function markKnown(
 }
 
 export async function nextReviewAt(db: Db, userId: number): Promise<Date | undefined> {
+  const { active } = await learningSelection(db, userId);
   const [row] = await db
     .select({ due: cards.due })
     .from(cards)
-    .where(and(eq(cards.userId, userId), ne(cards.state, State.New)))
+    .where(and(eq(cards.userId, userId), reviewableCards(db, active.map(({ id }) => id))))
     .orderBy(asc(cards.due))
     .limit(1);
   return row?.due;

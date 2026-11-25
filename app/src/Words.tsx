@@ -1,6 +1,6 @@
 import { Button, Cell, Chip, Input, List, Placeholder, Section, Spinner } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getWords, type WordItem, type WordStatus } from "./api";
+import { getWords, type WordStatus } from "./api";
 import { WordPage } from "./WordPage";
 import { AddWord } from "./AddWord";
 import { ButtonIcon, IconBox, IconPlus, UsefulDot } from "./icons";
@@ -11,13 +11,14 @@ const STATUS_LABEL: Record<WordStatus, string> = {
   learning: "учу",
   known: "знаю",
   hard: "трудное",
+  paused: "отложено",
   dropped: "убрано",
 };
 
 const FILTERS: Array<{ id: string; label: string; match: (s: WordStatus) => boolean }> = [
   { id: "all", label: "Все", match: (s) => s !== "dropped" },
   { id: "learning", label: "Учу", match: (s) => s === "learning" || s === "hard" },
-  { id: "waiting", label: "В очереди", match: (s) => s === "new" },
+  { id: "waiting", label: "В очереди", match: (s) => s === "new" || s === "paused" },
   { id: "known", label: "Выучено", match: (s) => s === "known" },
   { id: "hard", label: "Трудные", match: (s) => s === "hard" },
   { id: "dropped", label: "Убранные мной", match: (s) => s === "dropped" },
@@ -34,7 +35,7 @@ function BackToCards({ onExit }: { onExit: () => void }) {
 
 /** Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
 export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => void }) {
-  const [data, setData] = useState<{ room: string | null; words: WordItem[] }>();
+  const [data, setData] = useState<Awaited<ReturnType<typeof getWords>>>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -54,7 +55,8 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
   const shown = useMemo(() => {
     const match = FILTERS.find((f) => f.id === filter)!.match;
     const needle = normalize(query);
-    return (data?.words ?? []).filter(
+    const list = filter === "learning" ? data?.active : data?.words;
+    return (list ?? []).filter(
       (w) => match(w.status) && (!needle || normalize(w.term).includes(needle) || normalize(w.translation).includes(needle)),
     );
   }, [data, filter, query]);
@@ -64,7 +66,19 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
     void load();
   }, [load]);
 
-  if (open !== undefined) return <WordPage id={open} onClose={close} />;
+  if (open !== undefined) {
+    const status = data?.words.find(({ id }) => id === open)?.status;
+    const canTake = data && (status === "new" || status === "paused");
+    return <WordPage id={open} onClose={close} learning={canTake ? {
+      active: data.active,
+      limit: data.limit,
+      onSaved: () => {
+        setFilter("learning");
+        setQuery("");
+        close();
+      },
+    } : undefined} />;
+  }
   if (adding) {
     return (
       <AddWord
@@ -109,6 +123,10 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
         {FILTERS.map((f) => (
           <Chip
             key={f.id}
+            Component="button"
+            type="button"
+            className="word-filter"
+            aria-pressed={filter === f.id}
             mode={filter === f.id ? "mono" : "outline"}
             onClick={() => {
               haptic.select();
@@ -119,12 +137,18 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
           </Chip>
         ))}
       </div>
-      <Section header={`${data.room} · ${shown.length}`}>
+      <Section header={filter === "learning" ? `Учу · ${data.active.length} из ${data.limit}` : `${data.room} · ${shown.length}`}>
+        {filter === "learning" && (
+          <Cell Component="button" type="button" className="word-list-control" onClick={() => { setQuery(""); setFilter("waiting"); }}>Выбрать слово из очереди</Cell>
+        )}
         {shown.length === 0 && <Cell multiline>Ничего не нашлось</Cell>}
         {shown.map((w) => (
           <Cell
             key={w.id}
-            subtitle={w.translation}
+            Component="button"
+            type="button"
+            className="word-list-control"
+            subtitle={w.room ? `${w.translation} · ${w.room}` : w.translation}
             after={<span className={`status status-${w.status}`}>{STATUS_LABEL[w.status]}</span>}
             onClick={() => {
               haptic.tap();

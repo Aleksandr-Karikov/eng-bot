@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppCard } from "../src/app/api";
+import type { AppWordItem } from "../src/app/manage";
 import { createApp } from "../src/app/server";
-import { cards } from "../src/db/schema";
+import { cards, reviewLogs } from "../src/db/schema";
 import { countDueSplit } from "../src/services/review";
 import { createRoom } from "../src/services/rooms";
 import { isLearned } from "../src/services/stats";
@@ -41,13 +42,18 @@ async function setup(started: number) {
     return ((await res.json()) as { cards: AppCard[] }).cards;
   };
   const post = (path: string, body: object) => app.request(path, { method: "POST", headers, body: JSON.stringify(body) });
+  const list = async () => {
+    const res = await app.request("/api/words", { headers });
+    expect(res.status).toBe(200);
+    return res.json() as Promise<{ active: AppWordItem[]; words: AppWordItem[] }>;
+  };
   const answer = async (cardId: number, value: string, reps = 0) => {
     const res = await post("/api/answer", { cardId, reps, answer: value });
     expect(res.status).toBe(200);
     return res.json() as Promise<{ result: string; damage: number }>;
   };
   const getCard = async (id: number) => (await h.db.select().from(cards).where(eq(cards.id, id)))[0];
-  return { h, user, rows, queue, answer, post, getCard };
+  return { h, user, rows, queue, answer, post, list, getCard };
 }
 
 beforeEach(() => {
@@ -99,11 +105,20 @@ describe("лимит одновременно изучаемых слов", () =
     });
   });
 
-  it("показывает все повторы из уже накопившейся очереди, даже если они превысили лимит", async () => {
-    const { h, queue } = await setup(DEFAULT_LIMIT + 1);
-    h.setNow(T0);
+  it("откладывает лишние начатые слова, возвращает их при освобождении места и показывает выученные", async () => {
+    const { h, rows, queue, list } = await setup(DEFAULT_LIMIT + 2);
+    const [waiting, learned] = rows.slice(DEFAULT_LIMIT);
+    await h.db.update(cards).set({ state: State.Review, stability: 25 }).where(eq(cards.id, learned.id));
+    h.setNow(at(DAY));
     expect(await queue()).toEqual([]);
     expect(await queue("all")).toHaveLength(DEFAULT_LIMIT + 1);
+    expect((await queue("reviews")).map(({ cardId }) => cardId)).not.toContain(waiting.id);
+    expect((await list()).words).toContainEqual(expect.objectContaining({ id: waiting.wordId, status: "paused" }));
+
+    await h.db.update(cards).set({ state: State.Review, stability: 25 }).where(eq(cards.id, rows[0].id));
+    expect((await list()).active.map(({ id }) => id)).toContain(waiting.wordId);
+    expect((await queue("reviews")).map(({ cardId }) => cardId)).toContain(waiting.id);
+    expect(await queue()).toEqual([]);
   });
 
   it("меняет личный предел из бота и Mini App, сохраняя начатые карточки и дневную порцию", async () => {
@@ -126,6 +141,59 @@ describe("лимит одновременно изучаемых слов", () =
     expect(await changed.json()).toMatchObject({ settings: { activeLearningLimit: 10, activeLearningChoices: [10, 15, 20, 30], newPerDay: 0 } });
     expect(await queue()).toEqual([]);
     h.setNow(at(DAY));
-    expect(await queue("reviews")).toHaveLength(DEFAULT_LIMIT + 1);
+    expect(await queue("reviews")).toHaveLength(10);
+  });
+
+  it("меняет два слова местами, сохраняя расписание, FSRS и историю ответов", async () => {
+    const { h, rows, list, post, queue, answer, getCard } = await setup(DEFAULT_LIMIT + 2);
+    const [outgoing] = rows;
+    const incoming = rows[DEFAULT_LIMIT + 1];
+    expect(await answer(outgoing.id, "again", 1)).toMatchObject({ result: "ok" });
+    const before = await getCard(outgoing.id);
+    const incomingBefore = await getCard(incoming.id);
+    const history = await h.db.select().from(reviewLogs).where(eq(reviewLogs.cardId, outgoing.id));
+    expect(history).toHaveLength(1);
+
+    const take = `/api/words/${incoming.wordId}/learn`;
+    expect((await post(take, {})).status).toBe(409);
+    expect((await post(take, { replaceWordId: rows[DEFAULT_LIMIT].wordId })).status).toBe(409);
+    expect((await post(take, { replaceWordId: outgoing.wordId })).status).toBe(200);
+    const { active, words } = await list();
+    expect(active).toHaveLength(DEFAULT_LIMIT);
+    expect(active.map(({ id }) => id)).toContain(incoming.wordId);
+    expect(words).toContainEqual(expect.objectContaining({ id: outgoing.wordId, status: "paused" }));
+    expect(await answer(outgoing.id, "good", before.reps)).toMatchObject({ result: "waiting" });
+    expect(await getCard(outgoing.id)).toEqual({ ...before, learningPriority: -1 });
+    expect(await getCard(incoming.id)).toEqual({ ...incomingBefore, learningPriority: 1 });
+    expect(await h.db.select().from(reviewLogs).where(eq(reviewLogs.cardId, outgoing.id))).toEqual(history);
+    expect((await queue("reviews")).map(({ cardId }) => cardId)).toContain(incoming.id);
+
+    expect((await post(`/api/words/${outgoing.wordId}/learn`, { replaceWordId: incoming.wordId })).status).toBe(200);
+    expect((await list()).active.map(({ id }) => id)).toContain(outgoing.wordId);
+    expect(await getCard(outgoing.id)).toMatchObject({ due: before.due, fsrs: before.fsrs, reps: before.reps });
+  });
+
+  it("резервирует место для нового слова из другой комнаты и проверяет владельца", async () => {
+    const { h, user, rows, list, post, queue, answer } = await setup(DEFAULT_LIMIT - 1);
+    const room = await createRoom(h.db, { name: "S", createdBy: user.id, now: T0 });
+    const added = await saveWord(h.db, {
+      roomId: room.id, addedBy: user.id, now: T0,
+      draft: { term: "picked", translation: "выбранное", explanation: "", example: "" },
+    });
+    if (added.status !== "saved") throw new Error("fixture");
+    expect((await post(`/api/words/${added.word.id}/learn`, {})).status).toBe(200);
+    expect((await list()).active).toContainEqual(expect.objectContaining({ id: rows[0].wordId, room: "R" }));
+    expect((await queue()).map(({ word }) => word.id)).toEqual([added.word.id]);
+    const card = (await queue())[0];
+    expect(await answer(card.cardId, "good")).toMatchObject({ result: "ok" });
+
+    const other = await makeUser(h.db, 200);
+    const privateRoom = await createRoom(h.db, { name: "Другая комната", createdBy: other.id, now: T0 });
+    const foreign = await saveWord(h.db, {
+      roomId: privateRoom.id, addedBy: other.id, now: T0,
+      draft: { term: "private", translation: "личное", explanation: "", example: "" },
+    });
+    if (foreign.status !== "saved") throw new Error("fixture");
+    expect((await post(`/api/words/${foreign.word.id}/learn`, { replaceWordId: rows[0].wordId })).status).toBe(404);
   });
 });

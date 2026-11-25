@@ -1,0 +1,1 @@
+ALTER TABLE `cards` ADD `learning_priority` integer DEFAULT 0 NOT NULL;

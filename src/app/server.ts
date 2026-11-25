@@ -8,6 +8,7 @@ import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
+import { takeLearningWord } from "../services/learning";
 import { adoptDeviceTimeZone } from "../services/users";
 import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
@@ -251,6 +252,17 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
     const r = await appNewMnemonic(deps, c.get("user"), word);
     return c.json(r.body, r.status as 200 | 429 | 502);
+  });
+  app.post("/api/words/:id/learn", async (c) => {
+    const user = c.get("user");
+    const word = await memberWord(deps, user, Number(c.req.param("id")));
+    if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
+    const { replaceWordId } = await readBody(c);
+    if (replaceWordId !== undefined && (typeof replaceWordId !== "number" || !Number.isSafeInteger(replaceWordId))) {
+      return c.json({ ok: false, error: "Выбери слово из списка «Учу»" }, 400);
+    }
+    const saved = await takeLearningWord(deps.db, user.id, word.id, replaceWordId);
+    return saved ? c.json({ ok: true }) : c.json({ ok: false, error: "Список изменился. Открой слово заново и попробуй ещё раз." }, 409);
   });
   const ACTIONS = new Set<WordAction>(["drop", "restore", "promote", "delete"]);
   app.post("/api/words/:id/:action", async (c) => {
