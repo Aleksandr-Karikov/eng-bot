@@ -10,7 +10,7 @@
  *
  * Меняется ТОЛЬКО `explanation`; перевод, пример, контекст, запоминалка и прогресс не трогаются.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { loadConfig } from "../src/config";
 import { createDb } from "../src/db/client";
 import { words } from "../src/db/schema";
@@ -46,6 +46,7 @@ console.log(`${todo.length} слов с контекстным объяснен�
 
 let fixed = 0;
 let failed = 0;
+let stale = 0;
 for (const word of todo) {
   try {
     // Перевод передаём как подсказку значения, контекст — чтобы модель знала, где слово встретилось.
@@ -61,12 +62,25 @@ for (const word of todo) {
       console.log(`#${word.id} ${word.term}: всё ещё про контекст — ${next.slice(0, 80)}`);
       continue;
     }
+    if (!dryRun) {
+      const [updated] = await db.update(words).set({ explanation: next }).where(and(
+        eq(words.id, word.id),
+        eq(words.term, word.term),
+        eq(words.translation, word.translation),
+        eq(words.context, word.context),
+        eq(words.explanation, word.explanation),
+      )).returning({ id: words.id });
+      if (!updated) {
+        stale++;
+        console.log(`#${word.id}: запись изменилась, пропускаю`);
+        continue;
+      }
+    }
     console.log(`#${word.id} ${word.term}\n   было:  ${(word.explanation ?? "").slice(0, 100)}\n   стало: ${next.slice(0, 100)}`);
-    if (!dryRun) await db.update(words).set({ explanation: next }).where(eq(words.id, word.id));
     fixed++;
   } catch (err) {
     failed++;
     console.error(`#${word.id} ${word.term}: не вышло —`, err instanceof Error ? err.message : err);
   }
 }
-console.log(`\nитог: исправлено ${fixed}, не вышло ${failed} из ${todo.length}`);
+console.log(`\nитог: исправлено ${fixed}, изменились ${stale}, не вышло ${failed} из ${todo.length}`);

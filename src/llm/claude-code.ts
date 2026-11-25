@@ -269,9 +269,13 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     if (!parsed.quiz) return parsed;
     // Самопроверка: подставь каждый вариант и прочитай предложение (баг #20). Вопрос, где «верный»
     // вариант даёт бессмыслицу, отбрасываем — сочетания при этом остаются, они полезны сами по себе.
-    const check = await this.checkCollocationQuiz({ term, translation, quiz: { term, ...parsed.quiz } });
-    if (check.ok) return parsed;
-    console.error("Collocation quiz rejected", term, check.why);
+    try {
+      const check = await this.checkCollocationQuiz({ term, translation, quiz: { term, ...parsed.quiz } });
+      if (check.ok) return parsed;
+      console.error("Collocation quiz rejected", term, check.why);
+    } catch (err) {
+      console.error("Collocation quiz check failed", term, err);
+    }
     return { items: parsed.items };
   }
 

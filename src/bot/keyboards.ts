@@ -315,11 +315,11 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
 }
 
 /** qid — номер показа вопроса: старые кнопки не должны оценивать другой, текущий вопрос. */
-export function drillKeyboard(q: DrillQuestion, qid: number): InlineKeyboard {
+export function drillKeyboard(q: DrillQuestion, qid: number, hint?: { id: number; term: string }): InlineKeyboard {
   const kb = new InlineKeyboard();
   q.options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "drillPick", qid, index })).row());
   // Незнакомое слово — кнопкой, а не текстом: перевод нельзя показывать сразу, иначе он подскажет ответ.
-  if (q.newWord) kb.text(`🔍 Что такое «${shorten(q.newWord.term)}»?`, encodeCb({ k: "drillWord", qid })).row();
+  if (hint) kb.text(`🔍 Что такое «${shorten(hint.term)}»?`, encodeCb({ k: "drillWord", id: hint.id })).row();
   return kb;
 }
 

@@ -13,7 +13,7 @@
 import { loadConfig } from "../src/config";
 import { createDb } from "../src/db/client";
 import { words } from "../src/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { OpenRouterBackend } from "../src/llm/openrouter";
 import { ProviderRouter } from "../src/llm/provider";
 import { initialProvider } from "../src/llm/provider-store";
@@ -55,27 +55,20 @@ console.log(`${withQuiz.length} слов с вопросом; провайдер
 let rejected = 0;
 let kept = 0;
 let failed = 0;
+let stale = 0;
 for (const word of withQuiz.slice(0, limit)) {
   const collocations = JSON.parse(word.collocations) as Collocations;
   const quiz = collocations.quiz!;
-  const drop = (why: string) => {
-    rejected++;
-    console.log(`#${word.id} ${word.term}: убрать вопрос — ${why}`);
-  };
+  let reason = "ответ — само слово или его часть";
   // Дешёвая проверка без модели: ответ не должен быть самим словом (это уже ловилось, но у старых записей).
-  if (!validQuiz(quiz, word.term)) {
-    drop("ответ — само слово или его часть");
-  } else if (!llm.checkCollocationQuiz) {
-    failed++;
-    continue;
-  } else {
+  if (validQuiz(quiz, word.term)) {
     try {
       const check = await llm.checkCollocationQuiz({ term: word.term, translation: word.translation, quiz: { term: word.term, ...quiz } });
       if (check.ok) {
         kept++;
         continue;
       }
-      drop(check.why || "подстановка даёт неверное предложение");
+      reason = check.why || "подстановка даёт неверное предложение";
     } catch (err) {
       failed++;
       console.error(`#${word.id} ${word.term}: проверить не удалось —`, err instanceof Error ? err.message : err);
@@ -84,7 +77,19 @@ for (const word of withQuiz.slice(0, limit)) {
   }
   if (!dryRun) {
     const rest: Collocations = { items: collocations.items };
-    await db.update(words).set({ collocations: JSON.stringify(rest) }).where(eq(words.id, word.id));
+    const [updated] = await db.update(words).set({ collocations: JSON.stringify(rest) }).where(and(
+      eq(words.id, word.id),
+      eq(words.term, word.term),
+      eq(words.translation, word.translation),
+      eq(words.collocations, word.collocations),
+    )).returning({ id: words.id });
+    if (!updated) {
+      stale++;
+      console.log(`#${word.id}: запись изменилась, пропускаю`);
+      continue;
+    }
   }
+  rejected++;
+  console.log(`#${word.id} ${word.term}: убрать вопрос — ${reason}`);
 }
-console.log(`\nитог: проверено ${withQuiz.slice(0, limit).length}, оставлено ${kept}, убрано ${rejected}, ошибок ${failed}`);
+console.log(`\nитог: проверено ${withQuiz.slice(0, limit).length}, оставлено ${kept}, убрано ${rejected}, изменились ${stale}, ошибок ${failed}`);

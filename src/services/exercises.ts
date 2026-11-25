@@ -1,4 +1,5 @@
 import { State } from "ts-fsrs";
+import { ANSWERS_SEP, answersOf } from "./cloze";
 
 /** Виды упражнений: EN → RU, RU → EN, вставь по смыслу, своё предложение, диктант, сочетания. */
 export const STAGES = ["en_ru", "ru_en", "cloze", "sentence", "listen", "collocation"] as const;
@@ -68,13 +69,18 @@ export function normalizeAnswer(s: string): string {
 }
 
 /**
- * Ответ совпал с формой в пропуске или со словарной формой слова.
+ * Словарная форма подходит для одного пропуска. Для нескольких нужны ответы по порядку.
  *
  * У задания с двумя пропусками в базе лежит `have|hold`, а человек пишет оба слова подряд — `have hold`
  * (баг #25). Поэтому разделитель считается мягким: оба написания сводятся к одному.
  */
 export function isExactAnswer(answer: string, expected: { answer: string; term: string }): boolean {
   const a = normalizeAnswer(answer);
-  const flat = normalizeAnswer(expected.answer.replace(/\|/g, " "));
-  return a !== "" && (a === normalizeAnswer(expected.answer) || a === flat || a === normalizeAnswer(expected.term));
+  if (!a) return false;
+  if (!expected.answer.includes(ANSWERS_SEP)) {
+    return a === normalizeAnswer(expected.answer) || a === normalizeAnswer(expected.term);
+  }
+  const parts = answersOf(expected.answer).map(normalizeAnswer);
+  if (!answer.includes(ANSWERS_SEP)) return a === parts.join(" ");
+  return answer.split(ANSWERS_SEP).map(normalizeAnswer).join(ANSWERS_SEP) === parts.join(ANSWERS_SEP);
 }

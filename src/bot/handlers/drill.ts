@@ -2,13 +2,14 @@ import type { Bot, InputFile } from "grammy";
 import type { Message } from "grammy/types";
 import type { User } from "../../db/schema";
 import type { DrillQuestion } from "../../llm/tutor";
-import type { DrillState } from "../drills";
+import type { DrillState, DrillWordHint } from "../drills";
 import { clearMistakes, mistakeProfile, recentMistakes, resolvedTopics } from "../../services/mistakes";
 import { HTML, type BotContext, type Deps } from "../context";
 import { drillKeyboard, mistakesKeyboard } from "../keyboards";
 import { drillQuestionText, mistakesText } from "../texts";
 import { missingFrom } from "../../services/rare-word";
 import { listRoomWords } from "../../services/words";
+import { startSeq } from "../seq";
 
 /** Вопросы готовятся, как только есть хотя бы одна ошибка. */
 export const MIN_MISTAKES = 1;
@@ -25,16 +26,7 @@ export function rememberAsked(userId: number, question: string): void {
 export async function prepareDrill(deps: Deps, user: User): Promise<DrillQuestion[]> {
   const profile = mistakeProfile(await recentMistakes(deps.db, user.id, deps.now()));
   if (profile.total < MIN_MISTAKES) return [];
-  const questions = await deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH, askedByUser.get(user.id) ?? []);
-  // Незнакомое слово — то, которого нет в словаре человека (баг #26). Не просим у модели: на двух живых
-  // прогонах она не назвала ни одного. И не по частотности: она показывает частоту в языке, а жалоба
-  // была про «этого слова я не учил».
-  const roomId = user.currentRoomId;
-  const known = roomId == null ? [] : (await listRoomWords(deps.db, roomId)).map((w) => w.term);
-  return questions.map((q) => {
-    const term = missingFrom(known, q.question, q.options);
-    return term ? { ...q, newWord: { term } } : q;
-  });
+  return deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH, askedByUser.get(user.id) ?? []);
 }
 
 const RETRY_AFTER_MS = 10 * 60_000;
@@ -78,6 +70,7 @@ export function prefetchDrill(ctx: BotContext, deps: Deps): void {
   // Неотвеченный вопрос прошлой сессии больше не актуален.
   state.current = undefined;
   state.currentId = undefined;
+  state.wordHint = undefined;
 }
 
 /**
@@ -107,14 +100,30 @@ export async function present(
 /** Лимит подписи к фото в Telegram. */
 const CAPTION_LIMIT = 1024;
 
-let questionSeq = 0;
+let questionSeq = startSeq();
+
+export function drillRoomId(ctx: BotContext): number | undefined {
+  return (ctx.chat?.type === "private" ? ctx.user.currentRoomId : ctx.groupRoom?.id) ?? undefined;
+}
+
+export async function drillWordHint(
+  ctx: BotContext, deps: Deps, text: string, context: string, exclude: string[] = [],
+): Promise<DrillWordHint | undefined> {
+  const roomId = drillRoomId(ctx);
+  if (roomId === undefined) return;
+  const known = (await listRoomWords(deps.db, roomId)).map((word) => word.term);
+  const term = missingFrom(known, text, exclude);
+  if (term) return { id: ++questionSeq, roomId, term, context };
+}
 
 /** Делает вопрос текущим (с новым номером показа) и отправляет его. */
-export async function sendDrillQuestion(ctx: BotContext, state: DrillState, q: DrillQuestion, mode: PresentMode): Promise<void> {
+export async function sendDrillQuestion(ctx: BotContext, deps: Deps, state: DrillState, q: DrillQuestion, mode: PresentMode): Promise<void> {
+  const hint = await drillWordHint(ctx, deps, q.question, q.question, q.options);
+  state.wordHint = hint;
   state.current = q;
   state.currentId = ++questionSeq;
   rememberAsked(ctx.user.id, q.question);
-  await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q, state.currentId) }, mode);
+  await present(ctx, drillQuestionText(q), { ...HTML, reply_markup: drillKeyboard(q, state.currentId, hint) }, mode);
 }
 
 export function registerMistakes(bot: Bot<BotContext>, deps: Deps): void {

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CheckResult } from "../src/llm/enricher";
-import type { DrillQuestion, ExerciseTutor } from "../src/llm/tutor";
-import { recordMistakes } from "../src/services/mistakes";
+import type { DrillQuestion } from "../src/llm/tutor";
+import { checkAndCount, quotaUsed, QUOTAS } from "../src/services/limits";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
-import { saveWord } from "../src/services/words";
+import { listRoomWords, saveWord } from "../src/services/words";
 import { botHarness, buttonData, lastButtons } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
@@ -37,18 +37,17 @@ const question = (extra: Partial<DrillQuestion> = {}): DrillQuestion => ({
 });
 
 function harness(questions: DrillQuestion[] = [question()]) {
-  const tutor: ExerciseTutor = { cloze: async () => [], judge: async () => ({ correct: false, explanation: "", tip: "" }), drill: vi.fn(async () => questions), mnemonics: async () => [], translationTask: async () => ({ ru: "Привет", en: "Hi", topic: "", word: "" }), reviewTranslation: async () => ({ correct: true, fixes: [], corrected: "", natural: "", usedWord: null, verdict: "" }), collocations: async () => ({ items: [] }), story: async () => ({ title: "", body: "", questions: [] }), say: async () => ({ variants: [{ text: "x", register: "", note: "" }], learn: [] }), talkReply: async () => "Hi!", talkReview: async () => ({ praise: "", fixes: [], natural: [], usedWords: [] }), untangle: async () => ({ why: "", contrast: [], examples: [], tip: "" }), reviewSentence: async () => ({ usesWord: true, verdict: "", corrected: "", fixes: [], natural: "" }), imagePrompt: async () => "" };
+  const enrich = vi.fn(async (term: string) => ({ term, translation: `перевод ${term}`, explanation: "смысл", example: "An example." }));
   const h = botHarness({
-    tutor,
     enricher: {
-      // Эхо: бот сам решает, какое слово предложить, — фейк возвращает то, что спросили.
-      enrich: async (term: string) => ({ term, translation: `перевод ${term}`, explanation: "смысл", example: "An example.", sense: "main" as const, register: "neutral" as const }),
+      enrich,
       extractImage: async () => [],
       extract: async () => [],
       check: async () => checked,
     },
   });
-  return { h };
+  h.deps.tutor.drill = async () => questions;
+  return { h, enrich };
 }
 
 const sent = (h: ReturnType<typeof botHarness>) =>
@@ -69,33 +68,62 @@ async function learner(h: ReturnType<typeof botHarness>) {
 }
 
 describe("#26: незнакомое слово в вопросе по ошибкам", () => {
-  it("в вопросе есть кнопка слова, по ней — слово и «Добавить»", async () => {
-    const { h } = harness();
-    await learner(h);
+  it("переводит по нажатию и сохраняет показанное слово в исходную комнату с квотами /add", async () => {
+    const { h, enrich } = harness([question(), question({ question: "He noticed the ___." })]);
+    const { user, room } = await learner(h);
+    const quota = { userId: user.id, timeZone: user.timezone, now: T0 };
     await h.bot.handleUpdate(h.message(100, "/drill"));
-    expect(sent(h).at(-1)).toContain("overcome ___");
+    const lookup = await vi.waitFor(() => buttonData(h.calls, "🔍 Что такое «managed»?"));
+    expect(enrich).not.toHaveBeenCalled();
+    await h.bot.handleUpdate(h.callback(100, lookup));
+    await vi.waitFor(() => expect(sent(h).at(-1)).toContain("перевод managed"));
+    const add = buttonData(h.calls, "➕ Добавить");
+    expect(await quotaUsed(h.db, { ...quota, kind: "draft" })).toBe(1);
+    expect(await quotaUsed(h.db, { ...quota, kind: "add_word" })).toBe(0);
 
-    // prepareDrill сам находит недостающее слово — это `managed`, а не то, что мы положили в фикстуру.
-    const translate = buttonData(h.calls, "🔍 Что такое «");
-    await h.bot.handleUpdate(h.callback(100, translate));
-    expect(sent(h).at(-1)).toContain("managed");
-    expect(buttonData(h.calls, "➕ Добавить")).toBeTruthy();
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "hardships")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "▶ Дальше")));
+    expect(lastButtons(h.calls).some((button) => button.text.includes("noticed"))).toBe(true);
+    const other = await createRoom(h.db, { name: "Другая", createdBy: user.id, now: T0 });
+    await updateUser(h.db, user.id, { currentRoomId: other.id });
+    await h.bot.handleUpdate(h.callback(100, add));
+
+    expect(await listRoomWords(h.db, room.id)).toMatchObject([{ term: "managed", translation: "перевод managed" }]);
+    expect(await listRoomWords(h.db, other.id)).toEqual([]);
+    expect(await quotaUsed(h.db, { ...quota, kind: "add_word" })).toBe(1);
+    expect(await quotaUsed(h.db, { ...quota, kind: "add_word_week" })).toBe(1);
+    expect(sent(h).at(-1)).toContain("✅ Добавлено");
   });
 
-  it("«Добавить» кладёт слово в словарь комнаты и говорит об этом", async () => {
-    const { h } = harness([question({ newWord: { term: "circumstances" } }), question()]);
-    const { room } = await learner(h);
+  it("предлагает незнакомый правильный вариант только после ответа", async () => {
+    const { h } = harness([question({ question: "She managed to overcome ___." })]);
+    const { user, room } = await learner(h);
+    for (const term of ["manage", "overcome"]) {
+      await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term, translation: "x", explanation: "", example: "" }, now: T0 });
+    }
     await h.bot.handleUpdate(h.message(100, "/drill"));
-    const word = buttonData(h.calls, "🔍 Что такое «");
-    await h.bot.handleUpdate(h.callback(100, word));
+    const pick = await vi.waitFor(() => buttonData(h.calls, "hardships"));
+    expect(lastButtons(h.calls).map((button) => button.text)).toEqual(["obstacles", "hardships", "troubles"]);
+    await h.bot.handleUpdate(h.callback(100, pick));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🔍 Перевод «obstacles»")));
+    await vi.waitFor(() => expect(sent(h).at(-1)).toContain("перевод obstacles"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "➕ Добавить")));
+    expect((await listRoomWords(h.db, room.id)).find((word) => word.term === "obstacles")).toMatchObject({
+      context: "She managed to overcome obstacles.",
+    });
+  });
 
-    const { words } = await import("../src/db/schema");
-    const { eq } = await import("drizzle-orm");
-    const saved = await h.db.select().from(words).where(eq(words.roomId, room.id));
-    // Добавилось то слово, которое предложил бот, — оно и должно появиться в словаре.
-    expect(saved.length).toBeGreaterThan(0);
-    expect(sent(h).at(-1)).toContain("Добавил");
+  it("при исчерпанной квоте черновиков отказывает до запроса к модели", async () => {
+    const { h, enrich } = harness();
+    const { user } = await learner(h);
+    for (let i = 0; i < QUOTAS.draft.limit; i++) {
+      await checkAndCount(h.db, { userId: user.id, timeZone: user.timezone, now: T0, kind: "draft" });
+    }
+    await h.bot.handleUpdate(h.message(100, "/drill"));
+    const lookup = await vi.waitFor(() => buttonData(h.calls, "🔍 Что такое «managed»?"));
+    await h.bot.handleUpdate(h.callback(100, lookup));
+    await vi.waitFor(() => expect(sent(h).at(-1)).toContain(QUOTAS.draft.refusal));
+    expect(enrich).not.toHaveBeenCalled();
   });
 
   it("если человек знает все слова вопроса — кнопки нет", async () => {
@@ -105,14 +133,9 @@ describe("#26: незнакомое слово в вопросе по ошибк
     for (const term of ["managed", "overcome", "despite", "difficult", "circumstances"]) {
       await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term, translation: "x", explanation: "", example: "" }, now: T0 });
     }
-    // /drill читает пользователя из базы при каждом апдейте, но вопросы могли уже полежать в памяти
-    // от прошлого вызова — сбрасываем состояние, иначе проверяем старый набор.
-    h.deps.drills.delete(user.id);
     await h.bot.handleUpdate(h.message(100, "/drill"));
-    // Кнопки именно последнего сообщения: в истории вызовов есть и прошлые вопросы.
-    const last = h.calls.filter((c) => c.payload.reply_markup).at(-1);
-    const texts = ((last?.payload.reply_markup as { inline_keyboard?: Array<Array<{ text: string }>> }).inline_keyboard ?? []).flat().map((b) => b.text);
-    expect(texts.some((t) => t.startsWith("🔍")), `кнопки: ${texts.join(" | ")}`).toBe(false);
+    await vi.waitFor(() => expect(sent(h).at(-1)).toContain("overcome ___"));
+    expect(lastButtons(h.calls).map((button) => button.text)).toEqual(["obstacles", "hardships", "troubles"]);
   });
 
 });

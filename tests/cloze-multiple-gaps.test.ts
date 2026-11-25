@@ -86,7 +86,10 @@ describe("#25: задание с двумя пропусками", () => {
     const expected = { answer: "have|hold", term: "have a hold on" };
     expect(isExactAnswer("have hold", expected)).toBe(true);
     expect(isExactAnswer("have|hold", expected)).toBe(true);
+    expect(isExactAnswer("have | hold", expected)).toBe(true);
     expect(isExactAnswer("have", expected)).toBe(false);
     expect(isExactAnswer("hold have", expected)).toBe(false);
+    expect(isExactAnswer("have a hold on", expected)).toBe(false);
+    expect(isExactAnswer("do|me favor", { answer: "do me|favor", term: "do me a favor" })).toBe(false);
   });
 });

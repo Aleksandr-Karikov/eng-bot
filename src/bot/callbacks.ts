@@ -26,9 +26,7 @@ export type Cb =
   | { k: "mode"; stage: Stage }
   | { k: "drillPick"; qid: number; index: number }
   /** «Что такое …?» — перевод незнакомого слова из вопроса по ошибкам. */
-  | { k: "drillWord"; qid: number }
-  /** «➕ Добавить» незнакомое слово из вопроса по ошибкам. */
-  | { k: "drillAdd"; qid: number }
+  | { k: "drillWord"; id: number }
   | { k: "drillMode" }
   | { k: "bossMode" }
   | { k: "bossHits" }
@@ -151,8 +149,7 @@ export function encodeCb(cb: Cb): string {
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
     case "drillPick": return `q:${cb.qid}:${cb.index}`;
-    case "drillWord": return `qw:${cb.qid}`;
-    case "drillAdd": return `qa:${cb.qid}`;
+    case "drillWord": return `qw:${cb.id}`;
     case "drillMode": return "md";
     case "bossMode": return "bm";
     case "bossHits": return "bh";
@@ -271,12 +268,8 @@ export function decodeCb(data: string): Cb | null {
       return qid !== null && index !== null ? { k: "drillPick", qid, index } : null;
     }
     case "qw": {
-      const qid = int(a);
-      return qid !== null ? { k: "drillWord", qid } : null;
-    }
-    case "qa": {
-      const qid = int(a);
-      return qid !== null ? { k: "drillAdd", qid } : null;
+      const id = int(a);
+      return id !== null ? { k: "drillWord", id } : null;
     }
     case "md": return { k: "drillMode" };
     case "bm": return { k: "bossMode" };

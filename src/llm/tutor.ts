@@ -226,14 +226,6 @@ export interface DrillQuestion {
   correct: number;
   explanation: string;
   category: string;
-  /**
-   * Слово из предложения, которого человек может не знать, и его перевод (баг #26).
-   *
-   * Вопрос по ошибкам проверяет правило, а не лексику, и иногда опирается на слово не из словаря
-   * ученика: «she managed to overcome ___». Раньше человеку предлагалось угадывать. Теперь слово
-   * можно посмотреть и сразу добавить в словарь — не выходя из вопроса.
-   */
-  newWord?: { term: string; translation?: string };
 }
 
 /** Упражнения тренажёра: предложения с пропуском, проверка ответа, вопросы по слабым местам. */
@@ -550,19 +542,8 @@ export function buildQuizCheckPrompt(quiz: QuizCheck, translation: string): stri
   ].join("\n");
 }
 
-/**
- * Разбор ответа самопроверки. Не разобрали — считаем вопрос годным: проверка это дополнение к
- * генерации, и её сбой не должен молча выбрасывать сделанную работу.
- */
 export function parseQuizCheck(text: string): { ok: boolean; why: string } {
-  let raw: unknown;
-  try {
-    raw = jsonObject(text);
-  } catch {
-    return { ok: true, why: "" };
-  }
-  const r = z.object({ ok: z.boolean(), why: z.string().trim().default("") }).safeParse(raw);
-  return r.success ? r.data : { ok: true, why: "" };
+  return z.object({ ok: z.boolean(), why: z.string().trim().default("") }).parse(jsonObject(text));
 }
 
 /**
@@ -795,18 +776,13 @@ const drillQuestion = z
     correct: z.number().int().min(0),
     explanation: z.string().trim().default(""),
     category: z.string().trim().default(""),
-    // Незнакомое слово — необязательное: обычно в предложении всё знакомо.
-    new_word: z.string().trim().optional(),
-    new_word_translation: z.string().trim().optional(),
   })
   .refine((q) => q.correct < q.options.length);
 
 export function parseDrill(text: string): DrillQuestion[] {
   return jsonArray(text).flatMap((entry) => {
     const r = drillQuestion.safeParse(entry);
-    if (!r.success || !completeQuestion(r.data)) return [];
-    const { new_word: _w, new_word_translation: _t, ...rest } = r.data;
-    return [rest];
+    return r.success && completeQuestion(r.data) ? [r.data] : [];
   });
 }
 

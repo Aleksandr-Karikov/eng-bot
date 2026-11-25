@@ -105,7 +105,8 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
 
   const submit = useCallback(
     async (dunno = false) => {
-      if (checking || result || (!dunno && gaps > 1 ? answers.every((a) => !a.trim()) : !answer.trim())) return;
+      if (checking || result) return;
+      if (!dunno && (gaps > 1 ? answers.some((a) => !a.trim()) : !answer.trim())) return;
       setChecking(true);
       try {
         const r = await checkAnswer(card, answerText, dunno);

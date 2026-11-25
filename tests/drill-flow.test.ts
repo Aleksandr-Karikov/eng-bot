@@ -165,7 +165,9 @@ describe("drill questions in /learn", () => {
 
   it("/drill runs the questions on their own", async () => {
     const { h } = harness();
-    await learner(h, 3);
+    const user = await learner(h, 3);
+    const roomId = (await getUser(h.db, user.id))!.currentRoomId!;
+    await saveWord(h.db, { roomId, addedBy: user.id, draft: { term: "visit", translation: "посещать", explanation: "", example: "" }, now: T0 });
     await h.bot.handleUpdate(h.message(100, "/drill"));
     await vi.waitFor(() => expect(sent(h).some((t) => t.includes("Q1:"))).toBe(true));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "am visiting")));

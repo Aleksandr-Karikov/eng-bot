@@ -18,7 +18,7 @@ function tutor(judge: () => Promise<Judgement>, reviewSentence: () => Promise<Se
 }
 
 /** Одна знакомая карточка bank к повторению; включён один режим. */
-async function setup(only: "modeCloze" | "modeListen" | "modeSentence", t?: ExerciseTutor) {
+async function setup(only: "modeCloze" | "modeListen" | "modeSentence", t?: ExerciseTutor, cloze = sentence) {
   const h = botHarness({ tutor: t });
   const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, {
     canDm: true, modeEnRu: false, modeRuEn: false, modeCollocation: false, modeCloze: only === "modeCloze", modeListen: only === "modeListen", modeSentence: only === "modeSentence",
@@ -26,7 +26,7 @@ async function setup(only: "modeCloze" | "modeListen" | "modeSentence", t?: Exer
   const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
   const saved = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "bank", translation: "берег", explanation: "", example: "the river bank", usefulness: 3 }, now: T0 });
   if (saved.status !== "saved") throw new Error("dup");
-  await saveCloze(h.db, saved.word.id, [sentence], T0);
+  await saveCloze(h.db, saved.word.id, [cloze], T0);
   await h.db.update(cards).set({ state: 2, stability: 5, reps: 3, due: new Date(T0.getTime() - DAY) });
   const app = createApp({ deps: h.deps, botToken: TOKEN });
   const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "U" } }, TOKEN, new Date())}`, "content-type": "application/json" };
@@ -55,6 +55,21 @@ describe("✍️ 🎧 typed answers in the app", () => {
     const { queue, check, ratings } = await setup("modeCloze", tutor(async () => ({ correct: false, explanation: "Нужно существительное.", tip: "" }), noReview));
     const res = await (await check({ clozeId: queue[0].cloze.id, answer: "shore of" })).json();
     expect(res).toMatchObject({ correct: false, explanation: "Нужно существительное." });
+    expect(await ratings()).toEqual(["app_cloze:again"]);
+  });
+
+  it("cloze: «Не знаю» без ввода открывает оба пропуска и ставит «Забыл» без модели", async () => {
+    const judge = vi.fn(noJudge);
+    const { queue, check, ratings } = await setup("modeCloze", tutor(judge, noReview), {
+      sentence: "We ___ on the ___ of the river.",
+      answer: "sat|bank",
+      translation: sentence.translation,
+    });
+    const res = await (await check({ clozeId: queue[0].cloze.id, dunno: true })).json();
+    expect(res).toMatchObject({ correct: false, filled: { parts: [
+      { text: "We " }, { answer: "sat" }, { text: " on the " }, { answer: "bank" }, { text: " of the river." },
+    ] } });
+    expect(judge).not.toHaveBeenCalled();
     expect(await ratings()).toEqual(["app_cloze:again"]);
   });
 

@@ -15,8 +15,6 @@ import { weakDirections } from "../../services/weak-direction";
 import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/storm";
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
-import { prepareWord } from "../../services/prepare-word";
-import { saveWord } from "../../services/words";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
@@ -32,7 +30,8 @@ import { background, HTML, type BotContext, type Deps } from "../context";
 import type { PendingExercise } from "../exercises";
 import { clearPendingInputs, endLongModes } from "../pending";
 import { activePause, pausesOf } from "../pauses";
-import { ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
+import { drillRoomId, drillWordHint, ensureDrill, prefetchDrill, prepareDrill, present, sendDrillQuestion, type PresentMode } from "./drill";
+import { startAdd } from "./add";
 import {
   addManageButton,
   audioKeyboard,
@@ -165,7 +164,7 @@ async function goOn(ctx: BotContext, deps: Deps, then: NextAfter): Promise<void>
   if (then === "learn") return showNext(ctx, deps, "reply");
   const state = deps.drills.get(ctx.user.id);
   const next = state?.questions.shift();
-  if (state && next) return sendDrillQuestion(ctx, state, next, "reply");
+  if (state && next) return sendDrillQuestion(ctx, deps, state, next, "reply");
   deps.drills.delete(ctx.user.id);
   await ctx.reply("🎉 Готово! Ещё раз — /drill, а слова — /learn. Что уже отработано — /mistakes.");
 }
@@ -191,7 +190,7 @@ async function maybeDrill(ctx: BotContext, deps: Deps, mode: PresentMode): Promi
   state.lastAtCount = count;
   const q = state.questions.shift();
   if (!q) return false;
-  await sendDrillQuestion(ctx, state, q, mode);
+  await sendDrillQuestion(ctx, deps, state, q, mode);
   return true;
 }
 
@@ -409,7 +408,7 @@ async function startDrill(ctx: BotContext, deps: Deps): Promise<void> {
   }
   const state = { questions: rest, standalone: true, lastAtCount: 0 };
   deps.drills.set(ctx.user.id, state);
-  await sendDrillQuestion(ctx, state, first, "reply");
+  await sendDrillQuestion(ctx, deps, state, first, "reply");
 }
 
 async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: "good" | "again"): Promise<boolean> {
@@ -538,79 +537,35 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     }
     state.current = undefined;
     state.currentId = undefined;
+    state.wordHint = undefined;
     void ctx.answerCallbackQuery({ text: cb.index === q.correct ? "✅" : "❌" }).catch(() => {});
     const progress = await recordDrillAnswer(deps.db, ctx.user.id, q.category, cb.index === q.correct, deps.now());
     // Отработанная тема: уже готовые вопросы по ней больше не показываем.
     if (progress?.resolved) state.questions = state.questions.filter((other) => !sameTopic(other.category, progress.category));
     const right = cb.index === q.correct;
-    // Верно и без новостей по теме — коротко в шапку следующего; ошибку и «тема отработана» стоит прочитать.
-    const quiet = right && !progress?.resolved;
+    const answer = q.options[q.correct] ?? "";
+    const hint = await drillWordHint(ctx, deps, answer, q.question.replace(/_{3,}/, () => answer));
+    state.wordHint = hint;
+    const keyboard = hint ? new InlineKeyboard()
+      .text(`🔍 Перевод «${hint.term}»`, encodeCb({ k: "drillWord", id: hint.id })) : undefined;
+    const quiet = right && !progress?.resolved && !hint;
     const progressLine = progress && quiet ? `\n${drillResultText(q, cb.index, progress).split("\n\n").at(-1)}` : "";
     await proceed(ctx, deps, state.standalone ? "drill" : "learn", {
       lead: quiet ? `✅ Верно: ${fillGap(q.question, q.options[q.correct] ?? "")}${progressLine}` : undefined,
       text: drillResultText(q, cb.index, progress),
+      keyboard,
       edit: true,
     });
   });
 
-  /**
-   * «Что такое …?» — перевод незнакомого слова из вопроса по ошибкам (баг #26).
-   *
-   * Вопрос проверяет правило, а не лексику, но иногда опирается на слово не из словаря ученика.
-   * Показываем перевод и сразу предлагаем добавить: не выходя из вопроса, слово попадает в учёбу.
-   * Кнопку ответа не трогаем — вопрос остаётся тем же, и текущий выбор не сбрасывается.
-   */
   bot.callbackQuery(/^qw:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
-    const state = deps.drills.get(ctx.user.id);
-    const q = state?.current;
-    if (cb?.k !== "drillWord" || !state || !q || cb.qid !== state.currentId || !q.newWord) {
-      return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    const hint = deps.drills.get(ctx.user.id)?.wordHint;
+    if (cb?.k !== "drillWord" || !hint || cb.id !== hint.id || hint.roomId !== drillRoomId(ctx)) {
+      return void (await ctx.answerCallbackQuery({ text: "Эта подсказка уже неактуальна" }));
     }
-    // Перевода может не быть: слово находит частотность, а перевод даёт модель не всегда.
-    const { term, translation } = q.newWord;
     await ctx.answerCallbackQuery();
-    const head = translation ? `🔍 <b>${esc(term)}</b> — ${esc(translation)}` : `🔍 <b>${esc(term)}</b>`;
-    await ctx.reply(
-      `${head}
-
-Добавить в словарь, чтобы учить?`,
-      { ...HTML, reply_markup: new InlineKeyboard().text("➕ Добавить", encodeCb({ k: "drillAdd", qid: cb.qid })) },
-    );
-  });
-
-  /** «➕ Добавить» из вопроса по ошибкам: тем же путём, что /add — с полезностью и запоминалкой. */
-  bot.callbackQuery(/^qa:/, async (ctx) => {
-    const cb = decodeCb(ctx.callbackQuery.data);
-    const state = deps.drills.get(ctx.user.id);
-    const q = state?.current;
-    if (cb?.k !== "drillAdd" || !q?.newWord) return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
-    const roomId = ctx.user.currentRoomId;
-    if (roomId == null) {
-      return void (await ctx.answerCallbackQuery({ text: "Сначала выбери комнату", show_alert: true }));
-    }
-    await ctx.answerCallbackQuery({ text: "Добавляю…" });
-    const prepared = await prepareWord(deps, roomId, { term: q.newWord.term, translation: q.newWord.translation });
-    if (prepared.status === "exists") {
-      return void (await ctx.reply(`«${esc(q.newWord.term)}» уже есть в словаре 👍`, HTML));
-    }
-    if (prepared.status === "no-english") {
-      return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(q.newWord.term)}»`, HTML));
-    }
-    const result = await saveWord(deps.db, {
-      roomId,
-      addedBy: ctx.user.id,
-      draft: prepared.draft,
-      now: deps.now(),
-    });
-    const text = result.status === "saved"
-      ? `✅ Добавил <b>${esc(prepared.draft.term)}</b> — ${esc(prepared.draft.translation)}
-
-Слово придёт в учёбе вместе с остальными.`
-      : result.status === "duplicate"
-        ? `«${esc(prepared.draft.term)}» уже есть в словаре 👍`
-        : `Не получилось добавить — проверь комнату в настройках`;
-    await ctx.reply(text, HTML);
+    background(ctx, () => startAdd(ctx, deps, hint.term, hint.context));
   });
 
   bot.callbackQuery(/^px$/, async (ctx) => {
