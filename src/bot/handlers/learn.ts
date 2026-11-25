@@ -567,10 +567,12 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "drillWord" || !state || !q || cb.qid !== state.currentId || !q.newWord) {
       return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
     }
+    // Перевода может не быть: слово находит частотность, а перевод даёт модель не всегда.
     const { term, translation } = q.newWord;
     await ctx.answerCallbackQuery();
+    const head = translation ? `🔍 <b>${esc(term)}</b> — ${esc(translation)}` : `🔍 <b>${esc(term)}</b>`;
     await ctx.reply(
-      `🔍 <b>${esc(term)}</b> — ${esc(translation)}
+      `${head}
 
 Добавить в словарь, чтобы учить?`,
       { ...HTML, reply_markup: new InlineKeyboard().text("➕ Добавить", encodeCb({ k: "drillAdd", qid: cb.qid })) },

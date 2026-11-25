@@ -233,7 +233,7 @@ export interface DrillQuestion {
    * ученика: «she managed to overcome ___». Раньше человеку предлагалось угадывать. Теперь слово
    * можно посмотреть и сразу добавить в словарь — не выходя из вопроса.
    */
-  newWord?: { term: string; translation: string };
+  newWord?: { term: string; translation?: string };
 }
 
 /** Упражнения тренажёра: предложения с пропуском, проверка ответа, вопросы по слабым местам. */
@@ -759,13 +759,10 @@ export function buildDrillPrompt(profile: string, count: number, avoid: string[]
           "Проверь каждый вопрос: подставь верный вариант — должно получиться полное правильное предложение, где есть и слово, к которому относится правило.",
         ]),
     "Не повторяй его примеры дословно — нужны новые предложения на то же правило.",
-    "Вопрос проверяет правило, а не лексику: не строй его на редком слове. Если без редкого слова не обойтись,",
-    "назови его в new_word и переведи в new_word_translation — человек сможет посмотреть перевод и добавить слово к себе.",
-    "Если все слова в предложении обиходные — оставь new_word пустым.",
-    'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "...", "new_word": "", "new_word_translation": ""}], где',
+    "Вопрос проверяет правило, а не лексику: не строй его на редком слове, бери обиходные слова.",
+    'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "..."}], где',
     "correct — индекс верного варианта (с нуля), explanation — 1–2 предложения по-русски: правило и почему остальные не подходят,",
-    "category — тема из списка выше, слово в слово,",
-    "new_word — незнакомое слово из предложения (в словарной форме) и new_word_translation — его перевод на русский.",
+    "category — тема из списка выше, слово в слово.",
     ...(avoid.length
       ? ["", "Эти вопросы уже задавались — не повторяй их и не делай почти такие же (другие слова, другая ситуация):", ...avoid.map((q) => `- ${q}`)]
       : []),
@@ -808,9 +805,8 @@ export function parseDrill(text: string): DrillQuestion[] {
   return jsonArray(text).flatMap((entry) => {
     const r = drillQuestion.safeParse(entry);
     if (!r.success || !completeQuestion(r.data)) return [];
-    const { new_word, new_word_translation, ...rest } = r.data;
-    const newWord = new_word && new_word_translation ? { term: new_word, translation: new_word_translation } : undefined;
-    return [{ ...rest, ...(newWord ? { newWord } : {}) }];
+    const { new_word: _w, new_word_translation: _t, ...rest } = r.data;
+    return [rest];
   });
 }
 

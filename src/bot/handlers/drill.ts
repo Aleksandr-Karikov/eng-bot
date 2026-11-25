@@ -7,6 +7,8 @@ import { clearMistakes, mistakeProfile, recentMistakes, resolvedTopics } from ".
 import { HTML, type BotContext, type Deps } from "../context";
 import { drillKeyboard, mistakesKeyboard } from "../keyboards";
 import { drillQuestionText, mistakesText } from "../texts";
+import { missingFrom } from "../../services/rare-word";
+import { listRoomWords } from "../../services/words";
 
 /** Вопросы готовятся, как только есть хотя бы одна ошибка. */
 export const MIN_MISTAKES = 1;
@@ -23,7 +25,16 @@ export function rememberAsked(userId: number, question: string): void {
 export async function prepareDrill(deps: Deps, user: User): Promise<DrillQuestion[]> {
   const profile = mistakeProfile(await recentMistakes(deps.db, user.id, deps.now()));
   if (profile.total < MIN_MISTAKES) return [];
-  return deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH, askedByUser.get(user.id) ?? []);
+  const questions = await deps.tutor.drill(profile.text, QUESTIONS_PER_BATCH, askedByUser.get(user.id) ?? []);
+  // Незнакомое слово — то, которого нет в словаре человека (баг #26). Не просим у модели: на двух живых
+  // прогонах она не назвала ни одного. И не по частотности: она показывает частоту в языке, а жалоба
+  // была про «этого слова я не учил».
+  const roomId = user.currentRoomId;
+  const known = roomId == null ? [] : (await listRoomWords(deps.db, roomId)).map((w) => w.term);
+  return questions.map((q) => {
+    const term = missingFrom(known, q.question, q.options);
+    return term ? { ...q, newWord: { term } } : q;
+  });
 }
 
 const RETRY_AFTER_MS = 10 * 60_000;

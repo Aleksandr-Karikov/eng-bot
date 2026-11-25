@@ -119,7 +119,11 @@ describe("drill questions in /learn", () => {
     await answerCards(h, user.id, 5);
     expect(sent(h).at(-1)).toContain("🧠");
     expect(sent(h).at(-1)).toContain("Q1: Tomorrow I ___ my mom.");
-    expect(lastButtons(h.calls).map((b) => b.text)).toEqual(["visit", "am visiting", "visited"]);
+    // Три варианта плюс кнопка незнакомого слова: вопросы по ошибкам предлагают посмотреть
+    // слово, которого нет в словаре человека (E41, баг #26).
+    const texts = lastButtons(h.calls).map((b) => b.text);
+    expect(texts.slice(0, 3)).toEqual(["visit", "am visiting", "visited"]);
+    expect(texts.filter((t) => t.startsWith("🔍")).length).toBeLessThanOrEqual(1);
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "visit")));
     const result = h.calls.filter((c) => c.method === "editMessageText").at(-1)!;
