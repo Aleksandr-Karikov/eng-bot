@@ -1,123 +1,118 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sign } from "@telegram-apps/init-data-node";
 import { and, eq } from "drizzle-orm";
-import { State } from "ts-fsrs";
-import { cards } from "../src/db/schema";
+import type { AppCard } from "../src/app/api";
 import { createApp } from "../src/app/server";
+import { cards, reviewLogs } from "../src/db/schema";
+import { newPortion } from "../src/services/review";
 import { createRoom, joinRoom } from "../src/services/rooms";
-import { triageQueue } from "../src/services/triage";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
 import { botHarness } from "./bot-harness";
-import { T0, makeUser } from "./helpers";
+import { at, makeUser, T0 } from "./helpers";
 
 const TOKEN = "123:test-token";
 
-/** Я (100) и Артём (200) в одной комнате; Артём добавил bank и river, я — tree. */
-async function setup() {
+async function setup(newPerDay = 1) {
   const h = botHarness();
-  const me = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
-  const artem = await updateUser(h.db, (await makeUser(h.db, 200, "Артём")).id, { canDm: true });
-  const room = await createRoom(h.db, { name: "R", createdBy: artem.id, now: T0 });
+  const me = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, newPerDay });
+  const friend = await makeUser(h.db, 200, "Артём");
+  const room = await createRoom(h.db, { name: "R", createdBy: friend.id, now: T0 });
   await joinRoom(h.db, { roomId: room.id, userId: me.id, now: T0, makeCurrent: true });
-  const add = async (term: string, by: number, minute: number) => {
-    const r = await saveWord(h.db, { roomId: room.id, addedBy: by, draft: { term, translation: term, explanation: "", example: "" }, now: new Date(T0.getTime() + minute * 60_000) });
-    if (r.status !== "saved") throw new Error(term);
-    return r.word;
+  const add = async (term: string, addedBy: number, offset: number) => {
+    const result = await saveWord(h.db, {
+      roomId: room.id, addedBy, draft: { term, translation: "перевод", explanation: "", example: "" }, now: at(offset),
+    });
+    if (result.status !== "saved") throw new Error(term);
+    return result.word.id;
   };
-  const bank = await add("bank", artem.id, 1);
-  const river = await add("river", artem.id, 2);
-  await add("tree", me.id, 3);
+  const bank = await add("bank", friend.id, 1000);
+  const river = await add("river", friend.id, 2000);
+  const bridge = await add("bridge", friend.id, 3000);
+  await add("tree", me.id, 4000);
+  h.setNow(at(5000));
+
   const app = createApp({ deps: h.deps, botToken: TOKEN });
-  const auth = { authorization: `tma ${sign({ user: { id: 100, first_name: "Me" } }, TOKEN, new Date())}`, "content-type": "application/json" };
-  return { h, me, bank, river, app, auth };
+  const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "Me" } }, TOKEN, T0)}`, "content-type": "application/json" };
+  const queue = async (mode = "fresh") => {
+    const res = await app.request(`/api/queue?mode=${mode}`, { headers });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { cards: AppCard[] }).cards;
+  };
+  const post = (path: string, body: object = {}) => app.request(path, { method: "POST", headers, body: JSON.stringify(body) });
+  const answer = async (cardId: number, value: string) =>
+    (await post("/api/answer", { cardId, reps: 0, answer: value })).json() as Promise<{ result: string; damage: number }>;
+  const cardOf = async (userId: number, wordId: number) =>
+    (await h.db.select().from(cards).where(and(eq(cards.userId, userId), eq(cards.wordId, wordId))))[0];
+  return { h, me, friend, bank, river, bridge, queue, post, answer, cardOf };
 }
 
-const myCard = async (h: ReturnType<typeof botHarness>, userId: number, wordId: number) =>
-  (await h.db.select().from(cards).where(and(eq(cards.userId, userId), eq(cards.wordId, wordId))))[0];
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T0);
+});
+afterEach(() => vi.useRealTimers());
 
-describe("🆕 new words from friends, a swipe each", () => {
-  it("the deck has friends' new words only, oldest first", async () => {
-    const { h, me } = await setup();
-    expect((await triageQueue(h.db, me.id)).map((i) => [i.word.term, i.addedBy])).toEqual([["bank", "Артём"], ["river", "Артём"]]);
+describe("первый показ новых слов друзей в Mini App", () => {
+  it("даёт выбор в «Новые» и «Всё» в пределах дневной порции, в том числе при режиме только с диктантом", async () => {
+    const { h, me, queue } = await setup();
+    await updateUser(h.db, me.id, { modeEnRu: false, modeRuEn: false, modeListen: true });
+    for (const mode of ["fresh", "all"]) {
+      const cards = await queue(mode);
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toMatchObject({ needsDecision: true, stage: "en_ru", word: { term: "bank" } });
+    }
+    expect(await queue("reviews")).toEqual([]);
   });
 
-  it("learn / know / not for me — and each can be undone", async () => {
-    const { h, me, bank, river, app, auth } = await setup();
-    const post = (body: object) => app.request("/api/triage", { method: "POST", headers: auth, body: JSON.stringify(body) });
-    const bankCard = await myCard(h, me.id, bank.id);
-    const riverCard = await myCard(h, me.id, river.id);
-
-    expect((await post({ cardId: bankCard.id, action: "know" })).status).toBe(200);
-    expect((await myCard(h, me.id, bank.id)).state).not.toBe(State.New);
-    expect((await post({ cardId: bankCard.id, action: "know" })).status).toBe(409);
-    await post({ cardId: bankCard.id, action: "know", undo: true });
-    expect(await myCard(h, me.id, bank.id)).toMatchObject({ state: State.New, reps: 0, triagedAt: null });
-
-    await post({ cardId: riverCard.id, action: "drop" });
-    expect(await myCard(h, me.id, river.id)).toBeUndefined();
-    await post({ cardId: riverCard.id, wordId: river.id, action: "drop", undo: true });
-    expect(await myCard(h, me.id, river.id)).toBeDefined();
-
-    await post({ cardId: bankCard.id, action: "learn" });
-    const me2 = await (await app.request("/api/me", { headers: auth })).json();
-    expect(me2.triage).toBe(1);
-    const { cards: deck } = await (await app.request("/api/triage", { headers: auth })).json();
-    expect(deck.map((c: { word: { term: string } }) => c.word.term)).toEqual(["river"]);
+  it("сохраняет старое решение и выбор «Не знаю» в чате, своё слово идёт без вопроса", async () => {
+    const { h, me, bank, river, queue } = await setup(5);
+    await h.db.update(cards).set({ triagedAt: T0 }).where(and(eq(cards.userId, me.id), eq(cards.wordId, bank)));
+    await h.bot.handleUpdate(h.callback(100, `k:${river}:n`));
+    expect((await queue()).map(({ word, needsDecision }) => [word.term, needsDecision])).toEqual([
+      ["bank", undefined], ["river", undefined], ["bridge", true], ["tree", undefined],
+    ]);
   });
 
-  it("«📚 Не знаю» in the chat counts as decided", async () => {
-    const { h, me } = await setup();
-    await h.bot.handleUpdate(h.callback(100, `k:1:n`));
-    expect((await triageQueue(h.db, me.id)).map((i) => i.word.term)).toEqual(["river"]);
+  it("сохраняет решения, отменяет их и тратит дневную порцию только на «Учу»", async () => {
+    const { h, me, friend, river, bridge, queue, post, answer, cardOf } = await setup();
+    const [first] = await queue();
+    expect(await answer(first.cardId, "know")).toMatchObject({ result: "ok", damage: 0 });
+    expect(await newPortion(h.db, me.id, at(5000))).toMatchObject({ left: 1 });
+
+    const [second] = await queue();
+    expect(second.word.id).toBe(river);
+    expect(await answer(second.cardId, "drop")).toMatchObject({ result: "ok", damage: 0 });
+    expect(await cardOf(me.id, river)).toBeUndefined();
+    expect(await cardOf(friend.id, river)).toBeDefined();
+    expect(await newPortion(h.db, me.id, at(5000))).toMatchObject({ left: 1 });
+
+    const [third] = await queue();
+    expect(third.word.id).toBe(bridge);
+    expect(await answer(third.cardId, "again")).toMatchObject({ result: "ok" });
+    expect(await newPortion(h.db, me.id, at(5000))).toMatchObject({ left: 0 });
+    expect(await queue()).toEqual([]);
+    h.setNow(at(3 * 60_000));
+    const [review] = await queue("all");
+    expect(review).toMatchObject({ cardId: third.cardId, isNew: false });
+    expect(review).not.toHaveProperty("needsDecision");
+
+    expect((await post("/api/undo", { cardId: third.cardId })).status).toBe(200);
+    expect((await post(`/api/words/${river}/restore`)).status).toBe(200);
+    expect(await cardOf(me.id, river)).toMatchObject({ reps: 0 });
+    expect((await post("/api/undo", { cardId: first.cardId })).status).toBe(200);
+    expect((await queue())[0]).toMatchObject({ cardId: first.cardId, needsDecision: true });
   });
 
-  it("чужое слово нельзя вернуть себе отменой «не для меня»", async () => {
-    // Проба из аудита: пользователь вне комнаты возвращал себе чужое слово по его id и читал его в очереди.
-    const { h, me, bank, app, auth } = await setup();
-    const stranger = await makeUser(h.db, 300, "Чужой");
-    const strangerApp = createApp({ deps: h.deps, botToken: TOKEN });
-    const strangerAuth = {
-      authorization: `tma ${sign({ user: { id: 300, first_name: "Чужой" } }, TOKEN, new Date())}`,
-      "content-type": "application/json",
-    };
-
-    const res = await strangerApp.request("/api/triage", {
-      method: "POST",
-      headers: strangerAuth,
-      body: JSON.stringify({ cardId: 999_999, wordId: bank.id, action: "drop", undo: true }),
-    });
-
-    expect(res.status).toBe(409);
-    expect(await myCard(h, stranger.id, bank.id)).toBeUndefined();
-    const { cards: deck } = await (await strangerApp.request("/api/triage", { headers: strangerAuth })).json();
-    expect(deck).toEqual([]);
-    // Свой словарь не пострадал: у меня карточка на месте.
-    expect(await myCard(h, me.id, bank.id)).toBeDefined();
-    // И обычная отмена своей карточки продолжает работать.
-    await app.request("/api/triage", { method: "POST", headers: auth, body: JSON.stringify({ cardId: (await myCard(h, me.id, bank.id))!.id, action: "drop" }) });
-    const own = await app.request("/api/triage", {
-      method: "POST",
-      headers: auth,
-      body: JSON.stringify({ cardId: (await myCard(h, me.id, bank.id))?.id ?? 0, wordId: bank.id, action: "drop", undo: true }),
-    });
-    expect(own.status).toBe(200);
-    expect(await myCard(h, me.id, bank.id)).toBeDefined();
-  });
-
-  it("отмена не срабатывает, если cardId от другой карточки", async () => {
-    const { h, me, bank, river, app, auth } = await setup();
-    const post = (body: object) => app.request("/api/triage", { method: "POST", headers: auth, body: JSON.stringify(body) });
-    const bankCard = await myCard(h, me.id, bank.id);
-    const riverCard = await myCard(h, me.id, river.id);
-
-    await post({ cardId: riverCard!.id, action: "know" });
-    const decided = await myCard(h, me.id, river.id);
-    // Отменяем «знаю» по river, но подсовываем wordId банка — сверка должна это отклонить.
-    const res = await post({ cardId: riverCard!.id, wordId: bank.id, action: "know", undo: true });
-    expect(res.status).toBe(409);
-    // Решение по river не отменено: карточка осталась разобранной, состояние и triagedAt как были.
-    expect(await myCard(h, me.id, river.id)).toMatchObject({ state: decided!.state, triagedAt: decided!.triagedAt });
-    expect(bankCard!.triagedAt).toBeNull();
+  it("не удаляет чужую карточку или карточку, которую уже начали в другой сессии", async () => {
+    const { h, me, friend, bank, queue, answer, cardOf } = await setup();
+    const [first] = await queue();
+    const other = await cardOf(friend.id, bank);
+    expect(await answer(other.id, "drop")).toMatchObject({ result: "stale" });
+    expect(await cardOf(friend.id, bank)).toMatchObject({ id: other.id, reps: 0 });
+    expect(await answer(first.cardId, "again")).toMatchObject({ result: "ok" });
+    expect(await answer(first.cardId, "drop")).toMatchObject({ result: "stale" });
+    expect(await cardOf(me.id, bank)).toMatchObject({ id: first.cardId, reps: 1 });
+    expect(await h.db.select().from(reviewLogs)).toHaveLength(1);
   });
 });

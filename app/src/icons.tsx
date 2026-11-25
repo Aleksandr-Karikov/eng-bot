@@ -78,14 +78,6 @@ export const IconPlus = (p: IconProps) => (
   </Svg>
 );
 
-/** Лоток — новые слова от друзей. */
-export const IconInbox = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M4 13h4l1.5 3h5L16 13h4" />
-    <path d="M4.5 13l2.2-7.4A1 1 0 0 1 7.7 5h8.6a1 1 0 0 1 1 .6L19.5 13V18a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-5z" />
-  </Svg>
-);
-
 /** Коробка — готовые наборы слов. */
 export const IconBox = (p: IconProps) => (
   <Svg {...p}>

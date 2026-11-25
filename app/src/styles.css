@@ -76,7 +76,7 @@ body {
 .stamp-forgot { right: 6px; color: #ef4444; transform: rotate(12deg); }
 /* Карточка /learn: штампы над карточкой, заходят на её край. */
 .deck > .stamp { top: -6px; }
-/* Колода «реши про слово» (/triage): штампы остались внутри карточки, как были. */
+/* В наборах штампы внутри карточки. */
 .card > .stamp { top: 24px; }
 .card > .stamp-know { left: 16px; }
 .card > .stamp-forgot { right: 16px; }
@@ -135,7 +135,7 @@ body {
 .danger { color: var(--tg-theme-destructive-text-color, #e53935); }
 .form-buttons { padding: 0 16px; }
 
-/* Новые от друзей */
+/* Карточки набора */
 .triage-card { touch-action: none; }
 /* По центру карточки: внизу она налезала на «Добавил(а) …». */
 .stamp-drop { left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-8deg); white-space: nowrap; color: var(--tg-theme-hint-color, #8e8e93); }
@@ -143,20 +143,6 @@ body {
 .triage-translation.hidden { color: var(--tg-theme-hint-color, #8e8e93); text-decoration: underline dotted; }
 .triage-by { margin-top: auto; text-align: center; }
 .swipe-hint { text-align: center; font-size: 13px; }
-.corner-badge { position: relative; }
-.corner-badge .badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: #ef4444;
-  color: #fff;
-  font: 600 11px/16px -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  box-sizing: border-box;
-}
 
 /* Вопросы с вариантами */
 .choice-card { cursor: default; touch-action: auto; }

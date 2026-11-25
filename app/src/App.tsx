@@ -9,17 +9,16 @@ import { Learn } from "./Learn";
 import { ProgressScreen } from "./Progress";
 import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
-import { Triage } from "./Triage";
 import { Words } from "./Words";
 import { IconBook, IconChart, IconClose, IconGrammar, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "triage" | "progress" | "sets" | "boss" | "grammar";
+type Page = "learn" | "words" | "settings" | "progress" | "sets" | "boss" | "grammar";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "settings", "triage", "progress", "sets", "boss", "grammar"];
+  const pages: Page[] = ["words", "settings", "progress", "sets", "boss", "grammar"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -72,14 +71,12 @@ export function App() {
 
   if (page === "words") return <Words onExit={back} onSets={() => openSets()} />;
   if (page === "settings") return <SettingsScreen onExit={back} />;
-  if (page === "triage") return <Triage onExit={back} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
   if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
   if (page === "boss") return <BossScreen onExit={back} />;
   if (page === "grammar") return <Grammar onExit={back} />;
   return (
     <Learn
-      onTriage={() => open("triage")}
       onSets={openSets}
       corner={
         // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,

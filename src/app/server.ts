@@ -11,7 +11,7 @@ import { undoAnswer } from "../services/review";
 import { adoptDeviceTimeZone } from "../services/users";
 import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
-import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { AppDialogues } from "./dialogue";
 import { sendLesson } from "../bot/handlers/lesson";
@@ -77,12 +77,6 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/answer", async (c) => {
     const r = await appAnswer(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400);
-  });
-  // 🆕 Новые слова от друзей: колода и решение по карточке (или его отмена — undo: true).
-  app.get("/api/triage", async (c) => c.json({ ok: true, cards: await appTriageQueue(deps, c.get("user")) }));
-  app.post("/api/triage", async (c) => {
-    const r = await appTriage(deps, c.get("user"), await readBody(c));
-    return c.json(r.body, r.status as 200 | 400 | 409);
   });
   // ✍️ 🎧 Ответ текстом: проверка и оценка карточки; «Сохранить ошибки» после разбора своего предложения.
   app.post("/api/check", async (c) => {

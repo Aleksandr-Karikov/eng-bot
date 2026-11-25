@@ -6,6 +6,7 @@ import { compressPicture } from "../images/compress";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
+import { dropNewCard } from "../services/cards";
 import { cardView } from "../services/card-view";
 import { autoVoice } from "../services/voice";
 import { decide, listSets, nextSetItems, setSetTarget, setTarget, setTargetChoices, starterSet, undoDecision, type SetDecision } from "../services/word-sets";
@@ -22,7 +23,7 @@ import { storedCollocations } from "../services/collocations";
 import { pickStage, reviewStages } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
-import { triage, triageCount, triageQueue, undoTriage, type TriageAction } from "../services/triage";
+import { KNOW_STAGE } from "../services/goals";
 import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
@@ -52,6 +53,7 @@ export interface AppCard {
   cardId: number;
   reps: number;
   isNew: boolean;
+  needsDecision?: true;
   /** EN → RU, RU → EN, сочетания, пропуск по смыслу, диктант или реплика в диалоге. */
   stage: "en_ru" | "ru_en" | "collocation" | "cloze" | "listen" | "sentence";
   /** Для «вставь по смыслу»: предложение с пропуском и перевод (ответ — только после проверки). */
@@ -110,7 +112,6 @@ export async function appMe(deps: Deps, user: User) {
     view: cardView(user),
     // 🗣 Каким произношением озвучивать карточку самим: null — озвучка выключена (как было всегда).
     voice: autoVoice(user) ?? null,
-    triage: await triageCount(deps.db, user.id),
     // 🐉 Вкладка босса: личный режим И общий рубильник. Выключено — приложение не рисует кнопку вовсе.
     boss: bossEnabled(user, deps.bossEnabled),
     bankDamage: user.bankDamage && bossEnabled(user, deps.bossEnabled),
@@ -193,6 +194,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
   let prepared = 0;
   for (const { card, word } of items) {
     const isNew = card.state === State.New;
+    const needsDecision = isNew && card.reps === 0 && card.triagedAt === null && word.addedBy !== user.id;
     const optional = word.usefulness === 1;
     const collocations = storedCollocations(word);
     const sentences = modes.cloze && !isNew && !optional ? await listCloze(deps.db, word.id) : [];
@@ -207,10 +209,10 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
     const quizReady = Boolean(collocations?.quiz);
     const stages = mixed && !isNew && !optional ? reviewStages(card, modes, sentences.length > 0, quizReady) : [];
-    const fallback = optional
+    const fallback = optional || needsDecision
       ? "en_ru"
       : pickStage(card, mixed ? swipeModes : modes, sentences.length > 0, deps.random, quizReady, weak.get(card.id));
-    candidates.push({ card, word, isNew, stages, fallback, sentences, collocations });
+    candidates.push({ card, word, isNew, needsDecision, stages, fallback, sentences, collocations });
   }
 
   let drill: AppDrill | undefined;
@@ -236,7 +238,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
       continue;
     }
     const exercise = exercises.get(index);
-    const { card, word, isNew, fallback, sentences, collocations } = exercise ? candidates[exercise.cardIndex] : remaining[nextCard++];
+    const { card, word, isNew, needsDecision, fallback, sentences, collocations } = exercise ? candidates[exercise.cardIndex] : remaining[nextCard++];
     const stage = exercise?.stage ?? fallback;
     const cloze = stage === "cloze" ? pickCloze(sentences, card.reps) : undefined;
     queue.push({
@@ -247,6 +249,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
       cardId: card.id,
       reps: card.reps,
       isNew,
+      ...(needsDecision ? { needsDecision: true } : {}),
       stage: stage === "cloze" && !cloze ? "en_ru" : stage,
       word: {
         id: word.id,
@@ -289,20 +292,32 @@ export async function appDrillAnswer(deps: Deps, user: User, body: { category?: 
   return { status: 200, body: { ok: true, progress: progress ?? null } };
 }
 
-const ANSWERS = new Set<Answer>(["again", "good", "easy"]);
+type CardAnswer = Answer | "know" | "drop";
+const ANSWERS = new Set<unknown>(["again", "good", "easy", "know", "drop"]);
 
 export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown; reps?: unknown; answer?: unknown; stage?: unknown; practice?: unknown }) {
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
-  const answer = String(body.answer) as Answer;
+  const answer = body.answer as CardAnswer;
   // Задания с ответом текстом оценивает /api/check; сюда — когда проверить не вышло и человек оценил себя сам.
   const stage = typeof body.stage === "string" && ["ru_en", "collocation", "cloze", "listen", "sentence"].includes(body.stage) ? body.stage : "en_ru";
-  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer)) {
+  if (!Number.isInteger(cardId) || !Number.isInteger(reps) || !ANSWERS.has(answer) || ((answer === "know" || answer === "drop") && reps !== 0)) {
     return { status: 400, body: { ok: false, error: "Не получилось разобрать ответ — обнови карточку и попробуй ещё раз" } };
   }
   // Вне зачёта — не оцениваем: расписание карточки не сдвигается.
   if (body.practice === true) return { status: 200, body: { ok: true, result: "practice", damage: 0 } };
-  const result = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer, now: deps.now(), stage: `app_${stage}` });
+  if (answer === "drop") {
+    const dropped = await dropNewCard(deps.db, user.id, cardId);
+    return { status: 200, body: { ok: true, result: dropped ? "ok" : "stale", damage: 0 } };
+  }
+  const result = await recordAnswer(deps.db, {
+    userId: user.id,
+    cardId,
+    expectedReps: reps,
+    answer: answer === "know" ? "easy" : answer,
+    now: deps.now(),
+    stage: answer === "know" ? KNOW_STAGE : `app_${stage}`,
+  });
   return { status: 200, body: { ok: true, ...result } };
 }
 
@@ -343,41 +358,6 @@ async function fromTelegram(api: Api | undefined, word: Word): Promise<Buffer | 
   if (!file.file_path) return undefined;
   const response = await fetch(`https://api.telegram.org/file/bot${api.token}/${file.file_path}`);
   return response.ok ? Buffer.from(await response.arrayBuffer()) : undefined;
-}
-
-/** 🆕 Новые слова от друзей — колода на разбор: карточка слова и кто его добавил. */
-export async function appTriageQueue(deps: Deps, user: User) {
-  const items = await triageQueue(deps.db, user.id);
-  return items.map(({ card, word, addedBy }) => ({
-    cardId: card.id,
-    addedBy,
-    word: {
-      id: word.id,
-      term: word.term,
-      translation: word.translation,
-      explanation: word.explanation,
-      example: word.example,
-      context: word.context,
-      mnemonic: word.mnemonic,
-      transcriptionUk: word.transcriptionUk,
-      transcriptionUs: word.transcriptionUs,
-      usefulness: word.usefulness,
-      hasPicture: hasPicture(deps, word),
-    },
-  }));
-}
-
-const TRIAGE_ACTIONS = new Set<TriageAction>(["learn", "know", "drop"]);
-
-export async function appTriage(deps: Deps, user: User, body: { cardId?: unknown; wordId?: unknown; action?: unknown; undo?: unknown }) {
-  const action = String(body.action) as TriageAction;
-  const cardId = Number(body.cardId);
-  if (!TRIAGE_ACTIONS.has(action) || !Number.isInteger(cardId)) return { status: 400, body: { ok: false, error: "Не понял действие — обнови экран и попробуй ещё раз" } };
-  const now = deps.now();
-  const ok = body.undo
-    ? await undoTriage(deps.db, { userId: user.id, cardId, wordId: Number(body.wordId), action, now })
-    : await triage(deps.db, { userId: user.id, cardId, action, now });
-  return ok ? { status: 200, body: { ok: true } } : { status: 409, body: { ok: false, error: "Уже неактуально" } };
 }
 
 /** 📊 Прогресс: серия, выучено, календарь занятий, прогноз повторений, цель комнаты, темы ошибок. */

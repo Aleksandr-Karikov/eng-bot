@@ -6,14 +6,14 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
+import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
 import { DialogueCard } from "./DialogueCard";
 import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
-import { IconChevronDown, IconChevronUp, IconInbox, IconPencil, IconUndo } from "./icons";
+import { IconChevronDown, IconChevronUp, IconPencil, IconUndo } from "./icons";
 import { haptic, notify } from "./telegram";
 
 const MODES: Array<{ id: QueueMode; label: string }> = [
@@ -44,9 +44,10 @@ function savedMode(): QueueMode {
 
 /** Сколько последних свайпов можно отменить подряд. */
 const UNDO_DEPTH = 5;
+type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriage: () => void; onSets: (setId?: number) => void }) {
+export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: number) => void }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -66,26 +67,29 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
-  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<{ damage: number } | undefined> }>>([]);
+  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<AnswerResult | undefined>; dropped?: boolean }>>([]);
 
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
+  const loadVersion = useRef(0);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     try {
       // Сначала дождаться отправленных оценок: иначе сервер вернёт только что пройденную карточку
       // ещё раз, со старым состоянием, — и ответ на неё получит «Уже учтено».
       await Promise.allSettled([...pending.current]);
       const [info, cards] = await Promise.all([getMe(), getQueue(mode)]);
+      if (version !== loadVersion.current) return;
       setStudyLanguage(info.language);
       setMe(info);
       setQueue(cards);
       setError(undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (version === loadVersion.current) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, [mode]);
 
@@ -99,6 +103,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     } catch {
       // хранилище недоступно — режим просто не запомнится
     }
+    loadVersion.current++;
     setMode(next);
     setLoading(true);
     setQueue([]);
@@ -125,39 +130,49 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   /** Следующее задание; очередь кончилась — догружаем. */
   const advance = useCallback(() => {
     setDone((n) => n + 1);
-    setQueue((q) => {
-      const rest = q.slice(1);
-      if (rest.length === 0) void load();
-      return rest;
-    });
-  }, [load]);
+    setQueue((q) => q.slice(1));
+    if (queue.length === 1) void load();
+  }, [load, queue.length]);
 
   /** Оценка карточки уходит в фоне; её можно отменить. */
-  const rate = useCallback((card: Card, value: Answer) => {
+  const rate = useCallback((card: Card, value: CardAnswer) => {
     const sent = sendAnswer(card, value).then((r) => {
       showDamage(r.damage);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
-      if (r.result === "stale") notify("Ответ уже учтён — повторный урон не начислен");
+      if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
       return r;
     }).catch(() => {
       setHistory((h) => h.filter((entry) => entry.sent !== sent));
-      notify("Ответ не сохранён. Карточка останется в очереди повторений.");
+      notify(value === "drop" ? "Не получилось убрать слово. Оно останется в очереди." : "Ответ не сохранён. Карточка останется в очереди.");
       return undefined;
     });
     pending.current.add(sent);
     void sent.finally(() => pending.current.delete(sent));
     // Вне зачёта отменять нечего — ответ и так не записан.
-    if (!card.practice) setHistory((h) => [...h, { card, sent }].slice(-UNDO_DEPTH));
+    if (!card.practice) setHistory((h) => [...h, { card, sent, dropped: value === "drop" }].slice(-UNDO_DEPTH));
+    return sent;
   }, [showDamage]);
 
   /** Свайп — сразу следующая карточка. */
   const answer = useCallback(
-    (card: Card, value: Answer) => {
+    (card: Card, value: CardAnswer) => {
       haptic.tap(value === "again" ? "medium" : "light");
-      rate(card, value);
-      advance();
+      const sent = rate(card, value);
+      if (!card.needsDecision) {
+        advance();
+        return;
+      }
+      const version = loadVersion.current;
+      return sent.then((result) => {
+        if (version !== loadVersion.current) return;
+        if (result?.result === "ok") advance();
+        if (result?.result === "stale") {
+          setQueue([]);
+          void load();
+        }
+      });
     },
-    [rate, advance],
+    [rate, advance, load],
   );
 
   /** Ответ на вопрос по ошибкам: счёт темы — в разбор, если он что-то говорит. */
@@ -176,8 +191,16 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
     haptic.tap("light");
     try {
       const recorded = await last.sent;
+      if (recorded?.result !== "ok") return;
+      if (last.dropped) {
+        await wordAction(last.card.word.id, "restore");
+        setDone((n) => Math.max(0, n - 1));
+        setQueue([]);
+        await load();
+        return;
+      }
       await undoAnswer(last.card);
-      showDamage(-(recorded?.damage ?? 0));
+      showDamage(-recorded.damage);
       if (last.card.stage === "sentence") setDialogueVersion((v) => v + 1);
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
       setDone((n) => Math.max(0, n - 1));
@@ -185,12 +208,12 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
     }
-  }, [history, showDamage]);
+  }, [history, load, showDamage]);
 
   const card = queue[0];
   const typedRated = (card: Card, hp: number) => {
     showDamage(hp);
-    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ damage: hp }) }].slice(-UNDO_DEPTH));
+    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, damage: hp }) }].slice(-UNDO_DEPTH));
   };
   const total = done + queue.length;
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
@@ -231,12 +254,6 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
         {history.length > 0 && (
           <button className="corner-button" aria-label="Отменить последний ответ" onClick={() => void undo()}>
             <IconUndo size={18} />
-          </button>
-        )}
-        {me && me.triage > 0 && (
-          <button className="corner-button corner-badge" aria-label="Новые слова от друзей" onClick={onTriage}>
-            <IconInbox size={18} />
-            <span className="badge">{me.triage > 99 ? "99+" : me.triage}</span>
           </button>
         )}
         {card?.kind === "card" && (
@@ -340,7 +357,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           voice={me?.voice}
           // Оценил сервер при проверке — в историю для отмены (запрос уже прошёл).
           onRated={(hp) => typedRated(card, hp)}
-          onRateSelf={(a) => rate(card, a)}
+          onRateSelf={(a) => void rate(card, a)}
           onNext={advance}
         />
       ) : card.stage === "collocation" && card.quiz ? (
@@ -363,7 +380,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
               </ul>
             )
           }
-          onAnswer={(correct) => rate(card, correct ? "good" : "again")}
+          onAnswer={(correct) => void rate(card, correct ? "good" : "again")}
           onNext={advance}
         />
       ) : (
@@ -424,7 +441,7 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
 
   return (
     <Placeholder
-      header={done ? `Готово! Повторено: ${done}` : "Сейчас нечего повторять"}
+      header={done ? `Готово! Пройдено карточек: ${done}` : "Сейчас нечего повторять"}
       description={
         boss
           ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. Новые слова и повторения появятся сами — бот напомнит.`

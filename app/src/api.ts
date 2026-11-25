@@ -20,6 +20,7 @@ export interface Card {
   cardId: number;
   reps: number;
   isNew: boolean;
+  needsDecision?: true;
   stage: "en_ru" | "ru_en" | "collocation" | "cloze" | "listen" | "sentence";
   /** Для «вставь по смыслу»: предложение с пропуском и перевод. */
   cloze?: { id: number; sentence: string; translation: string };
@@ -62,8 +63,6 @@ export interface Me {
   view: CardView;
   /** Что играть самим при показе карточки: null — озвучка выключена. */
   voice: VoiceAccent | null;
-  /** Сколько новых слов от друзей ждут разбора. */
-  triage: number;
   /** Режим «босс недели» включён: без него вкладка не показывается. */
   boss?: boolean;
   bankDamage?: boolean;
@@ -77,6 +76,7 @@ export type CardView = Record<"transcription" | "explanation" | "example" | "con
 export type VoiceAccent = "uk" | "us";
 
 export type Answer = "again" | "good" | "easy";
+export type CardAnswer = Answer | "know" | "drop";
 
 function initData(): string {
   try {
@@ -172,22 +172,9 @@ export type QueueMode = "all" | "reviews" | "fresh" | "hard";
 export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }>(`/api/queue?mode=${mode}`).then((r) => r.cards);
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
-export const sendAnswer = (card: Card, answer: Answer) =>
+export const sendAnswer = (card: Card, answer: CardAnswer) =>
   postRetry<{ result: "ok" | "stale" | "practice"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
-
-/** Новое слово друга в колоде на разбор. */
-export interface TriageCard {
-  cardId: number;
-  addedBy: string;
-  word: Card["word"];
-}
-
-export type TriageAction = "learn" | "know" | "drop";
-
-export const getTriage = () => call<{ cards: TriageCard[] }>("/api/triage").then((r) => r.cards);
-export const sendTriage = (card: TriageCard, action: TriageAction, undo = false) =>
-  post("/api/triage", { cardId: card.cardId, wordId: card.word.id, action, undo });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "dropped";

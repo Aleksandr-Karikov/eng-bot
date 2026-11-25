@@ -35,9 +35,9 @@ describe("ошибки API по-русски и с действием (E34)", ()
     expect(body.error).toContain("попробуй");
   });
 
-  it("неверное действие в колоде тоже по-русски", async () => {
+  it("неверное действие при первом показе тоже по-русски", async () => {
     const { post } = await api();
-    const body = await post("/api/triage", { action: "нечто", cardId: 1 });
+    const body = await post("/api/answer", { answer: "drop", cardId: 1, reps: 1 });
     expect(body.error).toMatch(/[а-яё]/i);
     expect(body.error).not.toMatch(/^bad /);
   });
@@ -46,7 +46,7 @@ describe("ошибки API по-русски и с действием (E34)", ()
     const { post } = await api();
     const cases = [
       await post("/api/answer", { cardId: "x", reps: 0, answer: "good" }),
-      await post("/api/triage", { action: "x", cardId: 1 }),
+      await post("/api/words/1/x", {}),
       await post("/api/sets/target", { roomId: "x" }),
     ];
     for (const body of cases) {

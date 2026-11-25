@@ -1,8 +1,7 @@
 import { langForms, pickAccent } from "../../lang";
 import { autoVoice } from "../../services/voice";
 import { startTranslate } from "./translate";
-import { dropCard, restoreCard } from "../../services/cards";
-import { markTriaged } from "../../services/triage";
+import { dropCard, markTriaged, restoreCard } from "../../services/cards";
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Message } from "grammy/types";
 import { State } from "ts-fsrs";
@@ -817,7 +816,6 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (cb?.k !== "know") return void (await ctx.answerCallbackQuery());
     if (!word) return void (await ctx.answerCallbackQuery({ text: "Это слово уже удалили" }));
     if (!cb.knows) {
-      // Решено — в колоде «новые от друзей» в приложении это слово уже не покажем.
       await markTriaged(deps.db, ctx.user.id, word.id, deps.now());
       await ctx.answerCallbackQuery();
       return void (await ctx.editMessageText(`${draftText(word)}\n\n📚 Добавлено в изучение — встретится в /learn`, HTML));

@@ -4,7 +4,7 @@ import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBottomButtons } from "./bottomButtons";
-import { exampleTranslation, pictureUrl, wordPictureUrl, type Answer, type Card, type CardView, type VoiceAccent } from "./api";
+import { exampleTranslation, pictureUrl, wordPictureUrl, type CardAnswer, type Card, type CardView, type VoiceAccent } from "./api";
 import { transcription } from "./format";
 import { IconEye, UsefulDot } from "./icons";
 /** Насколько протянуть карточку, чтобы засчитать свайп. */
@@ -32,7 +32,7 @@ export function SwipeCard({
   card: Card;
   view?: CardView;
   voice?: VoiceAccent | null;
-  onAnswer: (a: Answer) => void;
+  onAnswer: (a: CardAnswer) => void | Promise<void>;
   /** Предпросмотр со страницы слова: перевернуть можно, оценить нельзя — ответы никуда не уходят. */
   preview?: boolean;
 }) {
@@ -42,11 +42,15 @@ export function SwipeCard({
   const [exampleRu, setExampleRu] = useState(card.word.exampleTranslation ?? "");
   const [exampleOpen, setExampleOpen] = useState(false);
   const [exampleBusy, setExampleBusy] = useState(false);
+  const deciding = useRef(false);
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const knowOpacity = useTransform(x, [20, SWIPE_PX], [0, 1]);
   const forgotOpacity = useTransform(x, [-SWIPE_PX, -20], [1, 0]);
   const w = card.word;
+  const needsDecision = card.needsDecision && !preview;
+  const positiveLabel = needsDecision ? "Уже знаю" : "Помню";
+  const negativeLabel = needsDecision ? "Учу" : "Забыл";
   const enRu = card.stage === "en_ru";
   const withPicture = w.hasPicture && view.picture;
   const withVoice = Boolean(voice) && view.audio;
@@ -63,13 +67,23 @@ export function SwipeCard({
     };
   }, [withPicture, card.cardId, w.id, preview]);
 
+  const decide = useCallback(async (answer: CardAnswer) => {
+    if (deciding.current) return;
+    deciding.current = true;
+    try {
+      await onAnswer(answer);
+    } finally {
+      deciding.current = false;
+    }
+  }, [onAnswer]);
   const fling = useCallback(
-    (answer: Answer, direction: number) => {
-      void animate(x, direction * 600, { duration: 0.2 }).then(() => onAnswer(answer));
+    (answer: CardAnswer, direction: number) => {
+      if (needsDecision) void decide(answer);
+      else void animate(x, direction * 600, { duration: 0.2 }).then(() => void onAnswer(answer));
     },
-    [x, onAnswer],
+    [decide, needsDecision, x, onAnswer],
   );
-  const good = useCallback(() => fling("good", 1), [fling]);
+  const good = useCallback(() => fling(needsDecision ? "know" : "good", 1), [fling, needsDecision]);
   const tapExample = useCallback(() => {
     if (exampleOpen) return setExampleOpen(false);
     if (exampleRu) return setExampleOpen(true);
@@ -107,18 +121,18 @@ export function SwipeCard({
   }, [card, voice, withVoice, preview]);
   // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
   // В предпросмотре оценивать нечего: пустой вызов прячет нативные кнопки и свою панель не рисует.
-  const main = flipped ? { text: "Помню", onClick: good } : { text: "Показать ответ", onClick: () => reveal() };
-  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: "Забыл", onClick: again } : undefined);
+  const main = flipped ? { text: positiveLabel, onClick: good } : { text: "Показать ответ", onClick: () => reveal() };
+  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: negativeLabel, onClick: again } : undefined);
 
   return (
     <div className="deck">
       {/* Штампы «ПОМНЮ/ЗАБЫЛ» — над карточкой, а не внутри: карточка наклоняется под свайпом,
           и место под них больше не отнимается у содержимого. */}
       <motion.div className="stamp stamp-know" style={{ opacity: knowOpacity }}>
-        ПОМНЮ
+        {positiveLabel.toUpperCase()}
       </motion.div>
       <motion.div className="stamp stamp-forgot" style={{ opacity: forgotOpacity }}>
-        ЗАБЫЛ
+        {negativeLabel.toUpperCase()}
       </motion.div>
       <motion.div
         className="card"
@@ -127,8 +141,8 @@ export function SwipeCard({
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.9}
         onDragEnd={(_, info) => {
-          if (info.offset.x > SWIPE_PX) fling("good", 1);
-          else if (info.offset.x < -SWIPE_PX) fling("again", -1);
+          if (info.offset.x > SWIPE_PX) good();
+          else if (info.offset.x < -SWIPE_PX) again();
           else reveal();
         }}
         onClick={(event) => reveal(event.detail > 0 ? event : undefined)}
@@ -187,10 +201,15 @@ export function SwipeCard({
         </div>
       </motion.div>
 
+      {flipped && needsDecision && <Text className="hint swipe-hint">Будешь учить это слово?</Text>}
       {flipped && (
         <div className="row">
           {view.audio && <AudioButtons size="m" onPlay={(accent) => void playAudio(audioOf(card, accent, preview))} />}
-          {card.isNew && !preview && (
+          {needsDecision ? (
+            <Button mode="plain" size="m" onClick={() => void decide("drop")}>
+              Не для меня
+            </Button>
+          ) : card.isNew && !preview && (
             <Button mode="plain" size="m" onClick={() => fling("easy", 1)}>
               Уже знаю
             </Button>
@@ -204,10 +223,10 @@ export function SwipeCard({
           {flipped ? (
             <div className="row">
               <Button mode="gray" size="l" stretched onClick={again}>
-                Забыл
+                {negativeLabel}
               </Button>
               <Button size="l" stretched onClick={good}>
-                Помню
+                {positiveLabel}
               </Button>
             </div>
           ) : (
