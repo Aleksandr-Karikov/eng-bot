@@ -470,6 +470,13 @@
       "when": 1795608206426,
       "tag": "0066_lethal_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1795609287741,
+      "tag": "0067_real_jack_power",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ import type { AppCard } from "../src/app/api";
 import type { AppWordItem } from "../src/app/manage";
 import { createApp } from "../src/app/server";
 import { cards, reviewLogs } from "../src/db/schema";
-import { countDueSplit } from "../src/services/review";
+import { countDueSplit, nextDue } from "../src/services/review";
 import { createRoom } from "../src/services/rooms";
 import { isLearned } from "../src/services/stats";
 import { updateUser } from "../src/services/users";
@@ -119,6 +119,62 @@ describe("лимит одновременно изучаемых слов", () =
     expect((await list()).active.map(({ id }) => id)).toContain(waiting.wordId);
     expect((await queue("reviews")).map(({ cardId }) => cardId)).toContain(waiting.id);
     expect(await queue()).toEqual([]);
+  });
+
+  it("возвращает забытые слова сверх заполненного лимита и ждёт места для обычной очереди", async () => {
+    const { h, user, rows, list, post, answer, getCard } = await setup(DEFAULT_LIMIT + 3);
+    const [waiting, first, second] = rows.slice(DEFAULT_LIMIT);
+    const seen = review(newCard(T0).fsrs, "easy", T0);
+    const learned = review(seen.fsrs, "easy", seen.due);
+    expect(isLearned(learned)).toBe(true);
+    for (const item of [first, second]) {
+      await h.db.update(cards).set(learned).where(eq(cards.id, item.id));
+    }
+    const original = (await list()).active.map(({ id }) => id);
+    h.setNow(learned.due);
+    for (const item of [first, second]) {
+      expect(await answer(item.id, "again", learned.reps)).toMatchObject({ result: "ok" });
+    }
+    expect((await list()).active.map(({ id }) => id)).toEqual([...original, first.wordId, second.wordId]);
+    expect(await countDueSplit(h.db, user.id, learned.due)).toMatchObject({ fresh: 0, activeFull: true });
+
+    const returned = await getCard(second.id);
+    h.setNow(returned.due);
+    expect([first.id, second.id]).toContain((await nextDue(h.db, user.id, returned.due))?.card.id);
+
+    expect((await post("/api/undo", { cardId: first.id })).status).toBe(200);
+    expect((await list()).active.map(({ id }) => id)).toEqual([...original, second.wordId]);
+    expect(await getCard(first.id)).toMatchObject({ ...learned, relearningAtLimit: null });
+
+    await h.db.update(cards).set(learned).where(eq(cards.id, rows[0].id));
+    expect((await list()).active.map(({ id }) => id)).toEqual([...original.slice(1), second.wordId]);
+    await h.db.update(cards).set(learned).where(eq(cards.id, rows[1].id));
+    const active = (await list()).active.map(({ id }) => id);
+    expect(active).toHaveLength(DEFAULT_LIMIT);
+    expect(active).toContain(waiting.wordId);
+    expect(active).toContain(second.wordId);
+  });
+
+  it("позволяет заменить внеплановое слово и применяет сниженный предел к обычным", async () => {
+    const { h, rows, list, post, answer, queue, getCard } = await setup(DEFAULT_LIMIT);
+    const [returned, chosen] = rows.slice(DEFAULT_LIMIT);
+    const seen = review(newCard(T0).fsrs, "easy", T0);
+    const learned = review(seen.fsrs, "easy", seen.due);
+    await h.db.update(cards).set(learned).where(eq(cards.id, returned.id));
+    h.setNow(learned.due);
+    expect(await answer(returned.id, "again", learned.reps)).toMatchObject({ result: "ok" });
+    const before = await getCard(returned.id);
+
+    expect((await post(`/api/words/${chosen.wordId}/learn`, { replaceWordId: returned.wordId })).status).toBe(200);
+    expect((await list()).active).toHaveLength(DEFAULT_LIMIT + 1);
+    expect(await getCard(returned.id)).toMatchObject({ fsrs: before.fsrs, due: before.due, relearningAtLimit: null });
+    expect((await queue()).map(({ word }) => word.id)).toEqual([chosen.wordId]);
+
+    expect((await post("/api/settings", { activeLearningLimit: 10 })).status).toBe(200);
+    const active = (await list()).active.map(({ id }) => id);
+    expect(active).toHaveLength(10);
+    expect(active).toContain(chosen.wordId);
+    expect(active).not.toContain(returned.wordId);
   });
 
   it("меняет личный предел из бота и Mini App, сохраняя начатые карточки и дневную порцию", async () => {

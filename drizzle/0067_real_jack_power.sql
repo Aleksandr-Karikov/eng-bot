@@ -1,0 +1,1 @@
+ALTER TABLE `cards` ADD `relearning_at_limit` integer;

@@ -5,7 +5,7 @@ import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
 import { streakBuff } from "./streak-buff";
-import { and, asc, eq, gte, isNull, lt, lte, ne, notExists, or, desc, count, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, lte, ne, notExists, or, desc, count, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -117,6 +117,8 @@ function compareQueue(a: DueItem, b: DueItem): number {
   const aNew = a.card.state === State.New ? 1 : 0;
   const bNew = b.card.state === State.New ? 1 : 0;
   if (aNew !== bNew) return aNew - bNew;
+  const returningFirst = Number(b.card.relearningAtLimit !== null) - Number(a.card.relearningAtLimit !== null);
+  if (returningFirst) return returningFirst;
   // Новые — сначала самые полезные: время на зубрёжку тратится на то, что пригодится.
   if (aNew) return b.card.learningPriority - a.card.learningPriority || (b.word.usefulness ?? 2) - (a.word.usefulness ?? 2) || a.card.createdAt.getTime() - b.card.createdAt.getTime() || a.card.id - b.card.id;
   return a.card.due.getTime() - b.card.due.getTime();
@@ -127,7 +129,7 @@ type LearningSelection = Awaited<ReturnType<typeof learningSelection>>;
 async function dueItems(db: Db, userId: number, until: Date, selection: LearningSelection, left: number): Promise<DueItem[]> {
   const activeIds = selection.active.map(({ id }) => id);
   const reserved = selection.active.filter((card) => card.state === State.New).map(({ id }) => id);
-  const slots = selection.limit - selection.active.length;
+  const slots = Math.max(0, selection.limit - selection.active.length);
   const rows = await db
     .select({ card: cards, word: words })
     .from(cards)
@@ -137,7 +139,7 @@ async function dueItems(db: Db, userId: number, until: Date, selection: Learning
       left > 0 ? inArray(cards.id, reserved) : undefined,
       left > 0 && slots > 0 ? and(eq(cards.state, State.New), lte(cards.learningPriority, 0)) : undefined,
     )));
-  const dueReserved = rows.filter(({ card }) => card.state === State.New && card.learningPriority > 0).length;
+  const dueReserved = rows.filter(({ card }) => reserved.includes(card.id)).length;
   return withinPortion(rows.sort(compareQueue), Math.min(left, dueReserved + slots));
 }
 
@@ -170,9 +172,9 @@ export async function countDueSplit(db: Db, userId: number, now: Date) {
   const activeIds = selection.active.map(({ id }) => id);
   const [review] = await db.select({ n: count() }).from(cards).where(and(due, reviewableCards(db, activeIds)));
   const fresh = await db.select({ id: cards.id, priority: cards.learningPriority }).from(cards).where(and(due, eq(cards.state, State.New)));
-  const slots = selection.limit - selection.active.length;
+  const slots = Math.max(0, selection.limit - selection.active.length);
   const reserved = fresh.filter(({ id }) => activeIds.includes(id)).length;
-  const regular = fresh.filter(({ priority }) => priority <= 0).length;
+  const regular = fresh.filter(({ id, priority }) => priority <= 0 && !activeIds.includes(id)).length;
   const available = Math.min(left ?? Infinity, reserved + Math.min(slots, regular));
   return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0 };
 }
@@ -186,9 +188,14 @@ export async function getDueItemByCard(db: Db, userId: number, cardId: number): 
   return row;
 }
 
-/** Карточка до ответа — в запись ответа, чтобы его можно было отменить (undoAnswer). */
-const snapshotOf = (card: CardRow) =>
-  JSON.stringify({ due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs });
+interface BeforeAnswer {
+  due: number;
+  state: number;
+  reps: number;
+  stability: number;
+  fsrs: string;
+  relearning?: { limit: number | null; priority: number; savedPriority: number };
+}
 
 /**
  * Урон ответа. Глобальный рубильник `BOSS_ENABLED` сюда НЕ передаётся намеренно.
@@ -248,13 +255,34 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId)));
   if (!card || card.reps !== input.expectedReps) return { result: "stale", damage: 0 };
   // Другой экран мог занять место или заменить эту карточку после загрузки очереди.
-  if (input.stage !== KNOW_STAGE && !isLearned(card)) {
-    const { limit, active, waiting } = await learningSelection(db, input.userId);
-    const outside = card.state === State.New && active.length >= limit && !active.some(({ id }) => id === card.id);
-    if (outside || waiting.some(({ id }) => id === card.id)) return { result: "waiting", damage: 0 };
+  const selection = input.stage !== KNOW_STAGE && (input.answer === "again" || !isLearned(card))
+    ? await learningSelection(db, input.userId)
+    : undefined;
+  const inSelection = selection?.active.some(({ id }) => id === card.id);
+  if (selection) {
+    const outside = card.state === State.New && selection.active.length >= selection.limit && !inSelection;
+    if (outside || selection.waiting.some(({ id }) => id === card.id)) return { result: "waiting", damage: 0 };
   }
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
   const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
+  const next = review(card.fsrs, input.answer, input.now, word?.usefulness ?? null);
+  // После проверки выше начатое слово вне подборки может быть только знакомым.
+  const returning = input.answer === "again" && card.state !== State.New && !inSelection && !isLearned(next) ? selection : undefined;
+  const relearningAtLimit = returning
+    ? returning.limit
+    : isLearned(next) || input.stage === KNOW_STAGE ? null : card.relearningAtLimit;
+  const lastActive = Math.min(...(returning?.active.map(({ priority }) => priority) ?? []));
+  const firstWaiting = returning?.waiting[0]?.priority;
+  const learningPriority = returning
+    ? firstWaiting === undefined ? (Number.isFinite(lastActive) ? lastActive - 1 : 0) : firstWaiting + 1
+    : card.learningPriority;
+  const shift = Math.max(0, learningPriority - lastActive + 1);
+  const before: BeforeAnswer = {
+    due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs,
+    ...(relearningAtLimit !== card.relearningAtLimit
+      ? { relearning: { limit: card.relearningAtLimit, priority: card.learningPriority, savedPriority: learningPriority } }
+      : {}),
+  };
   // Две записи — одно состояние. Раньше `UPDATE cards` и `INSERT review_logs` шли порознь: падение
   // между ними сдвигало расписание повторений, но теряло урон, ленту боя, отмену и статистику —
   // карточка «переехала», а ответа как будто не было (E28).
@@ -270,11 +298,16 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
   const outcome = db.transaction((tx) => {
     const updated = tx
       .update(cards)
-      .set(review(card.fsrs, input.answer, input.now, word?.usefulness ?? null))
+      .set({ ...next, relearningAtLimit, learningPriority })
       .where(and(eq(cards.id, card.id), eq(cards.reps, input.expectedReps)))
       .returning({ id: cards.id })
       .all();
     if (!updated.length) return { result: "stale" as const, damage: 0 };
+    if (returning && shift > 0) {
+      // Вставляем слово после активных и перед отложенными, сохраняя места текущих карточек.
+      tx.update(cards).set({ learningPriority: sql`${cards.learningPriority} + ${shift}` })
+        .where(inArray(cards.id, returning.active.map(({ id }) => id))).run();
+    }
     tx.insert(reviewLogs)
       .values({
         userId: card.userId,
@@ -283,7 +316,7 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
         ...damage,
         stage: input.stage ?? null,
         reviewedAt: input.now,
-        before: snapshotOf(card),
+        before: JSON.stringify(before),
       })
       .run();
     return { result: "ok" as const, damage: damage.damageDeci / 10 };
@@ -312,10 +345,17 @@ async function undoRecordedAnswer(db: Db, input: { userId: number; cardId: numbe
     .limit(1);
   if (!log?.before) return undefined;
   if (log.banked && (await damageBalanceDeci(db, input.userId)) < (log.damageDeci ?? 0)) return undefined;
-  const before = JSON.parse(log.before) as { due: number; state: number; reps: number; stability: number; fsrs: string };
+  const before = JSON.parse(log.before) as BeforeAnswer;
+  const { relearning } = before;
   const [restored] = await db
     .update(cards)
-    .set({ due: new Date(before.due), state: before.state, reps: before.reps, stability: before.stability, fsrs: before.fsrs })
+    .set({
+      due: new Date(before.due), state: before.state, reps: before.reps, stability: before.stability, fsrs: before.fsrs,
+      ...(relearning ? {
+        relearningAtLimit: relearning.limit,
+        learningPriority: sql`case when ${cards.learningPriority} = ${relearning.savedPriority} then ${relearning.priority} else ${cards.learningPriority} end`,
+      } : {}),
+    })
     .where(and(eq(cards.id, input.cardId), eq(cards.userId, input.userId), eq(cards.reps, before.reps + 1), notExists(
       db.select({ id: combatArchive.reviewId }).from(combatArchive).where(eq(combatArchive.reviewId, log.id)),
     )))

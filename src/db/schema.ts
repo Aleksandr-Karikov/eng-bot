@@ -235,6 +235,8 @@ export const cards = sqliteTable(
     triagedAt: integer("triaged_at", { mode: "timestamp_ms" }),
     /** Ручной порядок в подборке. Выбранные идут первыми, отложенные после остальных начатых. */
     learningPriority: integer("learning_priority").notNull().default(0),
+    /** Предел при внеплановом возврате в обучение. null — обычное место. */
+    relearningAtLimit: integer("relearning_at_limit"),
     createdAt: createdAt(),
   },
   (t) => [
