@@ -318,6 +318,8 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
 export function drillKeyboard(q: DrillQuestion, qid: number): InlineKeyboard {
   const kb = new InlineKeyboard();
   q.options.forEach((option, index) => kb.text(shorten(option), encodeCb({ k: "drillPick", qid, index })).row());
+  // Незнакомое слово — кнопкой, а не текстом: перевод нельзя показывать сразу, иначе он подскажет ответ.
+  if (q.newWord) kb.text(`🔍 Что такое «${shorten(q.newWord.term)}»?`, encodeCb({ k: "drillWord", qid })).row();
   return kb;
 }
 

@@ -15,6 +15,8 @@ import { weakDirections } from "../../services/weak-direction";
 import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/storm";
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
+import { prepareWord } from "../../services/prepare-word";
+import { saveWord } from "../../services/words";
 import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
@@ -549,6 +551,64 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       text: drillResultText(q, cb.index, progress),
       edit: true,
     });
+  });
+
+  /**
+   * «Что такое …?» — перевод незнакомого слова из вопроса по ошибкам (баг #26).
+   *
+   * Вопрос проверяет правило, а не лексику, но иногда опирается на слово не из словаря ученика.
+   * Показываем перевод и сразу предлагаем добавить: не выходя из вопроса, слово попадает в учёбу.
+   * Кнопку ответа не трогаем — вопрос остаётся тем же, и текущий выбор не сбрасывается.
+   */
+  bot.callbackQuery(/^qw:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const state = deps.drills.get(ctx.user.id);
+    const q = state?.current;
+    if (cb?.k !== "drillWord" || !state || !q || cb.qid !== state.currentId || !q.newWord) {
+      return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    }
+    const { term, translation } = q.newWord;
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      `🔍 <b>${esc(term)}</b> — ${esc(translation)}
+
+Добавить в словарь, чтобы учить?`,
+      { ...HTML, reply_markup: new InlineKeyboard().text("➕ Добавить", encodeCb({ k: "drillAdd", qid: cb.qid })) },
+    );
+  });
+
+  /** «➕ Добавить» из вопроса по ошибкам: тем же путём, что /add — с полезностью и запоминалкой. */
+  bot.callbackQuery(/^qa:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    const state = deps.drills.get(ctx.user.id);
+    const q = state?.current;
+    if (cb?.k !== "drillAdd" || !q?.newWord) return void (await ctx.answerCallbackQuery({ text: "Этот вопрос уже неактуален" }));
+    const roomId = ctx.user.currentRoomId;
+    if (roomId == null) {
+      return void (await ctx.answerCallbackQuery({ text: "Сначала выбери комнату", show_alert: true }));
+    }
+    await ctx.answerCallbackQuery({ text: "Добавляю…" });
+    const prepared = await prepareWord(deps, roomId, { term: q.newWord.term, translation: q.newWord.translation });
+    if (prepared.status === "exists") {
+      return void (await ctx.reply(`«${esc(q.newWord.term)}» уже есть в словаре 👍`, HTML));
+    }
+    if (prepared.status === "no-english") {
+      return void (await ctx.reply(`Не получилось подобрать английское слово для «${esc(q.newWord.term)}»`, HTML));
+    }
+    const result = await saveWord(deps.db, {
+      roomId,
+      addedBy: ctx.user.id,
+      draft: prepared.draft,
+      now: deps.now(),
+    });
+    const text = result.status === "saved"
+      ? `✅ Добавил <b>${esc(prepared.draft.term)}</b> — ${esc(prepared.draft.translation)}
+
+Слово придёт в учёбе вместе с остальными.`
+      : result.status === "duplicate"
+        ? `«${esc(prepared.draft.term)}» уже есть в словаре 👍`
+        : `Не получилось добавить — проверь комнату в настройках`;
+    await ctx.reply(text, HTML);
   });
 
   bot.callbackQuery(/^px$/, async (ctx) => {

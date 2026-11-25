@@ -226,6 +226,14 @@ export interface DrillQuestion {
   correct: number;
   explanation: string;
   category: string;
+  /**
+   * Слово из предложения, которого человек может не знать, и его перевод (баг #26).
+   *
+   * Вопрос по ошибкам проверяет правило, а не лексику, и иногда опирается на слово не из словаря
+   * ученика: «she managed to overcome ___». Раньше человеку предлагалось угадывать. Теперь слово
+   * можно посмотреть и сразу добавить в словарь — не выходя из вопроса.
+   */
+  newWord?: { term: string; translation: string };
 }
 
 /** Упражнения тренажёра: предложения с пропуском, проверка ответа, вопросы по слабым местам. */
@@ -751,9 +759,13 @@ export function buildDrillPrompt(profile: string, count: number, avoid: string[]
           "Проверь каждый вопрос: подставь верный вариант — должно получиться полное правильное предложение, где есть и слово, к которому относится правило.",
         ]),
     "Не повторяй его примеры дословно — нужны новые предложения на то же правило.",
-    'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "..."}], где',
+    "Вопрос проверяет правило, а не лексику: не строй его на редком слове. Если без редкого слова не обойтись,",
+    "назови его в new_word и переведи в new_word_translation — человек сможет посмотреть перевод и добавить слово к себе.",
+    "Если все слова в предложении обиходные — оставь new_word пустым.",
+    'Верни JSON-массив: [{"question": "...", "options": ["...", "..."], "correct": 0, "explanation": "...", "category": "...", "new_word": "", "new_word_translation": ""}], где',
     "correct — индекс верного варианта (с нуля), explanation — 1–2 предложения по-русски: правило и почему остальные не подходят,",
-    "category — тема из списка выше, слово в слово.",
+    "category — тема из списка выше, слово в слово,",
+    "new_word — незнакомое слово из предложения (в словарной форме) и new_word_translation — его перевод на русский.",
     ...(avoid.length
       ? ["", "Эти вопросы уже задавались — не повторяй их и не делай почти такие же (другие слова, другая ситуация):", ...avoid.map((q) => `- ${q}`)]
       : []),
@@ -786,13 +798,19 @@ const drillQuestion = z
     correct: z.number().int().min(0),
     explanation: z.string().trim().default(""),
     category: z.string().trim().default(""),
+    // Незнакомое слово — необязательное: обычно в предложении всё знакомо.
+    new_word: z.string().trim().optional(),
+    new_word_translation: z.string().trim().optional(),
   })
   .refine((q) => q.correct < q.options.length);
 
 export function parseDrill(text: string): DrillQuestion[] {
   return jsonArray(text).flatMap((entry) => {
     const r = drillQuestion.safeParse(entry);
-    return r.success && completeQuestion(r.data) ? [r.data] : [];
+    if (!r.success || !completeQuestion(r.data)) return [];
+    const { new_word, new_word_translation, ...rest } = r.data;
+    const newWord = new_word && new_word_translation ? { term: new_word, translation: new_word_translation } : undefined;
+    return [{ ...rest, ...(newWord ? { newWord } : {}) }];
   });
 }
 
