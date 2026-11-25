@@ -20,11 +20,13 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg espeak-ng
       - run: npm ci
       - run: mkdir -p data
-      - run: npm run lint
       - run: npm test
       - run: npm run typecheck
       - run: npm ci
         working-directory: app
+      # Линт после установки зависимостей app/: type-aware проверке нужна программа TypeScript
+      # для app/src, а без них React-типы не находятся и oxlint выдаёт ложные «error typed value».
+      - run: npm run lint
       - run: npm run build
         working-directory: app
 

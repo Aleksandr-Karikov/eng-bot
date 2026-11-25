@@ -14,8 +14,8 @@
     "context": "node scripts/docs.mjs context",
     "docs:index": "node scripts/docs.mjs index",
     "docs:check": "node scripts/docs.mjs check",
-    "lint": "oxlint .",
-    "lint:fix": "oxlint --fix .",
+    "lint": "node scripts/lint.mjs",
+    "lint:fix": "node scripts/lint.mjs --fix",
     "prepare": "node scripts/install-hooks.mjs"
   },
   "dependencies": {
