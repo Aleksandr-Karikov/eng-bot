@@ -2,6 +2,7 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs, type Word } from "../db/schema";
 import type { DialogueScene, ExerciseTutor } from "../llm/tutor";
+import { termPattern } from "./word-uses";
 
 const FOCUSES = [
   "Подведи к частому словосочетанию из повседневной ситуации.",
@@ -9,11 +10,17 @@ const FOCUSES = [
   "Дай повод попросить, предупредить о будущем или уточнить что-то вопросом. Подбери иное естественное соседство слов.",
 ] as const;
 
+export function revealsDialogueWord(text: string, term: string): boolean {
+  return termPattern(term).test(text.toLowerCase().replace(/[’‘`]/g, "'"));
+}
+
 export async function prepareDialogue(db: Db, tutor: ExerciseTutor, cardId: number, word: Word): Promise<DialogueScene | undefined> {
   if (!tutor.dialogueScene) return undefined;
   const [reviewed] = await db.select({ total: count() }).from(reviewLogs)
     .where(and(eq(reviewLogs.cardId, cardId), inArray(reviewLogs.stage, ["sentence", "app_sentence"])));
   const focus = FOCUSES[(reviewed?.total ?? 0) % FOCUSES.length];
   const { term, translation, explanation } = word;
-  return tutor.dialogueScene({ term, translation, explanation, focus });
+  const scene = await tutor.dialogueScene({ term, translation, explanation, focus });
+  if (revealsDialogueWord(`${scene.situation}\n${scene.line}`, term)) return undefined;
+  return revealsDialogueWord(scene.hint, term) ? { ...scene, hint: "" } : scene;
 }

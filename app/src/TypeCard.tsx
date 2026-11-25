@@ -245,17 +245,16 @@ export function ExerciseReview({ card, answer, result: r, saved, onSave }: { car
           : "Верно!"
         : answer
           ? card.stage === "sentence"
-            ? "Слово употреблено неверно"
+            ? "Ответ по карточке не засчитан"
             : "Не то"
           : "Правильно так:";
   const real = (r.fixes ?? []).filter((f) => !f.slip);
   return (
     <div className="choice-review">
       <Text weight="2">{verdict}</Text>
-      {/* В диктанте слово открывается только сейчас; в «своём предложении» оно и так в задании, в пропуске — в предложении. */}
-      {card.stage === "listen" && (
+      {(card.stage === "listen" || card.stage === "sentence") && (
         <Text className="block">
-          <b>{r.term}</b> — {r.translation}
+          <b lang="en">{r.term}</b> — {r.translation}
           {transcription(r) && <span className="hint"> · {transcription(r)}</span>}
         </Text>
       )}

@@ -120,6 +120,7 @@ async function presentSpecial(
       console.error("Bot dialogue scene failed");
       return false;
     }
+    if (!scene) return false;
   }
   const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };
   deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence", scene });
@@ -477,7 +478,7 @@ async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExerci
     return;
   }
   if (!pending.practice && !(await rate(ctx, deps, pending, review.usesWord ? "good" : "again"))) return;
-  const text = sentenceReviewText(review, word);
+  const text = sentenceReviewText(review, word, Boolean(pending.scene));
   const real = review.fixes.filter((f) => !f.slip);
   if (real.length) {
     // Как в /check: в работу над ошибками — только после «✅ Сохранить».

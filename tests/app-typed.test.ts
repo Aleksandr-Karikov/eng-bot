@@ -105,6 +105,25 @@ const riverside = { situation: "Вы с другом у реки.", line: "Where
 const followUp = { line: "Where on that side would it be quieter?", hint: "We could try…" };
 
 describe("диалог на карточке Mini App", () => {
+  it("скрывает целевое слово в сценке, начале ответа и уточнении до разбора", async () => {
+    const dialogueScene = vi.fn<NonNullable<ExerciseTutor["dialogueScene"]>>()
+      .mockResolvedValueOnce({ ...riverside, line: "Which BANKS look quieter?" })
+      .mockResolvedValue({ ...riverside, hint: "On the bank…" });
+    const reviewSentence = async (): Promise<SentenceReview> => ({ ...await noReview(), usesWord: false, verdict: "Попробуй ответить со словом bank." });
+    const { dialogue, reply, ratings } = await setup("modeSentence", { ...tutor(noJudge, reviewSentence), dialogueScene });
+
+    expect((await dialogue()).status).toBe(503);
+    const scene = await (await dialogue()).json();
+    expect(scene).toMatchObject({ line: riverside.line, hint: "" });
+    expect(scene).not.toHaveProperty("term");
+    expect(scene).not.toHaveProperty("translation");
+    expect(await (await reply({ id: scene.id, turn: 1, answer: "By the water." })).json()).toMatchObject({ retry: true, verdict: "" });
+    expect(await ratings()).toEqual([]);
+
+    expect(await (await reply({ id: scene.id, turn: 1, dunno: true })).json()).toMatchObject({ correct: false, term: "bank", translation: "берег" });
+    expect(await ratings()).toEqual(["app_sentence:again"]);
+  });
+
   it("даёт повторить реплику, оценивает её один раз, продолжает разговор и меняет цель", async () => {
     const dialogueScene = vi.fn(async (_: DialogueInput) => riverside);
     const reviewSentence = vi.fn(async (input: SentenceInput): Promise<SentenceReview> => ({

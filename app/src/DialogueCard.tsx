@@ -50,8 +50,7 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
       const response = await answerDialogue(scene.id, bonus ? 2 : 1, dunno ? "" : answer, dunno);
       if (!active.current) return;
       if ("retry" in response) {
-        setRetry(response.verdict || "Попробуй употребить это слово в ответе.");
-        setHint(true);
+        setRetry(response.verdict || "Попробуй ответить чуть точнее. Если нужно, открой подсказку.");
         return;
       }
       setRetry(undefined);
@@ -88,20 +87,24 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
           <>
             <div className="type-prompt">
               <Text className="hint dialogue-situation">{scene.situation}</Text>
-              <Text>Употреби <b lang="en">{card.word.term}</b><span className="dialogue-translation"> — {card.word.translation}</span></Text>
               <div className="dialogue-thread">
                 <Reply line={scene.line} />
                 {firstAnswer && <Reply line={firstAnswer} own />}
                 {bonus && <Reply line={turn.line} />}
                 {bonus && result && <Reply line={answer.trim()} own />}
               </div>
+              {!result && hint && (
+                <>
+                  {!bonus && <Text className="hint">Смысл слова: {card.word.translation}</Text>}
+                  {turn.hint && <Text className="hint">Начало ответа: <span lang="en">{turn.hint}</span></Text>}
+                </>
+              )}
             </div>
             {result ? (
               <ExerciseReview card={card} answer={bonus ? answer : firstAnswer} result={result} saved={saved} onSave={setSaved} />
             ) : (
               <>
                 {retry && <Text role="status">{retry}</Text>}
-                {hint && <Text className="hint">Начало ответа: <span lang="en">{turn.hint}</span></Text>}
                 <div className="type-field">
                   <Textarea
                     ref={input}
@@ -120,7 +123,7 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
                     }}
                   />
                 </div>
-                {!hint && !checking && <Button mode="plain" size="s" onClick={() => setHint(true)}>Дай начало</Button>}
+                {!hint && !checking && (!bonus || turn.hint) && <Button mode="plain" size="s" onClick={() => setHint(true)}>Подсказка</Button>}
               </>
             )}
             {error && <Text role="alert">{error.text}</Text>}

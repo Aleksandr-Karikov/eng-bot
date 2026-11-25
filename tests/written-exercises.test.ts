@@ -44,9 +44,12 @@ describe("✍️ own sentence", () => {
     await setup(h, "modeSentence");
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(texts(h).at(-1)).toContain("Where can Sam &amp; Jo sit?");
+    expect(texts(h).at(-1)).not.toMatch(/\bbank\b/iu);
+    expect(texts(h).at(-1)).toContain("<tg-spoiler>берег</tg-spoiler>");
     expect(texts(h).at(-1)).toContain("<tg-spoiler>They can sit…</tg-spoiler>");
     await h.bot.handleUpdate(h.message(100, "They can sit on the river bank."));
     await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Ответ подходит к вопросу"));
+    expect(texts(h).at(-1)).toContain("<b>bank</b> — берег");
     expect(reviewSentence).toHaveBeenCalledWith(expect.objectContaining({ dialogue: { line: "Where can Sam & Jo sit?" } }));
     expect(await logs(h)).toEqual(["sentence:good"]);
   });

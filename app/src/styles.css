@@ -206,7 +206,7 @@ body {
 .dialogue-card .type-field > div { padding: 2px; }
 .dialogue-card > .actions { flex-shrink: 0; }
 .keyboard-open .dialogue-card > .actions { flex-direction: row-reverse; align-items: center; }
-.keyboard-open .dialogue-situation, .keyboard-open .dialogue-translation,
+.keyboard-open .dialogue-situation,
 .keyboard-open .dialogue-thread .dialogue-reply:not(:last-child) { display: none; }
 .dialogue-thread { display: grid; gap: 8px; margin-top: 4px; }
 .dialogue-reply { display: grid; gap: 3px; justify-self: start; max-width: 90%; box-sizing: border-box; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #f1f1f4)); white-space: pre-wrap; }

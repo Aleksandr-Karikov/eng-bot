@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
 import type { DialogueScene, DialogueTurn, SentenceReview } from "../llm/tutor";
-import { prepareDialogue } from "../services/dialogue";
+import { prepareDialogue, revealsDialogueWord } from "../services/dialogue";
 import { checkAndCount } from "../services/limits";
 import { getDueItemByCard, recordAnswer } from "../services/review";
 import { sentenceFeedback } from "./exercises";
@@ -130,7 +130,7 @@ export class AppDialogues {
     if (this.sessions.get(user.id) !== session) return expired();
     if (turn === 1 && review && !review.usesWord && !session.retryOffered) {
       session.retryOffered = true;
-      return ok({ retry: true, verdict: review.verdict });
+      return ok({ retry: true, verdict: revealsDialogueWord(review.verdict, term) ? "" : review.verdict });
     }
 
     let damage = 0;
@@ -142,7 +142,10 @@ export class AppDialogues {
       if (rated.result !== "ok") return stale();
       damage = rated.damage;
     }
-    const followUp = turn === 1 && review?.usesWord ? review.followUp : undefined;
+    const next = turn === 1 && review?.usesWord ? review.followUp : undefined;
+    const followUp = next && !revealsDialogueWord(next.line, term)
+      ? { ...next, hint: revealsDialogueWord(next.hint, term) ? "" : next.hint }
+      : undefined;
     if (turn === 1) session.first = { answer, followUp };
     else session.finished = true;
     return ok({

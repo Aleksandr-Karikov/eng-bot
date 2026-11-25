@@ -590,12 +590,17 @@ export function clozeUnknownText(s: ClozeSentence): string {
 }
 
 export function sentenceTaskText(word: Pick<Word, "term" | "translation">, scene?: DialogueScene): string {
-  if (scene) return `💬 Ответь собеседнику\n${esc(scene.situation)}\n\n<b>${esc(scene.line)}</b>\n\nУпотреби <b>${esc(word.term)}</b> — ${esc(word.translation)}.\nНачало ответа: <tg-spoiler>${esc(scene.hint)}</tg-spoiler>`;
+  if (scene) {
+    const head = `💬 Ответь собеседнику\n${esc(scene.situation)}\n\n<b>${esc(scene.line)}</b>`;
+    const hint = `\n\nСмысл слова: <tg-spoiler>${esc(word.translation)}</tg-spoiler>`;
+    return head + hint + (scene.hint ? `\nНачало ответа: <tg-spoiler>${esc(scene.hint)}</tg-spoiler>` : "");
+  }
   return `✍️ Составь своё предложение со словом:\n\n<b>${esc(word.term)}</b> — ${esc(word.translation)}\n\nНапиши его сообщением — проверю, верно ли употреблено слово, и поправлю ошибки.`;
 }
 
-export function sentenceReviewText(r: SentenceReview, word: Pick<Word, "example">): string {
-  const parts = [r.usesWord ? "✅ Слово употреблено верно" : "❌ Слово употреблено неверно"];
+export function sentenceReviewText(r: SentenceReview, word: Pick<Word, "term" | "translation" | "example">, dialogue = false): string {
+  const parts = [r.usesWord ? "✅ Слово употреблено верно" : dialogue ? "Ответ по карточке не засчитан" : "❌ Слово употреблено неверно"];
+  if (dialogue) parts.push(`<b>${esc(word.term)}</b> — ${esc(word.translation)}`);
   if (r.verdict) parts.push(esc(r.verdict));
   if (r.fixes.length || r.natural) parts.push(checkText(r));
   if (!r.usesWord && word.example) parts.push(`Пример: <i>${esc(word.example)}</i>`);
