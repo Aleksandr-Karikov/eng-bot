@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { EN } from "../lang";
 import { JsonLineWorker } from "./worker";
 
 const run = promisify(execFile);

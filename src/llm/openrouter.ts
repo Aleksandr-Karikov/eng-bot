@@ -26,7 +26,11 @@ export class OpenRouterBackend implements LlmBackend {
     },
   ) {}
 
-  async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], lang: Language): Promise<string> {
+  /**
+   * `_lang` — часть контракта `LlmBackend` (тест закрепляет, что бэкенд получает английский), но
+   * самому провайдеру язык не нужен: промпт уже собран на нужном языке выше.
+   */
+  async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], _lang: Language): Promise<string> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {

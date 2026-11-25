@@ -74,7 +74,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : String(err));
       } finally {
-        if (active) timer = setTimeout(refresh, 30_000);
+        if (active) timer = setTimeout(() => void refresh(), 30_000);
       }
     };
     void refresh();
@@ -152,7 +152,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   }
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
-      victory={data.victory} combat={data.combat} onBuy={buy} buying={buying} busy={busy}
+      victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy}
       actions={data.combat && <CombatPanel combat={data.combat} hp={data.boss.hp} busy={busy} fighting={fighting} onAction={(action) => void fightAction(action)} />} />
   );
 }

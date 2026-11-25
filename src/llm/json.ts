@@ -49,8 +49,8 @@ function salvageTruncatedArray(text: string): unknown[] | null {
   // Идём от последней `}` назад: каждая попытка — «закрыть массив сразу после этого объекта».
   for (let end = text.lastIndexOf("}"); end > start; end = text.lastIndexOf("}", end - 1)) {
     try {
-      const candidate = JSON.parse(`${text.slice(start, end + 1)}]`);
-      if (Array.isArray(candidate) && candidate.length > 0) return candidate;
+      const candidate: unknown = JSON.parse(`${text.slice(start, end + 1)}]`);
+      if (Array.isArray(candidate) && candidate.length > 0) return candidate as unknown[];
     } catch {
       // Этот объект тоже неполный — пробуем предыдущий.
     }

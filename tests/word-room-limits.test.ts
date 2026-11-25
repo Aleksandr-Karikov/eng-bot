@@ -5,7 +5,7 @@ import { QUOTAS, checkAndCountWord, periodKey, quotaUsed, refundWordQuota, words
 import { createRoom, deleteRoom, joinAllowed, joinRoom, memberCount, roomCreationAllowed } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { makeUser, T0, at, DAY, testDb } from "./helpers";
-import { botHarness, buttonData, type ApiCall } from "./bot-harness";
+import { botHarness, buttonData, sentTexts, type ApiCall } from "./bot-harness";
 
 /**
  * Лимиты на слова и на комнаты (docs/limits.md, «Особые случаи»).
@@ -18,7 +18,7 @@ import { botHarness, buttonData, type ApiCall } from "./bot-harness";
 const MSK = "Europe/Moscow";
 
 const texts = (h: ReturnType<typeof botHarness>) =>
-  h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text ?? ""));
+  sentTexts(h.calls.filter((c) => c.method === "sendMessage"));
 
 const refused = (h: ReturnType<typeof botHarness>, kind: keyof typeof QUOTAS) =>
   texts(h).some((t) => t.includes(QUOTAS[kind].refusal));
@@ -72,7 +72,7 @@ describe("лимиты: новые слова", () => {
   });
 
   it("недельный лимит упирается раньше дневного и объясняет, что делать", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
     const now = at(0);
 
@@ -100,7 +100,7 @@ describe("лимиты: новые слова", () => {
   });
 
   it("в начале недели счётчик пуст — недельный лимит не переносится", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
 
     // Прошлая неделя выбрана целиком.
@@ -120,7 +120,7 @@ describe("лимиты: новые слова", () => {
   });
 
   it("отказ по недельному лимиту не сжигает дневной счётчик", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
     const now = at(2 * DAY);
 
@@ -149,7 +149,7 @@ describe("лимиты: новые слова", () => {
 
 describe("лимиты: комнаты", () => {
   it("создать можно три комнаты, четвёртая — отказ", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
 
     for (let i = 0; i < 3; i++) {
@@ -163,7 +163,7 @@ describe("лимиты: комнаты", () => {
   });
 
   it("личный словарь не съедает место для комнат друзей", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
 
     // Личный словарь один: язык у бота теперь только английский (E23).
@@ -173,7 +173,7 @@ describe("лимиты: комнаты", () => {
   });
 
   it("удаление комнаты возвращает место", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
 
     for (let i = 0; i < 3; i++) await createRoom(db, { name: `R${i}`, createdBy: user.id, now: T0 });
@@ -186,7 +186,7 @@ describe("лимиты: комнаты", () => {
   });
 
   it("в комнату помещается 50 человек, пятьдесят первый ждёт отказа", async () => {
-    const db = await testDb();
+    const db = testDb();
     const owner = await makeUser(db, 1);
     const room = await createRoom(db, { name: "R", createdBy: owner.id, now: T0 });
 
@@ -204,7 +204,7 @@ describe("лимиты: комнаты", () => {
   });
 
   it("уже состоящий в комнате возвращается по старой ссылке, даже упёршись в лимит участий", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
     const owner = await makeUser(db, 200);
     const room = await createRoom(db, { name: "R", createdBy: owner.id, now: T0 });
@@ -221,7 +221,7 @@ describe("лимиты: комнаты", () => {
   });
 
   it("незнакомец упирается в лимит участий и видит объяснение", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
     const owner = await makeUser(db, 200);
 
@@ -300,9 +300,8 @@ function statusFixture() {
 
 describe("лимиты: админу можно", () => {
   it("админ заводит комнаты сверх лимита, обычный человек — нет", async () => {
-    const db = await testDb();
+    const db = testDb();
     const admin = await makeUser(db, 100);
-    const user = await makeUser(db, 200);
     for (let i = 0; i < 7; i++) await createRoom(db, { name: `R${i}`, createdBy: admin.id, now: T0 });
 
     // Семь комнат — это больше трёх, но админ не злоупотребляет: он ими работает.
@@ -312,7 +311,7 @@ describe("лимиты: админу можно", () => {
   });
 
   it("админ входит в переполненную комнату, а обычный человек — нет", async () => {
-    const db = await testDb();
+    const db = testDb();
     const owner = await makeUser(db, 1);
     const admin = await makeUser(db, 100);
     const room = await createRoom(db, { name: "R", createdBy: owner.id, now: T0 });
@@ -351,7 +350,7 @@ describe("лимиты: админу можно", () => {
 
 describe("лимиты: комнаты, заведённые до лимита", () => {
   it("старожилу отказ говорит правду о его числе комнат, а не «уже 3»", async () => {
-    const db = await testDb();
+    const db = testDb();
     const user = await makeUser(db, 100);
     // Лимит ввели позже, чем появились комнаты: у человека их семь.
     for (let i = 0; i < 7; i++) await createRoom(db, { name: `R${i}`, createdBy: user.id, now: T0 });

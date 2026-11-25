@@ -1,4 +1,4 @@
-import { EN, langForms } from "../../lang";
+import { langForms } from "../../lang";
 import type { Bot } from "grammy";
 import { checkAndCount, QUOTAS, refundWordQuota, wordsLeft } from "../../services/limits";
 import { MAX_CONTEXT, parseAddInput, saveWord, toWordDraft } from "../../services/words";

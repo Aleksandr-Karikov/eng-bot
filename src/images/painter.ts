@@ -105,7 +105,7 @@ export class BackgroundPainter {
           }
         })
         .catch((err) => console.error("Background picture failed", err));
-    const handle = setInterval(tick, intervalMs);
+    const handle = setInterval(() => void tick(), intervalMs);
     return () => clearInterval(handle);
   }
 }

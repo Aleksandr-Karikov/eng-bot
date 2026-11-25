@@ -136,9 +136,11 @@ async function presentSpecial(
 function perBot<T>(): (deps: Deps) => Map<number, T> {
   const maps = new WeakMap<Deps, Map<number, T>>();
   return (deps) => {
-    let map = maps.get(deps);
-    if (!map) maps.set(deps, (map = new Map()));
-    return map;
+    const found = maps.get(deps);
+    if (found) return found;
+    const created = new Map<number, T>();
+    maps.set(deps, created);
+    return created;
   };
 }
 const sessionCountsOf = perBot<number>();

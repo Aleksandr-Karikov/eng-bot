@@ -11,7 +11,7 @@ import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import { botHarness, buttonData } from "./bot-harness";
-import { at, DAY, HOUR, makeUser, testDb, T0 } from "./helpers";
+import { at, DAY, HOUR, makeUser, T0 } from "./helpers";
 import { getUserByTelegramId, updateUser } from "../src/services/users";
 import { latestDigestMoment } from "../src/services/digest";
 import { damageBalanceDeci } from "../src/services/combat-ledger";
@@ -183,7 +183,7 @@ describe("урон из запаса", () => {
   // Настройка по умолчанию: ручной удар недоступен, потому что копить выключено. Экран обязан объяснить
   // это и предложить включить — тест фиксирует состояние сервера, на котором держится объяснение (E1).
   it("при выключенном «Копить урон» ручной удар недоступен, и это видно по состоянию", async () => {
-    const { app, headers, alice, room } = await bossTab();
+    const { app, headers, room } = await bossTab();
     const state = await (await app.request("/api/boss", { headers })).json();
     expect(state.combat.bank).toBe(false);
     expect(state.combat.balance).toBe(0);

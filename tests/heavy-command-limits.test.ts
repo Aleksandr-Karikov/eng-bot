@@ -4,7 +4,7 @@ import { recordMistakes } from "../src/services/mistakes";
 import { createRoom } from "../src/services/rooms";
 import { saveWord } from "../src/services/words";
 import { makeUser, T0, at, DAY } from "./helpers";
-import { botHarness } from "./bot-harness";
+import { botHarness, sentTexts } from "./bot-harness";
 
 /**
  * Лимиты тяжёлых команд (docs/limits.md).
@@ -21,7 +21,7 @@ async function spam(h: ReturnType<typeof botHarness>, times: number, update: () 
 }
 
 const texts = (h: ReturnType<typeof botHarness>) =>
-  h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text ?? ""));
+  sentTexts(h.calls.filter((c) => c.method === "sendMessage"));
 
 const refused = (h: ReturnType<typeof botHarness>, kind: keyof typeof QUOTAS) =>
   texts(h).some((t) => t.includes(QUOTAS[kind].refusal));

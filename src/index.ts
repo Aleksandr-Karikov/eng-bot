@@ -73,7 +73,7 @@ const bot = new Bot<BotContext>(config.botToken, { client: { timeoutSeconds: 60 
 // ждём и повторяем, иначе шаг (например, разбор слов по одному) обрывался на полпути.
 bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 30 }));
 const notifier = new Notifier(
-  { sendMessage: (chatId, text, other) => bot.api.sendMessage(chatId, text, other as Parameters<typeof bot.api.sendMessage>[2]) },
+  { sendMessage: (chatId, text, other) => bot.api.sendMessage(chatId, text, other) },
   db,
 );
 const now = () => new Date();

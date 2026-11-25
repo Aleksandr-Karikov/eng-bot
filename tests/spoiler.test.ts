@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { knowPrompt } from "../src/bot/texts";
 import { eq } from "drizzle-orm";
 import { cards } from "../src/db/schema";

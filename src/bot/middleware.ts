@@ -1,5 +1,5 @@
 import type { MiddlewareFn } from "grammy";
-import { ensurePersonalRoom, findRoomByChat, getRoom, isMember, joinRoom } from "../services/rooms";
+import { ensurePersonalRoom, findRoomByChat, isMember, joinRoom } from "../services/rooms";
 import { getUser, updateUser, upsertUser } from "../services/users";
 import { HTML, type BotContext, type Deps } from "./context";
 import { esc } from "./texts";

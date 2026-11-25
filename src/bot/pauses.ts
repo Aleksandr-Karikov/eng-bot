@@ -17,9 +17,11 @@ const maps = new WeakMap<Deps, Map<number, Pause>>();
 export const PAUSE_TTL_MS = 30 * 60_000;
 
 export function pausesOf(deps: Deps): Map<number, Pause> {
-  let map = maps.get(deps);
-  if (!map) maps.set(deps, (map = new Map()));
-  return map;
+  const found = maps.get(deps);
+  if (found) return found;
+  const created = new Map<number, Pause>();
+  maps.set(deps, created);
+  return created;
 }
 
 /** Разбор, который ждёт «Дальше» в этом чате; undefined — не ждёт. */

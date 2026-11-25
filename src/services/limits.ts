@@ -381,7 +381,7 @@ export async function wordsLeft(
   const used = await Promise.all(WORD_QUOTAS.map((kind) => quotaUsed(db, { ...input, kind })));
   const [day, week] = WORD_QUOTAS.map((kind, i) => ({
     left: wordQuota(kind).limit - used[i],
-    kind: kind as QuotaKind,
+    kind,
     used: used[i],
     limit: wordQuota(kind).limit,
   }));

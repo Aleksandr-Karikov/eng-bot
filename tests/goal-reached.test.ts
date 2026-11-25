@@ -51,7 +51,7 @@ describe("победа в чате: добивающий удар и фильт�
   });
 
   it("в личку не пишет тому, кто выключил режим, а в группу — пишет всем", async () => {
-    const { h, room } = await roomWithWin();
+    const { h } = await roomWithWin();
     // Группы нет: значит доставка идёт в личку — и только тем, у кого режим включён.
     const notifier = fakeNotifier();
     await sendGoalsReached({ db: h.db, notifier, now: () => nsk("2026-10-27T10:00") });

@@ -10,7 +10,7 @@ export interface SendApi {
 
 function errorCode(err: unknown): unknown {
   return typeof err === "object" && err !== null && "error_code" in err
-    ? (err as { error_code: unknown }).error_code
+    ? err.error_code
     : undefined;
 }
 

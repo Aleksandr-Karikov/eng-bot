@@ -15,9 +15,10 @@ it("applies migrations, sets defaults and enforces unique telegram id", async ()
 // а не только схема. Разъехавшись, они дают выключенную озвучку у всех новых пользователей.
 it("migration gives voice_accent the same default as the schema", async () => {
   const db = testDb();
-  const [{ sql: ddl }] = (await db.all(sql`select sql from sqlite_master where name = 'users'`)) as { sql: string }[];
+  // Драйвер better-sqlite3 синхронный: у .all()/.run() промиса нет, await только шумит.
+  const [{ sql: ddl }] = db.all(sql`select sql from sqlite_master where name = 'users'`) as { sql: string }[];
   expect(ddl).toContain("`voice_accent` text DEFAULT 'uk' NOT NULL");
-  await db.run(sql`insert into users (telegram_id, first_name, created_at) values (99, 'X', 1)`);
-  const [inserted] = (await db.all(sql`select voice_accent from users where telegram_id = 99`)) as { voice_accent: string }[];
+  db.run(sql`insert into users (telegram_id, first_name, created_at) values (99, 'X', 1)`);
+  const [inserted] = db.all(sql`select voice_accent from users where telegram_id = 99`) as { voice_accent: string }[];
   expect(inserted).toEqual({ voice_accent: "uk" });
 });

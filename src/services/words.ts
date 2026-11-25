@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { newCard } from "../srs/srs";
-import { cards, clozeSentences, reviewLogs, rooms, words, type User, type Word, wordUses } from "../db/schema";
+import { cards, clozeSentences, reviewLogs, words, type User, type Word, wordUses } from "../db/schema";
 import { parseExampleTranslation, type WordEnricher } from "../llm/enricher";
 import { getRoom, listMembers } from "./rooms";
 import { removeReviewHistory } from "./combat-ledger";
@@ -296,9 +296,8 @@ export async function setImageFileId(db: Db, wordId: number, fileId: string): Pr
 export async function exampleTranslation(db: Db, enricher: WordEnricher, word: Pick<Word, "id" | "term" | "example" | "exampleTranslation">): Promise<string> {
   // Разбор и у сохранённого: в первые тапы в базу легла сырая JSON-обёртка ответа модели.
   if (word.exampleTranslation || !word.example) return parseExampleTranslation(word.exampleTranslation);
-  const translate = enricher.translateExample;
-  if (!translate) return "";
-  const translation = await translate.call(enricher, word.example, word.term);
+  if (!enricher.translateExample) return "";
+  const translation = await enricher.translateExample(word.example, word.term);
   // Пока модель думала, пример могли поменять — тогда перевод уже не к нему.
   await db.update(words).set({ exampleTranslation: translation }).where(and(eq(words.id, word.id), eq(words.example, word.example), eq(words.exampleTranslation, "")));
   return translation;

@@ -1,10 +1,9 @@
-import { EN, langForms } from "../../lang";
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Room, User } from "../../db/schema";
 import {
   createRoom, deleteRoom, findRoomByChat, unlinkGroup, renameRoom, findRoomByInvite, getRoom, isMember, joinAllowed, joinRoom, linkGroup, listMembers, listUserRooms, roomCreationAllowed, updateRoomTimezone,
 } from "../../services/rooms";
-import { getUser, setSourceOnce, updateUser } from "../../services/users";
+import { setSourceOnce, updateUser } from "../../services/users";
 import { parseStartPayload } from "../../services/start-payload";
 import { listRoomWords } from "../../services/words";
 import { decodeCb } from "../callbacks";

@@ -8,8 +8,8 @@ import { createApp } from "../src/app/server";
 import { sign } from "@telegram-apps/init-data-node";
 import { answerExercise, isCorrect, listTopics, syncGrammar, topicView } from "../src/services/grammar-topics";
 import { GRAMMAR_TOPICS } from "../src/grammar";
-import { botHarness } from "./bot-harness";
-import { makeUser, testDb, T0 } from "./helpers";
+import { botHarness, sentTexts } from "./bot-harness";
+import { makeUser, T0 } from "./helpers";
 
 /** Залить одну тему в базу — как это делает scripts/build-grammar.ts, но без файла базы. */
 async function seed(h: ReturnType<typeof botHarness>, topic = GRAMMAR_TOPICS[0]) {
@@ -640,7 +640,7 @@ describe("✍️ typed answers in the bot", () => {
     await h.bot.handleUpdate(h.callback(100, `gq:${gap.id}`));
     await h.bot.handleUpdate(h.message(100, gap.answer));
     await h.bot.handleUpdate(h.message(100, nextText.answer));
-    const texts = h.calls.map((c) => String(c.payload.text ?? ""));
+    const texts = sentTexts(h.calls);
     expect(texts.some((t) => t.includes("Верно"))).toBe(true);
     expect(texts.length).toBeGreaterThan(2);
   });

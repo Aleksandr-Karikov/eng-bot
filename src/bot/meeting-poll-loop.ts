@@ -22,6 +22,7 @@ export function startMeetingPollLoop(db: Db, now: () => Date, api: Pick<Api, "se
     }
   };
   void tick();
-  const timer = setInterval(tick, 60_000);
+  // setInterval не ждёт промис: ошибку внутри tick ловит сам tick, наружу она не уходит.
+  const timer = setInterval(() => void tick(), 60_000);
   return () => clearInterval(timer);
 }

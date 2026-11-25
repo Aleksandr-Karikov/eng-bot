@@ -53,7 +53,10 @@ export class LocalRecognizer implements SpeechRecognizer {
 
   async transcribe(audio: Buffer): Promise<string> {
     const language = EN.whisper;
-    return this.withWavs([audio], async ([wav]) => String((await this.worker.request({ op: "transcribe", wav, language }, REQUEST_TIMEOUT_MS)).text ?? ""));
+    return this.withWavs([audio], async ([wav]) => {
+      const reply = await this.worker.request({ op: "transcribe", wav, language }, REQUEST_TIMEOUT_MS);
+      return typeof reply.text === "string" ? reply.text : "";
+    });
   }
 
   async pronunciation(audio: Buffer, text: string, accent: Accent | "any", refs: Array<{ accent: Accent; audio: Buffer }> = []): Promise<Pronunciation> {

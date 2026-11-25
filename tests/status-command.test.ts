@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { botHarness } from "./bot-harness";
+import { botHarness, textOf } from "./bot-harness";
 import type { BotStatus } from "../src/bot/context";
 import { BUDGETS, checkAndSpend } from "../src/services/limits";
 import { T0 } from "./helpers";
@@ -27,7 +27,7 @@ function status(overrides: Partial<BotStatus> = {}): BotStatus {
 
 const lastText = (h: ReturnType<typeof botHarness>) => {
   const calls = h.calls.filter((c) => c.method === "sendMessage");
-  return String(calls[calls.length - 1]?.payload.text ?? "");
+  return textOf(calls[calls.length - 1]);
 };
 
 const ask = async (s: BotStatus, from = ADMIN) => {

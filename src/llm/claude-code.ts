@@ -104,7 +104,11 @@ const INLINE_TRANSLATE_TIMEOUT_MS = 6_000;
 export class ClaudeCodeBackend implements LlmBackend {
   readonly name = "claude-code";
 
-  async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], lang: Language): Promise<string> {
+  /**
+   * `_lang` — часть контракта `LlmBackend` (тест закрепляет, что бэкенд получает английский), но
+   * самому провайдеру язык не нужен: промпт уже собран на нужном языке выше.
+   */
+  async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], _lang: Language): Promise<string> {
     const abortController = new AbortController();
     const timer = setTimeout(() => abortController.abort(), timeoutMs);
     try {

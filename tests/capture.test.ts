@@ -128,7 +128,7 @@ describe("words from the browser extension", () => {
   it("🔲 распознавание области считается квотой, а не бесплатным доступом к модели", async () => {
     // Vision-вызов дороже текстового, а ключ расширения едет в query и /ext/* проксируется наружу:
     // без счётчика утёкший ключ давал бы неограниченные платные вызовы.
-    const { h, user } = await setup();
+    const { h } = await setup();
     const readImageMock = vi.fn(async () => "some text");
     h.deps.enricher = { ...h.deps.enricher, readImage: readImageMock };
     const image = `data:image/jpeg;base64,${Buffer.from("fake-jpeg").toString("base64")}`;

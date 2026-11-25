@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
-import { createRoom, joinRoom } from "../src/services/rooms";
+import { createRoom } from "../src/services/rooms";
 import { autoVoice, DEFAULT_VOICE_ACCENT, toggleVoiceAccent } from "../src/services/voice";
 import { getUser, updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";

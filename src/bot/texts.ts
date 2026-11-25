@@ -55,7 +55,7 @@ const CARD_COLLOCATIONS = 3;
 function jsonArray<T>(raw: string | undefined): T[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
@@ -469,13 +469,6 @@ export function reverseCardText(word: WordDraft & { collocations?: string; moreC
   const hint = view.explanation ? reverseHint(word) : "";
   return `🇷🇺 <b>${esc(word.translation)}</b>${usefulnessIcon(word)}${hint ? `\n<i>${esc(hint)}</i>` : ""}\n\n${answer}${cardDetails(word, view, false)}\n\nВспомни ${langForms().adv} и проверь себя тапом:`;
 }
-
-/**
- * Подставляет ответ в пропуск, ответ — жирным. Модель иногда кладёт в вариант и соседнее слово
- * («We need ___ gold» + «the gold»): повторяющиеся на стыке слова убираем, иначе выходит «the gold gold».
- */
-/** Пропуск — три и больше подчёркиваний подряд: модель пишет и `___`, и `_______`. */
-const GAP = /_{3,}/;
 
 /**
  * Убирает слово, которое ответ повторил у края текста: `We need ___ gold` + ответ `the gold` давало

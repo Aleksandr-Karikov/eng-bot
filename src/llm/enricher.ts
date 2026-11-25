@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capStem, EN, type Language } from "../lang";
+import { EN, type Language } from "../lang";
 import { fixesField, jsonArray, jsonObject } from "./json";
 
 export interface Enrichment {
@@ -230,16 +230,6 @@ export const USEFULNESS_HINT = [
   "rare (как trump the kipper, snag yourself a peerage); для одного слова — пустая строка.",
 ].join("\n");
 
-/** Для корейского — те же вопросы, но примеры фраз английские сбили бы модель: без них. */
-const USEFULNESS_HINT_PLAIN = [
-  "sense — в каком значении дано слово (смотри на перевод): main — основное, самое частое; secondary — обычное, но не главное;",
-  "rare — редкое, узкое или сленговое значение этого слова;",
-  "register — neutral; informal — разговорное; formal — книжное или официальное; rude — грубое, ругательство;",
-  "dated — устаревшее; niche — жаргон узкой сферы или придумка конкретного сериала;",
-  "phrase_frequency — только для фраз и устойчивых выражений из нескольких слов: как часто их реально говорят —",
-  "common, occasional или rare; для одного слова — пустая строка.",
-].join("\n");
-
 const usefulnessHint = () => USEFULNESS_HINT;
 
 const TRANSCRIPTION_HINT =
@@ -339,7 +329,8 @@ export function parseExampleTranslation(text: string): string {
   let raw = text.trim().replace(/^```\w*\n?|```$/g, "");
   if (raw.includes("{")) {
     try {
-      raw = String((jsonObject(raw) as { translation?: unknown }).translation ?? "");
+      const translation = (jsonObject(raw) as { translation?: unknown }).translation;
+      raw = typeof translation === "string" ? translation : "";
     } catch {
       // Не JSON — считаем, что модель ответила готовым переводом.
     }

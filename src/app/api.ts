@@ -170,7 +170,11 @@ async function queueItems(deps: Deps, user: User, mode: QueueMode) {
 export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"): Promise<AppItem[]> {
   const items = await queueItems(deps, user, mode);
   const practice = mode === "hard";
-  const weak = practice ? new Map() : await weakDirections(deps.db, items.map(({ card }) => card.id));
+  // Пустая карта для тренировки должна быть того же типа, что и настоящая, иначе `weak.get()`
+  // становится `any` и проверка типов дальше по функции перестаёт что-либо значить.
+  const weak: Awaited<ReturnType<typeof weakDirections>> = practice
+    ? new Map<number, "en_ru" | "ru_en">()
+    : await weakDirections(deps.db, items.map(({ card }) => card.id));
   const modes = {
     en_ru: user.modeEnRu,
     ru_en: user.modeRuEn,

@@ -5,9 +5,10 @@ import { captureKeyboard } from "../bot/keyboards";
 import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
+import type { ImageInput } from "../llm/enricher";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
-import { ensurePersonalRoom, getRoom, isMember, listMembers } from "../services/rooms";
+import { ensurePersonalRoom, isMember, listMembers } from "../services/rooms";
 
 /** Что прислало расширение: выделенное слово или фраза и реплика, где оно встретилось. */
 export interface CaptureInput {
@@ -31,7 +32,7 @@ export function cleanSelection(text: string): string {
   return text
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^[\s"'“”‘’«»(\[—–-]+|[\s"'“”‘’«»)\].,!?;:…—–-]+$/gu, "")
+    .replace(/^[\s"'“”‘’«»([—–-]+|[\s"'“”‘’«»)\].,!?;:…—–-]+$/gu, "")
     .trim();
 }
 
@@ -176,8 +177,10 @@ export async function readImage(deps: Deps, input: { key: string; image: string 
   const data = Buffer.from(match[2], "base64");
   if (data.length === 0 || data.length > MAX_IMAGE_BYTES) return { ok: false, status: 400, error: "Слишком большая область — выдели поменьше" };
   try {
-    const image = { data, mediaType: match[1] as "image/jpeg" | "image/png" | "image/webp" };
-    const text = await deps.enricher.readImage!(image);
+    // Регулярка выше пропускает только эти три типа; `ImageInput` шире (там ещё gif) — сужаем объявлением.
+    const mediaType: ImageInput["mediaType"] = match[1] === "image/png" || match[1] === "image/webp" ? match[1] : "image/jpeg";
+    const image = { data, mediaType };
+    const text = await deps.enricher.readImage(image);
     return { ok: true, text: text.slice(0, 2000) };
   } catch (err) {
     console.error("Read image failed", err);

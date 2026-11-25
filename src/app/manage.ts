@@ -136,12 +136,12 @@ export async function appCorrectWord(deps: Deps, word: Word, instruction: string
     transcriptionUk: base.transcriptionUk, transcriptionUs: base.transcriptionUs, mnemonic: base.mnemonic,
     collocations: base.collocations, leechHelp: base.leechHelp, context: base.context, moreContexts: base.moreContexts,
   };
-  const correction = await deps.enricher.correctWord!(input, request);
+  const correction = await deps.enricher.correctWord(input, request);
   const before = previous?.before ?? word;
   const after = { ...base, ...correction.patch };
   if ((normalizeTerm(before.term) !== normalizeTerm(after.term) || before.translation.trim() !== after.translation.trim()) && after.collocations) {
     // Сочетания видны при согласовании, старый вопрос с пропуском к новому значению уже не подходит.
-    after.collocations = JSON.stringify({ items: JSON.parse(after.collocations).items });
+    after.collocations = JSON.stringify({ items: (JSON.parse(after.collocations) as { items: unknown }).items });
   }
   return { before, after, instruction: request, message: correction.message };
 }

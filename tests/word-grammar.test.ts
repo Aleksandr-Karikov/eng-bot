@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { cardText, draftText, formsLine, grammarLine, kinLine } from "../src/bot/texts";
 import { words } from "../src/db/schema";
-import { buildGrammarPrompt, parseGrammar, type ExerciseTutor, type WordGrammar } from "../src/llm/tutor";
+import { buildGrammarPrompt, parseGrammar, type WordGrammar } from "../src/llm/tutor";
 import { GrammarGenerator } from "../src/services/grammar";
 import { createRoom } from "../src/services/rooms";
 import { getWord, saveWord, updateWord } from "../src/services/words";
-import { botHarness, buttonData } from "./bot-harness";
-import { T0, makeUser, testDb } from "./helpers";
+import { botHarness } from "./bot-harness";
+import { T0, makeUser } from "./helpers";
 
 const grammar: WordGrammar = {
   partOfSpeech: "существительное",

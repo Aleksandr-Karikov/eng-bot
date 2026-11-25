@@ -164,7 +164,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
       <Section header="Как запомнить" footer={word.mnemonic ? "Новая запоминалка заменит эту у всех в комнате." : undefined}>
         {word.mnemonic && <Cell multiline>{word.mnemonic}</Cell>}
         <Cell
-          onClick={async () => {
+          onClick={() => void (async () => {
             if (thinking) return;
             setThinking(true);
             try {
@@ -177,7 +177,7 @@ export function WordPage({ id, onClose }: { id: number; onClose: () => void }) {
             } finally {
               setThinking(false);
             }
-          }}
+          })()}
         >
           {thinking ? "Придумываю… секунд 10" : word.mnemonic ? "Придумать другую" : "Придумать запоминалку"}
         </Cell>

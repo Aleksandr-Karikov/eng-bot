@@ -1,0 +1,132 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "plugins": [
+    "typescript",
+    "react",
+    "unicorn",
+    "oxc",
+    "import"
+  ],
+  "categories": {
+    "correctness": "off",
+    "suspicious": "off",
+    "pedantic": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off",
+    "perf": "off"
+  },
+  "rules": {
+    "no-unreachable": "error",
+    "no-const-assign": "error",
+    "no-dupe-keys": "error",
+    "no-dupe-class-members": "error",
+    "no-func-assign": "error",
+    "no-import-assign": "error",
+    "no-obj-calls": "error",
+    "no-redeclare": "error",
+    "no-unsafe-negation": "error",
+    "no-with": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-spread": "error",
+    "no-array-constructor": "error",
+    "no-unused-expressions": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "none"
+      }
+    ],
+    "typescript/await-thenable": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-duplicate-type-constituents": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-misused-new": "error",
+    "typescript/no-this-alias": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-implied-eval": "error",
+    "typescript/no-array-delete": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/no-unsafe-unary-minus": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/unbound-method": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "app/src/**/*.ts",
+        "app/src/**/*.tsx"
+      ],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+        "react/set-state-in-effect": "warn",
+        "react/purity": "error",
+        "react/refs": "error",
+        "react/static-components": "error",
+        "react/immutability": "error",
+        "react/globals": "error",
+        "react/set-state-in-render": "error",
+        "react/error-boundaries": "error",
+        "react/no-direct-mutation-state": "error",
+        "react/jsx-key": "error",
+        "react/jsx-no-duplicate-props": "error",
+        "react/no-string-refs": "error",
+        "react/no-find-dom-node": "error",
+        "react/no-danger-with-children": "error"
+      }
+    },
+    {
+      "files": [
+        "tests/*.ts"
+      ],
+      "rules": {
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/unbound-method": "off",
+        "typescript/no-unnecessary-type-assertion": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    "app/node_modules/**",
+    "app/dist/**",
+    "data/**",
+    "drizzle/**",
+    "designs/**",
+    "extension/**",
+    "release-notes/**",
+    "tools/**",
+    "coverage/**",
+    "**/*.mjs",
+    "**/*.js"
+  ]
+}

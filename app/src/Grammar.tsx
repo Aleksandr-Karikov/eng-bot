@@ -245,16 +245,6 @@ function AnswerInput({ exercise, pending, busy, onSubmit }: {
     haptic.tap();
   };
 
-  const undo = () => {
-    if (locked) return;
-    const parts = text.trim().split(/\s+/).filter(Boolean);
-    parts.pop();
-    setText(parts.join(" "));
-    // Снимаем пометку с последнего добавленного слова — его снова можно нажать.
-    setTaken((current) => current.slice(0, -1));
-    haptic.tap();
-  };
-
   return (
     <div style={{ padding: 16, display: "grid", gap: 12 }}>
       {exercise.kind === "order" && words.length > 0 && (

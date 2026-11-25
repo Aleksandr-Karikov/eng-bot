@@ -9,9 +9,7 @@
  *   npx tsx scripts/build-grammar.ts --dry-run   — только проверить контент
  *   npx tsx scripts/build-grammar.ts articles    — только одну тему
  */
-import { eq } from "drizzle-orm";
 import { createDb } from "../src/db/client";
-import { grammarExercises, grammarProgress, grammarTopics } from "../src/db/schema";
 import { GRAMMAR_TOPICS, type ExerciseDraft, type TopicDraft } from "../src/grammar";
 import { syncGrammar } from "../src/services/grammar-topics";
 import { MISTAKE_CATEGORIES } from "../src/llm/enricher";

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { botHarness } from "./bot-harness";
+import { botHarness, textOf } from "./bot-harness";
 import type { LlmSwitch } from "../src/bot/context";
 import type { Provider } from "../src/llm/provider";
 
@@ -30,7 +30,7 @@ function switcher(opts: { provider?: Provider; ready?: boolean } = {}) {
 
 const lastText = (h: ReturnType<typeof botHarness>) => {
   const calls = h.calls.filter((c) => c.method === "sendMessage");
-  return String(calls[calls.length - 1]?.payload.text ?? "");
+  return textOf(calls[calls.length - 1]);
 };
 
 describe("/llm", () => {

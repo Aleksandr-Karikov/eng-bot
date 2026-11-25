@@ -20,10 +20,10 @@ function readJson(req: IncomingMessage, max = MAX_BODY): Promise<unknown> {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
       } catch (err) {
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
-    req.on("error", reject);
+    req.on("error", (err) => reject(err));
   });
 }
 
@@ -31,7 +31,13 @@ function readJson(req: IncomingMessage, max = MAX_BODY): Promise<unknown> {
  * Приём слов из расширения браузера. Слушает только 127.0.0.1 — снаружи Мака недоступен;
  * кто есть кто — по личному ключу из /extension.
  */
+/** Ключ из тела запроса: не строка — значит, ключа нет. */
+const keyOf = (body: Record<string, unknown>): string => (typeof body.key === "string" ? body.key : "");
+
 export function startCaptureServer(deps: Deps, port: number): Server {
+  // Обработчик async, но createServer промис не ждёт: тело обёрнуто в try/catch, поэтому
+  // отклонённого промиса наружу не уходит — ошибка уходит в лог и в ответ 500.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const server = createServer(async (req, res) => {
     const send = (status: number, body: unknown) => {
       res.writeHead(status, {
@@ -57,7 +63,7 @@ export function startCaptureServer(deps: Deps, port: number): Server {
       if (req.method === "POST" && url.pathname === "/example") {
         const body = (await readJson(req)) as { key?: unknown; wordId?: unknown; context?: unknown; title?: unknown };
         const result = await addExample(deps, {
-          key: String(body.key ?? ""),
+          key: keyOf(body),
           wordId: Number(body.wordId),
           context: typeof body.context === "string" ? body.context : "",
           title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
@@ -67,7 +73,7 @@ export function startCaptureServer(deps: Deps, port: number): Server {
       if (req.method === "POST" && url.pathname === "/capture") {
         const body = (await readJson(req)) as Partial<CaptureInput>;
         const input: CaptureInput = {
-          key: String(body.key ?? ""),
+          key: keyOf(body),
           text: typeof body.text === "string" ? body.text : "",
           context: typeof body.context === "string" ? body.context : "",
           title: typeof body.title === "string" ? body.title.slice(0, 200) : "",
@@ -78,7 +84,7 @@ export function startCaptureServer(deps: Deps, port: number): Server {
       if (req.method === "POST" && url.pathname === "/explain") {
         const body = (await readJson(req)) as Partial<CaptureInput>;
         const result = await explainSelection(deps, {
-          key: String(body.key ?? ""),
+          key: keyOf(body),
           text: typeof body.text === "string" ? body.text : "",
           context: typeof body.context === "string" ? body.context : "",
         });
@@ -87,7 +93,7 @@ export function startCaptureServer(deps: Deps, port: number): Server {
       if (req.method === "POST" && url.pathname === "/read-image") {
         // base64 длиннее картинки на треть.
         const body = (await readJson(req, Math.ceil(MAX_IMAGE_BYTES * 1.4))) as { key?: unknown; image?: unknown };
-        const result = await readImage(deps, { key: String(body.key ?? ""), image: typeof body.image === "string" ? body.image : "" });
+        const result = await readImage(deps, { key: keyOf(body), image: typeof body.image === "string" ? body.image : "" });
         return send(result.ok ? 200 : result.status, result);
       }
       send(404, { ok: false, error: "not found" });

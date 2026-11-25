@@ -3,7 +3,7 @@ import type { CheckResult } from "../src/llm/enricher";
 import { buildCheckPrompt } from "../src/llm/enricher";
 import { ChatHistory } from "../src/bot/history";
 import { recentMistakes } from "../src/services/mistakes";
-import { botHarness, buttonData } from "./bot-harness";
+import { botHarness, buttonData, sentTexts } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 
 const result: CheckResult = {
@@ -21,7 +21,7 @@ function harness() {
   return { h, check };
 }
 
-const texts = (h: ReturnType<typeof botHarness>) => h.calls.map((c) => String(c.payload.text ?? ""));
+const texts = (h: ReturnType<typeof botHarness>) => sentTexts(h.calls);
 
 async function checkArtemsMessage(h: ReturnType<typeof botHarness>) {
   await h.bot.handleUpdate(h.groupReplyTo(100, -500, "/check", { messageId: 5, fromId: 200, text: "a book of good youtuber" }));

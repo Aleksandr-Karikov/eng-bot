@@ -32,7 +32,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
   // Задание с несколькими пропусками (баг #25): по ответу на каждый, заполнять можно в любом порядке
   // — человек тапает по нужному пропуску, и фокус уходит туда.
   const gaps = card.stage === "cloze" && card.cloze ? gapCount(card.cloze.sentence) : 1;
-  const [answers, setAnswers] = useState<string[]>(() => Array(Math.max(1, gaps)).fill(""));
+  const [answers, setAnswers] = useState<string[]>(() => Array<string>(Math.max(1, gaps)).fill(""));
   const fields = useRef<Array<HTMLInputElement | null>>([]);
   /** Куда поставить фокус: пропуск, который человек выбрал сам, иначе первый. */
   const [focusAt, setFocusAt] = useState(0);

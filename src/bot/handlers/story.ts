@@ -1,7 +1,7 @@
 import { InputFile, type Api, type Bot } from "grammy";
 import type { Room } from "../../db/schema";
 import { findRoomByChat, getRoom } from "../../services/rooms";
-import { getStory, saveStory, setStoryAudio, storyGlossary, storyQuestions, storyWords } from "../../services/stories";
+import { getStory, saveStory, setStoryAudio, storyQuestions, storyWords } from "../../services/stories";
 import { decodeCb } from "../callbacks";
 import { background, HTML, type BotContext, type Deps } from "../context";
 import { storyKeyboard, storyQuestionKeyboard } from "../keyboards";

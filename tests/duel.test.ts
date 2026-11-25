@@ -4,7 +4,7 @@ import { buildDuelRound, recordDuelPoint, weeklyDuelPoints } from "../src/servic
 import { createRoom, joinRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
 import { saveWord } from "../src/services/words";
-import { botHarness, type ApiCall } from "./bot-harness";
+import { botHarness, sentTexts, type ApiCall } from "./bot-harness";
 import { T0, makeUser, testDb } from "./helpers";
 
 const GROUP = -700;
@@ -29,8 +29,8 @@ function lastRound(calls: ApiCall[]) {
   const buttons = (call.payload.reply_markup as { inline_keyboard: Button[][] }).inline_keyboard.flat();
   return { text, term, right: buttons.find((b) => b.text === `t-${term}`)!, wrong: buttons.find((b) => b.text !== `t-${term}`)! };
 }
-const texts = (calls: ApiCall[]) => calls.map((c) => String(c.payload.text ?? ""));
-const answers = (calls: ApiCall[]) => calls.filter((c) => c.method === "answerCallbackQuery").map((c) => String(c.payload.text ?? ""));
+const texts = (calls: ApiCall[]) => sentTexts(calls);
+const answers = (calls: ApiCall[]) => sentTexts(calls.filter((c) => c.method === "answerCallbackQuery"));
 
 describe("buildDuelRound", () => {
   it("offers 4 translations from the room, preferring distractors of the same kind", async () => {

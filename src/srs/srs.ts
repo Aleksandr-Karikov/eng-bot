@@ -42,7 +42,7 @@ function snapshot(card: Card): SrsSnapshot {
 }
 
 function parse(json: string): Card {
-  const raw = JSON.parse(json);
+  const raw = JSON.parse(json) as Card;
   return { ...raw, due: new Date(raw.due), last_review: raw.last_review ? new Date(raw.last_review) : undefined };
 }
 

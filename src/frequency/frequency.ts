@@ -10,7 +10,6 @@ export interface FrequencySource {
 }
 
 /** wordfreq (Python): объединяет субтитры, новости, Википедию, соцсети — то, что люди реально читают и слышат. */
-const HANGUL = /[\uac00-\ud7a3]/;
 
 export class WordfreqSource implements FrequencySource {
   private readonly python: string;

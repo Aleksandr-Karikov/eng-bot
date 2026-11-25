@@ -303,6 +303,16 @@ export function botHarness(opts: {
 
 export const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Текст вызова Telegram. `payload` — `Record<string, unknown>`, потому что харнесс пишет туда любой
+ * метод API; `String(obj)` на нестроке дал бы «[object Object]», поэтому нестроки здесь — пустая строка.
+ */
+export const textOf = (call: ApiCall | undefined): string =>
+  typeof call?.payload.text === "string" ? call.payload.text : "";
+
+/** Тексты всех вызовов бота — обычная проверка «что человек увидел». */
+export const sentTexts = (calls: ApiCall[]): string[] => calls.map(textOf);
+
 type Button = { text: string; callback_data: string };
 
 /** Кнопки последнего сообщения/редактирования с inline-клавиатурой. */

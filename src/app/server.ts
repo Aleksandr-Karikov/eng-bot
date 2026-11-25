@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { getRoom } from "../services/rooms";
 import { serve, type ServerType } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { isValid, parse } from "@telegram-apps/init-data-node";
@@ -24,6 +23,12 @@ export interface AppContext {
   botToken: string;
 }
 
+/** Тело запроса: Hono отдаёт `any`, а обработчики ждут объект. Мусор, массив и не-JSON — пустой объект. */
+async function readBody(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown>> {
+  const raw = await c.req.json().catch(() => null);
+  return typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+
 /**
  * Mini App: страница (собранный Vite в app/dist) и её API. Кто пользователь — только по подписанным
  * Telegram данным запуска (initData), проверка — @telegram-apps/init-data-node, без своих логинов.
@@ -42,8 +47,6 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const user = telegramId !== undefined ? await appUser(deps, telegramId) : undefined;
     if (!user) return c.json({ ok: false, error: "Открой приложение из бота" }, 401);
     c.set("user", user);
-    // Как в боте: язык запроса — язык текущей комнаты (lang.ts).
-    const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
     await next();
   });
 
@@ -53,7 +56,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
    * оно присылает `Intl.DateTimeFormat().resolvedOptions().timeZone` при запуске.
    */
   app.post("/api/timezone", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { timezone?: unknown };
+    const body = await readBody(c);
     const timezone = typeof body.timezone === "string" ? body.timezone.slice(0, 100) : "";
     // Мусор и опечатки не пишем: неизвестный пояс сделал бы неделю невычислимой.
     if (!timezone || !isTimeZone(timezone)) return c.json({ ok: false, error: "Неизвестный часовой пояс" }, 400);
@@ -62,8 +65,8 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   // Ошибки с телефона (кнопки Telegram, плеер…) — в лог бота, коротко.
   app.post("/api/client-error", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    const field = (k: string, max: number) => (typeof body[k] === "string" ? (body[k] as string).slice(0, max) : "");
+    const body = await readBody(c);
+    const field = (k: string, max: number) => (typeof body[k] === "string" ? body[k].slice(0, max) : "");
     console.error(`App client error (${c.get("user").firstName}): ${field("where", 100)}: ${field("message", 500)} — ${field("ua", 200)}`);
     return c.json({ ok: true });
   });
@@ -72,36 +75,36 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json({ ok: true, cards: await appQueue(deps, c.get("user"), mode) });
   });
   app.post("/api/answer", async (c) => {
-    const r = await appAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appAnswer(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400);
   });
   // 🆕 Новые слова от друзей: колода и решение по карточке (или его отмена — undo: true).
   app.get("/api/triage", async (c) => c.json({ ok: true, cards: await appTriageQueue(deps, c.get("user")) }));
   app.post("/api/triage", async (c) => {
-    const r = await appTriage(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appTriage(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400 | 409);
   });
   // ✍️ 🎧 Ответ текстом: проверка и оценка карточки; «Сохранить ошибки» после разбора своего предложения.
   app.post("/api/check", async (c) => {
-    const r = await appCheck(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appCheck(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400 | 404 | 409);
   });
   app.post("/api/dialogue", async (c) => {
-    const r = await dialogues.open(c.get("user"), await c.req.json().catch(() => null) ?? {});
+    const r = await dialogues.open(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   app.post("/api/dialogue/answer", async (c) => {
-    const r = await dialogues.answer(c.get("user"), await c.req.json().catch(() => null) ?? {});
+    const r = await dialogues.answer(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   app.post("/api/mistakes", async (c) => {
-    const r = await appSaveMistakes(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appSaveMistakes(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 404);
   });
   // 🎧 Аудиоурок — в личку от бота (Telegram играет его в фоне, приложение так не умеет).
   app.post("/api/lesson", async (c) => {
     if (!ctx.api) return c.json({ ok: false, error: "Бот недоступен" }, 503);
-    const body = (await c.req.json().catch(() => ({}))) as { accent?: unknown };
+    const body = await readBody(c);
     const accent = body.accent === "uk" || body.accent === "us" ? body.accent : "mix";
     return c.json({ ok: true, status: await sendLesson(deps, ctx.api, c.get("user"), accent) });
   });
@@ -115,37 +118,37 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return topic ? c.json({ ok: true, topic }) : c.json({ ok: false, error: "Тема не найдена" }, 404);
   });
   app.post("/api/grammar/answer", async (c) => {
-    const r = await appGrammarAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
-    return c.json(r.body, r.status as 200 | 400 | 404);
+    const r = await appGrammarAnswer(deps, c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
   });
   // 🐉 Вкладка босса: цель комнаты, показанная боем (services/boss.ts).
   app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
   app.post("/api/boss/combat", async (c) => {
-    const r = await appCombat(deps, c.get("user"), await c.req.json().catch(() => null));
+    const r = await appCombat(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   // 🪙 Купить уровень усиления за монеты недели.
   app.post("/api/boss/upgrade", async (c) => {
-    const r = await appBuyUpgrade(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appBuyUpgrade(deps, c.get("user"), await readBody(c));
     return c.json({ ...r.body, ...(r.status === 200 && r.user ? await appBoss(deps, r.user) : {}) }, r.status as 200 | 400);
   });
   // 🧠 Ответ на вопрос по ошибкам из очереди.
   app.post("/api/drill", async (c) => {
-    const r = await appDrillAnswer(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appDrillAnswer(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400);
   });
   // 📦 Готовые наборы слов.
   app.get("/api/sets", async (c) => c.json({ ok: true, ...await appSets(deps, c.get("user")) }));
   app.post("/api/sets/decide", async (c) => {
-    const r = await appSetDecide(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appSetDecide(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400 | 409);
   });
   // 📍 Куда «учу» кладёт слово: показать и сменить комнату. Регистрируется ДО `/api/sets/:id`,
   // иначе «target» разобрался бы как id набора и отдал 404.
   app.get("/api/sets/target", async (c) => c.json(await appSetTarget(deps, c.get("user"))));
   app.post("/api/sets/target", async (c) => {
-    const r = await appSetSetTarget(deps, c.get("user"), await c.req.json().catch(() => ({})));
-    return c.json(r.body, r.status as 200 | 400 | 409);
+    const r = await appSetSetTarget(deps, c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
   });
   app.get("/api/sets/:id", async (c) => {
     const r = await appSetItems(deps, c.get("user"), Number(c.req.param("id")));
@@ -153,7 +156,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   // ↩️ Отменить последний свайп: карточка — как до ответа.
   app.post("/api/undo", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { cardId?: unknown };
+    const body = await readBody(c);
     const undone = await undoAnswer(deps.db, { userId: c.get("user").id, cardId: Number(body.cardId) });
     return undone ? c.json({ ok: true }) : c.json({ ok: false, error: "Этот ответ уже не отменить" }, 409);
   });
@@ -176,11 +179,11 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.get("/api/words", async (c) => c.json({ ok: true, ...(await appWords(deps, c.get("user"))) }));
   // ➕ Новое слово: черновик (перевод готовит модель), потом сохранение. Раньше /api/words/:id — иначе «prepare» стал бы id.
   app.post("/api/words/prepare", async (c) => {
-    const r = await appPrepareWord(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appPrepareWord(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400 | 409 | 422);
   });
   app.post("/api/words", async (c) => {
-    const r = await appAddWord(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appAddWord(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status as 200 | 400 | 409);
   });
   app.get("/api/words/:id", async (c) => {
@@ -192,14 +195,14 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/words/:id/edit", async (c) => {
     const word = await memberWord(deps, c.get("user"), Number(c.req.param("id")));
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
-    const r = await appEditWord(deps, word, await c.req.json().catch(() => ({})));
+    const r = await appEditWord(deps, word, await readBody(c));
     return c.json(r, r.ok ? 200 : 400);
   });
   app.post("/api/words/:id/correct", async (c) => {
     const user = c.get("user");
     const word = await memberWord(deps, user, Number(c.req.param("id")));
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
-    const body = await c.req.json().catch(() => null);
+    const body = await readBody(c);
     if (!body || typeof body.instruction !== "string" || !body.instruction.trim() || body.instruction.length > 1000) {
       return c.json({ ok: false, error: "Опиши исправление: от 1 до 1000 символов" }, 400);
     }
@@ -229,7 +232,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     const user = c.get("user");
     const word = await memberWord(deps, user, Number(c.req.param("id")));
     if (!word) return c.json({ ok: false, error: "Этого слова уже нет" }, 404);
-    const body = await c.req.json().catch(() => null);
+    const body = await readBody(c);
     const draft = corrections.get(user.id);
     if (!draft || draft.id !== body?.draftId || draft.before.id !== word.id || draft.expiresAt <= deps.now().getTime()) {
       return c.json({ ok: false, error: "Черновик устарел. Запроси исправление заново" }, 409);
@@ -266,7 +269,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.get("/api/settings", async (c) => c.json({ ok: true, settings: await appSettings(deps, c.get("user")) }));
   app.post("/api/settings", async (c) => {
-    const r = await appChangeSetting(deps, c.get("user"), await c.req.json().catch(() => ({})));
+    const r = await appChangeSetting(deps, c.get("user"), await readBody(c));
     return r.ok ? c.json({ ok: true, settings: await appSettings(deps, r.user) }) : c.json(r, 400);
   });
 

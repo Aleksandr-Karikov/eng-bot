@@ -19,7 +19,7 @@
  */
 import { createDb } from "../src/db/client";
 import { rooms } from "../src/db/schema";
-import { latestDigestMoment, WEEK_MS } from "../src/services/digest";
+import { WEEK_MS } from "../src/services/digest";
 import { collectTrophies } from "../src/services/trophies";
 
 try {

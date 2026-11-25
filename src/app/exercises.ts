@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Deps } from "../bot/context";
 import { gapParts } from "../bot/texts";
-import { clozeSentences, type User, type Word } from "../db/schema";
+import { clozeSentences, type User } from "../db/schema";
 import type { SentenceReview } from "../llm/tutor";
 import { gradeDictation, isExactAnswer } from "../services/exercises";
 import { checkAndCount, type QuotaKind } from "../services/limits";

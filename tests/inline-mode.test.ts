@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { botHarness, settle } from "./bot-harness";
+import { botHarness, sentTexts, settle } from "./bot-harness";
 import { T0, makeUser } from "./helpers";
 import { saveWord } from "../src/services/words";
 import { ensurePersonalRoom } from "../src/services/rooms";
@@ -34,7 +34,7 @@ const titles = (h: ReturnType<typeof botHarness>) => lastInline(h)?.results?.map
 
 /** Тексты всплывашек `answerCallbackQuery` — по ним видно, что человек увидел сразу. */
 const texts = (h: ReturnType<typeof botHarness>) =>
-  h.calls.filter((c) => c.method === "answerCallbackQuery").map((c) => String(c.payload.text ?? ""));
+  sentTexts(h.calls.filter((c) => c.method === "answerCallbackQuery"));
 
 describe("инлайн-режим", () => {
   it("находит слово по началу и отдаёт перевод прямо в карточке", async () => {

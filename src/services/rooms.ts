@@ -4,7 +4,7 @@ import type { Db } from "../db/client";
 import { cards, clozeSentences, duelPoints, reviewLogs, roomMembers, rooms, users, words, type Room, type User, wordUses, stories } from "../db/schema";
 import { createCards } from "./cards";
 import { ROOM_LIMITS, ROOM_REFUSALS } from "./limits";
-import { getUser, parseLastRooms, updateUser } from "./users";
+import { getUser, updateUser } from "./users";
 import { removeReviewHistory } from "./combat-ledger";
 import { isTimeZone } from "../time";
 

@@ -20,6 +20,7 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg espeak-ng
       - run: npm ci
       - run: mkdir -p data
+      - run: npm run lint
       - run: npm test
       - run: npm run typecheck
       - run: npm ci

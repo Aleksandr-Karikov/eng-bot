@@ -49,7 +49,7 @@ export async function getUser(db: Db, id: number): Promise<User | undefined> {
 }
 
 export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<User> {
-  let set: UserPatch & { lastRooms?: string } = patch;
+  const set: UserPatch & { lastRooms?: string } = patch;
   const [user] = await db.update(users).set(set).where(eq(users.id, id)).returning();
   return user;
 }

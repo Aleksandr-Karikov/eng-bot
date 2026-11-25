@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { User } from "../src/db/schema";
 import { digestText, reminderText } from "../src/bot/texts";
 import { sendDigests, sendReminders } from "../src/reminder-loop";
-import { collectDigests, digestDue, latestDigestMoment, markDigestSent, nearWeekEnd, roomWeekMoment } from "../src/services/digest";
+import { collectDigests, digestDue, markDigestSent, nearWeekEnd, roomWeekMoment } from "../src/services/digest";
 import { answerCard, nextDue } from "../src/services/review";
 import { createRoom, getRoom, joinRoom, linkGroup } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { cards } from "../src/db/schema";
 import { ImageService } from "../src/images/images";
-import { BackgroundPainter, onAcPower } from "../src/images/painter";
+import { BackgroundPainter } from "../src/images/painter";
 import { PictureStore } from "../src/images/store";
 import type { ExerciseTutor } from "../src/llm/tutor";
 import { answerCard } from "../src/services/review";

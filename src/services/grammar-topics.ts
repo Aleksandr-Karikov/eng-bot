@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic, type User } from "../db/schema";
+import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic } from "../db/schema";
 import { recordMistakes } from "./mistakes";
 import { GRAMMAR_TOPICS } from "../grammar";
 

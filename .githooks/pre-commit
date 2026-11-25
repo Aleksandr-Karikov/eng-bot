@@ -1,0 +1,45 @@
+#!/bin/sh
+# Pre-commit: то, что дёшево и ловит ошибки до того, как они уйдут в CI.
+#
+# Здесь только быстрые проверки (~5 с): линт, типы, согласованность документов. Тесты (`npm test`,
+# ~30 с) сознательно не здесь — они тяжёлые, а их зелёность всё равно проверяет CI перед деплоем.
+#
+# Обойти, когда действительно нужно (например, коммит посреди работы):
+#   git commit --no-verify
+#
+# Хук не устанавливается сам по себе: `npm install` вызывает `prepare`, который ставит
+# core.hooksPath на эту папку (см. scripts/install-hooks.mjs).
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: нет node_modules — выполни npm install" >&2
+  exit 1
+fi
+
+# Линтер: 0 ошибок обязателен, предупреждения коммит не блокируют.
+if ! npm run --silent lint >/tmp/eng-bot-lint.log 2>&1; then
+  cat /tmp/eng-bot-lint.log >&2
+  echo "" >&2
+  echo "pre-commit: линтер нашёл ошибки. Поправить: npm run lint:fix" >&2
+  exit 1
+fi
+
+if ! npm run --silent typecheck >/tmp/eng-bot-types.log 2>&1; then
+  cat /tmp/eng-bot-types.log >&2
+  echo "" >&2
+  echo "pre-commit: typecheck не прошёл." >&2
+  exit 1
+fi
+
+# План, журналы и индекс: правка docs/PLAN.md без `npm run docs:index` ломает CI.
+if ! npm run --silent docs:check >/tmp/eng-bot-docs.log 2>&1; then
+  cat /tmp/eng-bot-docs.log >&2
+  echo "" >&2
+  echo "pre-commit: документы рассинхронизированы. Поправить: npm run docs:index" >&2
+  exit 1
+fi
+
+echo "pre-commit: линт, типы и документы в порядке"

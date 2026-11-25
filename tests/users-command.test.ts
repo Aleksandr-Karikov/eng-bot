@@ -6,7 +6,7 @@ import { createRoom } from "../src/services/rooms";
 import { answerCard } from "../src/services/review";
 import { saveWord } from "../src/services/words";
 import { getUserByTelegramId, setSourceOnce, upsertUser } from "../src/services/users";
-import { botHarness } from "./bot-harness";
+import { botHarness, sentTexts, textOf } from "./bot-harness";
 import { DAY, T0, at, makeUser, testDb } from "./helpers";
 
 const ADMIN = 999;
@@ -14,10 +14,10 @@ const STRANGER = 555;
 
 const lastText = (h: ReturnType<typeof botHarness>) => {
   const calls = h.calls.filter((c) => c.method === "sendMessage");
-  return String(calls[calls.length - 1]?.payload.text ?? "");
+  return textOf(calls[calls.length - 1]);
 };
 const allText = (h: ReturnType<typeof botHarness>) =>
-  h.calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text ?? "")).join("\n");
+  sentTexts(h.calls.filter((c) => c.method === "sendMessage")).join("\n");
 
 /** Человек со словами и одним повторением в пределах недели. */
 async function active(db: ReturnType<typeof testDb>, telegramId: number, firstName: string) {

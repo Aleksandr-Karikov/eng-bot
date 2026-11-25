@@ -27,9 +27,7 @@ export interface RetryOptions {
 }
 
 const statusOf = (err: unknown): number | undefined =>
-  typeof err === "object" && err !== null && "status" in err && typeof (err as { status: unknown }).status === "number"
-    ? (err as { status: number }).status
-    : undefined;
+  typeof err === "object" && err !== null && "status" in err && typeof err.status === "number" ? err.status : undefined;
 
 /** Выполнить `run`; если сервер не ответил — подождать и попробовать ещё раз. */
 export async function retryServerDown<T>(run: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {

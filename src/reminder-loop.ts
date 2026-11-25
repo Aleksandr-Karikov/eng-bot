@@ -204,6 +204,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
     }
   };
   void tick();
-  const handle = setInterval(tick, intervalMs);
+  // setInterval не ждёт промис: ошибку внутри tick ловит сам tick, наружу она не уходит.
+  const handle = setInterval(() => void tick(), intervalMs);
   return () => clearInterval(handle);
 }

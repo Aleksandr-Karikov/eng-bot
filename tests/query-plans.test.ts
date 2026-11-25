@@ -13,7 +13,7 @@ describe("план запроса очереди (E33)", () => {
   it("nextReviewAt использует индекс (user_id, due) без временной сортировки", async () => {
     const db = testDb();
     const user = await makeUser(db, 1);
-    const plan = await db.all<{ detail: string }>(
+    const plan = db.all<{ detail: string }>(
       sql`EXPLAIN QUERY PLAN SELECT due FROM cards WHERE user_id = ${user.id} ORDER BY due LIMIT 1`,
     );
     const text = plan.map((p) => p.detail).join(" | ");

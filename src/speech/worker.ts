@@ -52,7 +52,7 @@ export class JsonLineWorker {
       createInterface({ input: proc.stdout }).on("line", (line) => {
         let msg: WorkerReply & { ready?: boolean; id?: number };
         try {
-          msg = JSON.parse(line);
+          msg = JSON.parse(line) as WorkerReply & { ready?: boolean; id?: number };
         } catch {
           return;
         }

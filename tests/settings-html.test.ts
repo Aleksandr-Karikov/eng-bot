@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { updateUser } from "../src/services/users";
 import { botHarness } from "./bot-harness";
-import { makeUser, T0 } from "./helpers";
+import { makeUser } from "./helpers";
 
 /**
  * `/settings` собирает текст с HTML-тегами (`<b>Озвучка карточек…</b>`), но отправлялся без
