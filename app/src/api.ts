@@ -316,8 +316,17 @@ export interface CheckResult {
   transcriptionUk: string;
   transcriptionUs: string;
   example: string;
-  /** Вставь по смыслу: предложение с ответом и перевод предложения. */
-  filled?: { before: string; answer: string; after: string };
+  /**
+   * Вставь по смыслу: предложение с ответом и перевод предложения.
+   * `parts` — куски текста и ответы по порядку: пропусков может быть два (баг #25), и тогда ответ
+   * нужен на каждый. `before`/`answer`/`after` остаются для одного пропуска.
+   */
+  filled?: {
+    before: string;
+    answer: string;
+    after: string;
+    parts?: Array<{ text: string } | { answer: string }>;
+  };
   explanation?: string;
   tip?: string;
   /** Своё предложение: разбор как в /check. */

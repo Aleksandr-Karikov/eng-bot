@@ -8,20 +8,50 @@ export interface ClozeDraft {
   translation: string;
 }
 
-/** Длина пропуска: три и больше подчёркиваний подряд. */
+/** Пропуск: три и больше подчёркиваний подряд. Модель пишет и `___`, и `_______`. */
 const GAP = /_{3,}/g;
 
-/** Все пропуски в предложении — от левого к правому. */
-export const gapsIn = (sentence: string): string[] => sentence.match(GAP) ?? [];
+/** Сколько пропусков в предложении. */
+export const gapCount = (sentence: string): number => (sentence.match(GAP) ?? []).length;
 
 /**
- * Годится ли предложение с пропуском. Ровно один пропуск — на нём держится весь разбор: `gapParts`
- * подставляет ответ в единственный пропуск, а второй остаётся в тексте пустым (баг #25): у человека
- * выходило «The past seems to **have hold** a strong ____ on him». Модель иногда ставит два пропуска
- * на фразу из двух слов — такой вопрос отбрасываем, а не пытаемся угадать, что куда вставлять.
+ * Части предложения между пропусками: `a ___ b ___ c` → `["a ", " b ", " c"]`.
+ *
+ * Частей всегда на одну больше, чем пропусков. На этом держится и показ (что стоит до/после
+ * каждого пропуска), и поля ввода в приложении — по одному на пропуск (баг #25).
  */
-export function validCloze(sentence: string): boolean {
-  return gapsIn(sentence).length === 1;
+export function gapSegments(sentence: string): string[] {
+  return sentence.split(GAP);
+}
+
+/**
+ * Ответы по пропускам. В базе они хранятся одной строкой через `|`: `do me|favor`.
+ *
+ * Разделитель, а не пробел: `do me a favor` состоит из четырёх слов, и угадать, где кончается
+ * первый пропуск, а где начинается второй, по словам нельзя. Один пропуск пишется как раньше,
+ * без разделителя, — старые записи читаются без миграции.
+ */
+export const ANSWERS_SEP = "|";
+
+export function answersOf(answer: string): string[] {
+  return answer.includes(ANSWERS_SEP)
+    ? answer.split(ANSWERS_SEP).map((a) => a.trim()).filter(Boolean)
+    : [answer.trim()];
+}
+
+/** Обратная операция: из ответов по пропускам — строка для базы. */
+export const joinAnswers = (answers: string[]): string => answers.map((a) => a.trim()).filter(Boolean).join(ANSWERS_SEP);
+
+/**
+ * Совпадает ли число ответов с числом пропусков.
+ *
+ * Задание с двумя пропусками и одним ответом нерешаемо: человек вписывает одно слово, а заполнить
+ * надо два (баг #25 — «ответ не заполняет оба пропуска»). Такие предложения отбрасываем: лучше
+ * показать два нормальных задания, чем одно нерешаемое.
+ */
+export function clozeMatches(sentence: string, answer: string): boolean {
+  const gaps = gapCount(sentence);
+  return gaps > 0 && gaps === answersOf(answer).length;
 }
 
 export async function listCloze(db: Db, wordId: number): Promise<ClozeSentence[]> {
@@ -29,9 +59,8 @@ export async function listCloze(db: Db, wordId: number): Promise<ClozeSentence[]
 }
 
 export async function saveCloze(db: Db, wordId: number, items: ClozeDraft[], now: Date): Promise<void> {
-  // Проверка и здесь, а не только в разборе ответа модели: saveCloze зовут и скрипты, а предложение
-  // с двумя пропусками ломает разбор уже после сохранения.
-  const usable = items.filter((i) => validCloze(i.sentence));
+  // Проверка и здесь, а не только в разборе ответа модели: saveCloze зовут и скрипты.
+  const usable = items.filter((i) => clozeMatches(i.sentence, i.answer));
   if (usable.length === 0) return;
   await db.insert(clozeSentences).values(usable.map((i) => ({ ...i, wordId, createdAt: now })));
 }

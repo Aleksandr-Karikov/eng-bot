@@ -67,8 +67,14 @@ export function normalizeAnswer(s: string): string {
     .trim();
 }
 
-/** Ответ совпал с формой в пропуске или со словарной формой слова. */
+/**
+ * Ответ совпал с формой в пропуске или со словарной формой слова.
+ *
+ * У задания с двумя пропусками в базе лежит `have|hold`, а человек пишет оба слова подряд — `have hold`
+ * (баг #25). Поэтому разделитель считается мягким: оба написания сводятся к одному.
+ */
 export function isExactAnswer(answer: string, expected: { answer: string; term: string }): boolean {
   const a = normalizeAnswer(answer);
-  return a !== "" && (a === normalizeAnswer(expected.answer) || a === normalizeAnswer(expected.term));
+  const flat = normalizeAnswer(expected.answer.replace(/\|/g, " "));
+  return a !== "" && (a === normalizeAnswer(expected.answer) || a === flat || a === normalizeAnswer(expected.term));
 }

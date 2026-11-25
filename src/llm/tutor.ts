@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fixesField, jsonArray, jsonObject } from "./json";
-import { validCloze, type ClozeDraft } from "../services/cloze";
+import { clozeMatches, gapCount, type ClozeDraft } from "../services/cloze";
 import { capStem, EN, type Language } from "../lang";
 import { mistakeCategories, type CheckResult } from "./enricher";
 
@@ -263,7 +263,9 @@ export function buildClozePrompt(term: string, translation: string, lang: Langua
   return [
     `${capStem(lang)}ое слово или фраза: "${term}" (значение: "${translation}").`,
     `Составь ${CLOZE_COUNT} разных коротких естественных предложения на ${lang.stem}ом, где оно пропущено (в нужной форме).`,
-    "Пропуск обозначь ___ (один на предложение). Контекст должен однозначно подсказывать именно это слово, а не синоним.",
+    "Пропуск обозначь ___. Обычно он один. Если фраза состоит из двух частей, которые в предложении стоят порознь",
+    "(have a hold on → «seems to ___ a strong ___ on him»), можно сделать два пропуска — тогда ответов тоже два,",
+    "через | в том же порядке: «have|hold». Контекст должен однозначно подсказывать именно это слово, а не синоним.",
     ...(lang.code === "en"
       ? [
           "Если это фраза из нескольких слов — пропускай только ключевую часть (одно-два слова), остальная фраза остаётся видна:",
@@ -278,13 +280,14 @@ export function buildClozePrompt(term: string, translation: string, lang: Langua
         ]),
     'Верни JSON-массив: [{"sentence": "...", "answer": "...", "translation": "..."}], где',
     "answer — точная форма, которая стоит в пропуске, translation — перевод всего предложения на русский.",
+    "Если пропусков два — два ответа через | по порядку пропусков («do me|favor»). Пропусков и ответов всегда поровну.",
   ].join("\n");
 }
 
 const clozeItem = z.object({
-  // Ровно один пропуск: разбор подставляет ответ в единственный пропуск, и второй остался бы в тексте
-  // пустым — «The past seems to **have hold** a strong ____ on him» (баг #25).
-  sentence: z.string().trim().refine(validCloze),
+  // Пропусков и ответов должно быть поровну, иначе задание нерешаемо: человек заполняет два
+  // пропуска, а ответ в базе один («ответ не заполняет оба пропуска», баг #25).
+  sentence: z.string().trim().includes("___"),
   answer: z.string().trim().min(1),
   translation: z.string().trim().default(""),
 });
@@ -292,16 +295,24 @@ const clozeItem = z.object({
 export function parseCloze(text: string): ClozeDraft[] {
   return jsonArray(text).flatMap((entry) => {
     const r = clozeItem.safeParse(entry);
-    return r.success ? [r.data] : [];
+    // Пропусков и ответов поровну: два пропуска с одним ответом нерешаемы (баг #25).
+    return r.success && clozeMatches(r.data.sentence, r.data.answer) ? [r.data] : [];
   });
 }
+
+/** `have|hold` → `have, hold`: разделитель в ответе — служебный, модели его видеть незачем. */
+const readable = (s: string) => s.replace(/\|/g, ", ");
 
 export function buildJudgePrompt(input: JudgeInput, lang: Language = EN): string {
   return [
     `Русскоязычный человек учит ${lang.stem}ий и вставил слово в пропуск.`,
     `Предложение: ${input.sentence}`,
-    `Ожидалось: "${input.expected}" (словарная форма "${input.term}", значение "${input.translation}").`,
-    `Ответ ученика: "${input.answer}"`,
+    `Ожидалось: "${readable(input.expected)}" (словарная форма "${input.term}", значение "${input.translation}").`,
+    `Ответ ученика: "${readable(input.answer)}"`,
+    // Два пропуска — две части ответа: проверяй каждую на своём месте, а не всю строку целиком.
+    ...(input.expected.includes("|") || gapCount(input.sentence) > 1
+      ? [`В предложении ${gapCount(input.sentence)} пропуска; в ответе ${input.expected.split("|").length} — сверяй по порядку.`]
+      : []),
     "Засчитай (correct: true), если ответ подходит в это предложение по смыслу и грамматике: синоним, другая допустимая форма, мелкая опечатка.",
     "Иначе correct: false.",
     'Верни JSON: {"correct": true/false, "explanation": "...", "tip": "..."}, где explanation — 1–2 коротких предложения по-русски:',

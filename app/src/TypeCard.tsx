@@ -8,6 +8,7 @@ import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type Check
 import { useBottomButtons } from "./bottomButtons";
 import { transcription } from "./format";
 import { haptic, notify } from "./telegram";
+import { gapCount, gapSegments } from "./gaps";
 
 function play(card: Card, accent: "uk" | "us") {
   playAudio(cardAudioPath(card.cardId, accent));
@@ -29,6 +30,22 @@ function Marked({ text }: { text: string }) {
  */
 export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: Card; voice?: VoiceAccent | null; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
   const [answer, setAnswer] = useState("");
+  // Задание с несколькими пропусками (баг #25): по ответу на каждый, заполнять можно в любом порядке
+  // — человек тапает по нужному пропуску, и фокус уходит туда.
+  const gaps = card.stage === "cloze" && card.cloze ? gapCount(card.cloze.sentence) : 1;
+  const [answers, setAnswers] = useState<string[]>(() => Array(Math.max(1, gaps)).fill(""));
+  const fields = useRef<Array<HTMLInputElement | null>>([]);
+  /** Куда поставить фокус: пропуск, который человек выбрал сам, иначе первый. */
+  const [focusAt, setFocusAt] = useState(0);
+  useEffect(() => {
+    setAnswers(Array(Math.max(1, gaps)).fill(""));
+    setFocusAt(0);
+  }, [card.cardId, gaps]);
+  useEffect(() => {
+    if (gaps > 1) fields.current[focusAt]?.focus();
+  }, [focusAt, gaps]);
+  /** Ответ для сервера: несколько пропусков — через `|`, как хранится в базе. */
+  const answerText = gaps > 1 ? answers.map((a) => a.trim()).join("|") : answer;
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult>();
   const [saved, setSaved] = useState<boolean>();
@@ -88,10 +105,10 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
 
   const submit = useCallback(
     async (dunno = false) => {
-      if (checking || result || (!dunno && !answer.trim())) return;
+      if (checking || result || (!dunno && gaps > 1 ? answers.every((a) => !a.trim()) : !answer.trim())) return;
       setChecking(true);
       try {
-        const r = await checkAnswer(card, answer, dunno);
+        const r = await checkAnswer(card, answerText, dunno);
         setResult(r);
         haptic.done(Boolean(r.correct));
         if (!r.unchecked) onRated(r.damage);
@@ -107,7 +124,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
         setChecking(false);
       }
     },
-    [answer, card, checking, result, onRated, onNext],
+    [answerText, answers, answer, gaps, card, checking, result, onRated, onNext],
   );
 
   const native = useBottomButtons(
@@ -124,18 +141,63 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
   const task =
     card.stage === "cloze" && card.cloze ? (
       <>
-        <Text className="hint choice-title">Вставь пропущенное слово или фразу</Text>
-        <Title level="2" weight="2" className="choice-question">
-          {result?.filled ? (
-            <>
-              {result.filled.before}
-              <span className={result.correct ? "gap-right" : "gap-answer"}>{result.filled.answer}</span>
-              {result.filled.after}
-            </>
-          ) : (
-            card.cloze.sentence
-          )}
-        </Title>
+        <Text className="hint choice-title">
+          {gaps > 1 ? `Заполни ${gaps} пропуска` : "Вставь пропущенное слово или фразу"}
+        </Text>
+        {result?.filled ? (
+          <Title level="2" weight="2" className="choice-question">
+            {/* После ответа — всё предложение с подставленными ответами; неверный выделен. */}
+            {result.filled.parts?.length ? (
+              result.filled.parts.map((p, i) =>
+                "text" in p ? (
+                  <span key={i}>{p.text}</span>
+                ) : (
+                  <span key={i} className={result.correct ? "gap-right" : "gap-answer"}>{p.answer}</span>
+                ),
+              )
+            ) : (
+              <>
+                {result.filled.before}
+                <span className={result.correct ? "gap-right" : "gap-answer"}>{result.filled.answer}</span>
+                {result.filled.after}
+              </>
+            )}
+          </Title>
+        ) : gaps > 1 ? (
+          // Поля стоят в самом предложении: человек видит, какой пропуск заполняет. Тап по любому
+          // переводит фокус туда, поэтому порядок заполнения свободный.
+          <div className="cloze-gaps">
+            {gapSegments(card.cloze.sentence).map((text, i, all) => (
+              <span key={i}>
+                {text}
+                {i < all.length - 1 && (
+                  <input
+                    ref={(el) => { fields.current[i] = el; }}
+                    className="gap-input"
+                    aria-label={`Пропуск ${i + 1}`}
+                    value={answers[i] ?? ""}
+                    disabled={checking}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(e) => setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
+                    onFocus={() => setFocusAt(i)}
+                    onKeyDown={(e) => {
+                      // Enter — дальше или проверить: заполняют по очереди, и так быстрее.
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      if (i < all.length - 2) setFocusAt(i + 1);
+                      else void submit();
+                    }}
+                  />
+                )}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <Title level="2" weight="2" className="choice-question">
+            {card.cloze.sentence}
+          </Title>
+        )}
         <Text className="hint" style={{ textAlign: "center" }}>
           {card.cloze.translation}
         </Text>
@@ -163,7 +225,8 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
     <div ref={deck} className={`deck type-deck${keyboardOpen ? " keyboard-open" : ""}`}>
       <div className={`card choice-card type-card${result ? " type-card-reviewed" : ""}`}>
         <div className="type-prompt">{task}</div>
-        {!result && (
+        {/* При двух пропусках поля стоят внутри предложения — отдельное поле не нужно. */}
+        {!result && gaps <= 1 && (
           <div className="type-field">
             <Textarea
               ref={input}

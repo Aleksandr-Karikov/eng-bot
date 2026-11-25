@@ -615,3 +615,36 @@ body {
 .upgrade-offer { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--tg-theme-hint-color, #8884); }
 
 .upgrade-title { color: var(--tg-theme-text-color, #111318); }
+
+/* Задание с несколькими пропусками (баг #25): поля стоят прямо в предложении, чтобы было видно,
+   какой пропуск заполняешь. Ширина по содержимому и минимум, чтобы поле было удобно нажать. */
+.cloze-gaps {
+  text-align: center;
+  line-height: 2.1;
+  padding: 8px 0 4px;
+  font-size: 19px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gap-input {
+  box-sizing: content-box;
+  width: 5.5em;
+  min-width: 3em;
+  max-width: 90%;
+  padding: 2px 6px;
+  margin: 0 2px;
+  font: inherit;
+  font-size: inherit;
+  color: var(--tg-theme-text-color, inherit);
+  text-align: center;
+  background: var(--tg-theme-secondary-bg-color, rgba(128, 128, 128, 0.12));
+  border: none;
+  border-bottom: 2px solid var(--tg-theme-hint-color, rgba(128, 128, 128, 0.5));
+  border-radius: 4px;
+  outline: none;
+}
+.gap-input:focus {
+  border-bottom-color: var(--tg-theme-button-color, #2481cc);
+  background: var(--tg-theme-bg-color, transparent);
+}
+.keyboard-open .cloze-gaps { line-height: 1.8; font-size: 17px; }

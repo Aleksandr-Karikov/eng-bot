@@ -3,6 +3,7 @@ import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
 import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
+import { answersOf, gapCount, gapSegments } from "../services/cloze";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
 import type { GoalProgress } from "../services/goals";
 import type { BossPace, BossPhase, BossState } from "../services/boss";
@@ -473,38 +474,33 @@ export function reverseCardText(word: WordDraft & { collocations?: string; moreC
  * Подставляет ответ в пропуск, ответ — жирным. Модель иногда кладёт в вариант и соседнее слово
  * («We need ___ gold» + «the gold»): повторяющиеся на стыке слова убираем, иначе выходит «the gold gold».
  */
-export function fillGap(sentence: string, answer: string): string {
-  const { before, after } = gapParts(sentence, answer);
-  return `${esc(before)}<b>${esc(answer)}</b>${esc(after)}`;
-}
-
 /** Пропуск — три и больше подчёркиваний подряд: модель пишет и `___`, и `_______`. */
 const GAP = /_{3,}/;
 
-/** То же без разметки: что до пропуска и что после (повтор на стыке уже убран) — приложение рисует ответ само. */
-export function gapParts(sentence: string, answer: string): { before: string; answer: string; after: string } {
-  // Режем по всему пропуску целиком, а не по трём подчёркиваниям: `pickled onion` приходило с
-  // `_______`, и после подстановки оставалось лишнее `____` на месте ответа (баг #25).
-  const at = sentence.search(GAP);
-  const before = at < 0 ? sentence : sentence.slice(0, at);
-  const afterGap = at < 0 ? "" : sentence.slice(at).replace(GAP, "");
-  const words = answer.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const WORD = /^[\p{L}\p{N}'’]+/u;
+/**
+ * Убирает слово, которое ответ повторил у края текста: `We need ___ gold` + ответ `the gold` давало
+ * «the gold gold». Работает для любого числа пропусков — и на стыке перед каждым, и после каждого.
+ */
+function trimRepeat(segments: string[], answers: string[]): string[] {
+  const WORD_START = /^[\p{L}\p{N}'’]+/u;
   const WORD_END = /[\p{L}\p{N}'’]+$/u;
-  /** Срезает k слов ответа с начала текста после пропуска, если они там повторены; иначе — как было. */
-  const cutAfter = (text: string, k: number) => {
+  const words = (a: string) => a.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const out = [...segments];
+  /** Срезает k слов с начала текста, если они совпали с концом ответа. */
+  const cutStart = (text: string, tail: string[]): string | undefined => {
     let left = text;
-    for (const w of words.slice(-k)) {
+    for (const w of tail) {
       left = left.replace(/^\s+/, "");
-      const m = WORD.exec(left);
+      const m = WORD_START.exec(left);
       if (!m || m[0].toLowerCase() !== w) return undefined;
       left = left.slice(m[0].length);
     }
     return left;
   };
-  const cutBefore = (text: string, k: number) => {
+  /** Срезает k слов с конца текста, если они совпали с началом ответа. */
+  const cutEnd = (text: string, head: string[]): string | undefined => {
     let left = text;
-    for (const w of words.slice(0, k).reverse()) {
+    for (const w of head) {
       left = left.replace(/\s+$/, "");
       const m = WORD_END.exec(left);
       if (!m || m[0].toLowerCase() !== w) return undefined;
@@ -512,23 +508,56 @@ export function gapParts(sentence: string, answer: string): { before: string; an
     }
     return left;
   };
-  let after = afterGap;
-  let head = before;
-  for (let k = Math.min(words.length, 4); k > 0; k--) {
-    const cut = cutAfter(after, k);
-    if (cut !== undefined) {
-      after = cut;
-      break;
+  for (let i = 0; i < answers.length; i++) {
+    const a = words(answers[i]);
+    if (!a.length) continue;
+    // Хвост ответа мог повториться сразу после пропуска.
+    for (let k = Math.min(a.length, 4); k > 0; k--) {
+      const cut = cutStart(out[i + 1] ?? "", a.slice(-k));
+      if (cut !== undefined) { out[i + 1] = cut; break; }
+    }
+    // Голова ответа — сразу перед пропуском.
+    for (let k = Math.min(a.length, 4); k > 0; k--) {
+      const cut = cutEnd(out[i] ?? "", a.slice(0, k).reverse());
+      if (cut !== undefined) { out[i] = cut.replace(/\s*$/, cut.trim() ? " " : ""); break; }
     }
   }
-  for (let k = Math.min(words.length, 4); k > 0; k--) {
-    const cut = cutBefore(head, k);
-    if (cut !== undefined) {
-      head = cut.replace(/\s*$/, cut.trim() ? " " : "");
-      break;
-    }
+  return out;
+}
+
+/**
+ * Предложение с ответами на месте пропусков: что до, что вставили, что после — для одного или двух.
+ *
+ * Один пропуск остаётся прежним: повтор слова на стыке убирается, `before`/`after` — то, что человек
+ * увидит вокруг ответа. Два пропуска (баг #25) возвращаются списком `parts`, и приложение рисует
+ * каждое поле ввода отдельно.
+ */
+export function gapParts(sentence: string, answer: string): {
+  before: string;
+  answer: string;
+  after: string;
+  /** Все куски текста и ответы по порядку — по ним рисуется форма с несколькими полями. */
+  parts: Array<{ text: string } | { answer: string }>;
+} {
+  const segments = trimRepeat(gapSegments(sentence), answersOf(answer));
+  const answers = answersOf(answer);
+  const parts: Array<{ text: string } | { answer: string }> = [];
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i]) parts.push({ text: segments[i] });
+    if (i < answers.length) parts.push({ answer: answers[i] });
   }
-  return { before: head, answer, after };
+  const first = parts.findIndex((p) => "answer" in p);
+  const last = parts.map((p) => "answer" in p).lastIndexOf(true);
+  const before = parts.slice(0, first).map((p) => ("text" in p ? p.text : "")).join("");
+  const after = parts.slice(last + 1).map((p) => ("text" in p ? p.text : "")).join("");
+  return { before, answer: answers.join(" | "), after, parts };
+}
+
+/** Предложение с ответами, каждый — жирным. */
+export function fillGap(sentence: string, answer: string): string {
+  return gapParts(sentence, answer).parts
+    .map((p) => ("text" in p ? esc(p.text) : `<b>${esc(p.answer)}</b>`))
+    .join("");
 }
 
 /** Предложение с ответом на месте пропуска, ответ — жирным. */
@@ -537,7 +566,12 @@ export function clozeFull(s: Pick<ClozeSentence, "sentence" | "answer">): string
 }
 
 export function clozeText(s: ClozeSentence): string {
-  return `✍️ Вставь пропущенное слово или фразу:\n\n<i>${esc(s.sentence)}</i>\n\n🇷🇺 ${esc(s.translation)}\n\nНапиши ответ сообщением.`;
+  const gaps = gapCount(s.sentence);
+  // Два пропуска — просим оба слова подряд: так человек и напишет естественно (баг #25).
+  const how = gaps > 1
+    ? `Напиши ${gaps} слова через пробел — по порядку пропусков.`
+    : "Напиши ответ сообщением.";
+  return `✍️ Вставь пропущенное слово или фразу:\n\n<i>${esc(s.sentence)}</i>\n\n🇷🇺 ${esc(s.translation)}\n\n${how}`;
 }
 
 export function clozeCorrectText(s: ClozeSentence): string {
