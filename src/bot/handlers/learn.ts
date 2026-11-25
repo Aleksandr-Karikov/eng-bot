@@ -17,7 +17,7 @@ import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/sto
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
-import { answerCard, countDueSplit, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
+import { answerCard, countDueSplit, getDueItemByCard, markKnown, nextDue, nextExtra, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
 import { bossEnabled, bossOf } from "../../services/boss";
 import { getRoom } from "../../services/rooms";
@@ -52,6 +52,7 @@ import {
   doneText,
   draftText,
   LEARNING_FULL_TEXT,
+  learningLimitNotice,
   PRACTICE_HEADER,
   practiceDoneText,
   drillResultText,
@@ -145,7 +146,7 @@ function perBot<T>(): (deps: Deps) => Map<number, T> {
 }
 const sessionCountsOf = perBot<number>();
 /** Последняя оценка кнопкой — её можно отменить с ближайшей следующей карточки («↩️ Отменить «Забыл»»). */
-type LastAnswer = { cardId: number; answer: string; stage?: Stage };
+type LastAnswer = { cardId: number; answer: string; stage?: Stage; extra?: boolean };
 const lastAnswerOf = perBot<LastAnswer>();
 
 
@@ -267,7 +268,7 @@ async function flushLeech(ctx: BotContext, deps: Deps): Promise<boolean> {
 }
 
 /** forced — показать эту карточку (после «↩️ Отменить»), а не очередную; stage — в том же виде, что была. */
-async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?: { item: { card: CardRow; word: Word }; stage?: Stage }): Promise<void> {
+async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?: { item: { card: CardRow; word: Word }; stage?: Stage; extra?: boolean }): Promise<void> {
   // Озвучка относилась к прошлой карточке — убираем, чтобы не копилась.
   for (const id of deps.voices.take(ctx.user.id)) await ctx.api.deleteMessage(ctx.chat!.id, id).catch(() => {});
   clearPendingInputs(deps, ctx.user.id);
@@ -307,6 +308,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     } else {
       const view = cardView(ctx.user);
       text = stage === "ru_en" ? reverseCardText(word, view) : cardText(word, view);
+      if (forced?.extra) text = `📚 <b>Сверх плана</b>\n\n${text}`;
       // Готовая картинка-ассоциация помогает вспомнить — показываем её сразу, текст карточки идёт подписью.
       if (view.picture && text.length <= CAPTION_LIMIT) {
         const painted = word.imageFileId ? undefined : deps.pictures?.find(word);
@@ -314,7 +316,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
         if (painted) photoWordId = word.id;
       }
       replyMarkup = addUndoRow(
-        rateKeyboard(card.id, card.reps, card.state === State.New, word.id, (stage === "en_ru" || stage === "ru_en") && view.audio, stage),
+        rateKeyboard(card.id, card.reps, card.state === State.New, word.id, (stage === "en_ru" || stage === "ru_en") && view.audio, stage, forced?.extra),
         undo,
       );
     }
@@ -327,11 +329,15 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
     ]);
     // Пустой словарь — не «всё повторил»: новичку надо предложить набор, а не «появятся сами».
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
-    if (due.waiting && due.activeFull) text += "\n📚 Новые слова появятся, когда освободится место в обучении.";
+    const notice = learningLimitNotice(due, ctx.user);
+    if (notice) text += `\n\n📚 ${notice}\nИзменить количество можно в /settings.`;
     // 🐉 Босс — там же, где «Готово»: человек уходит с мыслью «снял столько-то HP», а не с сухим отчётом.
     text += await bossLine(ctx, deps);
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
     replyMarkup = addUndoRow(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length), undo);
+    if (notice) replyMarkup.row()
+      .text("Ещё одна карточка", encodeCb({ k: "learnExtra" }))
+      .row().text("⚙️ Лимиты обучения", encodeCb({ k: "settingsScreen", screen: "main" }));
     sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);
@@ -540,6 +546,15 @@ async function unknownText(deps: Deps, pending: PendingExercise): Promise<string
 
 export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
   bot.command("learn", (ctx) => startSession(ctx, deps));
+
+  bot.callbackQuery("lx", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (ctx.chat?.type !== "private") return startSession(ctx, deps);
+    const now = deps.now();
+    if (await nextDue(deps.db, ctx.user.id, now)) return showNext(ctx, deps, "replace");
+    const item = await nextExtra(deps.db, ctx.user.id, now);
+    return showNext(ctx, deps, "replace", item ? { item, stage: "en_ru", extra: true } : undefined);
+  });
 
   bot.command("drill", (ctx) => background(ctx, () => startDrill(ctx, deps)));
 
@@ -768,6 +783,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       answer: cb.answer,
       now: deps.now(),
       stage,
+      extra: cb.extra,
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     if (result === "waiting") {
@@ -778,7 +794,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
-    lastAnswerOf(deps).set(ctx.user.id, { cardId: cb.cardId, answer: cb.answer, stage });
+    lastAnswerOf(deps).set(ctx.user.id, { cardId: cb.cardId, answer: cb.answer, stage, extra: cb.extra });
     await showNext(ctx, deps, "replace");
   });
 
@@ -794,7 +810,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
     if (count) sessionCountsOf(deps).set(ctx.user.id, count - 1);
     // Разбор «трудного слова», заказанный этим ответом, больше не к месту.
     if (leechNoticesOf(deps).get(ctx.user.id)?.wordId === item.word.id) leechNoticesOf(deps).delete(ctx.user.id);
-    await showNext(ctx, deps, "replace", { item, stage: cb.stage });
+    await showNext(ctx, deps, "replace", { item, stage: cb.stage, extra: cb.extra });
   });
 
   // «🙈 Не для меня»: слово уходит только из моих карточек. Из /learn — сразу следующая карточка.

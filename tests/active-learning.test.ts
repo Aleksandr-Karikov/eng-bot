@@ -1,5 +1,5 @@
 import { sign } from "@telegram-apps/init-data-node";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppCard } from "../src/app/api";
@@ -36,8 +36,9 @@ async function setup(started: number) {
   const token = "123:test-token";
   const app = createApp({ deps: h.deps, botToken: token });
   const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "Me" } }, token, T0)}`, "content-type": "application/json" };
-  const queue = async (mode = "fresh") => {
-    const res = await app.request(`/api/queue?mode=${mode}`, { headers });
+  const get = (path: string) => app.request(path, { headers });
+  const queue = async (mode = "fresh", extra = false) => {
+    const res = await get(`/api/queue?mode=${mode}${extra ? "&extra=1" : ""}`);
     expect(res.status).toBe(200);
     return ((await res.json()) as { cards: AppCard[] }).cards;
   };
@@ -53,7 +54,7 @@ async function setup(started: number) {
     return res.json() as Promise<{ result: string; damage: number }>;
   };
   const getCard = async (id: number) => (await h.db.select().from(cards).where(eq(cards.id, id)))[0];
-  return { h, user, rows, queue, answer, post, list, getCard };
+  return { h, user, rows, queue, answer, get, post, list, getCard };
 }
 
 beforeEach(() => {
@@ -101,7 +102,7 @@ describe("лимит одновременно изучаемых слов", () =
     h.setNow(T0);
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(h.calls.filter(({ method }) => method === "sendMessage").at(-1)?.payload).toMatchObject({
-      text: expect.stringContaining("Новые слова появятся, когда освободится место в обучении."),
+      text: expect.stringContaining("Подборка «Учу» заполнена"),
     });
   });
 
@@ -251,5 +252,62 @@ describe("лимит одновременно изучаемых слов", () =
     });
     if (foreign.status !== "saved") throw new Error("fixture");
     expect((await post(`/api/words/${foreign.word.id}/learn`, { replaceWordId: rows[0].wordId })).status).toBe(404);
+  });
+
+  it("объясняет дневной предел и зачтёт одно сверхплановое знакомство по явному выбору", async () => {
+    const { h, user, rows, queue, answer, get, post, list, getCard } = await setup(0);
+    await updateUser(h.db, user.id, { newPerDay: 1 });
+    expect((await queue("fresh", true))[0]).not.toHaveProperty("extra");
+    expect(await answer(rows[0].id, "good")).toMatchObject({ result: "ok" });
+    expect(await queue()).toEqual([]);
+    expect(await answer(rows[1].id, "good")).toMatchObject({ result: "waiting" });
+    expect(await (await get("/api/me")).json()).toMatchObject({
+      limitNotices: { fresh: expect.stringContaining("Дневная порция новых слов исчерпана (1 в день)") },
+    });
+
+    const [next, unexpected] = await queue("fresh", true);
+    expect(next).toMatchObject({ cardId: rows[1].id, extra: true, stage: "en_ru" });
+    expect(unexpected).toBeUndefined();
+    const saved = await post("/api/answer", { cardId: next.cardId, reps: next.reps, answer: "good", extra: true });
+    expect(await saved.json()).toMatchObject({ result: "ok" });
+    expect((await getCard(next.cardId)).reps).toBe(1);
+    expect((await list()).active).toHaveLength(2);
+    expect(await queue()).toEqual([]);
+    expect((await queue("fresh", true))[0]?.cardId).toBe(rows[2].id);
+  });
+
+  it("даёт продолжить из бота и сохраняет прогресс в очереди при полной подборке", async () => {
+    const { h, rows, list, queue, post, getCard } = await setup(DEFAULT_LIMIT + 1);
+    const ordinary = rows.slice(0, DEFAULT_LIMIT);
+    const [paused, fresh] = rows.slice(DEFAULT_LIMIT);
+    await h.db.update(cards).set({ due: at(DAY) }).where(inArray(cards.id, ordinary.map(({ id }) => id)));
+    await h.db.update(cards).set({ due: T0 }).where(eq(cards.id, paused.id));
+    const active = (await list()).active;
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    const text = h.calls.filter(({ method }) => method === "sendMessage").at(-1)?.payload.text;
+    expect(text).toContain("Подборка «Учу» заполнена");
+    expect(text).toContain("могут запоминаться хуже");
+    expect(text).toContain("/settings");
+    expect(buttonData(h.calls, "⚙️ Лимиты обучения")).toBeTruthy();
+
+    const continueData = buttonData(h.calls, "Ещё одна карточка");
+    await h.bot.handleUpdate(h.callback(100, continueData));
+    expect(h.calls.filter(({ method }) => method === "sendMessage").at(-1)?.payload.text).toContain("Сверх плана");
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
+    expect(await getCard(paused.id)).toMatchObject({ reps: 2, relearningAtLimit: null });
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "↩️ Отменить «Забыл»")));
+    expect((await getCard(paused.id)).reps).toBe(1);
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "😵 Забыл")));
+    expect((await getCard(paused.id)).reps).toBe(2);
+
+    const [next] = await queue("all", true);
+    expect(next).toMatchObject({ cardId: fresh.id, extra: true });
+    expect(await (await post("/api/answer", { cardId: next.cardId, reps: next.reps, answer: "good", extra: true })).json()).toMatchObject({ result: "ok" });
+    const words = await list();
+    expect(words.active).toEqual(active);
+    expect(words.words).toContainEqual(expect.objectContaining({ id: fresh.wordId, status: "paused" }));
+    expect(await queue("all")).toEqual([]);
+    expect((await post("/api/undo", { cardId: fresh.id })).status).toBe(200);
+    expect(await getCard(fresh.id)).toMatchObject({ reps: 0, learningPriority: 0 });
   });
 });

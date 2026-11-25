@@ -18,13 +18,13 @@ import { answerExercise, listTopics, topicView } from "../services/grammar-topic
 import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
-import { gapParts, reverseHint } from "../bot/texts";
+import { gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
 import { pickStage, reviewStages } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { KNOW_STAGE } from "../services/goals";
-import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard } from "../services/review";
+import { recordAnswer, countDueSplit, dueQueue, getDueItemByCard, nextExtra, type StudyScope } from "../services/review";
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
@@ -50,6 +50,7 @@ export interface AppCard {
   kind: "card";
   /** Тренировка вне зачёта: ответ проверяется, но карточка не оценивается. */
   practice?: boolean;
+  extra?: true;
   cardId: number;
   reps: number;
   isNew: boolean;
@@ -106,6 +107,11 @@ export async function appMe(deps: Deps, user: User) {
     name: user.firstName,
     room: room?.name ?? null,
     due,
+    limitNotices: {
+      all: learningLimitNotice(due, user),
+      fresh: learningLimitNotice(due, user, "fresh"),
+      reviews: learningLimitNotice(due, user, "reviews"),
+    },
     total,
     // Чем занять новичка: пустой `/learn` предлагает именно этот набор (см. `starterSet`).
     ...(starter ? { starterSet: { id: starter.set.id, title: starter.set.title, total: starter.total } } : {}),
@@ -153,7 +159,7 @@ function quizOf(q: { question: string; options: string[]; correct: number; expla
  * Режим тренировки: all — как /learn; reviews — только повторения; fresh — только новые слова;
  * hard — самые слабые слова, даже если ещё рано, вне зачёта (как «🔁 Потренироваться»): ответы не оцениваются.
  */
-export type QueueMode = "all" | "reviews" | "fresh" | "hard";
+export type QueueMode = StudyScope | "hard";
 export const QUEUE_MODES: QueueMode[] = ["all", "reviews", "fresh", "hard"];
 
 async function queueItems(deps: Deps, user: User, mode: QueueMode) {
@@ -168,8 +174,10 @@ async function queueItems(deps: Deps, user: User, mode: QueueMode) {
   return wide.filter(({ card }) => (card.state === State.New) === (mode === "fresh")).slice(0, QUEUE_SIZE);
 }
 
-export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"): Promise<AppItem[]> {
-  const items = await queueItems(deps, user, mode);
+export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all", continueExtra = false): Promise<AppItem[]> {
+  const ordinary = await queueItems(deps, user, mode);
+  const extra = continueExtra && ordinary.length === 0 && mode !== "hard" ? await nextExtra(deps.db, user.id, deps.now(), mode) : undefined;
+  const items = extra ? [extra] : ordinary;
   const practice = mode === "hard";
   // Пустая карта для тренировки должна быть того же типа, что и настоящая, иначе `weak.get()`
   // становится `any` и проверка типов дальше по функции перестаёт что-либо значить.
@@ -208,8 +216,8 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     }
     // Необязательное слово — только узнавание (EN → RU); новое — с первого знакомства.
     const quizReady = Boolean(collocations?.quiz);
-    const stages = mixed && !isNew && !optional ? reviewStages(card, modes, sentences.length > 0, quizReady) : [];
-    const fallback = optional || needsDecision
+    const stages = !extra && mixed && !isNew && !optional ? reviewStages(card, modes, sentences.length > 0, quizReady) : [];
+    const fallback = extra || optional || needsDecision
       ? "en_ru"
       : pickStage(card, mixed ? swipeModes : modes, sentences.length > 0, deps.random, quizReady, weak.get(card.id));
     candidates.push({ card, word, isNew, needsDecision, stages, fallback, sentences, collocations });
@@ -244,6 +252,7 @@ export async function appQueue(deps: Deps, user: User, mode: QueueMode = "all"):
     queue.push({
       kind: "card",
       ...(practice ? { practice: true } : {}),
+      ...(extra ? { extra: true } : {}),
       quiz: stage === "collocation" && collocations?.quiz ? { ...quizOf(collocations.quiz), items: collocations.items } : undefined,
       cloze: cloze ? { id: cloze.id, sentence: cloze.sentence, translation: cloze.translation } : undefined,
       cardId: card.id,
@@ -295,7 +304,7 @@ export async function appDrillAnswer(deps: Deps, user: User, body: { category?: 
 type CardAnswer = Answer | "know" | "drop";
 const ANSWERS = new Set<unknown>(["again", "good", "easy", "know", "drop"]);
 
-export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown; reps?: unknown; answer?: unknown; stage?: unknown; practice?: unknown }) {
+export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown; reps?: unknown; answer?: unknown; stage?: unknown; practice?: unknown; extra?: unknown }) {
   const cardId = Number(body.cardId);
   const reps = Number(body.reps);
   const answer = body.answer as CardAnswer;
@@ -317,6 +326,7 @@ export async function appAnswer(deps: Deps, user: User, body: { cardId?: unknown
     answer: answer === "know" ? "easy" : answer,
     now: deps.now(),
     stage: answer === "know" ? KNOW_STAGE : `app_${stage}`,
+    extra: body.extra === true,
   });
   return { status: 200, body: { ok: true, ...result } };
 }

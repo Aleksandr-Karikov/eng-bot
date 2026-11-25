@@ -17,6 +17,7 @@ export interface Card {
   kind: "card";
   /** Режим «Трудные»: вне зачёта, ответы не оцениваются. */
   practice?: boolean;
+  extra?: true;
   cardId: number;
   reps: number;
   isNew: boolean;
@@ -55,6 +56,7 @@ export interface Me {
   name: string;
   room: string | null;
   due: { review: number; fresh: number; waiting: number; activeFull: boolean };
+  limitNotices?: Partial<Record<Exclude<QueueMode, "hard">, string>>;
   /** Сколько слов у человека вообще: по нему `/learn` отличает «всё повторил» от «нечего учить». */
   total?: number;
   /** Набор, с которого начать: приходит только когда слов нет совсем. */
@@ -169,11 +171,12 @@ export interface DrillProgress {
 /** Режим тренировки: всё, только повторения, только новые, трудные (вне зачёта). */
 export type QueueMode = "all" | "reviews" | "fresh" | "hard";
 
-export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }>(`/api/queue?mode=${mode}`).then((r) => r.cards);
+export const getQueue = (mode: QueueMode = "all", extra = false) =>
+  call<{ cards: QueueItem[] }>(`/api/queue?mode=${mode}${extra ? "&extra=1" : ""}`).then((r) => r.cards);
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: CardAnswer) =>
-  postRetry<{ result: "ok" | "stale" | "practice" | "waiting"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
+  postRetry<{ result: "ok" | "stale" | "practice" | "waiting"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice, extra: card.extra });
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */

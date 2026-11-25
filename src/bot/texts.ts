@@ -10,6 +10,7 @@ import type { BossPace, BossPhase, BossState } from "../services/boss";
 import type { WeeklyReport } from "../services/weekly-report";
 import type { CheckResult } from "../llm/enricher";
 import type { LeaderRow, PersonalStats } from "../services/stats";
+import type { countDueSplit, StudyScope } from "../services/review";
 import type { WordDraft } from "../services/words";
 import { voiceLabel } from "../services/voice";
 import type { SettingsScreen } from "./keyboards";
@@ -410,6 +411,20 @@ export function doneText(reviewed: number, next: Date | undefined, timeZone: str
   }
   const head = reviewed > 0 ? `🎉 Готово! Повторено: ${reviewed}.` : "Сейчас нечего повторять 👌";
   return next ? `${head}\nСледующее повторение: ${formatDateTime(next, timeZone)}` : head;
+}
+
+export function learningLimitNotice(
+  due: Awaited<ReturnType<typeof countDueSplit>>,
+  user: Pick<User, "newPerDay" | "activeLearningLimit">,
+  scope: StudyScope = "all",
+): string | undefined {
+  const fresh = scope !== "reviews" && due.fresh === 0 && due.waiting > 0;
+  const paused = scope !== "fresh" && due.review === 0 && due.pausedDue;
+  const reasons = [];
+  if (fresh && due.dailyFull) reasons.push(`Дневная порция новых слов исчерпана (${user.newPerDay} в день).`);
+  if (paused || (fresh && due.activeFull)) reasons.push(`Подборка «Учу» заполнена. Предел — ${user.activeLearningLimit} слов одновременно.`);
+  if (!reasons.length) return undefined;
+  return [...reasons, "Лимиты оставляют время на повторение и закрепление слов. Можно продолжить сверх плана, но в длинной сессии слова могут запоминаться хуже."].join(" ");
 }
 
 export function statsText(s: PersonalStats, roomName?: string, board?: LeaderRow[], goal?: GoalProgress): string {

@@ -143,7 +143,7 @@ describe("дневная порция новых слов", () => {
   it("считает очередь и ожидающих двумя числами", async () => {
     const { db, user } = await setup(["a", "b", "c", "d", "e"], 2);
     const split = await countDueSplit(db, user.id, at(1000));
-    expect(split).toEqual({ review: 0, fresh: 2, waiting: 3, activeFull: false });
+    expect(split).toMatchObject({ review: 0, fresh: 2, waiting: 3, activeFull: false });
     // Текст напоминания спокойный: запас, а не долг.
     expect(reminderText(split)).toBe("🆕 2 новых слова ждут знакомства\n📚 Ещё 3 новых слова ждут своей очереди.");
   });

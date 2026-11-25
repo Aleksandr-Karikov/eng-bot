@@ -47,7 +47,7 @@ const UNDO_DEPTH = 5;
 type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: number) => void }) {
+export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -73,14 +73,14 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
   const pending = useRef(new Set<Promise<unknown>>());
   const loadVersion = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (extra = false) => {
     const version = ++loadVersion.current;
     setLoading(true);
     try {
       // Сначала дождаться отправленных оценок: иначе сервер вернёт только что пройденную карточку
       // ещё раз, со старым состоянием, — и ответ на неё получит «Уже учтено».
       await Promise.allSettled([...pending.current]);
-      const [info, cards] = await Promise.all([getMe(), getQueue(mode)]);
+      const [info, cards] = await Promise.all([getMe(), getQueue(mode, extra)]);
       if (version !== loadVersion.current) return;
       setStudyLanguage(info.language);
       setMe(info);
@@ -147,7 +147,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
       showDamage(r.damage);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
       if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
-      if (r.result === "waiting") notify("Места в обучении заняты. Слово осталось в очереди.");
+      if (r.result === "waiting") notify("Слово осталось в очереди.");
       return r;
     }).catch(() => {
       setHistory((h) => h.filter((entry) => entry.sent !== sent));
@@ -323,13 +323,13 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
         {modes}
       {damageEffect}
         {error ? (
-          <Placeholder header="Не получилось загрузить" description={error} />
+          <Placeholder header="Не получилось загрузить" description={error} action={<Button onClick={() => void load()}>Попробовать снова</Button>} />
         ) : loading ? (
           <div className="center">
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} me={me} mode={mode} onSets={onSets} />
+          <Done done={done} me={me} mode={mode} onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} />
         )}
       </div>
     );
@@ -341,6 +341,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
       {modes}
       {damageEffect}
       {mode === "hard" && <Text className="hint practice-note">Вне зачёта: ответы не сдвигают повторения</Text>}
+      {card.kind === "card" && card.extra && <Text className="hint practice-note">Сверх плана</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
         <ChoiceCard
@@ -408,7 +409,14 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
  *
  * Нативная кнопка «Закрыть» внизу — или своя, вне Telegram.
  */
-function Done({ done, me, mode, onSets }: { done: number; me?: Me; mode: QueueMode; onSets: (setId?: number) => void }) {
+function Done({ done, me, mode, onSets, onExtra, onSettings }: {
+  done: number;
+  me?: Me;
+  mode: QueueMode;
+  onSets: (setId?: number) => void;
+  onExtra: () => void;
+  onSettings: () => void;
+}) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
   /**
@@ -447,13 +455,12 @@ function Done({ done, me, mode, onSets }: { done: number; me?: Me; mode: QueueMo
     );
   }
 
-  const waitingForSpace = (mode === "all" || mode === "fresh") && me?.due.activeFull && me.due.waiting > 0;
-  const message = waitingForSpace
-    ? "Новые слова появятся, когда освободится место в обучении."
-    : "Новые слова и повторения появятся сами — бот напомнит.";
+  const notice = mode !== "hard" ? me?.limitNotices?.[mode] : undefined;
+  const message = notice ? `${notice} Лимиты можно изменить в настройках.` : "Новые слова и повторения появятся сами — бот напомнит.";
+  const header = notice ? "Лимит обучения достигнут" : mode === "fresh" ? "Сейчас нет новых карточек" : "Сейчас нечего повторять";
   return (
     <Placeholder
-      header={done ? `Готово! Пройдено карточек: ${done}` : mode === "fresh" ? "Сейчас нет новых карточек" : "Сейчас нечего повторять"}
+      header={done ? `Готово! Пройдено карточек: ${done}` : header}
       description={
         boss
           ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. ${message}`
@@ -461,10 +468,17 @@ function Done({ done, me, mode, onSets }: { done: number; me?: Me; mode: QueueMo
       }
       action={
         <div className="actions">
-          <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
-            Взять слова из готового набора
-          </Button>
-          <LessonButton />
+          {notice ? (
+            <>
+              <Button mode="bezeled" size="m" stretched onClick={onExtra}>Ещё одна карточка</Button>
+              <Button mode="plain" size="m" stretched onClick={onSettings}>Настройки лимитов</Button>
+            </>
+          ) : (
+            <>
+              <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>Взять слова из готового набора</Button>
+              <LessonButton />
+            </>
+          )}
           {!native && (
             <Button size="l" stretched onClick={() => miniApp.close()}>
               Закрыть

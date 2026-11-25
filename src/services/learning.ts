@@ -19,7 +19,7 @@ export async function learningSelection(db: Db, userId: number) {
   const [user] = await db.select({ limit: users.activeLearningLimit }).from(users).where(eq(users.id, userId));
   const limit = user?.limit ?? 0;
   const candidates = await db
-    .select({ id: cards.id, wordId: cards.wordId, priority: cards.learningPriority, state: cards.state, relearningAtLimit: cards.relearningAtLimit })
+    .select({ id: cards.id, wordId: cards.wordId, priority: cards.learningPriority, state: cards.state, due: cards.due, relearningAtLimit: cards.relearningAtLimit })
     .from(cards)
     .where(and(eq(cards.userId, userId), or(
       and(eq(cards.state, State.New), or(gt(cards.learningPriority, 0), isNotNull(cards.relearningAtLimit))),

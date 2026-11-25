@@ -73,7 +73,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.get("/api/queue", async (c) => {
     const mode = QUEUE_MODES.find((m) => m === c.req.query("mode")) ?? "all";
-    return c.json({ ok: true, cards: await appQueue(deps, c.get("user"), mode) });
+    return c.json({ ok: true, cards: await appQueue(deps, c.get("user"), mode, c.req.query("extra") === "1") });
   });
   app.post("/api/answer", async (c) => {
     const r = await appAnswer(deps, c.get("user"), await readBody(c));

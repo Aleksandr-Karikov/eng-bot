@@ -5,7 +5,7 @@ import { latestDigestMoment, roomTimeZone } from "./digest";
 import { bossOf, weeklyOpponent } from "./boss";
 import { getRoom } from "./rooms";
 import { streakBuff } from "./streak-buff";
-import { and, asc, eq, gte, isNull, lt, lte, ne, notExists, or, desc, count, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, lte, ne, notExists, or, desc, count, inArray, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
@@ -156,6 +156,25 @@ export async function dueQueue(db: Db, userId: number, now: Date, limit: number)
   return list.slice(0, limit);
 }
 
+export type StudyScope = "all" | "fresh" | "reviews";
+
+/** Одно доступное слово сверх плана по явному выбору после обычной очереди. */
+export async function nextExtra(db: Db, userId: number, now: Date, scope: StudyScope = "all"): Promise<DueItem | undefined> {
+  const selection = await learningSelection(db, userId);
+  if (scope !== "fresh") {
+    const paused = selection.waiting.find((card) => card.state !== State.New && card.due <= now);
+    if (paused) return getDueItemByCard(db, userId, paused.id);
+    if (scope === "reviews") return undefined;
+  }
+  const { left } = await newPortion(db, userId, now);
+  if (left !== 0 && selection.active.length < selection.limit) return undefined;
+  const pending = await db.select({ card: cards, word: words }).from(cards)
+    .innerJoin(words, eq(cards.wordId, words.id))
+    .where(and(eq(cards.userId, userId), eq(cards.state, State.New), lte(cards.due, now),
+      left === 0 ? undefined : notInArray(cards.id, selection.active.map(({ id }) => id))));
+  return pending.sort(compareQueue)[0];
+}
+
 export async function countDue(db: Db, userId: number, now: Date): Promise<number> {
   const { review, fresh } = await countDueSplit(db, userId, now);
   return review + fresh;
@@ -176,7 +195,8 @@ export async function countDueSplit(db: Db, userId: number, now: Date) {
   const reserved = fresh.filter(({ id }) => activeIds.includes(id)).length;
   const regular = fresh.filter(({ id, priority }) => priority <= 0 && !activeIds.includes(id)).length;
   const available = Math.min(left ?? Infinity, reserved + Math.min(slots, regular));
-  return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0 };
+  const pausedDue = selection.waiting.some((card) => card.state !== State.New && card.due <= now);
+  return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0, dailyFull: left === 0, pausedDue };
 }
 
 export async function getDueItemByCard(db: Db, userId: number, cardId: number): Promise<DueItem | undefined> {
@@ -241,7 +261,7 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   };
 }
 
-type RecordAnswerInput = { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string };
+type RecordAnswerInput = { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string; extra?: boolean };
 type RecordedAnswer = { result: "ok" | "stale" | "waiting"; damage: number };
 
 export function recordAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAnswer> {
@@ -259,27 +279,36 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
     ? await learningSelection(db, input.userId)
     : undefined;
   const inSelection = selection?.active.some(({ id }) => id === card.id);
+  const deferred = selection?.waiting.some(({ id }) => id === card.id);
+  const outside = selection && card.state === State.New && selection.active.length >= selection.limit && !inSelection;
+  const extra = input.extra && card.due <= input.now;
   if (selection) {
-    const outside = card.state === State.New && selection.active.length >= selection.limit && !inSelection;
-    if (outside || selection.waiting.some(({ id }) => id === card.id)) return { result: "waiting", damage: 0 };
+    if (!extra && (outside || deferred)) return { result: "waiting", damage: 0 };
+    if (!extra && card.state === State.New && (await newPortion(db, input.userId, input.now)).left === 0) {
+      return { result: "waiting", damage: 0 };
+    }
   }
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
   const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
   const next = review(card.fsrs, input.answer, input.now, word?.usefulness ?? null);
   // После проверки выше начатое слово вне подборки может быть только знакомым.
-  const returning = input.answer === "again" && card.state !== State.New && !inSelection && !isLearned(next) ? selection : undefined;
+  const returning = input.answer === "again" && card.state !== State.New && !inSelection && !deferred && !isLearned(next) ? selection : undefined;
   const relearningAtLimit = returning
     ? returning.limit
     : isLearned(next) || input.stage === KNOW_STAGE ? null : card.relearningAtLimit;
   const lastActive = Math.min(...(returning?.active.map(({ priority }) => priority) ?? []));
   const firstWaiting = returning?.waiting[0]?.priority;
-  const learningPriority = returning
+  let learningPriority = returning
     ? firstWaiting === undefined ? (Number.isFinite(lastActive) ? lastActive - 1 : 0) : firstWaiting + 1
     : card.learningPriority;
+  if (selection && outside && !deferred) {
+    // Первый ответ сверх активного предела сохраняется в конце очереди начатых.
+    learningPriority = Math.min(0, ...selection.active.map(({ priority }) => priority), selection.waiting.at(-1)?.priority ?? 0) - 1;
+  }
   const shift = Math.max(0, learningPriority - lastActive + 1);
   const before: BeforeAnswer = {
     due: card.due.getTime(), state: card.state, reps: card.reps, stability: card.stability, fsrs: card.fsrs,
-    ...(relearningAtLimit !== card.relearningAtLimit
+    ...(relearningAtLimit !== card.relearningAtLimit || learningPriority !== card.learningPriority
       ? { relearning: { limit: card.relearningAtLimit, priority: card.learningPriority, savedPriority: learningPriority } }
       : {}),
   };

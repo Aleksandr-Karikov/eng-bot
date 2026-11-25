@@ -39,11 +39,11 @@ export function audioKeyboard(wordId: number): InlineKeyboard {
 }
 
 /** withAudio — озвучка слова; в RU → EN она подсказывает ответ, но нажимают её сами, когда уже вспомнили. */
-export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false, stage?: Stage): InlineKeyboard {
+export function rateKeyboard(cardId: number, reps: number, isNew: boolean, wordId: number, withAudio = false, stage?: Stage, extra?: boolean): InlineKeyboard {
   const kb = new InlineKeyboard()
-    .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage }))
-    .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good", stage }));
-  if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy", stage }));
+    .text("😵 Забыл", encodeCb({ k: "rate", cardId, reps, answer: "again", stage, extra }))
+    .text("😎 Помню", encodeCb({ k: "rate", cardId, reps, answer: "good", stage, extra }));
+  if (isNew) kb.row().text("✅ Уже знаю", encodeCb({ k: "rate", cardId, reps, answer: "easy", stage, extra }));
   kb.row();
   if (withAudio) addAudioRow(kb, wordId);
   return addManageButton(kb, wordId);
@@ -368,9 +368,9 @@ export function mnemonicKeyboard(wordId: number, hasPicture: boolean): InlineKey
 const ANSWER_LABELS: Record<string, string> = { again: "Забыл", good: "Помню", easy: "Уже знаю", hard: "Трудно" };
 
 /** «↩️ Отменить «Забыл»» — под следующей карточкой, если прошлую оценили не той кнопкой. */
-export function addUndoRow(kb: InlineKeyboard, undo: { cardId: number; answer: string; stage?: Stage } | undefined): InlineKeyboard {
+export function addUndoRow(kb: InlineKeyboard, undo: { cardId: number; answer: string; stage?: Stage; extra?: boolean } | undefined): InlineKeyboard {
   if (!undo) return kb;
-  return kb.row().text(`↩️ Отменить «${ANSWER_LABELS[undo.answer] ?? undo.answer}»`, encodeCb({ k: "undo", cardId: undo.cardId, stage: undo.stage })).row();
+  return kb.row().text(`↩️ Отменить «${ANSWER_LABELS[undo.answer] ?? undo.answer}»`, encodeCb({ k: "undo", cardId: undo.cardId, stage: undo.stage, extra: undo.extra })).row();
 }
 
 export function practiceStartKeyboard(stormCount = 0): InlineKeyboard {

@@ -9,8 +9,9 @@ export type NextAfter = (typeof NEXT_AFTER)[number];
 export type Cb =
   | { k: "know"; wordId: number; knows: boolean }
   | { k: "show"; cardId: number; reps: number }
-  | { k: "rate"; cardId: number; reps: number; answer: Answer; stage?: Stage }
+  | { k: "rate"; cardId: number; reps: number; answer: Answer; stage?: Stage; extra?: boolean }
   | { k: "learn" }
+  | { k: "learnExtra" }
   | { k: "practiceStart" }
   | { k: "practiceRate"; cardId: number; remembered: boolean; attempt?: number }
   | { k: "practiceDunno"; cardId: number }
@@ -18,7 +19,7 @@ export type Cb =
   /** «▶ Дальше» под разбором ответа: что показать следом — карточку /learn, тренировку или вопрос /drill. */
   | { k: "next"; then: NextAfter }
   /** «↩️ Отменить»: последний ответ по этой карточке. */
-  | { k: "undo"; cardId: number; stage?: Stage }
+  | { k: "undo"; cardId: number; stage?: Stage; extra?: boolean }
   /** 🎧 Аудиоурок с выбранным акцентом. */
   | { k: "lesson"; accent: "uk" | "us" | "mix" }
   | { k: "duel"; roundId: number; index: number }
@@ -137,15 +138,16 @@ export function encodeCb(cb: Cb): string {
   switch (cb.k) {
     case "know": return `k:${cb.wordId}:${cb.knows ? "y" : "n"}`;
     case "show": return `s:${cb.cardId}:${cb.reps}`;
-    case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
+    case "rate": return `r:${cb.cardId}:${cb.reps}:${short(ANSWERS, cb.answer)}${cb.extra ? ":x" : cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "learn": return "l";
+    case "learnExtra": return "lx";
     case "practiceStart": return "px";
     case "practiceRate": return `pr:${cb.cardId}:${cb.remembered ? "g" : "a"}${cb.attempt !== undefined ? `:${cb.attempt}` : ""}`;
     case "practiceDunno": return `pu:${cb.cardId}`;
     case "practiceStop": return "pz";
     case "next": return `nx:${cb.then[0]}`;
     case "lesson": return `ls:${cb.accent}`;
-    case "undo": return `ud:${cb.cardId}${cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
+    case "undo": return `ud:${cb.cardId}${cb.extra ? ":x" : cb.stage ? `:${STAGE_CODES[cb.stage]}` : ""}`;
     case "duel": return `dv:${cb.roundId}:${cb.index}`;
     case "dunno": return `u:${cb.cardId}:${cb.reps}`;
     case "mode": return `m:${cb.stage}`;
@@ -232,9 +234,11 @@ export function decodeCb(data: string): Cb | null {
       const cardId = int(a), reps = int(b), answer = c ? ANSWERS[c] : undefined;
       const stage = STAGES.find((s) => STAGE_CODES[s] === d);
       if (cardId === null || reps === null || !answer) return null;
+      if (d === "x") return { k: "rate", cardId, reps, answer, stage: "en_ru", extra: true };
       return stage ? { k: "rate", cardId, reps, answer, stage } : { k: "rate", cardId, reps, answer };
     }
     case "l": return { k: "learn" };
+    case "lx": return { k: "learnExtra" };
     case "px": return { k: "practiceStart" };
     case "pz": return { k: "practiceStop" };
     case "ls": return a === "uk" || a === "us" || a === "mix" ? { k: "lesson", accent: a } : null;
@@ -242,6 +246,7 @@ export function decodeCb(data: string): Cb | null {
       const cardId = int(a);
       const stage = STAGES.find((s) => STAGE_CODES[s] === b);
       if (cardId === null) return null;
+      if (b === "x") return { k: "undo", cardId, stage: "en_ru", extra: true };
       return stage ? { k: "undo", cardId, stage } : { k: "undo", cardId };
     }
     case "nx": {
