@@ -1,7 +1,6 @@
 import { cardAudioPath, playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
-import { studyLanguage } from "./language";
-import { viewport as telegramViewport } from "@telegram-apps/sdk-react";
+import { useTypeKeyboard } from "./useTypeKeyboard";
 import { Button, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, checkAnswer, saveMistakes, type Answer, type Card, type CheckResult, type VoiceAccent } from "./api";
@@ -24,7 +23,7 @@ function Marked({ text }: { text: string }) {
 }
 
 /**
- * Задание с ответом текстом: пропуск по смыслу, диктант, своё предложение. «Проверить» — нативной кнопкой,
+ * Задание с ответом текстом: пропуск по смыслу и диктант. «Проверить» — нативной кнопкой,
  * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для отмены), onRateSelf —
  * проверить не вышло и человек оценил себя сам.
  */
@@ -49,10 +48,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult>();
   const [saved, setSaved] = useState<boolean>();
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const input = useRef<HTMLTextAreaElement>(null);
-  const deck = useRef<HTMLDivElement>(null);
-  const w = card.word;
+  const { input, deck, keyboardOpen } = useTypeKeyboard();
 
   useEffect(() => {
     // Диктант читает выбранным вариантом произношения — тем же, что и карточка. Раньше здесь
@@ -62,46 +58,6 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
     // без звука невозможен: тогда любой вариант лучше молчания.
     if (card.stage === "listen") void play(card, voice ?? (Math.random() < 0.5 ? "uk" : "us"));
   }, [card, voice]);
-
-  useEffect(() => {
-    const panel = deck.current;
-    const field = input.current;
-    if (!panel || !field) return;
-    const viewport = window.visualViewport;
-    const visibleHeight = () => Math.min(
-      viewport?.height ?? window.innerHeight,
-      telegramViewport.stableHeight() || Infinity,
-    );
-    let restingHeight = visibleHeight();
-    let editing = false;
-    const fit = () => {
-      const height = visibleHeight();
-      const focused = document.activeElement === field;
-      if ((!focused && !editing) || height > restingHeight) restingHeight = height;
-      const open = (focused || editing) && restingHeight - height > 100;
-      // Тап по кнопке может снять фокус до закрытия клавиатуры.
-      editing = focused || open;
-      setKeyboardOpen(open);
-      if (open) {
-        panel.style.setProperty("--type-viewport-height", `${height}px`);
-        panel.style.setProperty("--type-viewport-top", `${viewport?.offsetTop ?? 0}px`);
-      }
-    };
-    field.addEventListener("focus", fit);
-    field.addEventListener("blur", fit);
-    window.addEventListener("resize", fit);
-    viewport?.addEventListener("resize", fit);
-    viewport?.addEventListener("scroll", fit);
-    const stopTelegram = telegramViewport.stableHeight.sub(fit);
-    return () => {
-      stopTelegram();
-      field.removeEventListener("focus", fit);
-      field.removeEventListener("blur", fit);
-      window.removeEventListener("resize", fit);
-      viewport?.removeEventListener("resize", fit);
-      viewport?.removeEventListener("scroll", fit);
-    };
-  }, []);
 
   const submit = useCallback(
     async (dunno = false) => {
@@ -203,22 +159,12 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
           {card.cloze.translation}
         </Text>
       </>
-    ) : card.stage === "listen" ? (
+    ) : (
       <>
         <Text className="hint choice-title">Напиши, что услышал</Text>
         <div className="row">
           <AudioButtons size="m" onPlay={(accent) => void play(card, accent)} />
         </div>
-      </>
-    ) : (
-      <>
-        <Text className="hint choice-title">Составь своё предложение со словом</Text>
-        <Title level="2" weight="2" className="choice-question">
-          {w.term}
-        </Title>
-        <Text className="hint" style={{ textAlign: "center" }}>
-          {w.translation}
-        </Text>
       </>
     );
 
@@ -233,7 +179,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
               ref={input}
               aria-label="Ответ"
               className="type-input"
-              placeholder={card.stage === "sentence" ? `Твоё предложение ${studyLanguage().adv}` : "Ответ"}
+              placeholder="Ответ"
               value={answer}
               disabled={checking}
               onChange={(e) => setAnswer(e.target.value)}
@@ -253,7 +199,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
             <Text className="hint">{card.stage === "listen" ? "Проверяю…" : "Проверяю — пару секунд…"}</Text>
           </div>
         )}
-        {result && <Review card={card} answer={answer} result={result} saved={saved} onSave={setSaved} />}
+        {result && <ExerciseReview card={card} answer={answer} result={result} saved={saved} onSave={setSaved} />}
         {result?.unchecked && (
           <div className="row">
             <Button mode="gray" size="m" onClick={() => (onRateSelf("again"), onNext())}>
@@ -288,7 +234,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
   );
 }
 
-function Review({ card, answer, result: r, saved, onSave }: { card: Card; answer: string; result: CheckResult; saved?: boolean; onSave: (s: boolean) => void }) {
+export function ExerciseReview({ card, answer, result: r, saved, onSave }: { card: Card; answer: string; result: CheckResult; saved?: boolean; onSave: (s: boolean) => void }) {
   const verdict = r.unchecked
     ? "Не получилось проверить. Сравни сам:"
     : r.grade === "close"

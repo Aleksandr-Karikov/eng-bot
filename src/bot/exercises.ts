@@ -1,4 +1,5 @@
 import type { ClozeSentence } from "../db/schema";
+import type { DialogueScene } from "../llm/tutor";
 
 interface PendingBase {
   cardId: number;
@@ -14,7 +15,7 @@ interface PendingBase {
 
 /** Упражнение, на которое ждём ответ сообщением: вставь по смыслу, своё предложение, диктант. Одно на пользователя, в памяти. */
 export type PendingExercise = PendingBase &
-  ({ kind: "cloze"; sentence: ClozeSentence } | { kind: "sentence" } | { kind: "listen" });
+  ({ kind: "cloze"; sentence: ClozeSentence } | { kind: "sentence"; scene?: DialogueScene } | { kind: "listen" });
 
 /**
  * Ответ на упражнение ждём долго: человек может отвлечься посреди /learn и вернуться через полчаса.

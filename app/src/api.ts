@@ -339,6 +339,15 @@ export interface CheckResult {
 
 export const checkAnswer = (card: Card, answer: string, dunno = false) =>
   postRetry<CheckResult>("/api/check", { cardId: card.cardId, reps: card.reps, stage: card.stage, answer, clozeId: card.cloze?.id, dunno, practice: card.practice });
+
+export type DialogueTurn = { line: string; hint: string };
+export type DialogueScene = DialogueTurn & { id: string; situation: string };
+export type DialogueResult = (CheckResult & { followUp?: DialogueTurn }) | { retry: true; verdict: string };
+export const openDialogue = (card: Card) =>
+  post<DialogueScene>("/api/dialogue", { cardId: card.cardId, reps: card.reps, practice: card.practice });
+export const answerDialogue = (id: string, turn: 1 | 2, answer: string, dunno: boolean) =>
+  post<DialogueResult>("/api/dialogue/answer", { id, turn, answer, dunno });
+
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
 
 export interface Progress {

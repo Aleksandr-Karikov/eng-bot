@@ -18,6 +18,8 @@ import type {
   StoryDraft,
   SentenceInput,
   SentenceReview,
+  DialogueInput,
+  DialogueScene,
   DrillQuestion,
   MnemonicItem,
   ImageSubject,
@@ -210,6 +212,9 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   }
   reviewSentence(input: SentenceInput): Promise<SentenceReview> {
     return this.active.reviewSentence(input);
+  }
+  dialogueScene(input: DialogueInput): Promise<DialogueScene> {
+    return this.active.dialogueScene(input);
   }
   drill(profile: string, count: number, avoid?: string[]): Promise<DrillQuestion[]> {
     return this.active.drill(profile, count, avoid);

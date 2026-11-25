@@ -237,7 +237,7 @@ export const MODE_LABELS: Array<[Stage, string, keyof User]> = [
   ["en_ru", "EN → RU", "modeEnRu"],
   ["ru_en", "RU → EN", "modeRuEn"],
   ["cloze", "Вставь по смыслу", "modeCloze"],
-  ["sentence", "✍️ Своё предложение", "modeSentence"],
+  ["sentence", "💬 Ответь собеседнику", "modeSentence"],
   ["listen", "🎧 Диктант", "modeListen"],
   ["collocation", "🔗 Сочетания", "modeCollocation"],
 ];

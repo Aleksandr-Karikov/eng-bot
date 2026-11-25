@@ -201,6 +201,17 @@ body {
 .keyboard-open .checking { flex-direction: row; justify-content: center; padding: 0; }
 .gap-answer { color: var(--tg-theme-accent-text-color, #2481cc); }
 
+.dialogue-card { overflow-wrap: anywhere; }
+.dialogue-card .type-input { margin: 0; }
+.dialogue-card .type-field > div { padding: 2px; }
+.dialogue-card > .actions { flex-shrink: 0; }
+.keyboard-open .dialogue-card > .actions { flex-direction: row-reverse; align-items: center; }
+.keyboard-open .dialogue-situation, .keyboard-open .dialogue-translation,
+.keyboard-open .dialogue-thread .dialogue-reply:not(:last-child) { display: none; }
+.dialogue-thread { display: grid; gap: 8px; margin-top: 4px; }
+.dialogue-reply { display: grid; gap: 3px; justify-self: start; max-width: 90%; box-sizing: border-box; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #f1f1f4)); white-space: pre-wrap; }
+.dialogue-own { justify-self: end; border-radius: 14px 14px 4px 14px; background: var(--tgui--tertiary_bg_color, var(--tg-theme-secondary-bg-color, #f1f1f4)); }
+
 /* Прогресс */
 .progress-heading { padding: 12px 16px 0; }
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 16px; }

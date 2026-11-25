@@ -14,6 +14,7 @@ import { isTimeZone } from "../time";
 import { exampleTranslation } from "../services/words";
 import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appTriage, appTriageQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
+import { AppDialogues } from "./dialogue";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
@@ -31,6 +32,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   const { deps } = ctx;
   // Один черновик на пользователя; после перезапуска нужно запросить предложение заново.
   const corrections = new Map<number, CorrectionDraft>();
+  const dialogues = new AppDialogues(deps);
   const app = new Hono<{ Variables: { user: User } }>();
 
   app.use("/api/*", async (c, next) => {
@@ -83,6 +85,14 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/check", async (c) => {
     const r = await appCheck(deps, c.get("user"), await c.req.json().catch(() => ({})));
     return c.json(r.body, r.status as 200 | 400 | 404 | 409);
+  });
+  app.post("/api/dialogue", async (c) => {
+    const r = await dialogues.open(c.get("user"), await c.req.json().catch(() => null) ?? {});
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/dialogue/answer", async (c) => {
+    const r = await dialogues.answer(c.get("user"), await c.req.json().catch(() => null) ?? {});
+    return c.json(r.body, r.status);
   });
   app.post("/api/mistakes", async (c) => {
     const r = await appSaveMistakes(deps, c.get("user"), await c.req.json().catch(() => ({})));

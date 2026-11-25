@@ -181,7 +181,7 @@ describe("/settings modes", () => {
 
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ RU → EN")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ Вставь по смыслу")));
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ ✍️ Своё предложение")));
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 💬 Ответь собеседнику")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🎧 Диктант")));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "✅ 🔗 Сочетания")));
     expect(await getUser(h.db, user.id)).toMatchObject({ modeEnRu: true, modeRuEn: false, modeCloze: false, modeSentence: false, modeListen: false });

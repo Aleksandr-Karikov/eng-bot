@@ -210,13 +210,19 @@ export interface SentenceReview extends CheckResult {
   usesWord: boolean;
   /** Одно-два предложения по-русски: как употреблено слово и что не так, если не так. */
   verdict: string;
+  followUp?: DialogueTurn;
 }
+
+export type DialogueTurn = { line: string; hint: string };
+export type DialogueScene = DialogueTurn & { situation: string };
+export type DialogueInput = Pick<SentenceInput, "term" | "translation" | "explanation"> & { focus: string };
 
 export interface SentenceInput {
   term: string;
   translation: string;
   explanation: string;
   answer: string;
+  dialogue?: { line: string; previous?: { line: string; answer: string }; askAgain?: boolean };
 }
 
 /** Вопрос «работы над ошибками»: предложение с пропуском и варианты, правильный — options[correct]. */
@@ -263,6 +269,7 @@ export interface ExerciseTutor {
   story(words: Array<{ term: string; translation: string }>): Promise<StoryDraft>;
   /** Проверяет предложение, которое ученик составил сам: употреблено ли слово и какие ошибки вокруг. */
   reviewSentence(input: SentenceInput): Promise<SentenceReview>;
+  dialogueScene?(input: DialogueInput): Promise<DialogueScene>;
   /** avoid — недавно заданные вопросы: новые не должны их повторять. */
   drill(profile: string, count: number, avoid?: string[]): Promise<DrillQuestion[]>;
   /** Запоминалки для слов (по порядку; "" — не вышло): образ, разбор по частям, связь или сценка — что подходит. */
@@ -334,15 +341,38 @@ export function buildJudgePrompt(input: JudgeInput, lang: Language = EN): string
   ].join("\n");
 }
 
+export function buildDialoguePrompt(input: DialogueInput, lang: Language = EN): string {
+  return [
+    `Придумай короткую сценку для практики ${lang.stem}ой речи. Целевое выражение: ${JSON.stringify(input.term)} — ${input.translation}.`,
+    input.explanation ? `Смысл: ${input.explanation}` : "",
+    `Цель на эту встречу: ${input.focus} Если для выражения это звучит натянуто, выбери естественный вариант.`,
+    "Дай ученику роль и конкретную причину ответить: объяснить, что случилось, предупредить, договориться, попросить или возразить.",
+    `Собеседник обращается прямо к ученику на ${lang.stem}ом. Его реплика задаёт один конкретный вопрос или повод ответить. Не используй в ней целевое выражение и не проси составить пример.`,
+    "В ответе на реплику целевое выражение должно напрашиваться само. Ученик может ответить по-разному, без дословного перевода или угадывания заданного предложения.",
+    `Верни JSON: {"situation":"одна короткая фраза по-русски о роли и ситуации", "line":"1–2 коротких предложения собеседника на ${lang.stem}ом", "hint":"2–5 первых слов одного возможного ответа, без полного ответа"}.`,
+  ].filter(Boolean).join("\n");
+}
+
+const dialogueTurn = z.object({ line: z.string().trim().min(1).max(300), hint: z.string().trim().min(1).max(80) });
+const dialogueScene = dialogueTurn.extend({ situation: z.string().trim().min(1).max(180) });
+export const parseDialogueScene = (text: string): DialogueScene => dialogueScene.parse(jsonObject(text));
+
 export function buildSentencePrompt(input: SentenceInput, lang: Language = EN): string {
+  const dialogue = input.dialogue;
   return [
     `Русскоязычный человек учит ${lang.stem}ое слово или фразу "${input.term}" — ${input.translation}.`,
     input.explanation ? `Смысл: ${input.explanation}` : "",
-    "Его попросили составить своё предложение с этим словом. Вот что он написал:",
+    ...(dialogue ? [
+      "Ученик отвечает собеседнику, стараясь употребить целевое выражение.",
+      dialogue.previous ? `Предыдущий обмен репликами: ${JSON.stringify(dialogue.previous)}` : "",
+      `Собеседник: ${JSON.stringify(dialogue.line)}`,
+      "Ответ ученика:",
+    ] : ["Его попросили составить своё предложение с этим словом. Вот что он написал:"]),
     input.answer,
     "",
     "1) uses_word: true, если слово или фраза есть в предложении (в любой грамматической форме) и употреблены в нужном значении и уместно.",
     `false — если слова нет, оно в другом значении или так по-${lang.stem}и не говорят. Мелкие ошибки вокруг слова на это не влияют.`,
+    ...(dialogue ? ["Ответ должен подходить к реплике собеседника. Фраза с целевым словом на постороннюю тему не засчитывается. Принимай любые естественные подходящие формы и варианты ответа. В verdict дай подсказку без полного ответа. Если нужен полный пример, вынеси его в natural."] : []),
     "verdict — 1–2 коротких предложения по-русски: как употреблено слово; если неверно — почему и как правильно.",
     "2) Остальное проверь как обычно: исправь грамматические, орфографические и лексические ошибки, не трогая то, что и так верно.",
     `Пунктуацию и регистр не считай ошибкой. Если фраза звучит не по-${lang.stem}и — предложи вариант естественнее, иначе пустая строка.`,
@@ -351,6 +381,10 @@ export function buildSentencePrompt(input: SentenceInput, lang: Language = EN): 
     "fixes — список ошибок (пусто, если их нет), why — короткое объяснение правила по-русски,",
     `category — одна тема из списка: ${mistakeCategories().join(", ")},`,
     "slip — true для описки (опечатка, пропущенная буква), false для незнания.",
+    ...(dialogue?.askAgain ? [
+      `Если uses_word: true, добавь в JSON "followUp": {"line":"следующая реплика собеседника на ${lang.stem}ом", "hint":"2–5 первых слов возможного ответа"}.`,
+      "Отреагируй на конкретный смысл ответа ученика и естественно дай повод употребить то же выражение с другим словом или в другой форме. Не произноси целевое выражение и не повторяй первый вопрос. Если уместного продолжения нет, опусти followUp.",
+    ] : []),
   ]
     .filter(Boolean)
     .join("\n");
@@ -362,11 +396,12 @@ const sentenceReview = z.object({
   corrected: z.string().default(""),
   fixes: fixesField,
   natural: z.string().trim().default(""),
+  followUp: dialogueTurn.nullish().catch(undefined).transform((turn) => turn ?? undefined),
 });
 
 export function parseSentenceReview(text: string): SentenceReview {
-  const { uses_word, ...rest } = sentenceReview.parse(jsonObject(text));
-  return { ...rest, usesWord: uses_word };
+  const { uses_word, followUp, ...rest } = sentenceReview.parse(jsonObject(text));
+  return { ...rest, usesWord: uses_word, ...(uses_word && followUp ? { followUp } : {}) };
 }
 
 export function buildUntanglePrompt(word: { term: string; translation: string; explanation: string; example: string; mnemonic: string }, lang: Language = EN): string {

@@ -51,7 +51,7 @@ export interface AppCard {
   cardId: number;
   reps: number;
   isNew: boolean;
-  /** EN → RU, RU → EN, 🔗 сочетания (варианты) или задание с ответом текстом: вставь по смыслу, диктант, своё предложение. */
+  /** EN → RU, RU → EN, сочетания, пропуск по смыслу, диктант или реплика в диалоге. */
   stage: "en_ru" | "ru_en" | "collocation" | "cloze" | "listen" | "sentence";
   /** Для «вставь по смыслу»: предложение с пропуском и перевод (ответ — только после проверки). */
   cloze?: { id: number; sentence: string; translation: string };

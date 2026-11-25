@@ -1,7 +1,7 @@
 import { EN, langForms } from "../lang";
 import { termPattern } from "../services/word-uses";
 import type { ClozeSentence, Story, User, Word } from "../db/schema";
-import type { Collocations, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
+import type { Collocations, DialogueScene, DrillQuestion, Judgement, LeechHelp, SayAnswer, SentenceReview, TalkReview, TranslationReview } from "../llm/tutor";
 import { ALL_PARTS, type CardView } from "../services/card-view";
 import { answersOf, gapCount, gapSegments } from "../services/cloze";
 import { RESOLVE_STREAK, type DrillProgress, type MistakeProfile } from "../services/mistakes";
@@ -589,7 +589,8 @@ export function clozeUnknownText(s: ClozeSentence): string {
   return `🤷 Правильно так:\n\n${clozeFull(s)}\n\n🇷🇺 ${esc(s.translation)}`;
 }
 
-export function sentenceTaskText(word: Pick<Word, "term" | "translation">): string {
+export function sentenceTaskText(word: Pick<Word, "term" | "translation">, scene?: DialogueScene): string {
+  if (scene) return `💬 Ответь собеседнику\n${esc(scene.situation)}\n\n<b>${esc(scene.line)}</b>\n\nУпотреби <b>${esc(word.term)}</b> — ${esc(word.translation)}.\nНачало ответа: <tg-spoiler>${esc(scene.hint)}</tg-spoiler>`;
   return `✍️ Составь своё предложение со словом:\n\n<b>${esc(word.term)}</b> — ${esc(word.translation)}\n\nНапиши его сообщением — проверю, верно ли употреблено слово, и поправлю ошибки.`;
 }
 
@@ -872,7 +873,7 @@ export function welcomeText(): string {
       "Каждая карточка — в случайном виде:",
       "• EN → RU и RU → EN — вспомни и проверь себя под спойлером",
       "• ✍️ вставь слово в предложение",
-      "• ✍️ составь своё предложение — проверю, верно ли употреблено",
+      "• 💬 ответь собеседнику — потренируй слово в диалоге",
       "• 🎧 диктант — услышь и напиши",
       "• 🔗 сочетания — make или do a decision?",
       "Интервалы считает FSRS. Слово никак не даётся — разберу, почему и с чем его не путать 🧩. Всё повторил — можно потренироваться вне зачёта.",

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, type Answer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
+import { DialogueCard } from "./DialogueCard";
 import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
 import { useBottomButtons } from "./bottomButtons";
@@ -51,6 +52,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
+  const [dialogueVersion, setDialogueVersion] = useState(0);
   const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number }>>([]);
   const damageSequence = useRef(0);
   const reducedMotion = useReducedMotion();
@@ -176,6 +178,7 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
       const recorded = await last.sent;
       await undoAnswer(last.card);
       showDamage(-(recorded?.damage ?? 0));
+      if (last.card.stage === "sentence") setDialogueVersion((v) => v + 1);
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
       setDone((n) => Math.max(0, n - 1));
     } catch (err) {
@@ -185,6 +188,10 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
   }, [history, showDamage]);
 
   const card = queue[0];
+  const typedRated = (card: Card, hp: number) => {
+    showDamage(hp);
+    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ damage: hp }) }].slice(-UNDO_DEPTH));
+  };
   const total = done + queue.length;
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
   const fold = () => {
@@ -318,16 +325,21 @@ export function Learn({ corner, onTriage, onSets }: { corner: ReactNode; onTriag
           onAnswer={(correct) => answerDrill(card, correct)}
           onNext={advance}
         />
-      ) : card.stage === "cloze" || card.stage === "listen" || card.stage === "sentence" ? (
+      ) : card.stage === "sentence" ? (
+        <DialogueCard
+          key={`${card.cardId}-${card.reps}-${dialogueVersion}`}
+          card={card}
+          onRated={(hp) => typedRated(card, hp)}
+          onNext={advance}
+          onFallback={() => setQueue((q) => q[0] === card ? [{ ...card, stage: "en_ru" }, ...q.slice(1)] : q)}
+        />
+      ) : card.stage === "cloze" || card.stage === "listen" ? (
         <TypeCard
           key={`${card.cardId}-${card.reps}`}
           card={card}
           voice={me?.voice}
           // Оценил сервер при проверке — в историю для отмены (запрос уже прошёл).
-          onRated={(hp) => {
-            showDamage(hp);
-            if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ damage: hp }) }].slice(-UNDO_DEPTH));
-          }}
+          onRated={(hp) => typedRated(card, hp)}
           onRateSelf={(a) => rate(card, a)}
           onNext={advance}
         />

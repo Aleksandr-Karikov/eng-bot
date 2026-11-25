@@ -35,6 +35,22 @@ const texts = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.meth
 const logs = async (h: ReturnType<typeof botHarness>) => (await h.db.select().from(reviewLogs)).map((l) => `${l.stage}:${l.rating}`);
 
 describe("✍️ own sentence", () => {
+  it("показывает сценку со скрытой подсказкой и проверяет ответ как реплику", async () => {
+    const reviewSentence = vi.fn(async () => review({ verdict: "Ответ подходит к вопросу." }));
+    const h = botHarness({ tutor: {
+      ...tutor(reviewSentence),
+      dialogueScene: async () => ({ situation: "Вы гуляете у реки.", line: "Where can Sam & Jo sit?", hint: "They can sit…" }),
+    } });
+    await setup(h, "modeSentence");
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    expect(texts(h).at(-1)).toContain("Where can Sam &amp; Jo sit?");
+    expect(texts(h).at(-1)).toContain("<tg-spoiler>They can sit…</tg-spoiler>");
+    await h.bot.handleUpdate(h.message(100, "They can sit on the river bank."));
+    await vi.waitFor(() => expect(texts(h).at(-1)).toContain("Ответ подходит к вопросу"));
+    expect(reviewSentence).toHaveBeenCalledWith(expect.objectContaining({ dialogue: { line: "Where can Sam & Jo sit?" } }));
+    expect(await logs(h)).toEqual(["sentence:good"]);
+  });
+
   it("asks for a sentence, rates by whether the word is used right and offers to save the other mistakes", async () => {
     const reviewSentence = vi.fn(async () =>
       review({ verdict: "bank — берег реки, всё верно", corrected: "We **were** on the bank", fixes: [{ wrong: "was", right: "were", why: "we → were", category: "согласование", slip: false }] }),

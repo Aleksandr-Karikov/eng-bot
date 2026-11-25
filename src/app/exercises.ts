@@ -1,14 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import type { Deps } from "../bot/context";
 import { gapParts } from "../bot/texts";
-import { clozeSentences, type User } from "../db/schema";
+import { clozeSentences, type User, type Word } from "../db/schema";
+import type { SentenceReview } from "../llm/tutor";
 import { gradeDictation, isExactAnswer } from "../services/exercises";
 import { checkAndCount, type QuotaKind } from "../services/limits";
 import { recordMistakes } from "../services/mistakes";
 import { recordAnswer, getDueItemByCard } from "../services/review";
 
 /**
- * Задания с ответом текстом в приложении — те же, что в /learn: ✍️ вставь по смыслу, 🎧 диктант, ✍️ своё предложение.
+ * Проверка пропусков и диктантов. Старые версии Mini App также присылают сюда свободное предложение.
  * Проверяет сервер (точное совпадение сразу, иначе — модель), он же и оценивает карточку: «Помню» или «Забыл».
  */
 export type TypedStage = "cloze" | "listen" | "sentence";
@@ -96,13 +97,14 @@ export async function appCheck(
     return { status: 200, body: { ok: true, damage, unchecked: true, ...reveal } };
   }
   if (!(await rate(review.usesWord))) return fail(409, "Уже учтено");
+  return { status: 200, body: { ok: true, damage, ...sentenceFeedback(deps, user, review), ...reveal } };
+}
+
+export function sentenceFeedback(deps: Deps, user: User, review: SentenceReview) {
   const real = review.fixes.filter((f) => !f.slip);
   // Как в /check: в работу над ошибками — только если человек согласится («Сохранить»).
   const mistakesId = real.length ? deps.pendingMistakes.create({ authorUserId: user.id, callerUserId: user.id, fixes: real, baseText: "" }) : undefined;
-  return {
-    status: 200,
-    body: { ok: true, damage, correct: review.usesWord, verdict: review.verdict, corrected: review.corrected, fixes: review.fixes, natural: review.natural, mistakesId, ...reveal },
-  };
+  return { correct: review.usesWord, verdict: review.verdict, corrected: review.corrected, fixes: review.fixes, natural: review.natural, mistakesId };
 }
 
 /** «Сохранить ошибки» под разбором своего предложения. */

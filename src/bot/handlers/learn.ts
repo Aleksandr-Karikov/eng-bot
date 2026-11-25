@@ -6,9 +6,11 @@ import { markTriaged } from "../../services/triage";
 import { InlineKeyboard, InputFile, type Bot } from "grammy";
 import type { Message } from "grammy/types";
 import { State } from "ts-fsrs";
-import type { Judgement, LeechHelp } from "../../llm/tutor";
+import type { DialogueScene, Judgement, LeechHelp } from "../../llm/tutor";
 import { listCloze, pickCloze } from "../../services/cloze";
 import { gradeDictation, isExactAnswer, pickStage, type Stage } from "../../services/exercises";
+import { prepareDialogue } from "../../services/dialogue";
+import { checkAndCount } from "../../services/limits";
 import { cardView } from "../../services/card-view";
 import { practiceQueue } from "../../services/practice";
 import { weakDirections } from "../../services/weak-direction";
@@ -80,7 +82,7 @@ const userModes = (ctx: BotContext) => ({
 const SPECIAL: Stage[] = ["sentence", "listen", "collocation"];
 
 /**
- * «Своё предложение» и диктант (ждут ответ сообщением), сочетания (ответ кнопкой).
+ * Диалог и диктант ждут ответа сообщением; сочетания — кнопкой.
  * false — показать нельзя (не вышла озвучка, нет вопроса), тогда вместо них обычная карточка.
  */
 async function presentSpecial(
@@ -107,9 +109,21 @@ async function presentSpecial(
   const accent = autoVoice(ctx.user) ?? pickAccent(deps.random);
   const voice = stage === "listen" ? await wordVoice(deps, word, accent) : undefined;
   if (stage === "listen" && !voice) return false;
+  let scene: DialogueScene | undefined;
+  if (stage === "sentence" && deps.tutor.dialogueScene) {
+    const quota = await checkAndCount(deps.db, { userId: ctx.user.id, timeZone: ctx.user.timezone, now: deps.now(), kind: "check" });
+    if (!quota.allowed) return false;
+    void ctx.replyWithChatAction("typing").catch(() => {});
+    try {
+      scene = await prepareDialogue(deps.db, deps.tutor, card.id, word);
+    } catch {
+      console.error("Bot dialogue scene failed");
+      return false;
+    }
+  }
   const base = { cardId: card.id, reps: card.reps, wordId: word.id, term: word.term, chatId: ctx.chat.id, practice };
-  deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence" });
-  const text = (practice ? PRACTICE_HEADER : "") + (stage === "listen" ? LISTEN_TASK_TEXT : sentenceTaskText(word));
+  deps.exercises.set(ctx.user.id, stage === "listen" ? { ...base, kind: "listen" } : { ...base, kind: "sentence", scene });
+  const text = (practice ? PRACTICE_HEADER : "") + (stage === "listen" ? LISTEN_TASK_TEXT : sentenceTaskText(word, scene));
   const keyboard = practice ? practiceClozeKeyboard(card.id, word.id) : addUndoRow(clozeKeyboard(card.id, card.reps, word.id), undo);
   rememberTask(deps, ctx.user.id, await present(ctx, text, { ...HTML, reply_markup: keyboard }, mode));
   if (voice) await sendWordVoice(ctx, deps, word, accent, voice);
@@ -443,16 +457,18 @@ async function checkDictation(ctx: BotContext, deps: Deps, pending: PendingExerc
   });
 }
 
-/** Своё предложение: Claude смотрит, верно ли употреблено слово (это и оценка), и правит остальные ошибки. */
-async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExercise, answer: string): Promise<void> {
+async function checkSentence(ctx: BotContext, deps: Deps, pending: PendingExercise & { kind: "sentence" }, answer: string): Promise<void> {
   const word = await getWord(deps.db, pending.wordId);
   if (!word) return void (await ctx.reply("Это слово уже удалили — /learn, чтобы продолжить"));
   await ctx.replyWithChatAction("typing");
   let review;
   try {
-    review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });
-  } catch (err) {
-    console.error("Sentence review failed", err);
+    review = await deps.tutor.reviewSentence({
+      term: word.term, translation: word.translation, explanation: word.explanation, answer,
+      ...(pending.scene ? { dialogue: { line: pending.scene.line } } : {}),
+    });
+  } catch {
+    console.error("Sentence review failed");
     if (pending.practice) return proceed(ctx, deps, "practice", { text: `Не получилось проверить 😔\n\n${sentenceUnknownText(word)}` });
     await ctx.reply(`Не получилось проверить 😔\n\n${sentenceUnknownText(word)}\n\nОцени себя сам:`, {
       ...HTML,

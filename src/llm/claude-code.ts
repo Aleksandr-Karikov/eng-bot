@@ -37,6 +37,7 @@ import {
   type QuizCheck,
   buildJudgePrompt,
   buildSentencePrompt,
+  buildDialoguePrompt,
   buildStoryPrompt,
   buildUntanglePrompt,
   buildTalkReplyPrompt,
@@ -68,6 +69,9 @@ import {
   parseStory,
   type StoryDraft,
   parseSentenceReview,
+  parseDialogueScene,
+  type DialogueInput,
+  type DialogueScene,
   type SentenceInput,
   type SentenceReview,
   buildImagePromptPrompt,
@@ -321,6 +325,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async reviewSentence(input: SentenceInput): Promise<SentenceReview> {
     return parseSentenceReview(await this.ask(dataNotInstructionsPrompt(buildSentencePrompt(input)), Math.max(this.opts.timeoutMs, 60_000), this.checker));
+  }
+
+  async dialogueScene(input: DialogueInput): Promise<DialogueScene> {
+    return parseDialogueScene(await this.ask(dataNotInstructionsPrompt(buildDialoguePrompt(input)), Math.max(this.opts.timeoutMs, 45_000), this.checker));
   }
 
   async judge(input: JudgeInput): Promise<Judgement> {
