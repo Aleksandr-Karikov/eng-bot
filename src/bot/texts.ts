@@ -478,9 +478,16 @@ export function fillGap(sentence: string, answer: string): string {
   return `${esc(before)}<b>${esc(answer)}</b>${esc(after)}`;
 }
 
+/** Пропуск — три и больше подчёркиваний подряд: модель пишет и `___`, и `_______`. */
+const GAP = /_{3,}/;
+
 /** То же без разметки: что до пропуска и что после (повтор на стыке уже убран) — приложение рисует ответ само. */
 export function gapParts(sentence: string, answer: string): { before: string; answer: string; after: string } {
-  const [before = "", ...rest] = sentence.split("___");
+  // Режем по всему пропуску целиком, а не по трём подчёркиваниям: `pickled onion` приходило с
+  // `_______`, и после подстановки оставалось лишнее `____` на месте ответа (баг #25).
+  const at = sentence.search(GAP);
+  const before = at < 0 ? sentence : sentence.slice(0, at);
+  const afterGap = at < 0 ? "" : sentence.slice(at).replace(GAP, "");
   const words = answer.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const WORD = /^[\p{L}\p{N}'’]+/u;
   const WORD_END = /[\p{L}\p{N}'’]+$/u;
@@ -505,7 +512,7 @@ export function gapParts(sentence: string, answer: string): { before: string; an
     }
     return left;
   };
-  let after = rest.join("___");
+  let after = afterGap;
   let head = before;
   for (let k = Math.min(words.length, 4); k > 0; k--) {
     const cut = cutAfter(after, k);

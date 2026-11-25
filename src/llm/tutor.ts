@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fixesField, jsonArray, jsonObject } from "./json";
-import type { ClozeDraft } from "../services/cloze";
+import { validCloze, type ClozeDraft } from "../services/cloze";
 import { capStem, EN, type Language } from "../lang";
 import { mistakeCategories, type CheckResult } from "./enricher";
 
@@ -282,7 +282,9 @@ export function buildClozePrompt(term: string, translation: string, lang: Langua
 }
 
 const clozeItem = z.object({
-  sentence: z.string().trim().includes("___"),
+  // Ровно один пропуск: разбор подставляет ответ в единственный пропуск, и второй остался бы в тексте
+  // пустым — «The past seems to **have hold** a strong ____ on him» (баг #25).
+  sentence: z.string().trim().refine(validCloze),
   answer: z.string().trim().min(1),
   translation: z.string().trim().default(""),
 });
