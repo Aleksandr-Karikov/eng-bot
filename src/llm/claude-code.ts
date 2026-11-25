@@ -32,6 +32,9 @@ import {
   buildDrillPrompt,
   buildDrillReviewPrompt,
   parseDrillReview,
+  buildQuizCheckPrompt,
+  parseQuizCheck,
+  type QuizCheck,
   buildJudgePrompt,
   buildSentencePrompt,
   buildStoryPrompt,
@@ -260,7 +263,22 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   /** Сочетания готовятся в фоне, так что можно сильной моделью: Haiku путает частые сочетания с возможными. */
   async collocations(term: string, translation: string): Promise<Collocations> {
-    return parseCollocations(await this.ask(buildCollocationsPrompt(term, translation), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet", [], false));
+    const timeout = Math.max(this.opts.timeoutMs, 60_000);
+    const model = this.opts.mnemonicModel ?? "sonnet";
+    const parsed = parseCollocations(await this.ask(buildCollocationsPrompt(term, translation), timeout, model, [], false));
+    if (!parsed.quiz) return parsed;
+    // Самопроверка: подставь каждый вариант и прочитай предложение (баг #20). Вопрос, где «верный»
+    // вариант даёт бессмыслицу, отбрасываем — сочетания при этом остаются, они полезны сами по себе.
+    const check = await this.checkCollocationQuiz({ term, translation, quiz: { term, ...parsed.quiz } });
+    if (check.ok) return parsed;
+    console.error("Collocation quiz rejected", term, check.why);
+    return { items: parsed.items };
+  }
+
+  async checkCollocationQuiz(input: { term: string; translation: string; quiz: QuizCheck }): Promise<{ ok: boolean; why: string }> {
+    const timeout = Math.max(this.opts.timeoutMs, 60_000);
+    const { term: _term, ...quiz } = input.quiz;
+    return parseQuizCheck(await this.ask(buildQuizCheckPrompt({ term: input.term, ...quiz }, input.translation), timeout, this.checker, [], false));
   }
 
   /** Грамматика и родня слова — как и сочетания, в фоне и сильной моделью: часть речи и CEFR Haiku врёт. */

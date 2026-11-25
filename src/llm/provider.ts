@@ -9,6 +9,7 @@ import type {
   TranslationTask,
   TranslationReview,
   Collocations,
+  QuizCheck,
   WordGrammar,
   SayAnswer,
   TalkInput,
@@ -167,6 +168,14 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   }
   collocations(term: string, translation: string): Promise<Collocations> {
     return this.active.collocations(term, translation);
+  }
+
+  /**
+   * Проверка готового вопроса на сочетания. Провайдер без такой проверки считается «вопрос годен»:
+   * она только добавляет строгости, и её отсутствие не должно выбрасывать сделанную работу.
+   */
+  async checkCollocationQuiz(input: { term: string; translation: string; quiz: QuizCheck }): Promise<{ ok: boolean; why: string }> {
+    return this.active.checkCollocationQuiz ? this.active.checkCollocationQuiz(input) : { ok: true, why: "" };
   }
 
   grammar(term: string, translation: string): Promise<WordGrammar> {
