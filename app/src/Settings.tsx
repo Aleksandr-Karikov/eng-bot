@@ -64,13 +64,19 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
 
       <Section
         header="🆕 Новые слова в день"
-        footer="Считаются только новые слова; повторения приходят всегда. Остальные новые ждут очереди в следующие дни — сначала самые полезные."
+        footer="Сколько слов из очереди можно начать за день, если есть место в активном обучении."
       >
         {settings.newPerDayChoices.map((value) => (
           <Cell key={value} after={settings.newPerDay === value ? "✓" : undefined} onClick={() => void change({ newPerDay: value })}>
-            {value === 0 ? "Без ограничения" : `${value} в день`}
+            {value === 0 ? "Без дневного лимита" : `${value} в день`}
           </Cell>
         ))}
+      </Section>
+
+      <Section header="📚 Активное обучение" footer="Когда слово становится выученным, его место может занять новое. Повторения идут по расписанию.">
+        <Select header="Слов одновременно" aria-label="Слов одновременно" value={settings.activeLearningLimit} onChange={(e) => void change({ activeLearningLimit: Number(e.target.value) })}>
+          {settings.activeLearningChoices.map((value) => <option key={value} value={value}>{value}</option>)}
+        </Select>
       </Section>
 
       <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">

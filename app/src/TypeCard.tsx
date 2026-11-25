@@ -71,9 +71,9 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
         if (!r.unchecked) onRated(r.damage);
       } catch (err) {
         haptic.done(false);
-        // Карточку уже оценили (например, в боте) — не застревать на ней.
+        // Карточка успела измениться или уйти в очередь, пока был открыт диктант.
         if (err instanceof ApiError && err.status === 409) {
-          notify("Эта карточка уже засчитана — дальше");
+          notify(err.message);
           return onNext();
         }
         notify(err instanceof Error ? err.message : String(err));

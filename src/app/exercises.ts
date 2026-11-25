@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Deps } from "../bot/context";
-import { gapParts } from "../bot/texts";
+import { gapParts, LEARNING_FULL_TEXT } from "../bot/texts";
 import { clozeSentences, type User } from "../db/schema";
 import type { SentenceReview } from "../llm/tutor";
 import { gradeDictation, isExactAnswer } from "../services/exercises";
@@ -48,16 +48,18 @@ export async function appCheck(
   // Вне зачёта (режим «Трудные») ответ проверяем, но карточку не оцениваем.
   let damage = 0;
   const rate = async (good: boolean) => {
-    if (body.practice === true) return true;
+    if (body.practice === true) return;
     const recorded = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` });
     damage = recorded.damage;
-    return recorded.result === "ok";
+    if (recorded.result === "waiting") return fail(409, LEARNING_FULL_TEXT);
+    if (recorded.result === "stale") return fail(409, "Уже учтено");
   };
   const reveal = { term: word.term, translation: word.translation, transcriptionUk: word.transcriptionUk, transcriptionUs: word.transcriptionUs, example: word.example };
 
   if (stage === "listen") {
     const grade = dunno ? "wrong" : gradeDictation(answer, word.term);
-    if (!(await rate(grade !== "wrong"))) return fail(409, "Уже учтено");
+    const conflict = await rate(grade !== "wrong");
+    if (conflict) return conflict;
     return { status: 200, body: { ok: true, damage, correct: grade !== "wrong", grade, ...reveal } };
   }
 
@@ -66,7 +68,8 @@ export async function appCheck(
     if (!s) return fail(404, "Это предложение уже заменили");
     const base = { filled: gapParts(s.sentence, s.answer), translation: s.translation };
     if (dunno || isExactAnswer(answer, { answer: s.answer, term: word.term })) {
-      if (!(await rate(!dunno))) return fail(409, "Уже учтено");
+      const conflict = await rate(!dunno);
+      if (conflict) return conflict;
       return { status: 200, body: { ok: true, damage, correct: !dunno, ...base, ...reveal } };
     }
     const denied = await allowModelCheck(deps, user, "check");
@@ -78,13 +81,15 @@ export async function appCheck(
       console.error("App cloze judge failed", err);
       return { status: 200, body: { ok: true, damage, unchecked: true, ...base, ...reveal } };
     }
-    if (!(await rate(judgement.correct))) return fail(409, "Уже учтено");
+    const conflict = await rate(judgement.correct);
+    if (conflict) return conflict;
     return { status: 200, body: { ok: true, damage, correct: judgement.correct, explanation: judgement.explanation, tip: judgement.tip, ...base, ...reveal } };
   }
 
   // Своё предложение: модель смотрит, верно ли употреблено слово (это и оценка), и правит остальное.
   if (dunno) {
-    if (!(await rate(false))) return fail(409, "Уже учтено");
+    const conflict = await rate(false);
+    if (conflict) return conflict;
     return { status: 200, body: { ok: true, damage, correct: false, ...reveal } };
   }
   const denied = await allowModelCheck(deps, user, "check");
@@ -96,7 +101,8 @@ export async function appCheck(
     console.error("App sentence review failed", err);
     return { status: 200, body: { ok: true, damage, unchecked: true, ...reveal } };
   }
-  if (!(await rate(review.usesWord))) return fail(409, "Уже учтено");
+  const conflict = await rate(review.usesWord);
+  if (conflict) return conflict;
   return { status: 200, body: { ok: true, damage, ...sentenceFeedback(deps, user, review), ...reveal } };
 }
 

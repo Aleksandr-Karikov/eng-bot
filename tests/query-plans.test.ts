@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
+import { State } from "ts-fsrs";
 import { makeUser, testDb } from "./helpers";
 
 /**
@@ -14,7 +15,7 @@ describe("план запроса очереди (E33)", () => {
     const db = testDb();
     const user = await makeUser(db, 1);
     const plan = db.all<{ detail: string }>(
-      sql`EXPLAIN QUERY PLAN SELECT due FROM cards WHERE user_id = ${user.id} ORDER BY due LIMIT 1`,
+      sql`EXPLAIN QUERY PLAN SELECT due FROM cards WHERE user_id = ${user.id} AND state <> ${State.New} ORDER BY due LIMIT 1`,
     );
     const text = plan.map((p) => p.detail).join(" | ");
     // Индекс должен покрывать и поиск, и порядок: иначе сортировка снова временная.

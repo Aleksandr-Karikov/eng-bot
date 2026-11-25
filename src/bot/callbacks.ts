@@ -60,9 +60,10 @@ export type Cb =
   | { k: "pronNext" }
   | { k: "captureUndo"; wordId: number }
   | { k: "promote"; wordId: number }
-  | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" | "voice" | "new" }
+  | { k: "settingsScreen"; screen: "main" | "remind" | "modes" | "card" | "voice" | "new" | "active" }
   /** 🆕 Дневная порция новых слов (E30): 0 — без ограничения. */
   | { k: "newPerDay"; value: number }
+  | { k: "activeLearningLimit"; value: number }
   | { k: "mistakesGo"; to: "drill" | "translate" }
   | { k: "notForMe"; wordId: number; from: "know" | "learn" }
   | { k: "restoreCard"; wordId: number }
@@ -181,6 +182,7 @@ export function encodeCb(cb: Cb): string {
     case "promote": return `uf:${cb.wordId}`;
     case "settingsScreen": return `ss:${cb.screen}`;
     case "newPerDay": return `np:${cb.value}`;
+    case "activeLearningLimit": return `al:${cb.value}`;
     case "mistakesGo": return `mg:${cb.to === "drill" ? "d" : "t"}`;
     case "notForMe": return `nf:${cb.wordId}:${cb.from === "know" ? "k" : "l"}`;
     case "restoreCard": return `nr:${cb.wordId}`;
@@ -342,10 +344,11 @@ export function decodeCb(data: string): Cb | null {
       return wordId !== null ? { k: "restoreCard", wordId } : null;
     }
     case "vo": return a === "x" ? { k: "voice", accent: "off" } : (VOICE_ACCENTS as readonly string[]).includes(a ?? "") ? { k: "voice", accent: a as VoiceAccent } : null;
-    case "ss": return a === "main" || a === "remind" || a === "modes" || a === "card" || a === "voice" || a === "new" ? { k: "settingsScreen", screen: a } : null;
-    case "np": {
+    case "ss": return a === "main" || a === "remind" || a === "modes" || a === "card" || a === "voice" || a === "new" || a === "active" ? { k: "settingsScreen", screen: a } : null;
+    case "np":
+    case "al": {
       const value = int(a);
-      return value !== null ? { k: "newPerDay", value } : null;
+      return value !== null ? { k: tag === "np" ? "newPerDay" : "activeLearningLimit", value } : null;
     }
     case "mg": return a === "d" || a === "t" ? { k: "mistakesGo", to: a === "d" ? "drill" : "translate" } : null;
     case "uf": {

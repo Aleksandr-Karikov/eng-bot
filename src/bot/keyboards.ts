@@ -4,6 +4,7 @@ import type { Room, User } from "../db/schema";
 import type { DrillQuestion } from "../llm/tutor";
 import { cardView, type CardPart } from "../services/card-view";
 import type { Stage } from "../services/exercises";
+import { ACTIVE_LEARNING_CHOICES } from "../services/users";
 import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
 import { encodeCb } from "./callbacks";
@@ -243,7 +244,7 @@ export const MODE_LABELS: Array<[Stage, string, keyof User]> = [
 ];
 
 /** Часы напоминания + переключатели режимов тренажёра. */
-export type SettingsScreen = "main" | "remind" | "modes" | "card" | "voice" | "new";
+export type SettingsScreen = "main" | "remind" | "modes" | "card" | "voice" | "new" | "active";
 
 /**
  * Варианты дневной порции новых слов (E30). `0` — без ограничения.
@@ -258,7 +259,7 @@ export const NEW_PER_DAY_CHOICES: Array<{ value: number; label: string }> = [
   { value: 15, label: "15" },
   { value: 25, label: "25" },
   { value: 30, label: "30" },
-  { value: 0, label: "без ограничения" },
+  { value: 0, label: "без дневного лимита" },
 ];
 
 /** /settings по экранам: на одном сообщении было ~27 кнопок. */
@@ -270,6 +271,8 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
       .row()
       .text("🆕 Новые слова в день", encodeCb({ k: "settingsScreen", screen: "new" }))
       .row()
+      .text("📚 Слов одновременно", encodeCb({ k: "settingsScreen", screen: "active" }))
+      .row()
       .text("🎯 Упражнения", encodeCb({ k: "settingsScreen", screen: "modes" }))
       .row()
       .text("🃏 Карточка", encodeCb({ k: "settingsScreen", screen: "card" }))
@@ -280,6 +283,13 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
     const kb = new InlineKeyboard();
     for (const choice of NEW_PER_DAY_CHOICES) {
       kb.text(`${user.newPerDay === choice.value ? "✅" : "⬜️"} ${choice.label}`, encodeCb({ k: "newPerDay", value: choice.value })).row();
+    }
+    return back(kb);
+  }
+  if (screen === "active") {
+    const kb = new InlineKeyboard();
+    for (const value of ACTIVE_LEARNING_CHOICES) {
+      kb.text(`${user.activeLearningLimit === value ? "✅" : "⬜️"} ${value}`, encodeCb({ k: "activeLearningLimit", value }));
     }
     return back(kb);
   }

@@ -101,6 +101,8 @@ export const users = sqliteTable("users", {
    * за локальные сутки), поэтому пропущенный день не накапливается. Повторения не режутся.
    */
   newPerDay: integer("new_per_day").notNull().default(15),
+  /** Сколько слов пользователь может учить одновременно, см. services/review.ts. */
+  activeLearningLimit: integer("active_learning_limit").notNull().default(15),
   createdAt: createdAt(),
 });
 

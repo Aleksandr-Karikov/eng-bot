@@ -7,7 +7,7 @@ import { ButtonIcon, IconBox, IconPlus, UsefulDot } from "./icons";
 import { haptic, useBackButton } from "./telegram";
 
 const STATUS_LABEL: Record<WordStatus, string> = {
-  new: "новое",
+  new: "в очереди",
   learning: "учу",
   known: "знаю",
   hard: "трудное",
@@ -16,7 +16,8 @@ const STATUS_LABEL: Record<WordStatus, string> = {
 
 const FILTERS: Array<{ id: string; label: string; match: (s: WordStatus) => boolean }> = [
   { id: "all", label: "Все", match: (s) => s !== "dropped" },
-  { id: "learning", label: "Учу", match: (s) => s === "new" || s === "learning" || s === "hard" },
+  { id: "learning", label: "Учу", match: (s) => s === "learning" || s === "hard" },
+  { id: "waiting", label: "В очереди", match: (s) => s === "new" },
   { id: "known", label: "Выучено", match: (s) => s === "known" },
   { id: "hard", label: "Трудные", match: (s) => s === "hard" },
   { id: "dropped", label: "Убранные мной", match: (s) => s === "dropped" },

@@ -7,7 +7,7 @@ import { roomTimeZone } from "../../services/digest";
 import { personalStats, roomLeaderboard } from "../../services/stats";
 import { toggleCardPart } from "../../services/card-view";
 import { autoVoice, toggleVoiceAccent } from "../../services/voice";
-import { updateUser } from "../../services/users";
+import { setActiveLearningLimit, updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
@@ -199,6 +199,15 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     const user = await updateUser(deps.db, ctx.user.id, { newPerDay: cb.value });
     await ctx.answerCallbackQuery({ text: cb.value === 0 ? "Без ограничения" : `${cb.value} в день` });
     await ctx.editMessageText(settingsText(user, "new"), { ...HTML, reply_markup: settingsKeyboard(user, "new") });
+  });
+
+  bot.callbackQuery(/^al:/, async (ctx) => {
+    const cb = decodeCb(ctx.callbackQuery.data);
+    if (cb?.k !== "activeLearningLimit") return void (await ctx.answerCallbackQuery());
+    const user = await setActiveLearningLimit(deps.db, ctx.user.id, cb.value);
+    if (!user) return void (await ctx.answerCallbackQuery({ text: "Нет такого варианта" }));
+    await ctx.answerCallbackQuery({ text: "Сохранено" });
+    await ctx.editMessageText(settingsText(user, "active"), { ...HTML, reply_markup: settingsKeyboard(user, "active") });
   });
 
   bot.callbackQuery(/^ss:/, async (ctx) => {

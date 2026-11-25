@@ -17,7 +17,7 @@ import { markStormStarted, STORM_MIN, stormCandidates } from "../../services/sto
 import { recordDrillAnswer } from "../../services/mistakes";
 import { storedCollocations } from "../../services/collocations";
 import { isHard, leechMoment } from "../../services/hard-words";
-import { answerCard, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
+import { answerCard, countDueSplit, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
 import { bossEnabled, bossOf } from "../../services/boss";
 import { getRoom } from "../../services/rooms";
@@ -51,6 +51,7 @@ import {
   clozeUnknownText,
   doneText,
   draftText,
+  LEARNING_FULL_TEXT,
   PRACTICE_HEADER,
   practiceDoneText,
   drillResultText,
@@ -318,10 +319,15 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, forced?:
       );
     }
   } else {
-    const next = await nextReviewAt(deps.db, ctx.user.id);
+    const now = deps.now();
+    const [next, { total }, due] = await Promise.all([
+      nextReviewAt(deps.db, ctx.user.id),
+      personalStats(deps.db, ctx.user, now),
+      countDueSplit(deps.db, ctx.user.id, now),
+    ]);
     // Пустой словарь — не «всё повторил»: новичку надо предложить набор, а не «появятся сами».
-    const { total } = await personalStats(deps.db, ctx.user, deps.now());
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
+    if (due.waiting && due.activeFull) text += "\n📚 Новые слова появятся, когда освободится место в обучении.";
     // 🐉 Босс — там же, где «Готово»: человек уходит с мыслью «снял столько-то HP», а не с сухим отчётом.
     text += await bossLine(ctx, deps);
     // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
@@ -436,8 +442,8 @@ async function rate(ctx: BotContext, deps: Deps, pending: PendingExercise, answe
     now: deps.now(),
     stage: pending.kind,
   });
-  if (result === "stale") {
-    await ctx.reply("Уже учтено");
+  if (result !== "ok") {
+    await ctx.reply(result === "waiting" ? LEARNING_FULL_TEXT : "Уже учтено");
     return false;
   }
   countAnswer(deps, ctx.user.id);
@@ -652,7 +658,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       now: deps.now(),
       stage: pending?.kind ?? "cloze",
     });
-    if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+    if (result !== "ok") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
     await ctx.answerCallbackQuery();
     countAnswer(deps, ctx.user.id);
     await afterAnswer(ctx, deps, cb.cardId);
@@ -702,7 +708,7 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
         now: deps.now(),
         stage: "collocation",
       });
-      if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+      if (result !== "ok") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
       countAnswer(deps, ctx.user.id);
       await afterAnswer(ctx, deps, cb.cardId);
     }
@@ -764,6 +770,10 @@ export function registerLearn(bot: Bot<BotContext>, deps: Deps): void {
       stage,
     });
     if (result === "stale") return void (await ctx.answerCallbackQuery({ text: "Уже учтено" }));
+    if (result === "waiting") {
+      await ctx.answerCallbackQuery({ text: LEARNING_FULL_TEXT });
+      return showNext(ctx, deps, "replace");
+    }
     // Не ждём: «часики» снимаются параллельно с обновлением карточки — на одну задержку сети меньше.
     void ctx.answerCallbackQuery().catch(() => {});
     countAnswer(deps, ctx.user.id);

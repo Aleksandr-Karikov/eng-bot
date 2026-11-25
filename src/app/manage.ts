@@ -8,11 +8,12 @@ import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services
 import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
+import { KNOW_STAGE } from "../services/goals";
 import { isStormHard } from "../services/storm";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
-import { updateUser, type UserPatch } from "../services/users";
+import { ACTIVE_LEARNING_CHOICES, setActiveLearningLimit, updateUser, type UserPatch } from "../services/users";
 import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord, findWord, normalizeTerm } from "../services/words";
 import type { CorrectionWord } from "../llm/enricher";
 import { prepareWord } from "../services/prepare-word";
@@ -37,13 +38,17 @@ export async function appWords(deps: Deps, user: User): Promise<{ room: string |
   const ids = list.map((w) => w.id);
   const mine = ids.length ? await deps.db.select().from(cards).where(and(eq(cards.userId, user.id), inArray(cards.wordId, ids))) : [];
   const history = new Map<number, string[]>();
+  const markedKnown = new Set<number>();
   const cardIds = mine.map((c) => c.id);
   if (cardIds.length) {
     const logs = await deps.db
-      .select({ cardId: reviewLogs.cardId, rating: reviewLogs.rating })
+      .select({ cardId: reviewLogs.cardId, rating: reviewLogs.rating, stage: reviewLogs.stage })
       .from(reviewLogs)
       .where(inArray(reviewLogs.cardId, cardIds)).orderBy(asc(reviewLogs.id));
-    for (const { cardId, rating } of logs) history.set(cardId, [...(history.get(cardId) ?? []), rating]);
+    for (const { cardId, rating, stage } of logs) {
+      history.set(cardId, [...(history.get(cardId) ?? []), rating]);
+      if (stage === KNOW_STAGE) markedKnown.add(cardId);
+    }
   }
   const byWord = new Map(mine.map((c) => [c.wordId, c]));
   return {
@@ -54,10 +59,10 @@ export async function appWords(deps: Deps, user: User): Promise<{ room: string |
         ? "dropped"
         : card.state === State.New
           ? "new"
-          : isStormHard(history.get(card.id) ?? [])
-            ? "hard"
-            : isLearned(card)
-              ? "known"
+          : isLearned(card) || (card.reps === 1 && markedKnown.has(card.id))
+            ? "known"
+            : isStormHard(history.get(card.id) ?? [])
+              ? "hard"
               : "learning";
       return { id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status };
     }),
@@ -185,6 +190,8 @@ export async function appSettings(deps: Deps, user: User) {
     // чтобы бот и приложение не разошлись в том, какие числа бывают.
     newPerDay: user.newPerDay,
     newPerDayChoices: NEW_PER_DAY_CHOICES.map((c) => c.value),
+    activeLearningLimit: user.activeLearningLimit,
+    activeLearningChoices: ACTIVE_LEARNING_CHOICES,
     // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
     voice: { accent: autoVoice(user) ?? null, accents: EN.accents.map((a) => ({ key: a, label: EN.accentLabel[a] })) },
   };
@@ -218,6 +225,9 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
     // Только варианты из списка: значение приходит с клиента, а по этой колонке считается очередь.
     if (!NEW_PER_DAY_CHOICES.some((c) => c.value === body.newPerDay)) return { ok: false, error: "Нет такого варианта порции" };
     patch = { newPerDay: body.newPerDay };
+  } else if (typeof body.activeLearningLimit === "number") {
+    const updated = await setActiveLearningLimit(deps.db, user.id, body.activeLearningLimit);
+    return updated ? { ok: true, user: updated } : { ok: false, error: "Выбери один из предложенных пределов обучения" };
   } else if (typeof body.cardPart === "string" && typeof body.on === "boolean") {
     const part = body.cardPart as CardPart;
     if (!CARD_PARTS.includes(part)) return { ok: false, error: "Нет такой части карточки" };

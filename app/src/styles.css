@@ -129,7 +129,7 @@ body {
 .status { font: 13px/1.3 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-hint-color, #8e8e93); }
 .status-known { color: #22c55e; }
 .status-hard { color: #ef4444; }
-.status-new { color: var(--tg-theme-accent-text-color, #2481cc); }
+.status-new { color: var(--tg-theme-accent-text-color, #2481cc); white-space: nowrap; }
 .word-head { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 16px 16px 4px; }
 .word-picture { width: calc(100% - 32px); max-height: none; margin: 8px 16px; }
 .danger { color: var(--tg-theme-destructive-text-color, #e53935); }

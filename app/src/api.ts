@@ -54,7 +54,7 @@ export interface Card {
 export interface Me {
   name: string;
   room: string | null;
-  due: { review: number; fresh: number };
+  due: { review: number; fresh: number; waiting: number; activeFull: boolean };
   /** Сколько слов у человека вообще: по нему `/learn` отличает «всё повторил» от «нечего учить». */
   total?: number;
   /** Набор, с которого начать: приходит только когда слов нет совсем. */
@@ -173,7 +173,7 @@ export const getQueue = (mode: QueueMode = "all") => call<{ cards: QueueItem[] }
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: CardAnswer) =>
-  postRetry<{ result: "ok" | "stale" | "practice"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
+  postRetry<{ result: "ok" | "stale" | "practice" | "waiting"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice });
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
@@ -238,6 +238,8 @@ export interface Settings {
   newPerDay: number;
   /** Варианты порции, чтобы приложение и бот показывали один список. */
   newPerDayChoices: number[];
+  activeLearningLimit: number;
+  activeLearningChoices: number[];
   /** Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
   voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
 }
@@ -253,6 +255,7 @@ export type SettingChange =
   | { mode: string; on: boolean }
   | { cardPart: string; on: boolean }
   | { newPerDay: number }
+  | { activeLearningLimit: number }
   /** Повторный выбор того же варианта и "off" — выключить. */
   | { voice: VoiceAccent | "off" };
 

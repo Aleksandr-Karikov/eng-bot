@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `active_learning_limit` integer DEFAULT 15 NOT NULL;

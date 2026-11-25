@@ -2,9 +2,11 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { rooms, users, type User } from "../db/schema";
 import { isTimeZone } from "../time";
+import { withCombatLock } from "./combat-ledger";
 
 /** Пояс новых пользователей. В схеме default остался Europe/Moscow: менять его в SQLite — пересоздавать таблицу. */
 export const DEFAULT_TIMEZONE = "Asia/Novosibirsk";
+export const ACTIVE_LEARNING_CHOICES: readonly number[] = [10, 15, 20, 30];
 
 export interface TgUser {
   id: number;
@@ -15,7 +17,7 @@ export interface TgUser {
 export type UserPatch = Partial<
   Pick<
     User,
-    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "modeBoss" | "bankDamage" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "explainLimit" | "lastReportDate" | "lastDueNoticeAt" | "timezone" | "timezoneFromDevice" | "setTargetRoomId" | "newPerDay"
+    "canDm" | "reminderTime" | "currentRoomId" | "lastReminderDate" | "groupHintSent" | "modeEnRu" | "modeRuEn" | "modeCloze" | "modeSentence" | "modeListen" | "modeCollocation" | "modeDrill" | "modeBoss" | "bankDamage" | "cardHidden" | "voiceAccent" | "notifyDue" | "weeklyReport" | "captureKey" | "explainLimit" | "lastReportDate" | "lastDueNoticeAt" | "timezone" | "timezoneFromDevice" | "setTargetRoomId" | "newPerDay" | "activeLearningLimit"
   >
 >;
 
@@ -52,6 +54,12 @@ export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<
   const set: UserPatch & { lastRooms?: string } = patch;
   const [user] = await db.update(users).set(set).where(eq(users.id, id)).returning();
   return user;
+}
+
+export async function setActiveLearningLimit(db: Db, userId: number, limit: number): Promise<User | undefined> {
+  if (!ACTIVE_LEARNING_CHOICES.includes(limit)) return undefined;
+  // Смена предела и запись первого ответа используют одну блокировку.
+  return withCombatLock(db, () => updateUser(db, userId, { activeLearningLimit: limit }));
 }
 
 /**

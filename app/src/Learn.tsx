@@ -130,9 +130,16 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
   /** Следующее задание; очередь кончилась — догружаем. */
   const advance = useCallback(() => {
     setDone((n) => n + 1);
-    setQueue((q) => q.slice(1));
-    if (queue.length === 1) void load();
-  }, [load, queue.length]);
+    const [current, next] = queue;
+    // Ответ на повтор мог вернуть слово в изучение и занять свободное место.
+    const nextIsFirstNew = next?.kind === "card" && next.isNew && (current?.kind !== "card" || !current.isNew);
+    if (!next || nextIsFirstNew) {
+      setQueue([]);
+      void load();
+    } else {
+      setQueue((q) => q.slice(1));
+    }
+  }, [load, queue]);
 
   /** Оценка карточки уходит в фоне; её можно отменить. */
   const rate = useCallback((card: Card, value: CardAnswer) => {
@@ -140,6 +147,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
       showDamage(r.damage);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
       if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
+      if (r.result === "waiting") notify("Места в обучении заняты. Слово осталось в очереди.");
       return r;
     }).catch(() => {
       setHistory((h) => h.filter((entry) => entry.sent !== sent));
@@ -166,7 +174,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
       return sent.then((result) => {
         if (version !== loadVersion.current) return;
         if (result?.result === "ok") advance();
-        if (result?.result === "stale") {
+        if (result?.result === "stale" || result?.result === "waiting") {
           setQueue([]);
           void load();
         }
@@ -287,8 +295,8 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
 
   const count = (id: QueueMode) =>
     !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
-  // Свёрнутая шапка режимов не занимает места вовсе: это и есть выигрыш по высоте.
-  const modes = headerFolded ? null : (
+  // На пустом экране режимы нужны, чтобы из «Новые» можно было перейти к повторам.
+  const modes = headerFolded && card ? null : (
     <div className="chips modes">
       {MODES.map((m) => (
         <Chip key={m.id} mode={mode === m.id ? "mono" : "outline"} onClick={() => changeMode(m.id)}>
@@ -321,7 +329,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} me={me} onSets={onSets} />
+          <Done done={done} me={me} mode={mode} onSets={onSets} />
         )}
       </div>
     );
@@ -400,7 +408,7 @@ export function Learn({ corner, onSets }: { corner: ReactNode; onSets: (setId?: 
  *
  * Нативная кнопка «Закрыть» внизу — или своя, вне Telegram.
  */
-function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: number) => void }) {
+function Done({ done, me, mode, onSets }: { done: number; me?: Me; mode: QueueMode; onSets: (setId?: number) => void }) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
   /**
@@ -439,13 +447,17 @@ function Done({ done, me, onSets }: { done: number; me?: Me; onSets: (setId?: nu
     );
   }
 
+  const waitingForSpace = (mode === "all" || mode === "fresh") && me?.due.activeFull && me.due.waiting > 0;
+  const message = waitingForSpace
+    ? "Новые слова появятся, когда освободится место в обучении."
+    : "Новые слова и повторения появятся сами — бот напомнит.";
   return (
     <Placeholder
-      header={done ? `Готово! Пройдено карточек: ${done}` : "Сейчас нечего повторять"}
+      header={done ? `Готово! Пройдено карточек: ${done}` : mode === "fresh" ? "Сейчас нет новых карточек" : "Сейчас нечего повторять"}
       description={
         boss
-          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. Новые слова и повторения появятся сами — бот напомнит.`
-          : "Новые слова и повторения появятся сами — бот напомнит. А пока можно послушать слова на ходу."
+          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. ${message}`
+          : message
       }
       action={
         <div className="actions">
