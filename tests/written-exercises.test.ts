@@ -35,7 +35,7 @@ const texts = (h: ReturnType<typeof botHarness>) => h.calls.filter((c) => c.meth
 const logs = async (h: ReturnType<typeof botHarness>) => (await h.db.select().from(reviewLogs)).map((l) => `${l.stage}:${l.rating}`);
 
 describe("✍️ own sentence", () => {
-  it("показывает сценку со скрытой подсказкой и проверяет ответ как реплику", async () => {
+  it("показывает слово со скрытым переводом и проверяет ответ как реплику", async () => {
     const reviewSentence = vi.fn(async () => review({ verdict: "Ответ подходит к вопросу." }));
     const h = botHarness({ tutor: {
       ...tutor(reviewSentence),
@@ -44,7 +44,8 @@ describe("✍️ own sentence", () => {
     await setup(h, "modeSentence");
     await h.bot.handleUpdate(h.message(100, "/learn"));
     expect(texts(h).at(-1)).toContain("Where can Sam &amp; Jo sit?");
-    expect(texts(h).at(-1)).not.toMatch(/\bbank\b/iu);
+    expect(texts(h).at(-1)).toContain("Употреби <b>bank</b> в ответе");
+    expect(texts(h).at(-1)).not.toContain("<b>bank</b> — берег");
     expect(texts(h).at(-1)).toContain("<tg-spoiler>берег</tg-spoiler>");
     expect(texts(h).at(-1)).toContain("<tg-spoiler>They can sit…</tg-spoiler>");
     await h.bot.handleUpdate(h.message(100, "They can sit on the river bank."));

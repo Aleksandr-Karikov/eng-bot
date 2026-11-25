@@ -278,7 +278,7 @@ export function ExerciseReview({ card, answer, result: r, saved, onSave }: { car
       ))}
       {r.natural && (
         <Text className="block">
-          <b>Естественнее:</b> {r.natural}
+          <b>{card.stage === "sentence" && !r.correct ? "В этой ситуации" : "Естественнее"}:</b> {r.natural}
         </Text>
       )}
       {(card.stage === "sentence" || !r.correct) && r.example && (

@@ -149,7 +149,7 @@ export class AppDialogues {
     if (turn === 1) session.first = { answer, followUp };
     else session.finished = true;
     return ok({
-      damage, term, translation, transcriptionUk, transcriptionUs, example: review?.usesWord ? "" : example,
+      damage, term, translation, transcriptionUk, transcriptionUs, example: review ? "" : example,
       ...(review ? sentenceFeedback(this.deps, user, review) : { correct: false }), followUp,
     });
   }

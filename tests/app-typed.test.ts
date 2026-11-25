@@ -6,7 +6,7 @@ import type { DialogueInput, ExerciseTutor, Judgement, SentenceInput, SentenceRe
 import { saveCloze } from "../src/services/cloze";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
-import { saveWord } from "../src/services/words";
+import { saveWord, type WordDraft } from "../src/services/words";
 import { botHarness } from "./bot-harness";
 import { at, DAY, T0, makeUser } from "./helpers";
 
@@ -18,13 +18,13 @@ function tutor(judge: () => Promise<Judgement>, reviewSentence: () => Promise<Se
 }
 
 /** Одна знакомая карточка bank к повторению; включён один режим. */
-async function setup(only: "modeCloze" | "modeListen" | "modeSentence", t?: ExerciseTutor, cloze = sentence) {
+async function setup(only: "modeCloze" | "modeListen" | "modeSentence", t?: ExerciseTutor, cloze = sentence, draft: WordDraft = { term: "bank", translation: "берег", explanation: "", example: "the river bank", usefulness: 3 }) {
   const h = botHarness({ tutor: t });
   const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, {
     canDm: true, modeEnRu: false, modeRuEn: false, modeCollocation: false, modeCloze: only === "modeCloze", modeListen: only === "modeListen", modeSentence: only === "modeSentence",
   });
   const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
-  const saved = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term: "bank", translation: "берег", explanation: "", example: "the river bank", usefulness: 3 }, now: T0 });
+  const saved = await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft, now: T0 });
   if (saved.status !== "saved") throw new Error("dup");
   await saveCloze(h.db, saved.word.id, [cloze], T0);
   const [fresh] = await h.db.select().from(cards);
@@ -105,7 +105,7 @@ const riverside = { situation: "Вы с другом у реки.", line: "Where
 const followUp = { line: "Where on that side would it be quieter?", hint: "We could try…" };
 
 describe("диалог на карточке Mini App", () => {
-  it("скрывает целевое слово в сценке, начале ответа и уточнении до разбора", async () => {
+  it("проверяет, что собеседник и подсказка обходятся без готового ответа, и раскрывает перевод в разборе", async () => {
     const dialogueScene = vi.fn<NonNullable<ExerciseTutor["dialogueScene"]>>()
       .mockResolvedValueOnce({ ...riverside, line: "Which BANKS look quieter?" })
       .mockResolvedValue({ ...riverside, hint: "On the bank…" });
@@ -121,6 +121,27 @@ describe("диалог на карточке Mini App", () => {
     expect(await ratings()).toEqual([]);
 
     expect(await (await reply({ id: scene.id, turn: 1, dunno: true })).json()).toMatchObject({ correct: false, term: "bank", translation: "берег" });
+    expect(await ratings()).toEqual(["app_sentence:again"]);
+  });
+
+  it("даёт перефразировать подходящий ответ и показывает tough в той же ситуации", async () => {
+    const example = "This is a tough problem to solve.";
+    const natural = "The lunch rush was tough, but we got through it.";
+    const verdict = "Реплика подходит. Попробуй ещё раз со словом из задания.";
+    const line = "How did the lunch rush go with only two cooks?";
+    const dialogueScene = async () => ({ situation: "Ты официант после субботней смены.", line, hint: "It was a…" });
+    const reviewSentence = vi.fn(async (): Promise<SentenceReview> => ({ ...await noReview(), usesWord: false, verdict, natural }));
+    const { dialogue, reply, ratings } = await setup("modeSentence", { ...tutor(noJudge, reviewSentence), dialogueScene }, sentence,
+      { term: "tough", translation: "трудный", explanation: "", example, usefulness: 3 });
+    const { id } = await (await dialogue()).json();
+
+    expect(await (await reply({ id, turn: 1, answer: "Everybody was rushing around but eventually we overcame it." })).json())
+      .toEqual({ ok: true, retry: true, verdict });
+    expect(await ratings()).toEqual([]);
+
+    const result = await (await reply({ id, turn: 1, answer: "It was hectic, but we got through it." })).json();
+    expect(result).toMatchObject({ correct: false, term: "tough", natural, example: "" });
+    expect(reviewSentence).toHaveBeenLastCalledWith(expect.objectContaining({ dialogue: { line, askAgain: true } }));
     expect(await ratings()).toEqual(["app_sentence:again"]);
   });
 

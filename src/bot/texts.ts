@@ -591,7 +591,7 @@ export function clozeUnknownText(s: ClozeSentence): string {
 
 export function sentenceTaskText(word: Pick<Word, "term" | "translation">, scene?: DialogueScene): string {
   if (scene) {
-    const head = `💬 Ответь собеседнику\n${esc(scene.situation)}\n\n<b>${esc(scene.line)}</b>`;
+    const head = `💬 Ответь собеседнику\n${esc(scene.situation)}\n\n<b>${esc(scene.line)}</b>\n\nУпотреби <b>${esc(word.term)}</b> в ответе.`;
     const hint = `\n\nСмысл слова: <tg-spoiler>${esc(word.translation)}</tg-spoiler>`;
     return head + hint + (scene.hint ? `\nНачало ответа: <tg-spoiler>${esc(scene.hint)}</tg-spoiler>` : "");
   }
@@ -602,8 +602,8 @@ export function sentenceReviewText(r: SentenceReview, word: Pick<Word, "term" | 
   const parts = [r.usesWord ? "✅ Слово употреблено верно" : dialogue ? "Ответ по карточке не засчитан" : "❌ Слово употреблено неверно"];
   if (dialogue) parts.push(`<b>${esc(word.term)}</b> — ${esc(word.translation)}`);
   if (r.verdict) parts.push(esc(r.verdict));
-  if (r.fixes.length || r.natural) parts.push(checkText(r));
-  if (!r.usesWord && word.example) parts.push(`Пример: <i>${esc(word.example)}</i>`);
+  if (r.fixes.length || r.natural) parts.push(checkText(r, dialogue && !r.usesWord ? "В этой ситуации" : "Естественнее"));
+  if (!dialogue && !r.usesWord && word.example) parts.push(`Пример: <i>${esc(word.example)}</i>`);
   return parts.join("\n\n");
 }
 
@@ -715,8 +715,8 @@ function boldMarked(s: string): string {
 /** С запасом под строчку «🧠 Сохранил…» — сообщение Telegram не длиннее 4096 символов. */
 const CHECK_TEXT_LIMIT = 3800;
 
-export function checkText(r: CheckResult): string {
-  let natural = r.natural ? `💬 <b>Естественнее:</b> ${esc(r.natural)}` : "";
+export function checkText(r: CheckResult, naturalLabel = "Естественнее"): string {
+  let natural = r.natural ? `💬 <b>${naturalLabel}:</b> ${esc(r.natural)}` : "";
   if (r.fixes.length === 0) return natural ? `👍 Ошибок нет\n\n${natural}` : "👍 Ошибок нет";
   const all = r.fixes.map((f) => `• <s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>${f.why ? ` — ${esc(f.why)}` : ""}`);
   const head = `✍️ <b>Исправлено:</b>\n${boldMarked(r.corrected)}`;

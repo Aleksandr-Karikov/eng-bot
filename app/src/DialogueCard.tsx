@@ -50,7 +50,7 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
       const response = await answerDialogue(scene.id, bonus ? 2 : 1, dunno ? "" : answer, dunno);
       if (!active.current) return;
       if ("retry" in response) {
-        setRetry(response.verdict || "Попробуй ответить чуть точнее. Если нужно, открой подсказку.");
+        setRetry(response.verdict || "Попробуй ещё раз со словом из задания.");
         return;
       }
       setRetry(undefined);
@@ -93,6 +93,7 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
                 {bonus && <Reply line={turn.line} />}
                 {bonus && result && <Reply line={answer.trim()} own />}
               </div>
+              {!result && <Text>Употреби <b lang="en">{card.word.term}</b> в ответе</Text>}
               {!result && hint && (
                 <>
                   {!bonus && <Text className="hint">Смысл слова: {card.word.translation}</Text>}
