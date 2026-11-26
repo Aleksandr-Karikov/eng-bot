@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, exists, gt, gte, inArray, isNotNull, ne, not
 import { alias } from "drizzle-orm/sqlite-core";
 import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, users } from "../db/schema";
+import { cards, reviewLogs, users, words } from "../db/schema";
 import { withCombatLock } from "./combat-ledger";
 import { KNOW_STAGE } from "./goals";
 import { LEARNED_STABILITY_DAYS } from "./stats";
@@ -21,11 +21,12 @@ export async function learningSelection(db: Db, userId: number) {
   const candidates = await db
     .select({ id: cards.id, wordId: cards.wordId, priority: cards.learningPriority, state: cards.state, due: cards.due, relearningAtLimit: cards.relearningAtLimit })
     .from(cards)
+    .innerJoin(words, eq(words.id, cards.wordId))
     .where(and(eq(cards.userId, userId), or(
       and(eq(cards.state, State.New), or(gt(cards.learningPriority, 0), isNotNull(cards.relearningAtLimit))),
       and(ne(cards.state, State.New), not(knownCard(db))),
     )))
-    .orderBy(desc(cards.learningPriority), asc(cards.id));
+    .orderBy(desc(cards.learningPriority), desc(sql`coalesce(${words.usefulness}, 2)`), asc(cards.id));
   // При явном снижении предела забытые слова остаются в подборке и занимают места по новому пределу.
   const retained = candidates.filter((card) => (card.relearningAtLimit ?? 0) > limit);
   const ranked = candidates.filter((card) => (card.relearningAtLimit ?? 0) <= limit);

@@ -11,7 +11,7 @@ import { countDueSplit, nextDue } from "../src/services/review";
 import { createRoom } from "../src/services/rooms";
 import { isLearned } from "../src/services/stats";
 import { updateUser } from "../src/services/users";
-import { saveWord } from "../src/services/words";
+import { saveWord, setUsefulness } from "../src/services/words";
 import { newCard, review } from "../src/srs/srs";
 import { botHarness, buttonData } from "./bot-harness";
 import { at, DAY, makeUser, T0 } from "./helpers";
@@ -123,9 +123,35 @@ describe("лимит одновременно изучаемых слов", () =
     expect(await queue()).toEqual([]);
   });
 
+  it("даёт места более полезным начатым словам, сохраняя приоритет ручного выбора", async () => {
+    const { h, rows, list, queue, post } = await setup(DEFAULT_LIMIT + 2);
+    const [optional, learned] = rows;
+    const [promoted, useful] = rows.slice(DEFAULT_LIMIT);
+    await setUsefulness(h.db, optional.wordId, 1, "");
+    await setUsefulness(h.db, promoted.wordId, 1, "");
+    await setUsefulness(h.db, useful.wordId, 3, "");
+    const activeIds = async () => (await list()).active.map(({ id }) => id);
+
+    expect(await activeIds()).toEqual([useful.wordId, ...rows.slice(1, DEFAULT_LIMIT).map(({ wordId }) => wordId)]);
+    await setUsefulness(h.db, promoted.wordId, 2, "");
+    expect(await activeIds()).not.toContain(promoted.wordId);
+
+    await h.db.update(cards).set({ state: State.Review, stability: 25 }).where(eq(cards.id, learned.id));
+    h.setNow(at(DAY));
+    expect(await activeIds()).toContain(promoted.wordId);
+    expect(await activeIds()).not.toContain(optional.wordId);
+    expect((await queue("reviews")).map(({ cardId }) => cardId)).toContain(promoted.id);
+
+    expect((await post(`/api/words/${optional.wordId}/learn`, { replaceWordId: useful.wordId })).status).toBe(200);
+    expect((await activeIds())[0]).toBe(optional.wordId);
+    expect(await activeIds()).not.toContain(useful.wordId);
+  });
+
   it("возвращает забытые слова сверх заполненного лимита и ждёт места для обычной очереди", async () => {
     const { h, user, rows, list, post, answer, getCard } = await setup(DEFAULT_LIMIT + 3);
     const [waiting, first, second] = rows.slice(DEFAULT_LIMIT);
+    await setUsefulness(h.db, first.wordId, 1, "");
+    await setUsefulness(h.db, second.wordId, 3, "");
     const seen = review(newCard(T0).fsrs, "easy", T0);
     const learned = review(seen.fsrs, "easy", seen.due);
     expect(isLearned(learned)).toBe(true);
