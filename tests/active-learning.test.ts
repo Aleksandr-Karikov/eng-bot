@@ -65,6 +65,21 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("лимит одновременно изучаемых слов", () => {
+  it("показывает в Mini App оба учебных счётчика и ближайший повтор в часовом поясе пользователя", async () => {
+    const { h, user, rows, get, answer } = await setup(1, 2);
+    await updateUser(h.db, user.id, { newPerDay: 30, activeLearningLimit: 2, timezone: "Asia/Novosibirsk" });
+    expect(await answer(rows[1].id, "good")).toMatchObject({ result: "ok" });
+    await h.db.update(cards).set({ due: at(60 * 60_000) }).where(inArray(cards.id, rows.slice(0, 2).map(({ id }) => id)));
+
+    expect(await (await get("/api/me")).json()).toMatchObject({
+      nextReview: "сегодня в 17:00",
+      due: { review: 0, fresh: 0, waiting: 1, activeFull: true, dailyFull: false,
+        limits: { introduced: 1, dailyLimit: 30, active: 2, activeLimit: 2 } },
+    });
+    h.setNow(at(60 * 60_000));
+    expect(await (await get("/api/me")).json()).not.toHaveProperty("nextReview");
+  });
+
   it("предлагает открыть «Учу» напрямую из личного чата после конца очереди", async () => {
     const { h, rows } = await setup(1, 0);
     h.deps.appUrl = "https://app.example/app/?source=bot";

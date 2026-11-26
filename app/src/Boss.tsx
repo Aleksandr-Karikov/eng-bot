@@ -202,14 +202,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
             </div>
           )}
           {attack?.kind === "done" && (
-            <div ref={questionGroup} tabIndex={-1} role="status">
-              <Text>{attack.translation ? `«${attack.translation}» — правильный перевод. ` : ""}Удар на {hpFormat.format(attack.damage)} HP.</Text>
+            <div ref={questionGroup} tabIndex={-1} role="status" className="choice-options">
+              <Text weight="2">−{data.combat.attackCost} ⚡ · нанесено {hpFormat.format(attack.damage)} урона</Text>
+              {attack.translation && <Text className="hint">Правильный перевод — «{attack.translation}».</Text>}
             </div>
           )}
           {!playing && data.boss.hp > 0 && (
             <>
+              <Text className="hint">До трёх переводов. После верного ответа можно ударить или продолжить. Ошибка оставляет половину набранного урона, на первом вопросе — 0.</Text>
               <Button stretched loading={answering} disabled={busy || data.combat.balance < data.combat.attackCost} onClick={() => void attackAction()}>
-                Начать атаку · {data.combat.attackCost} ⚡
+                Атаковать · {data.combat.attackCost} ⚡
               </Button>
               {data.combat.balance < data.combat.attackCost && (
                 <Text className="hint">До атаки нужно ещё {hpFormat.format(data.combat.attackCost - data.combat.balance)} ⚡.</Text>

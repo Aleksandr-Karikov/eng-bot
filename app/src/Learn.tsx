@@ -18,7 +18,7 @@ const MODES: Array<{ id: QueueMode; label: string }> = [
   { id: "all", label: "Всё" },
   { id: "reviews", label: "Повторы" },
   { id: "fresh", label: "Новые" },
-  { id: "hard", label: "Трудные" },
+  { id: "hard", label: "Тренировка без зачёта" },
 ];
 
 /** Свёрнута ли шапка с режимами — помним на устройстве: кто свернул ради места, не хочет сворачивать снова. */
@@ -45,37 +45,39 @@ const UNDO_DEPTH = 5;
 type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
-  corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void; onLearning: () => void;
+export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning }: {
+  visible: boolean; corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void; onLearning: () => void;
 }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
-  const [sessionDamage, setSessionDamage] = useState(0);
+  const [sessionEnergy, setSessionEnergy] = useState(0);
   const [dialogueVersion, setDialogueVersion] = useState(0);
-  const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number }>>([]);
+  const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number; banked: boolean }>>([]);
   const damageSequence = useRef(0);
   const reducedMotion = useReducedMotion();
-  const showDamage = useCallback((hp: number) => {
+  const banked = Boolean(me?.bankDamage);
+  const showDamage = useCallback((hp: number, banked: boolean) => {
     if (hp === 0) return;
-    setSessionDamage((total) => total + hp);
+    if (banked) setSessionEnergy((total) => total + hp);
     const id = ++damageSequence.current;
-    setDamageBursts((bursts) => [...bursts, { id, hp }].slice(-6));
+    setDamageBursts((bursts) => [...bursts, { id, hp, banked }].slice(-6));
   }, []);
   /** Шапка с режимами свёрнута — на карточку уходит больше места. */
   const [headerFolded, setHeaderFolded] = useState(savedFolded);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
-  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<AnswerResult | undefined>; dropped?: boolean }>>([]);
+  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<AnswerResult | undefined>; banked: boolean; dropped?: boolean }>>([]);
 
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
   const loadVersion = useRef(0);
   const requestedExtra = useRef(false);
   const sessionVersion = useRef(0);
+  const suspended = useRef(false);
 
   const load = useCallback(async (extra = false) => {
     const version = ++loadVersion.current;
@@ -98,7 +100,25 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
     }
   }, [mode]);
 
-  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    if (!visible) {
+      suspended.current = true;
+      return;
+    }
+    if (!suspended.current) {
+      void load();
+      return;
+    }
+    suspended.current = false;
+    // Освежаем сроки и лимиты, сохраняя итог занятия и возможность отмены.
+    let active = true;
+    getMe().then((info) => {
+      if (!active) return;
+      setStudyLanguage(info.language);
+      setMe(info);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [load, visible]);
 
   const changeMode = useCallback((next: QueueMode) => {
     if (next === mode) return;
@@ -114,7 +134,7 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
     setLoading(true);
     setQueue([]);
     setDone(0);
-    setSessionDamage(0);
+    setSessionEnergy(0);
     setHistory([]);
   }, [mode]);
 
@@ -152,7 +172,7 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
   const rate = useCallback((card: Card, value: CardAnswer) => {
     const session = sessionVersion.current;
     const sent = sendAnswer(card, value).then((r) => {
-      if (session === sessionVersion.current) showDamage(r.damage);
+      if (session === sessionVersion.current) showDamage(r.damage, banked);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
       if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
       if (r.result === "waiting") notify("Слово осталось в очереди.");
@@ -165,9 +185,9 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
     pending.current.add(sent);
     void sent.finally(() => pending.current.delete(sent));
     // Вне зачёта отменять нечего — ответ и так не записан.
-    if (!card.practice) setHistory((h) => [...h, { card, sent, dropped: value === "drop" }].slice(-UNDO_DEPTH));
+    if (!card.practice) setHistory((h) => [...h, { card, sent, banked, dropped: value === "drop" }].slice(-UNDO_DEPTH));
     return sent;
-  }, [showDamage]);
+  }, [banked, showDamage]);
 
   /** Свайп — сразу следующая карточка. */
   const answer = useCallback(
@@ -219,7 +239,7 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
       }
       await undoAnswer(last.card);
       if (session !== sessionVersion.current) return;
-      showDamage(-recorded.damage);
+      showDamage(-recorded.damage, last.banked);
       if (last.card.stage === "sentence") setDialogueVersion((v) => v + 1);
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
       setDone((n) => Math.max(0, n - 1));
@@ -233,8 +253,8 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
   const session = sessionVersion.current;
   const typedRated = (card: Card, hp: number) => {
     if (session !== sessionVersion.current) return;
-    showDamage(hp);
-    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, damage: hp }) }].slice(-UNDO_DEPTH));
+    showDamage(hp, banked);
+    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, damage: hp }), banked }].slice(-UNDO_DEPTH));
   };
   const total = done + queue.length;
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
@@ -290,7 +310,7 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
   const damageEffect = me?.boss ? (
     <div className="damage-bursts" role="status" aria-live="polite" aria-atomic="false">
       <AnimatePresence>
-        {damageBursts.map(({ id, hp }) => (
+        {damageBursts.map(({ id, hp, banked }) => (
           <motion.div
             key={id}
             className={`damage-burst${hp < 0 ? " damage-burst-undo" : ""}`}
@@ -299,7 +319,7 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
             transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
             onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
           >
-            {hp > 0 ? "+" : ""}{hp} <small>{me.bankDamage ? "⚡" : "HP"}</small>
+            {hp > 0 ? "+" : ""}{hp} <small>{banked ? "⚡" : "HP"}</small>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -320,6 +340,8 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
       ))}
     </div>
   );
+
+  if (!visible) return null;
 
   if (correcting) return <CorrectionForm word={correcting} onDone={(saved) => {
     setCorrecting(undefined);
@@ -344,8 +366,9 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} energy={me?.bankDamage ? sessionDamage : 0} me={me} mode={mode}
-            onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} />
+          <Done done={done} energy={sessionEnergy} me={me} mode={mode}
+            onSets={onSets} onContinue={() => void load()} onMode={changeMode} onExtra={() => void load(true)}
+            onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} />
         )}
       </div>
     );
@@ -356,8 +379,8 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
       {header}
       {modes}
       {damageEffect}
-      {mode === "hard" && <Text className="hint practice-note">Вне зачёта: ответы не сдвигают повторения</Text>}
-      {card.kind === "card" && card.extra && <Text className="hint practice-note">Сверх плана</Text>}
+      {mode === "hard" && <Text className="hint practice-note">Расписание повторений не меняется</Text>}
+      {card.kind === "card" && card.extra && <Text className="hint practice-note">Сверх плана · ответы засчитываются</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
         <ChoiceCard
@@ -423,12 +446,14 @@ export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
  *   Ему нельзя говорить «жди»: ждать нечего, слов нет вовсе. Вместо этого один тап до готового
  *   набора A1.
  */
-function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss, onLearning }: {
+function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onSettings, onBoss, onLearning }: {
   done: number;
   energy: number;
   me?: Me;
   mode: QueueMode;
   onSets: (setId?: number) => void;
+  onContinue: () => void;
+  onMode: (mode: QueueMode) => void;
   onExtra: () => void;
   onSettings: () => void;
   onBoss: () => void;
@@ -436,12 +461,13 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss, onL
 }) {
   const starter = me?.starterSet;
   const [boss, setBoss] = useState<Boss>();
+  const showBossHp = Boolean(me?.boss && done && energy <= 0);
   useEffect(() => {
-    if (!me?.boss) return;
+    if (!showBossHp) return;
     getBoss()
       .then((state) => setBoss(state.boss))
       .catch(() => {});
-  }, [me?.boss]);
+  }, [showBossHp]);
 
   if (starter && done === 0) {
     return (
@@ -462,8 +488,15 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss, onL
 
   const notice = mode !== "hard" ? me?.limitNotices?.[mode] : undefined;
   const extraLabel = mode !== "hard" ? me?.extraLabels?.[mode] : undefined;
-  const showExtra = Boolean(notice && extraLabel);
-  const message = notice ?? (mode === "all" || mode === "reviews" ? "Повторения появятся по расписанию." : undefined);
+  const { review = 0, fresh = 0, limits } = me?.due ?? {};
+  const ready = { all: review + fresh, reviews: review, fresh, hard: 0 }[mode];
+  const otherMode = mode === "fresh" && review ? "reviews" : mode === "reviews" && fresh ? "fresh" : undefined;
+  const showExtra = !ready && Boolean(notice && extraLabel);
+  const continuation = ready ? { label: "Продолжить занятие", run: onContinue }
+    : otherMode && {
+      label: otherMode === "reviews" ? `К повторам · ${review}` : `К новым словам · ${fresh}`,
+      run: () => onMode(otherMode),
+    };
   const emptyHeader = { all: "Сейчас нечего повторять", reviews: "Сейчас нечего повторять", fresh: "Сейчас нет новых карточек", hard: "Сейчас нет трудных карточек" };
   return (
     <Placeholder
@@ -471,13 +504,19 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss, onL
       header={done ? `Готово! Пройдено карточек: ${done}` : notice ? "Лимит обучения достигнут" : emptyHeader[mode]}
       description={<>
         {energy > 0 ? <span className="result-stat">За занятие +{energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡</span>
-          : boss && <span className="result-stat">{boss.phase === "dead" ? "Босс повержен" : `У босса осталось ${boss.hp} HP`}</span>}
-        {message}
+          : showBossHp && boss && <span className="result-stat">{boss.phase === "dead" ? "Босс повержен" : `У босса осталось ${boss.hp} HP`}</span>}
+        {notice && <span className="result-detail">{notice}</span>}
+        {notice && limits && <span className="result-detail">
+          {limits.dailyLimit > 0 ? `Сегодня начато ${limits.introduced} из ${limits.dailyLimit} новых слов.` : "Дневной лимит выключен."}
+          <br />В «Учу» занято {limits.active} из {limits.activeLimit} мест.
+        </span>}
+        {mode !== "hard" && me?.nextReview && <span className="result-detail">Следующее повторение {me.nextReview}</span>}
       </>}
       action={
         <div className="actions learn-result-actions">
-          {showExtra && <Button size="l" stretched onClick={onExtra}>{extraLabel}</Button>}
-          <Button size="l" mode={showExtra ? "bezeled" : "filled"} stretched onClick={onLearning}>Открыть «Учу»</Button>
+          {continuation && <Button size="l" stretched onClick={continuation.run}>{continuation.label}</Button>}
+          {showExtra && <Button size="l" mode={continuation ? "bezeled" : "filled"} stretched onClick={onExtra}>{extraLabel}</Button>}
+          <Button size="l" mode={continuation || showExtra ? "bezeled" : "filled"} stretched onClick={onLearning}>Открыть «Учу»</Button>
           <div className="row result-links">
             {done > 0 && me?.boss && <Button mode="plain" size="m" onClick={onBoss}>К боссу</Button>}
             {notice ? <Button mode="plain" size="m" onClick={onSettings}>Настройки лимитов</Button>

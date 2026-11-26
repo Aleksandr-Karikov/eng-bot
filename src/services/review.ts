@@ -182,7 +182,7 @@ export async function countDue(db: Db, userId: number, now: Date): Promise<numbe
  * `fresh` — сколько новых можно показать с учётом дневной порции и свободных мест.
  */
 export async function countDueSplit(db: Db, userId: number, now: Date) {
-  const [{ left }, selection] = await Promise.all([newPortion(db, userId, now), learningSelection(db, userId)]);
+  const [{ left, introduced, limit: dailyLimit }, selection] = await Promise.all([newPortion(db, userId, now), learningSelection(db, userId)]);
   const due = and(eq(cards.userId, userId), lte(cards.due, now));
   const activeIds = selection.active.map(({ id }) => id);
   const [review] = await db.select({ n: count() }).from(cards).where(and(due, reviewableCards(db, activeIds)));
@@ -192,7 +192,10 @@ export async function countDueSplit(db: Db, userId: number, now: Date) {
   const regular = fresh.filter(({ id, priority }) => priority <= 0 && !activeIds.includes(id)).length;
   const available = Math.min(left ?? Infinity, reserved + Math.min(slots, regular));
   const pausedDue = selection.waiting.filter((card) => card.state !== State.New && card.due <= now).length;
-  return { review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0, dailyFull: left === 0, pausedDue };
+  return {
+    review: review?.n ?? 0, fresh: available, waiting: fresh.length - available, activeFull: slots === 0, dailyFull: left === 0, pausedDue,
+    limits: { introduced, dailyLimit, active: selection.active.length, activeLimit: selection.limit },
+  };
 }
 
 export async function getDueItemByCard(db: Db, userId: number, cardId: number): Promise<DueItem | undefined> {

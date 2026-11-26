@@ -55,7 +55,11 @@ export interface Card {
 export interface Me {
   name: string;
   room: string | null;
-  due: { review: number; fresh: number; waiting: number; activeFull: boolean };
+  due: {
+    review: number; fresh: number; waiting: number; activeFull: boolean;
+    limits?: { introduced: number; dailyLimit: number; active: number; activeLimit: number };
+  };
+  nextReview?: string;
   limitNotices?: Partial<Record<Exclude<QueueMode, "hard">, string>>;
   extraLabels?: Record<Exclude<QueueMode, "hard">, string>;
   /** Сколько слов у человека вообще: по нему `/learn` отличает «всё повторил» от «нечего учить». */

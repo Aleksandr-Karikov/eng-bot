@@ -18,19 +18,20 @@ import { answerExercise, listTopics, topicView } from "../services/grammar-topic
 import { attackWithReserve, combatState, isMobTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
-import { extraBatchLabel, gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
+import { extraBatchLabel, formatDateTime, gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
 import { storedCollocations } from "../services/collocations";
 import { pickStage, reviewStages } from "../services/exercises";
 import { listCloze, pickCloze } from "../services/cloze";
 import { recordDrillAnswer } from "../services/mistakes";
 import { KNOW_STAGE } from "../services/goals";
-import { recordAnswer, countDueSplit, dueQueue, extraQueue, getDueItemByCard, type StudyScope } from "../services/review";
+import { recordAnswer, countDueSplit, dueQueue, extraQueue, getDueItemByCard, nextReviewAt, type StudyScope } from "../services/review";
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
 import { getUserByTelegramId, updateUser } from "../services/users";
 import { EN, langForms } from "../lang";
 import type { Answer } from "../srs/srs";
+import { localParts } from "../time";
 import { CHOICE_INDEX, scheduleExercises } from "./exercise-mix";
 
 /** Сколько карточек отдавать за раз: приложение показывает их без ожидания, ответы шлёт в фоне. */
@@ -96,7 +97,14 @@ export async function appUser(deps: Pick<Deps, "db" | "now">, telegramId: number
 
 export async function appMe(deps: Deps, user: User) {
   const room = user.currentRoomId != null ? await getRoom(deps.db, user.currentRoomId) : undefined;
-  const due = await countDueSplit(deps.db, user.id, deps.now());
+  const now = deps.now();
+  const due = await countDueSplit(deps.db, user.id, now);
+  const next = due.review === 0 ? await nextReviewAt(deps.db, user.id) : undefined;
+  let nextReview: string | undefined;
+  if (next && next > now) {
+    const local = localParts(user.timezone, next);
+    nextReview = local.date === localParts(user.timezone, now).date ? `сегодня в ${local.time}` : formatDateTime(next, user.timezone);
+  }
   // Сколько слов у человека вообще. Без этого `due: 0/0` не отличить «всё повторил» от «нечего учить»,
   // а экран пустой очереди показывает новичку совсем другое предложение, чем прилежному ученику.
   const [cards] = await deps.db.select({ n: count() }).from(cardsTable).where(eq(cardsTable.userId, user.id));
@@ -107,6 +115,7 @@ export async function appMe(deps: Deps, user: User) {
     name: user.firstName,
     room: room?.name ?? null,
     due,
+    nextReview,
     limitNotices: {
       all: learningLimitNotice(due, user),
       fresh: learningLimitNotice(due, user, "fresh"),

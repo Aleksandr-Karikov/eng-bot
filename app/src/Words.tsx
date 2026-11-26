@@ -71,7 +71,7 @@ export function Words({ initialFilter, onExit, onSets, onSettings }: {
   if (open !== undefined) {
     const status = data?.words.find(({ id }) => id === open)?.status;
     const canTake = data && (status === "new" || status === "paused");
-    return <WordPage id={open} onClose={close} learning={canTake ? {
+    return <WordPage id={open} status={status} onClose={close} learning={canTake ? {
       active: data.active,
       limit: data.limit,
       onSaved: () => {
@@ -104,6 +104,8 @@ export function Words({ initialFilter, onExit, onSets, onSettings }: {
   }
   if (!data.room) return <>{back}<Placeholder header="Нет комнаты" description="Выбери комнату в настройках или создай в боте: /newroom" /></>;
   const learning = filter === "learning";
+  const title = learning ? `Учу · ${data.active.length} из ${data.limit} · все комнаты`
+    : filter === "waiting" ? `В очереди · ${data.room} · ${shown.length}` : `${data.room} · ${shown.length}`;
 
   return (
     <List className="word-list">
@@ -141,7 +143,7 @@ export function Words({ initialFilter, onExit, onSets, onSettings }: {
         ))}
       </div>
       <Input aria-label="Поиск слов" placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
-      <Section header={learning ? `Учу · ${data.active.length} из ${data.limit}` : `${data.room} · ${shown.length}`}
+      <Section header={title}
         footer={learning && data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела." : undefined}>
         {learning && (
           <div className="form-buttons list-actions">

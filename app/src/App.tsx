@@ -29,13 +29,15 @@ function startPage(): Page {
 export function App() {
   const [page, setPage] = useState<Page>(startPage);
   const [limitsBack, setLimitsBack] = useState<"learn" | "learning">();
+  const [keepResult, setKeepResult] = useState(false);
   /** Набор, который надо открыть сразу: заполняет пустой `/learn`, когда у человека нет слов. */
   const [startSetId, setStartSetId] = useState<number>();
-  const open = useCallback((next: Page, returnFromLimits?: "learn" | "learning") => {
+  const open = useCallback((next: Page, returnFromLimits?: "learn" | "learning", returnToResult = false) => {
     haptic.select();
+    if (page === "learn") setKeepResult(returnToResult);
     setLimitsBack(returnFromLimits);
     setPage(next);
-  }, []);
+  }, [page]);
   /** `setId` — открыть конкретный набор, а не список: так кнопка новичка ведёт прямо в A1. */
   const openSets = useCallback((setId?: number) => {
     setStartSetId(setId);
@@ -71,37 +73,38 @@ export function App() {
     return () => off?.();
   }, [open]);
 
-  if (page === "words" || page === "learning") {
-    return <Words initialFilter={page === "learning" ? "learning" : "all"}
-      onExit={back} onSets={() => openSets()} onSettings={() => open("settings", "learning")} />;
-  }
-  if (page === "settings") return <SettingsScreen limitsFirst={limitsBack !== undefined} onExit={() => setPage(limitsBack ?? "learn")} />;
-  if (page === "progress") return <ProgressScreen onExit={back} />;
-  if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
-  if (page === "boss") return <BossScreen onExit={back} />;
-  if (page === "grammar") return <Grammar onExit={back} />;
   return (
-    <Learn
-      onSets={openSets}
-      onSettings={() => open("settings", "learn")}
-      onBoss={() => open("boss")}
-      onLearning={() => open("learning")}
-      corner={
-        // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
-        // а по отдельности они не действия, а навигация.
-        <CornerMenu
-          items={[
-            ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
-            { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
-            // У «Грамматики» своя иконка: книга — это «Слова», и два одинаковых пункта меню
-            // различались только подписью.
-            { icon: <IconGrammar size={16} />, label: "Грамматика", onPick: () => open("grammar") },
-            { icon: <IconBook size={16} />, label: "Слова", onPick: () => open("words") },
-            { icon: <IconSettings size={16} />, label: "Настройки", onPick: () => open("settings") },
-          ]}
-        />
-      }
-    />
+    <>
+      {(page === "learn" || keepResult) && <Learn
+        visible={page === "learn"}
+        onSets={openSets}
+        onSettings={() => open("settings", "learn", true)}
+        onBoss={() => open("boss", undefined, true)}
+        onLearning={() => open("learning", undefined, true)}
+        corner={
+          // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
+          // а по отдельности они не действия, а навигация.
+          <CornerMenu
+            items={[
+              ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
+              { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
+              // У «Грамматики» своя иконка: книга — это «Слова», и два одинаковых пункта меню
+              // различались только подписью.
+              { icon: <IconGrammar size={16} />, label: "Грамматика", onPick: () => open("grammar") },
+              { icon: <IconBook size={16} />, label: "Слова", onPick: () => open("words") },
+              { icon: <IconSettings size={16} />, label: "Настройки", onPick: () => open("settings") },
+            ]}
+          />
+        }
+      />}
+      {(page === "words" || page === "learning") && <Words initialFilter={page === "learning" ? "learning" : "all"}
+        onExit={back} onSets={() => openSets()} onSettings={() => open("settings", "learning")} />}
+      {page === "settings" && <SettingsScreen limitsFirst={limitsBack !== undefined} onExit={() => setPage(limitsBack ?? "learn")} />}
+      {page === "progress" && <ProgressScreen onExit={back} />}
+      {page === "sets" && <Sets onExit={back} startSetId={startSetId} />}
+      {page === "boss" && <BossScreen onExit={back} />}
+      {page === "grammar" && <Grammar onExit={back} />}
+    </>
   );
 }
 

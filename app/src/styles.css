@@ -96,9 +96,11 @@ body {
 .screen { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 /* Предпросмотр карточки со страницы слова: постоянной панели кнопок нет — и место под неё не нужно. */
 .screen.preview, .screen.learn-status { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-.learn-result { width: 100%; max-width: 440px; box-sizing: border-box; align-self: center; }
+.learn-result { width: 100%; max-width: 440px; padding-inline: 12px; box-sizing: border-box; align-self: center; }
+.learn-status .damage-bursts { display: none; }
 .learn-result-actions { width: 100%; }
 .result-stat { display: block; margin-bottom: 4px; color: var(--tg-theme-text-color, #1a1a1a); }
+.result-detail { display: block; margin-block: 4px; }
 .result-links { flex-wrap: wrap; gap: 0 8px; }
 
 /* Кнопки в углу — вместо вкладок, чтобы карточке оставалось место. */
@@ -272,8 +274,7 @@ body {
 }
 
 /* Режимы тренировки */
-/* Четыре режима помещаются в одну строку и на узком экране. */
-.chips.modes { padding: 0; margin: 0 -2px; gap: 6px; }
+.chips.modes { flex-wrap: wrap; padding: 0; margin: 0 -2px; gap: 6px; }
 .chips.modes > * { padding: 4px 9px !important; min-height: 32px; }
 .chips.modes > * * { font-size: 14px !important; }
 .practice-note { font-size: 13px; text-align: center; }

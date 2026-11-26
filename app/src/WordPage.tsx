@@ -4,8 +4,8 @@ import { playAudio } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Cell, Input, List, Placeholder, Section, Select, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useState } from "react";
-import { editWord, getWord, newMnemonic, takeWord, wordAction, wordPictureUrl, type WordAction, type WordDetails, type WordItem } from "./api";
-import { transcription } from "./format";
+import { editWord, getWord, newMnemonic, takeWord, wordAction, wordPictureUrl, type WordAction, type WordDetails, type WordItem, type WordStatus } from "./api";
+import { transcription, usefulnessText } from "./format";
 import { UsefulDot } from "./icons";
 import { confirmDanger, haptic, notify, useBackButton } from "./telegram";
 
@@ -14,8 +14,9 @@ function play(id: number, accent: "uk" | "us") {
 }
 
 /** Страница слова: всё, что есть на карточке, и действия «Управление словом» из бота. */
-export function WordPage({ id, onClose, learning }: {
+export function WordPage({ id, status, onClose, learning }: {
   id: number;
+  status?: WordStatus;
   onClose: () => void;
   learning?: { active: WordItem[]; limit: number; onSaved: () => void };
 }) {
@@ -112,9 +113,10 @@ export function WordPage({ id, onClose, learning }: {
     <List>
       <div className="word-head">
         <Title level="1" weight="2">
-          {word.term} <UsefulDot level={word.usefulness} />
+          {word.term}
         </Title>
-        {word.usefulness == null && <Text className="hint">Полезность пока не оценена</Text>}
+        <Text className="hint">Полезность: {usefulnessText(word.usefulness)} <UsefulDot level={word.usefulness} /></Text>
+        {word.usefulness === 3 && <Text className="hint">При равном ручном приоритете такие слова идут раньше.</Text>}
         {transcription(word) && <Text className="hint">{transcription(word)}</Text>}
         {(word.partOfSpeech || word.cefr) && (
           <Text className="hint">{[word.partOfSpeech, word.cefr].filter(Boolean).join(" · ")}</Text>
@@ -129,6 +131,8 @@ export function WordPage({ id, onClose, learning }: {
 
       {learning && (
         <div className="word-learning">
+          {status === "paused" && <Cell multiline>Слово начато и ждёт места в «Учу». Прогресс сохранён.</Cell>}
+          {status === "new" && <Cell multiline>Новое слово. Для начала нужно место в «Учу» и доступная дневная порция.</Cell>}
           {replacing ? (
             <>
               <Select header="Какое слово отложить" aria-label="Какое слово отложить" value={outgoing} disabled={busy} onChange={(event) => setOutgoing(event.target.value)}>
