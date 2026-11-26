@@ -84,7 +84,10 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
           <div className="boss-hp" aria-live="polite">
             <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(maxHp)} HP
           </div>
-          {charge > 0 && <span className="arena-charge" aria-live="polite">Заряд · {hpFormat.format(charge)} HP</span>}
+          {playing && <div className="arena-power">
+            <span>Ставка · {hpFormat.format(attack.stake)} ⚡</span>
+            {charge > 0 && <span className="arena-charge" aria-live="polite">Заряд · {hpFormat.format(charge)} HP</span>}
+          </div>}
         </div>
         <div className={impact?.kind === "hit" ? "boss-bar struck" : "boss-bar"} role="progressbar" aria-label="Здоровье босса"
           aria-valuemin={0} aria-valuemax={maxHp} aria-valuenow={boss.hp}>

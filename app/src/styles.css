@@ -605,6 +605,7 @@ body {
 .boss-hp { color: #c2cfe0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .boss-hp strong { color: #f6f8ff; font-size: 32px; line-height: 1; letter-spacing: -.045em; }
 .arena-hud-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 12px; justify-content: space-between; }
+.arena-power { display: grid; gap: 3px; text-align: end; color: #c1cee2; font-size: 13px; }
 .arena-charge { color: #ffe2ad; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .boss-bar {
   height: 10px;
@@ -635,11 +636,22 @@ body {
 .arena-term { min-width: 0; font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
 .arena-note, .arena-balance { color: #c1cee2; font-size: 13px; line-height: 1.4; }
 .arena-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.arena-options .arena-primary:only-child { grid-column: 1 / -1; }
 .arena-fight :is(.arena-option, .arena-primary) { min-height: 44px; height: auto; padding: 8px 10px; }
 .arena-options :is(.arena-option, .arena-primary) { min-height: 56px; }
 .arena-fight .arena-option { color: #f1f6ff; background: #263850; }
 .arena-fight .arena-primary { color: #102136; background: #92d1ff; }
 .arena-fight :is(.arena-option, .arena-primary) span { white-space: normal; overflow-wrap: anywhere; }
+.arena-stake-options, .arena-stake-forecast { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.arena-stake-options .arena-option[aria-pressed="true"] { background: #456286; }
+.arena-stake-input { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
+.arena-stake-input input {
+  width: min(112px, 100%); min-height: 44px; box-sizing: border-box; padding-inline: 10px;
+  border: 1px solid #536882; border-radius: 9px; background: #182437; color: #f1f6ff; font: inherit;
+}
+.arena-stake-input input[aria-invalid="true"] { border-color: #ff947f; }
+.arena-stake-forecast > div { display: grid; gap: 2px; padding: 5px; text-align: center; }
+.arena-stake-forecast span { color: #c1cee2; font-size: 12px; }
 .arena-result { padding: 10px 12px; border-radius: 12px; background: #1e2b3f; overflow-wrap: anywhere; }
 .arena-turn:focus-visible { outline: 2px solid #92d1ff; outline-offset: 2px; border-radius: 5px; }
 .boss-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; color: #bcc9dc; font-size: 12px; }

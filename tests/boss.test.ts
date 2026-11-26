@@ -207,7 +207,7 @@ async function attackArena(now = nsk("2026-11-19T12:00")) {
   const post = (path: string, body: object = {}) => app.request(`/api/boss/${path}`, {
     method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
   });
-  const start = async () => (await (await post("attack")).json()).attack;
+  const start = async (stake?: number) => (await (await post("attack", { stake })).json()).attack;
   const act = (attack: AttackView, move: string, choice?: number) => post("attack/move", { id: attack.id, revision: attack.revision, move, choice });
   const step = async (attack: AttackView, move: string, choice?: number) => (await (await act(attack, move, choice)).json()).attack;
   return { ...state, credit, getBoss, post, start, act, step };
@@ -221,7 +221,7 @@ describe("атака серией переводов", () => {
     expect((await post("combat", { target: "boss" })).status).toBe(409);
 
     const first = await start();
-    expect(first).toMatchObject({ kind: "question", number: 1, total: 3, damage: 0 });
+    expect(first).toMatchObject({ kind: "question", number: 1, total: 3, stake: 10, damage: 0 });
     expect(first).not.toHaveProperty("correct");
     expect(await start()).toEqual(first);
     expect((await act(first, "stop")).status).toBe(400);
@@ -262,10 +262,53 @@ describe("атака серией переводов", () => {
 
   it("оставляет энергию, если босса добили с открытым вопросом", async () => {
     const { start, act, getBoss, credit } = await attackArena();
-    const first = await start();
+    const first = await start(30);
+    expect(first).toMatchObject({ stake: 30 });
     await credit(1000, false);
     expect((await act(first, "answer", correct(first))).status).toBe(409);
     expect(await getBoss()).toMatchObject({ boss: { round: 2 }, combat: { balance: 30 } });
+  });
+
+  it("ограничивает ставку запасом и HP и списывает принятую сумму ровно один раз", async () => {
+    const { h, room, credit, getBoss, post, start, step, act } = await attackArena();
+    expect((await post("attack", { stake: 31 })).status).toBe(409);
+    await credit(900, true);
+    await setWeeklyGoal(h.db, room.id, 25);
+    expect(await getBoss()).toMatchObject({ combat: { balance: 120, maxAttackStake: 50 } });
+    expect((await post("attack", { stake: 51 })).status).toBe(409);
+    for (const stake of [0, 30.5, "30", null]) {
+      expect((await post("attack", { stake })).status).toBe(400);
+    }
+
+    const first = await start(30);
+    expect(first).toMatchObject({ stake: 30, nextDamage: 15 });
+    const decision = await step(first, "answer", correct(first));
+    expect(decision).toMatchObject({ stake: 30, damage: 15, nextDamage: 30, missDamage: 7.5 });
+    expect(await start(50)).toEqual(decision);
+    expect(await getBoss()).toMatchObject({ combat: { balance: 120 } });
+    const second = await step(decision, "risk");
+    const secondDecision = await step(second, "answer", correct(second));
+    expect(secondDecision).toMatchObject({ stake: 30, damage: 30, nextDamage: 54 });
+    for (const response of await Promise.all([act(secondDecision, "stop"), act(secondDecision, "stop")])) {
+      expect(await response.json()).toMatchObject({
+        attack: { kind: "done", stake: 30, damage: 25 }, arena: { boss: { round: 2 }, combat: { balance: 90 } },
+      });
+    }
+  });
+
+  it("списывает выбранную ставку при первом промахе и округляет частичный удар до десятых", async () => {
+    const { start, step, act } = await attackArena();
+    const miss = (item: AttackView) => (correct(item) + 1) % item.options.length;
+    const first = await start(19);
+    expect(await (await act(first, "answer", miss(first))).json()).toMatchObject({
+      attack: { kind: "done", stake: 19, damage: 0 }, arena: { boss: { hp: 100 }, combat: { balance: 11 } },
+    });
+    const next = await start(11);
+    const second = await step(await step(next, "answer", correct(next)), "risk");
+    expect(second).toMatchObject({ stake: 11, damage: 5.5, missDamage: 2.8 });
+    expect(await (await act(second, "answer", miss(second))).json()).toMatchObject({
+      attack: { kind: "done", stake: 11, damage: 2.8 }, arena: { combat: { balance: 0 } },
+    });
   });
 });
 

@@ -486,6 +486,7 @@ export interface BossState {
     bank: boolean;
     balance: number;
     attackCost: number;
+    maxAttackStake: number;
     roomId: number;
     week: string;
     mobs: Array<{ id: MobId; icon: string; name: string; hp: number; reward: string; defeated: boolean }>;
@@ -504,7 +505,7 @@ export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget, "boss">; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
-export type BossAttack = { id: string; revision: number } & (
+export type BossAttack = { id: string; revision: number; stake: number } & (
   | { kind: "question"; number: number; total: number; term: string; options: string[]; damage: number; nextDamage: number; missDamage: number }
   | { kind: "decision"; damage: number; nextDamage: number; missDamage: number }
   | { kind: "done"; damage: number; translation?: string }
@@ -512,7 +513,7 @@ export type BossAttack = { id: string; revision: number } & (
 export type BossMove = { move: "answer"; choice: number } | { move: "stop" | "risk" };
 type AttackReply = { attack: BossAttack; arena?: BossState };
 
-export const startBossAttack = () => postRetry<AttackReply>("/api/boss/attack");
+export const startBossAttack = (stake: number) => postRetry<AttackReply>("/api/boss/attack", { stake });
 export const moveBossAttack = (attack: BossAttack, move: BossMove) =>
   postRetry<AttackReply>("/api/boss/attack/move", { id: attack.id, revision: attack.revision, ...move });
 

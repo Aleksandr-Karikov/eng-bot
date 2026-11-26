@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { HUNTER_RELICS, MOBS, type CombatTarget } from "../combat-mobs";
+import { maxBossAttackStake, MIN_BOSS_ATTACK_STAKE } from "../boss-attack-rules";
 import type { Db } from "../db/client";
 import { combatSpends, users, type User } from "../db/schema";
 import { availableRune, damageBalanceDeci, mobClaims, mobHuntWeeks, withCombatLock } from "./combat-ledger";
@@ -12,8 +13,6 @@ export function isMobTarget(target: unknown): target is Exclude<CombatTarget, "b
   return MOBS.some((mob) => mob.id === target);
 }
 
-export const BOSS_ATTACK_COST = 10;
-
 export async function combatState(db: Db, user: User, now: Date, boss: BossState) {
   const [claims, weeks, balance, rune, streak] = await Promise.all([
     // Неделя боя уже посчитана по поясу комнаты — берём её, а не считаем заново по общему поясу.
@@ -23,7 +22,8 @@ export async function combatState(db: Db, user: User, now: Date, boss: BossState
   return {
     bank: user.bankDamage,
     balance: balance / 10,
-    attackCost: BOSS_ATTACK_COST,
+    attackCost: MIN_BOSS_ATTACK_STAKE,
+    maxAttackStake: maxBossAttackStake(boss.hp, balance / 10),
     mobs: MOBS.map(({ coins, skill, ...mob }) => ({
       ...mob,
       reward: skill
@@ -39,7 +39,7 @@ export async function combatState(db: Db, user: User, now: Date, boss: BossState
 
 type Attack = { week: string; roomId: number; requestId: string } & (
   { target: Exclude<CombatTarget, "boss">; maxDamageDeci: number }
-  | { target: "boss"; round: number; damage: number }
+  | { target: "boss"; round: number; stake: number; damage: number }
 );
 
 export function attackWithReserve(db: Db, userId: number, input: Attack, now: () => Date) {
@@ -70,7 +70,7 @@ export function attackWithReserve(db: Db, userId: number, input: Attack, now: ()
       if (balance < damageDeci || input.maxDamageDeci !== damageDeci) return;
       values = { damageDeci };
     } else {
-      const cost = BOSS_ATTACK_COST * 10;
+      const cost = input.stake * 10;
       if (balance < cost) return;
       const boss = await bossOf(db, room, at);
       if (boss.hp <= 0 || input.round !== boss.round) return;

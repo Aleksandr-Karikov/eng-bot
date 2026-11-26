@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { bossAttackDamage, BOSS_ATTACK_ROUNDS, MIN_BOSS_ATTACK_STAKE } from "../boss-attack-rules";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { bossEnabled, bossOf } from "../services/boss";
@@ -7,7 +8,6 @@ import { buildBossRounds, type DuelRound } from "../services/duels";
 import { getRoom, isMember } from "../services/rooms";
 import { appBoss } from "./api";
 
-const DAMAGE = [0, 5, 10, 18];
 const ATTACK_TTL_MS = 15 * 60_000;
 const EXPIRED = { status: 409 as const, body: { ok: false, error: "Атака завершилась или босс сменился. Начни новую атаку." } };
 const BAD_MOVE = { status: 400 as const, body: { ok: false, error: "Выбери доступное действие." } };
@@ -22,6 +22,7 @@ interface Attack {
   roomId: number;
   week: string;
   round: number;
+  stake: number;
   expiresAt: number;
   rounds: DuelRound[];
   phase: Phase;
@@ -34,7 +35,11 @@ export class AppBossAttack {
 
   constructor(private readonly deps: Deps) {}
 
-  async open(user: User) {
+  async open(user: User, body: { stake?: unknown }) {
+    const stake = body.stake === undefined ? MIN_BOSS_ATTACK_STAKE : body.stake;
+    if (typeof stake !== "number" || !Number.isSafeInteger(stake) || stake < MIN_BOSS_ATTACK_STAKE) {
+      return { status: 400 as const, body: { ok: false, error: `Ставка должна быть целым числом от ${MIN_BOSS_ATTACK_STAKE} ⚡.` } };
+    }
     const { db, now, random } = this.deps;
     const roomId = user.currentRoomId;
     if (roomId == null || !(await isMember(db, roomId, user.id))) return EXPIRED;
@@ -55,14 +60,17 @@ export class AppBossAttack {
     if (combat.balance < combat.attackCost) {
       return { status: 409 as const, body: { ok: false, error: `Для атаки нужно ${combat.attackCost} ⚡. Энергия копится за карточки, если включено накопление.` } };
     }
-    const rounds = await buildBossRounds(db, roomId, user.id, random, DAMAGE.length - 1);
+    if (stake > combat.maxAttackStake) {
+      return { status: 409 as const, body: { ok: false, error: `Сейчас можно поставить до ${combat.maxAttackStake} ⚡.` } };
+    }
+    const rounds = await buildBossRounds(db, roomId, user.id, random, BOSS_ATTACK_ROUNDS);
     const opened = pending();
     if (opened) return this.reply(user, opened);
-    if (rounds.length < DAMAGE.length - 1) {
+    if (rounds.length < BOSS_ATTACK_ROUNDS) {
       return { status: 409 as const, body: { ok: false, error: "Для атаки нужны три уже показанных тебе слова и четыре разных перевода в словаре комнаты." } };
     }
     const attack: Attack = {
-      id: randomUUID(), revision: 0, roomId, week: boss.week, round: boss.round,
+      id: randomUUID(), revision: 0, roomId, week: boss.week, round: boss.round, stake,
       expiresAt: time + ATTACK_TTL_MS, rounds, phase: { kind: "question", index: 0 },
     };
     this.attacks.set(user.id, attack);
@@ -91,13 +99,13 @@ export class AppBossAttack {
       if (typeof choice !== "number" || !Number.isInteger(choice) || choice < 0 || choice >= round.options.length) return BAD_MOVE;
       const next = phase.index + 1;
       attack.phase = choice !== round.correct
-        ? { kind: "finish", damage: DAMAGE[phase.index] / 2, translation: round.options[round.correct] }
+        ? { kind: "finish", damage: bossAttackDamage(attack.stake, phase.index, true), translation: round.options[round.correct] }
         : next === attack.rounds.length
-          ? { kind: "finish", damage: DAMAGE[next] }
+          ? { kind: "finish", damage: bossAttackDamage(attack.stake, next) }
           : { kind: "decision", index: phase.index };
     } else if (phase.kind === "decision" && (move === "stop" || move === "risk")) {
       attack.phase = move === "stop"
-        ? { kind: "finish", damage: DAMAGE[phase.index + 1] }
+        ? { kind: "finish", damage: bossAttackDamage(attack.stake, phase.index + 1) }
         : { kind: "question", index: phase.index + 1 };
     } else return BAD_MOVE;
     attack.revision++;
@@ -106,27 +114,31 @@ export class AppBossAttack {
   }
 
   private async reply(user: User, attack: Attack) {
-    const { id, revision, phase } = attack;
+    const { id, revision, phase, stake } = attack;
     let view;
     if (phase.kind === "question") {
       const { term, options } = attack.rounds[phase.index];
       view = {
-        id, revision, kind: phase.kind, number: phase.index + 1, total: attack.rounds.length, term, options,
-        damage: DAMAGE[phase.index], nextDamage: DAMAGE[phase.index + 1], missDamage: DAMAGE[phase.index] / 2,
+        id, revision, stake, kind: phase.kind, number: phase.index + 1, total: attack.rounds.length, term, options,
+        damage: bossAttackDamage(stake, phase.index), nextDamage: bossAttackDamage(stake, phase.index + 1),
+        missDamage: bossAttackDamage(stake, phase.index, true),
       } as const;
     } else if (phase.kind === "decision") {
-      const damage = DAMAGE[phase.index + 1];
-      view = { id, revision, kind: phase.kind, damage, nextDamage: DAMAGE[phase.index + 2], missDamage: damage / 2 } as const;
+      const damage = bossAttackDamage(stake, phase.index + 1);
+      view = {
+        id, revision, stake, kind: phase.kind, damage, nextDamage: bossAttackDamage(stake, phase.index + 2),
+        missDamage: bossAttackDamage(stake, phase.index + 1, true),
+      } as const;
     } else if (phase.kind === "finish") {
       const pending = attack.settlement ??= attackWithReserve(this.deps.db, user.id, {
-        target: "boss", roomId: attack.roomId, week: attack.week, round: attack.round, requestId: id, damage: phase.damage,
+        target: "boss", roomId: attack.roomId, week: attack.week, round: attack.round, requestId: id, stake, damage: phase.damage,
       }, this.deps.now);
       try {
         const damage = await pending;
         if (damage === undefined) return EXPIRED;
         return {
           status: 200 as const,
-          body: { ok: true, attack: { id, revision, kind: "done" as const, damage, translation: phase.translation }, arena: await appBoss(this.deps, user) },
+          body: { ok: true, attack: { id, revision, stake, kind: "done" as const, damage, translation: phase.translation }, arena: await appBoss(this.deps, user) },
         };
       } catch (err) {
         if (attack.settlement === pending) attack.settlement = undefined;

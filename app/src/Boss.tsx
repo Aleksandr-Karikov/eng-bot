@@ -7,6 +7,7 @@ import { hpFormat } from "./format";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 import { bossScreen } from "../../src/app/boss-screen";
+import { bossAttackDamage, BOSS_ATTACK_ROUNDS, MIN_BOSS_ATTACK_STAKE } from "../../src/boss-attack-rules";
 
 type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
 
@@ -128,13 +129,13 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  const attackAction = async (move?: BossMove) => {
+  const attackAction = async (move?: BossMove, stake = MIN_BOSS_ATTACK_STAKE) => {
     if (busy || attackPending.current) return;
     attackPending.current = true;
     if (!move) setExpanded(true);
     setAnswering(true);
     try {
-      const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack();
+      const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack(stake);
       setAttack(result.attack);
       if (result.arena) setData(result.arena);
       if (result.attack.kind === "done") haptic.done(result.attack.translation === undefined);
@@ -174,6 +175,8 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     );
   }
   const playing = attack !== undefined && attack.kind !== "done";
+  const hp = data.boss.hp;
+  const hit = (damage: number) => hpFormat.format(Math.min(hp, damage));
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
       victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy || playing}
@@ -191,7 +194,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
                 <Text weight="2" className="arena-term">Что значит «{attack.term}»?</Text>
                 <span className="arena-note">Вопрос {attack.number} из {attack.total}</span>
               </div>
-              <span className="arena-note">Верно — заряд {hpFormat.format(attack.nextDamage)} HP. Ошибка — удар на {hpFormat.format(attack.missDamage)} HP.</span>
+              <span className="arena-note">Верно — заряд {hpFormat.format(attack.nextDamage)} HP. Ошибка — удар на {hit(attack.missDamage)} HP.</span>
               <div className="arena-options">
                 {attack.options.map((option, index) => (
                   <Button key={option} className="arena-option" stretched disabled={busy} onClick={() => void attackAction({ move: "answer", choice: index })}>
@@ -206,38 +209,91 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
               <Text weight="2">Верный перевод</Text>
               <div className="arena-options">
                 <Button className="arena-primary" stretched disabled={busy} onClick={() => void attackAction({ move: "stop" })}>
-                  <span>Ударить · {hpFormat.format(attack.damage)} HP</span>
+                  <span>Ударить · {hit(attack.damage)} HP</span>
                 </Button>
-                <Button className="arena-option" stretched disabled={busy} onClick={() => void attackAction({ move: "risk" })}>
-                  <span>Рискнуть · до {hpFormat.format(attack.nextDamage)} HP</span>
-                </Button>
+                {attack.damage < hp && (
+                  <Button className="arena-option" stretched disabled={busy} onClick={() => void attackAction({ move: "risk" })}>
+                    <span>Рискнуть · до {hit(attack.nextDamage)} HP</span>
+                  </Button>
+                )}
               </div>
-              <span className="arena-note">Если ошибёшься, удар нанесёт {hpFormat.format(attack.missDamage)} HP.</span>
+              <span className="arena-note">{attack.damage >= hp ? "Заряда хватает, чтобы добить босса." : `Если ошибёшься, удар нанесёт ${hit(attack.missDamage)} HP.`}</span>
             </div>
           )}
           {attack?.kind === "done" && (
             <div ref={questionGroup} tabIndex={-1} role="status" className="arena-turn arena-result">
-              <Text weight="2">−{data.combat.attackCost} ⚡ · нанесено {hpFormat.format(attack.damage)} урона</Text>
+              <Text weight="2">−{hpFormat.format(attack.stake)} ⚡ · нанесено {hpFormat.format(attack.damage)} урона</Text>
               {attack.translation && <span className="arena-note">Правильный перевод — «{attack.translation}».</span>}
             </div>
           )}
-          {!playing && data.boss.hp > 0 && (
-            <div className="arena-turn">
-              <span className="arena-note">До трёх переводов. После верного ответа можно ударить или продолжить. Ошибка оставит половину набранного урона.</span>
-              <div className="arena-start">
-                <Button size="m" className="arena-primary" loading={answering} disabled={busy || data.combat.balance < data.combat.attackCost}
-                  onClick={() => void attackAction()}>
-                  Атаковать · {data.combat.attackCost} ⚡
-                </Button>
-                <strong className="arena-balance">У тебя {hpFormat.format(data.combat.balance)} ⚡</strong>
-              </div>
-              {data.combat.balance < data.combat.attackCost && (
-                <span className="arena-note">До атаки нужно ещё {hpFormat.format(data.combat.attackCost - data.combat.balance)} ⚡.</span>
-              )}
-            </div>
+          {!playing && hp > 0 && (
+            <AttackStake combat={data.combat} hp={hp} busy={busy} loading={answering}
+              onStart={(stake) => void attackAction(undefined, stake)} />
           )}
         </div>
       )} />
+  );
+}
+
+function AttackStake({ combat, hp, busy, loading, onStart }: {
+  combat: NonNullable<BossState["combat"]>;
+  hp: number;
+  busy: boolean;
+  loading: boolean;
+  onStart: (stake: number) => void;
+}) {
+  const { attackCost: min, maxAttackStake: max, balance } = combat;
+  const [selected, setSelected] = useState<number | "custom">(min);
+  const [custom, setCustom] = useState("");
+  const stake = selected === "custom" ? Number(custom) : selected;
+  const valid = (selected !== "custom" || /^\d+$/.test(custom)) && Number.isSafeInteger(stake) && stake >= min && stake <= max;
+  const canAttack = max >= min;
+
+  return (
+    <form className="arena-turn" aria-label="Ставка на атаку" onSubmit={(event) => {
+      event.preventDefault();
+      if (!busy && valid) onStart(stake);
+    }}>
+      <div className="arena-start">
+        <Text weight="2">Ставка на атаку</Text>
+        <strong className="arena-balance">У тебя {hpFormat.format(balance)} ⚡</strong>
+      </div>
+      {canAttack ? (
+        <>
+          <div className="arena-stake-options" role="group" aria-label="Размер ставки">
+            {[min, 30, "custom" as const].map((choice) => (
+              <Button key={choice} type="button" size="m" className="arena-option"
+                aria-pressed={selected === choice} disabled={busy || (typeof choice === "number" && choice > max)}
+                onClick={() => setSelected(choice)}>
+                <span>{choice === "custom" ? "Своя сумма" : `${hpFormat.format(choice)} ⚡`}</span>
+              </Button>
+            ))}
+          </div>
+          {selected === "custom" && (
+            <label className="arena-stake-input">
+              Сумма от {hpFormat.format(min)} до {hpFormat.format(max)} ⚡
+              <input inputMode="numeric" autoComplete="off" value={custom} disabled={busy}
+                aria-invalid={Boolean(custom && !valid)} onChange={(event) => setCustom(event.target.value)} />
+            </label>
+          )}
+          {valid && (
+            <div className="arena-stake-forecast" aria-label="Прогноз урона за верные ответы">
+              {Array.from({ length: BOSS_ATTACK_ROUNDS }, (_, index) => (
+                <div key={index}><strong>{hpFormat.format(Math.min(hp, bossAttackDamage(stake, index + 1)))} HP</strong>
+                  <span>{index + 1} {index === 0 ? "верный" : "верных"}</span></div>
+              ))}
+            </div>
+          )}
+          <span className="arena-note">{combat.rune?.owned && valid && "Прогноз без учёта руны. "}
+            Ошибка оставит половину заряда, в первом вопросе — 0. Ставка списывается после завершения атаки.</span>
+        </>
+      ) : (
+        <span className="arena-note">До атаки нужно ещё {hpFormat.format(min - balance)} ⚡.</span>
+      )}
+      <Button type="submit" size="m" className="arena-primary" loading={loading} disabled={busy || !valid}>
+        Атаковать{valid ? ` · ${hpFormat.format(stake)} ⚡` : ""}
+      </Button>
+    </form>
   );
 }
 

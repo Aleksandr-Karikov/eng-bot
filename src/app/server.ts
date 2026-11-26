@@ -125,7 +125,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
     return c.json(r.body, r.status);
   });
   app.post("/api/boss/attack", async (c) => {
-    const r = await bossAttack.open(c.get("user"));
+    const r = await bossAttack.open(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   app.post("/api/boss/attack/move", async (c) => {
