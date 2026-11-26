@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
-import type { DragonTurn } from "../src/app/dragon-duel";
+import type { BossDuelTurn } from "../src/app/boss-duel";
 import { botHarness, buttonData } from "./bot-harness";
 import { at, DAY, HOUR, makeUser, T0 } from "./helpers";
 import { getUserByTelegramId, updateUser } from "../src/services/users";
@@ -314,11 +314,16 @@ describe("атака серией переводов", () => {
 });
 
 describe("пошаговая дуэль с Драконом", () => {
-  type Turn = { id: string; revision: number } & DragonTurn;
-  const phrase = (attack: Turn, action: string, answer: string) => ({
-    id: attack.id, revision: attack.revision, move: "phrase", action,
-    order: answer.split(" ").map((word) => attack.choices.find(({ id }) => id === action)!.words.indexOf(word)),
-  });
+  type Turn = { id: string; revision: number } & BossDuelTurn;
+  const phrase = (attack: Turn, action: string, answer: string) => {
+    const words = [...attack.choices.find(({ id }) => id === action)!.words];
+    const order = answer.split(" ").map((word) => {
+      const index = words.indexOf(word);
+      words[index] = "";
+      return index;
+    });
+    return { id: attack.id, revision: attack.revision, move: "phrase", action, order };
+  };
 
   it("проводит через укрытие или арбалет и списывает ставку один раз при повторе запроса", async () => {
     const { post, getBoss } = await attackArena(nsk("2026-11-26T12:00"));
@@ -358,9 +363,46 @@ describe("пошаговая дуэль с Драконом", () => {
     expect(miss).toMatchObject({ scene: "staggered", turn: 2, translation: "Shoot at the wing" });
     const recovered = await move(miss, "rise", "Get back up");
     expect(recovered).toMatchObject({ scene: "recovered", turn: 3 });
-    expect(await move(recovered, "counter", "Strike its legs")).toMatchObject({ kind: "done", damage: 5, practice: true });
+    expect(await move(recovered, "counter", "Counterattack at once")).toMatchObject({ kind: "done", damage: 5, practice: true });
     expect(await start()).toMatchObject({ kind: "dragon", scene: "fire", id: expect.not.stringMatching(first.id) });
     expect(await getBoss()).toEqual(before);
+  });
+
+  it.each([
+    {
+      opponent: "dragon", date: "2026-11-26T12:00", openings: ["fire", "charge"],
+      routes: [[ ["ballista", "Shoot at the wing"], ["wing", "Strike its wing"] ],
+        [ ["lure", "Lure it to the pillar"], ["block", "Block the exit"], ["finish", "Aim for its belly"] ]],
+    },
+    {
+      opponent: "sentinel", date: "2026-11-19T12:00", openings: ["beam", "seals"],
+      routes: [[ ["mirror", "Turn the mirror toward the guardian"], ["core", "Break the core"] ],
+        [ ["open", "Disable both seals"], ["close", "Close the circle"], ["core", "Strike the exposed core"] ]],
+    },
+    {
+      opponent: "frost", date: "2026-12-01T12:00", openings: ["bridge", "blizzard"],
+      routes: [[ ["ice", "Break the ice beneath her"], ["crown", "Break her crown"] ],
+        [ ["crystal", "Light the ice crystal"], ["turn", "Point the light at her"], ["attack", "Strike while she is blinded"] ]],
+    },
+  ])("чередует оплачиваемые сцены и тренировки для $opponent", async ({ opponent, date, openings, routes }) => {
+    const { getBoss, post } = await attackArena(nsk(date));
+    expect(await getBoss()).toMatchObject({ boss: { opponent: { id: opponent }, hp: 100 }, combat: { balance: 30 } });
+    for (const mode of ["duel", "practice"]) {
+      const before = await getBoss();
+      for (const [index, route] of routes.entries()) {
+        const start = () => post("attack", { mode, opponent, stake: 10 });
+        let result = await (await start()).json();
+        expect(result.attack).toMatchObject({ scene: openings[index], duel: { opponent, opening: openings[index] }, turn: 1 });
+        expect((await (await start()).json()).attack).toEqual(result.attack);
+        for (const [action, answer] of route) {
+          result = await (await post("attack/move", phrase(result.attack, action, answer))).json();
+          expect(result.ok).toBe(true);
+        }
+        expect(result.attack).toMatchObject({ kind: "done", damage: 18 });
+      }
+      if (mode === "practice") expect(await getBoss()).toEqual(before);
+      else expect(await getBoss()).toMatchObject({ boss: { hp: 64 }, combat: { balance: 10 } });
+    }
   });
 });
 
@@ -952,6 +994,14 @@ describe("🐉 a new boss takes the arena right after a kill", () => {
     expect(second.id).not.toBe(first.id);
     // Противники чередуются, а не выпадают случайно: третий снова как первый.
     expect(roundOpponent(weekStart, 3).id).toBe(first.id);
+  });
+
+  it("keeps the original rotation for opened weeks and adds Frost at the next weekly boundary", () => {
+    const previous = nsk("2026-11-22T20:00");
+    expect([1, 2, 3, 4].map((round) => roundOpponent(previous, round).id)).toEqual(["dragon", "sentinel", "dragon", "sentinel"]);
+    const firstFrostWeek = nsk("2026-11-29T20:00");
+    expect([1, 2, 3, 4].map((round) => roundOpponent(firstFrostWeek, round).id)).toEqual(["frost", "dragon", "sentinel", "frost"]);
+    expect(roundOpponent(nsk("2026-12-06T20:00"), 1).id).toBe("dragon");
   });
 
   it("splits weekly damage into rounds by the growing hp", () => {

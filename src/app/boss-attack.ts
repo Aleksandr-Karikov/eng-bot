@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { bossAttackDamage, BOSS_ATTACK_ROUNDS, MIN_BOSS_ATTACK_STAKE } from "../boss-attack-rules";
+import { BOSS_OPPONENTS, type BossId } from "../boss-opponents";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { bossEnabled, bossOf } from "../services/boss";
@@ -7,7 +8,7 @@ import { attackWithReserve } from "../services/combat";
 import { buildBossRounds, type DuelRound } from "../services/duels";
 import { getRoom, isMember } from "../services/rooms";
 import { appBoss } from "./api";
-import { dragonTurn, playDragonTurn, type DragonTurn } from "./dragon-duel";
+import { playDuelTurn, startDuel, type BossDuelTurn, type DuelScene } from "./boss-duel";
 
 const ATTACK_TTL_MS = 15 * 60_000;
 const EXPIRED = { status: 409 as const, body: { ok: false, error: "Атака завершилась или босс сменился. Начни новую атаку." } };
@@ -15,8 +16,8 @@ const BAD_MOVE = { status: 400 as const, body: { ok: false, error: "Выбери
 
 type Phase =
   | { kind: "question" | "decision"; index: number }
-  | DragonTurn
-  | { kind: "finish"; damage: number; translation?: string; scene?: DragonTurn["scene"] };
+  | BossDuelTurn
+  | { kind: "finish"; damage: number; translation?: string; scene?: string; duel?: DuelScene };
 
 interface Attack {
   id: string;
@@ -37,9 +38,10 @@ export class AppBossAttack {
 
   constructor(private readonly deps: Deps) {}
 
-  async open(user: User, body: { stake?: unknown; mode?: unknown }) {
+  async open(user: User, body: { stake?: unknown; mode?: unknown; opponent?: unknown }) {
     const { mode } = body;
-    if (mode !== undefined && mode !== "dragon" && mode !== "practice") return BAD_MOVE;
+    if (mode !== undefined && mode !== "duel" && mode !== "dragon" && mode !== "practice") return BAD_MOVE;
+    if (body.opponent !== undefined && (typeof body.opponent !== "string" || !Object.hasOwn(BOSS_OPPONENTS, body.opponent))) return BAD_MOVE;
     const practice = mode === "practice";
     const attempts = practice ? this.practices : this.attacks;
     const stake = body.stake === undefined ? MIN_BOSS_ATTACK_STAKE : body.stake;
@@ -53,6 +55,8 @@ export class AppBossAttack {
     const arena = practice ? undefined : await appBoss(this.deps, user);
     const boss = arena?.boss;
     if (!practice && (!boss || boss.hp <= 0)) return EXPIRED;
+    const opponent = practice ? (body.opponent as BossId | undefined) ?? "dragon" : boss?.opponent.id ?? "dragon";
+    if ((mode === "dragon" && opponent !== "dragon") || (!practice && body.opponent !== undefined && body.opponent !== opponent)) return EXPIRED;
     const time = now().getTime();
     for (const [userId, attack] of attempts) {
       if (attack.expiresAt <= time) attempts.delete(userId);
@@ -60,11 +64,11 @@ export class AppBossAttack {
     const pending = () => {
       const attack = attempts.get(user.id);
       return attack?.roomId === roomId && attack.target?.week === boss?.week && attack.target?.round === boss?.round && attack.phase.kind !== "finish"
+        && (!practice || (attack.phase.kind === "dragon" && attack.phase.duel.opponent === opponent))
         ? attack : undefined;
     };
     const current = pending();
     if (current) return this.reply(user, current);
-    if (mode === "dragon" && boss?.opponent.id !== "dragon") return EXPIRED;
     const combat = arena?.boss && arena.combat;
     if (combat && combat.balance < combat.attackCost) {
       return { status: 409 as const, body: { ok: false, error: `Для атаки нужно ${combat.attackCost} ⚡. Энергия копится за карточки, если включено накопление.` } };
@@ -78,10 +82,13 @@ export class AppBossAttack {
     if (mode === undefined && rounds.length < BOSS_ATTACK_ROUNDS) {
       return { status: 409 as const, body: { ok: false, error: "Для атаки нужны три уже показанных тебе слова и четыре разных перевода в словаре комнаты." } };
     }
+    const previous = attempts.get(user.id);
+    const supportsBothScenes = mode === "duel" || (practice && body.opponent !== undefined);
+    const lastScene = supportsBothScenes && previous?.roomId === roomId && previous.phase.kind === "finish" ? previous.phase.duel : undefined;
     const attack: Attack = {
       id: randomUUID(), revision: 0, roomId, target: boss && { week: boss.week, round: boss.round }, stake,
       expiresAt: time + ATTACK_TTL_MS, rounds,
-      phase: mode === undefined ? { kind: "question", index: 0 } : dragonTurn("fire", 1, stake, random),
+      phase: mode === undefined ? { kind: "question", index: 0 } : startDuel(opponent, stake, random, lastScene, supportsBothScenes),
     };
     attempts.set(user.id, attack);
     return this.reply(user, attack);
@@ -119,9 +126,9 @@ export class AppBossAttack {
         ? { kind: "finish", damage: bossAttackDamage(attack.stake, phase.index + 1) }
         : { kind: "question", index: phase.index + 1 };
     } else if (phase.kind === "dragon" && move === "phrase") {
-      const next = playDragonTurn(phase, body.action, body.order, attack.stake, random);
+      const next = playDuelTurn(phase, body.action, body.order, attack.stake, random);
       if (!next) return BAD_MOVE;
-      attack.phase = next.kind === "finish" ? { ...next, scene: phase.scene } : next;
+      attack.phase = next;
     } else return BAD_MOVE;
     attack.revision++;
     attack.expiresAt = now().getTime() + ATTACK_TTL_MS;
@@ -147,7 +154,7 @@ export class AppBossAttack {
     } else if (phase.kind === "dragon") {
       view = { ...phase, id, revision, stake, practice: !target };
     } else if (phase.kind === "finish") {
-      const done = { id, revision, stake, kind: "done" as const, damage: phase.damage, translation: phase.translation, scene: phase.scene };
+      const done = { id, revision, stake, kind: "done" as const, damage: phase.damage, translation: phase.translation, scene: phase.scene, duel: phase.duel };
       if (!target) return { status: 200 as const, body: { ok: true, attack: { ...done, practice: true } } };
       const pending = attack.settlement ??= attackWithReserve(this.deps.db, user.id, {
         target: "boss", roomId: attack.roomId, ...target, requestId: id, stake, damage: phase.damage,

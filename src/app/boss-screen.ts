@@ -1,3 +1,5 @@
+import type { BossId } from "../boss-opponents";
+
 /**
  * Какой экран показать на вкладке босса.
  *
@@ -30,13 +32,13 @@ type ArenaBoss = {
   week?: string;
   round?: number;
   hp: number;
-  opponent?: { id: "dragon" | "sentinel" };
+  opponent?: { id: BossId };
 };
 
 export type ArenaImpact =
   | { kind: "block" }
   | { kind: "hit"; damage: number; own: boolean }
-  | { kind: "victory"; defeated: "dragon" | "sentinel" };
+  | { kind: "victory"; defeated: BossId };
 
 export function arenaImpact(before: ArenaBoss, after: ArenaBoss, ownDamage?: number): ArenaImpact | undefined {
   if (before.room !== after.room || before.week !== after.week) return;

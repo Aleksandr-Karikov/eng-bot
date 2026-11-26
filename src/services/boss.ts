@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, isNull, lt } from "drizzle-orm";
+import { BOSS_OPPONENTS, type BossId } from "../boss-opponents";
 import type { Db } from "../db/client";
 import { cards, reviewLogs, users, words, type Room, type User } from "../db/schema";
 import { DIGEST_TIME, FALLBACK_TZ, latestDigestMoment, roomTimeZone, WEEK_MS } from "./digest";
@@ -24,10 +25,9 @@ export type BossPhase = (typeof BOSS_PHASES)[number];
 
 export type BossPace = "ahead" | "on-time" | "behind";
 
-export const WEEKLY_BOSSES = [
-  { id: "dragon", name: "Дракон библиотеки" },
-  { id: "sentinel", name: "Страж обсерватории" },
-] as const;
+const ORIGINAL_ROTATION = ["dragon", "sentinel"] as const;
+const ROTATION = ["frost", "dragon", "sentinel"] as const;
+const FROST_FIRST_WEEK = Math.floor(Date.UTC(2026, 10, 29) / WEEK_MS);
 
 /**
  * Кто стоит на арене в этом раунде.
@@ -39,7 +39,12 @@ export const WEEKLY_BOSSES = [
  */
 export function roundOpponent(weekStart: Date, round = 1) {
   const weekIndex = Math.floor(weekStart.getTime() / WEEK_MS);
-  return WEEKLY_BOSSES[(weekIndex + Math.max(0, round - 1)) % WEEKLY_BOSSES.length];
+  const step = Math.max(0, round - 1);
+  // Неделя комнаты определяет ротацию. Даже уже открытый третий раунд старой недели остаётся прежним.
+  const opponent = weekIndex >= FROST_FIRST_WEEK
+    ? ROTATION[(weekIndex - FROST_FIRST_WEEK + step) % ROTATION.length]
+    : ORIGINAL_ROTATION[(weekIndex + step) % ORIGINAL_ROTATION.length];
+  return BOSS_OPPONENTS[opponent];
 }
 
 /** Противник первого раунда недели. Оставлено ради бонуса Дракона: он считается по неделе, не по раунду. */
@@ -49,7 +54,7 @@ export function weeklyOpponent(weekStart: Date) {
 
 export interface BossState extends GoalProgress {
   room: string;
-  opponent: (typeof WEEKLY_BOSSES)[number];
+  opponent: (typeof BOSS_OPPONENTS)[BossId];
   week: string;
   /** Сколько HP осталось у ТЕКУЩЕГО босса; 0 не бывает — добитый сразу уступает место следующему. */
   hp: number;

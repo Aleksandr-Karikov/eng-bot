@@ -3,12 +3,13 @@ import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { BossArena } from "./BossArena";
-import { DragonTurn } from "./DragonTurn";
+import { BossDuelTurn } from "./BossDuelTurn";
 import { hpFormat } from "./format";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 import { bossScreen } from "../../src/app/boss-screen";
 import { bossAttackDamage, BOSS_ATTACK_ROUNDS, MIN_BOSS_ATTACK_STAKE } from "../../src/boss-attack-rules";
+import { BOSS_OPPONENTS, type BossId } from "../../src/boss-opponents";
 
 type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
 
@@ -131,14 +132,15 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  const attackAction = async (move?: BossMove, stake = MIN_BOSS_ATTACK_STAKE, mode?: "dragon" | "practice") => {
+  const attackAction = async (action: BossMove | { stake: number; mode: "duel" | "practice"; opponent: BossId }) => {
     if (busy || attackPending.current) return;
+    if ("move" in action && !attack) return;
     attackPending.current = true;
-    if (!move) setExpanded(true);
+    if (!("move" in action)) setExpanded(true);
     setAnswering(true);
     setAttackError(undefined);
     try {
-      const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack(stake, mode);
+      const result = "move" in action ? await moveBossAttack(attack!, action) : await startBossAttack(action.stake, action.mode, action.opponent);
       setAttack(result.attack);
       if (result.arena) setData(result.arena);
       if (result.attack.kind === "done") haptic.done(result.attack.translation === undefined);
@@ -178,7 +180,9 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     );
   }
   const playing = attack !== undefined && attack.kind !== "done";
-  const dragon = data.boss.opponent?.id === "dragon";
+  const opponent = data.boss.opponent?.id ?? "dragon";
+  const practiceOpponent = attack?.kind === "done" && attack.practice && attack.duel?.opponent;
+  const practice = (boss: BossId) => void attackAction({ stake: MIN_BOSS_ATTACK_STAKE, mode: "practice", opponent: boss });
   const hp = data.boss.hp;
   const hit = (damage: number) => hpFormat.format(Math.min(hp, damage));
   return (
@@ -197,7 +201,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
           )}
           {expanded && attack?.kind === "dragon" && (
             <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Дуэль. Ход ${attack.turn}`} className="arena-turn">
-              <DragonTurn key={`${attack.id}:${attack.revision}`} attack={attack} bossHp={hp} busy={busy}
+              <BossDuelTurn key={`${attack.id}:${attack.revision}`} attack={attack} bossHp={hp} busy={busy}
                 onMove={(move) => void attackAction(move)} />
             </div>
           )}
@@ -241,24 +245,32 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
             </div>
           )}
           {(!playing || (attack.practice && !expanded)) && hp > 0 && (!expanded || !attack?.practice) && (
-            <AttackStake combat={data.combat} hp={hp} dragon={dragon} busy={busy} loading={answering}
-              onStart={(stake) => void attackAction(undefined, stake, dragon ? "dragon" : undefined)} />
+            <AttackStake combat={data.combat} hp={hp} busy={busy} loading={answering}
+              onStart={(stake) => void attackAction({ stake, mode: "duel", opponent })} />
           )}
-          {!playing && (
-            <Button size="m" className="arena-option" disabled={busy}
-              onClick={() => void attackAction(undefined, MIN_BOSS_ATTACK_STAKE, "practice")}>
-              <span>{expanded && attack?.practice ? "Повторить тренировку" : "Тренировка с Драконом · бесплатно"}</span>
-            </Button>
+          {!playing && expanded && practiceOpponent && (
+            <Button size="m" className="arena-primary" disabled={busy} onClick={() => practice(practiceOpponent)}>Следующая тренировка</Button>
+          )}
+          {!playing && (!expanded || !practiceOpponent) && (
+            <div className="arena-turn">
+              <Text weight="2">Тренировка · бесплатно</Text>
+              <div className="arena-stake-options" role="group" aria-label="Выбрать босса для тренировки">
+                {Object.values(BOSS_OPPONENTS).map((boss) => (
+                  <Button key={boss.id} size="m" className="arena-option" disabled={busy} onClick={() => practice(boss.id)}>
+                    <span>{boss.shortName}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )} />
   );
 }
 
-function AttackStake({ combat, hp, dragon, busy, loading, onStart }: {
+function AttackStake({ combat, hp, busy, loading, onStart }: {
   combat: NonNullable<BossState["combat"]>;
   hp: number;
-  dragon: boolean;
   busy: boolean;
   loading: boolean;
   onStart: (stake: number) => void;
@@ -301,13 +313,12 @@ function AttackStake({ combat, hp, dragon, busy, loading, onStart }: {
             <div className="arena-stake-forecast" aria-label="Прогноз урона">
               {Array.from({ length: BOSS_ATTACK_ROUNDS }, (_, index) => (
                 <div key={index}><strong>{hpFormat.format(Math.min(hp, bossAttackDamage(stake, index + 1)))} HP</strong>
-                  <span>{dragon ? ["После промаха", "Через укрытие", "Через арбалет"][index] : `${index + 1} ${index === 0 ? "верный" : "верных"}`}</span></div>
+                  <span>{["Ответ после промаха", "Обычный удар", "Сильный удар"][index]}</span></div>
               ))}
             </div>
           )}
           <span className="arena-note">{combat.rune?.owned && valid && "Прогноз без учёта руны. "}
-            {dragon ? "Собери английские фразы, чтобы выполнить действия. До трёх ходов за ставку."
-              : "Ошибка оставит половину заряда, в первом вопросе — 0. Ставка списывается после завершения атаки."}</span>
+            До трёх ходов за ставку. Энергия списывается после завершения боя.</span>
         </>
       ) : (
         <span className="arena-note">До атаки нужно ещё {hpFormat.format(min - balance)} ⚡.</span>

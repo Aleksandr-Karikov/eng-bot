@@ -654,8 +654,10 @@ body {
 .arena-stake-forecast span { color: #c1cee2; font-size: 12px; }
 .arena-result { padding: 10px 12px; border-radius: 12px; background: #1e2b3f; overflow-wrap: anywhere; }
 .arena-turn:focus-visible { outline: 2px solid #92d1ff; outline-offset: 2px; border-radius: 5px; }
-.dragon-props { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.dragon-props img {
+.duel-props { position: absolute; inset: 0; z-index: 1; pointer-events: none; --threat: #ff9863; }
+.boss-stage[data-opponent="sentinel"] .duel-props { --threat: #76f7da; }
+.boss-stage[data-opponent="frost"] .duel-props { --threat: #90d6ff; }
+.duel-props img {
   position: absolute;
   bottom: 52px;
   height: clamp(55px, 31%, 140px);
@@ -666,83 +668,113 @@ body {
 }
 .dragon-pillar { left: 12%; }
 .dragon-ballista { right: 9%; }
-.dragon-hero { position: absolute; inset: 0; z-index: 1; transition: transform .32s ease-out; }
-.dragon-hero img {
+.duel-hero { position: absolute; inset: 0; z-index: 1; transition: transform .32s ease-out; }
+.duel-hero img {
   left: 42%;
   height: clamp(62px, 35%, 150px);
   transform-origin: center bottom;
   transition: transform .32s ease-out;
 }
+.duel-hero[data-position="left"] { transform: translateX(-30%); }
+.duel-hero[data-position="right"] { transform: translateX(25%); }
+.duel-hero[data-position="fallen"] { transform: translateX(7%); }
+.duel-hero[data-position="fallen"] img { transform: rotate(-54deg) translateY(12%); }
+.boss-stage[data-duel="fire"] .duel-hero[data-position="left"] img { transform: rotate(-14deg) scale(.83); }
+.boss-stage[data-duel="fire"] .dragon-pillar { z-index: 1; }
+.duel-props[data-settled="true"] :is(.duel-hero, .duel-hero img) { transform: none; }
 .boss-stage[data-duel] .arena-character { inset: 4% -4% 28%; }
 .boss-stage[data-duel] .arena-actor { transition: transform .42s cubic-bezier(.22,.61,.36,1); }
-.boss-stage[data-duel="fire"] .arena-actor { transform: translateY(-8%) scale(.92); }
-.boss-stage[data-duel="landed"] .arena-actor { transform: translateY(12%) scale(.96); }
-.boss-stage[data-duel="landed"] .dragon-hero { transform: translateX(-34%); }
-.boss-stage[data-duel="landed"] .dragon-hero img { transform: rotate(-14deg) scale(.83); }
-.boss-stage[data-duel="landed"] .dragon-pillar { z-index: 1; }
-.boss-stage[data-duel="downed"] .arena-actor { transform: translateY(19%) rotate(-12deg) scale(.91, .78); }
-.boss-stage[data-duel="downed"] .dragon-hero { transform: translateX(25%); }
-.boss-stage[data-duel="staggered"] .dragon-hero { transform: translateX(7%); }
-.boss-stage[data-duel="staggered"] .dragon-hero img { transform: rotate(-54deg) translateY(12%); }
-.boss-stage[data-duel] .dragon-props[data-settled="true"] :is(.dragon-hero, .dragon-hero img) { transform: none; }
-.dragon-fire-target {
+.boss-stage[data-enemy-pose="airborne"] .arena-actor { transform: translateY(-8%) scale(.92); }
+.boss-stage[data-enemy-pose="low"] .arena-actor { transform: translateY(12%) scale(.96); }
+.boss-stage[data-enemy-pose="fallen"] .arena-actor { transform: translateY(19%) rotate(-12deg) scale(.91, .78); }
+.boss-stage[data-enemy-pose="shielded"] .arena-shield { opacity: .68; }
+.boss-stage[data-opponent="frost"] { --arena-light: #9edbff; }
+.duel-threat, .sentinel-seal {
   position: absolute;
-  right: 4%;
+  left: 50%;
   bottom: 41px;
   width: 35%;
   height: clamp(34px, 15%, 80px);
-  border: 2px solid #ff9863eb;
+  border: 2px solid var(--threat);
   border-radius: 50%;
-  background: radial-gradient(ellipse, #ed3a2480, #ff4e2240 63%);
-  box-shadow: 0 0 24px #fb4d29a3, inset 0 0 16px #ff9e5bb3;
-  animation: dragon-danger 1.6s ease-in-out infinite alternate;
+  translate: -50% 0;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--threat) 55%, transparent), transparent 72%);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--threat) 72%, transparent), inset 0 0 16px var(--threat);
+  animation: duel-danger 1.6s ease-in-out infinite alternate;
 }
-.dragon-sweep, .dragon-bolt, .dragon-slash { position: absolute; pointer-events: none; }
-.dragon-sweep {
-  inset: 22% 5% 20% 35%;
-  transform-origin: 25% 12%;
+.duel-threat[data-target="right"], .sentinel-seal[data-side="right"] { left: 78%; }
+.duel-threat[data-target="left"], .sentinel-seal[data-side="left"] { left: 22%; }
+.sentinel-seal {
+  width: 24%; height: clamp(18px, 8%, 46px); bottom: 49px; border-style: dashed;
+  background: transparent; opacity: .56; animation: none;
+}
+.duel-props .sentinel-mirror { right: 12%; height: clamp(53px, 26%, 125px); transition: transform .32s ease-out; }
+.sentinel-mirror[data-turned="true"] { transform: skewY(-8deg) scaleX(.8); }
+.duel-props .frost-crystal { bottom: 49px; height: clamp(45px, 27%, 125px); }
+.frost-crystal[data-side="left"] { left: 10%; transform: scale(.87) scaleX(-1); }
+.frost-crystal[data-side="right"] { right: 9%; }
+.boss-stage[data-duel="blizzard"] .frost-crystal[data-side="right"] { filter: brightness(1.4); }
+.boss-stage[data-duel="bridge"] .duel-props::before {
+  content: ""; position: absolute; right: 2%; bottom: 37px; width: 43%; height: 28%;
+  clip-path: polygon(35% 0, 65% 0, 100% 100%, 1% 100%);
+  background: repeating-linear-gradient(165deg, #a2d9fe30 0 2px, transparent 3px 14px), linear-gradient(#8ed6ff12, #a3deff4d);
+}
+.boss-stage[data-duel="blizzard"] .duel-props[data-threat="center"]::before {
+  content: ""; position: absolute; inset: 24% 14% 8%;
+  background: radial-gradient(ellipse at 48% 70%, #badfff7d, #91c4ef26 57%, transparent 71%);
+  animation: duel-mist 3s ease-in-out infinite alternate;
+}
+.duel-effect { position: absolute; pointer-events: none; animation: arena-impact .62s ease-out both; }
+.duel-effect[data-effect="fire"] {
+  inset: 22% 5% 20% 35%; transform-origin: 25% 12%;
   background: radial-gradient(ellipse at 77% 75%, #fff8be 4%, #ff9a3be6 23%, #ed40216e 48%, transparent 68%);
-  animation: dragon-flame .62s ease-out both;
+  animation-name: duel-flame;
 }
-.dragon-bolt, .dragon-slash {
-  left: 48%; top: 45%; width: 28%; height: 4px;
-  border-radius: 50%;
-  background: #fff6c9;
-  box-shadow: 0 0 15px 3px #ffae57;
-  animation: dragon-bolt .4s ease-out both;
+.duel-effect:is([data-effect="ice"], [data-effect="pulse"]) {
+  inset: 48% 8% 10%; border-radius: 50%;
+  background: radial-gradient(ellipse, transparent 38%, color-mix(in srgb, var(--threat) 65%, transparent) 56%, transparent 69%);
+  animation-name: duel-flame;
 }
-.dragon-slash { left: 37%; width: 24%; transform: rotate(-34deg); animation: arena-impact .54s ease both; }
-@keyframes dragon-danger { from { opacity: .62; } to { opacity: 1; } }
-@keyframes dragon-flame {
+.duel-effect:is([data-effect="bolt"], [data-effect="beam"], [data-effect="slash"]) {
+  left: 48%; top: 45%; width: 28%; height: 4px; border-radius: 50%;
+  background: #fff6c9; box-shadow: 0 0 15px 3px var(--threat); animation: duel-bolt .42s ease-out both;
+}
+.duel-effect[data-effect="beam"] { width: 40%; height: 8px; background: #e2fff9; }
+.duel-effect[data-effect="slash"] { left: 37%; width: 24%; transform: rotate(-34deg); animation: arena-impact .54s ease both; }
+@keyframes duel-danger { from { opacity: .62; } to { opacity: 1; } }
+@keyframes duel-mist { from { opacity: .55; transform: translateX(-7%); } to { opacity: .9; transform: translateX(7%); } }
+@keyframes duel-flame {
   from { opacity: 0; transform: scale(.36) rotate(-14deg); }
   34% { opacity: .92; }
   to { opacity: 0; transform: scale(1.18) rotate(8deg); }
 }
-@keyframes dragon-bolt {
+@keyframes duel-bolt {
   from { opacity: 0; transform: translate(30%, 1300%) rotate(27deg) scaleX(.4); }
   36% { opacity: 1; }
   to { opacity: 0; transform: translate(-58%, -600%) rotate(27deg) scaleX(.65); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .boss-stage[data-duel] :is(.arena-actor, .dragon-hero, .dragon-hero img) { transition: none; }
-  .dragon-fire-target { animation: none; }
-  :is(.dragon-sweep, .dragon-bolt, .dragon-slash) { display: none; }
+  .boss-stage[data-duel] :is(.arena-actor, .duel-hero, .duel-hero img, .sentinel-mirror) { transition: none; }
+  .duel-threat { animation: none; }
+  .boss-stage[data-duel="blizzard"] .duel-props[data-threat="center"]::before { animation: none; }
+  .duel-effect { display: none; }
 }
-.dragon-choice { display: grid; gap: 3px; text-align: center; }
-.dragon-choice small { font-size: 12px; color: #c8dbec; }
-.dragon-phrase {
+.duel-choice { display: grid; gap: 3px; text-align: center; }
+.duel-choice small { font-size: 12px; color: #c8dbec; }
+.duel-phrase {
   display: flex; flex-wrap: wrap; align-content: center; align-items: center; gap: 6px;
   min-height: 49px; padding: 6px 8px; box-sizing: border-box; border-radius: 12px;
   border: 1px solid #43556b; background: #0b1422;
 }
-.dragon-phrase span[lang] { border-radius: 6px; background: #35516d; color: #f8fbff; padding: 5px 8px; }
-.dragon-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: 6px; }
-.dragon-phrase-tools { display: flex; flex-wrap: wrap; gap: 0 16px; }
-.dragon-phrase-tools button {
+.duel-phrase span[lang] { border-radius: 6px; background: #35516d; color: #f8fbff; padding: 5px 8px; }
+.duel-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); grid-auto-rows: 1fr; gap: 6px; }
+.duel-tiles .arena-option { padding-inline: 6px; }
+.duel-phrase-tools { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.duel-phrase-tools button {
   min-height: 44px; padding: 0 2px; border: 0; background: transparent;
   font: inherit; font-size: 13px; color: #a8d7ff; text-decoration: underline; cursor: pointer;
 }
-.dragon-phrase-tools button:disabled { opacity: .6; cursor: default; }
+.duel-phrase-tools button:disabled { opacity: .6; cursor: default; }
 .boss-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; color: #bcc9dc; font-size: 12px; }
 .boss-hits, .boss-members {
   display: flex;

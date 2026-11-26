@@ -2,7 +2,8 @@ import type { StudyLanguage } from "./language";
 import { retryServerDown } from "./retry";
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
-import type { DragonTurn } from "../../src/app/dragon-duel";
+import type { BossDuelTurn, DuelScene } from "../../src/app/boss-duel";
+import type { BossId } from "../../src/boss-opponents";
 export type { CombatTarget } from "../../src/combat-mobs";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
@@ -417,7 +418,7 @@ export interface BossHit {
 
 export interface Boss {
   room: string;
-  opponent?: { id: "dragon" | "sentinel"; name: string };
+  opponent?: { id: BossId; name: string };
   week?: string;
   /** 0…1+, больше 1 — добит с запасом. */
   damage: number;
@@ -509,14 +510,14 @@ export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget
 export type BossAttack = { id: string; revision: number; stake: number; practice?: boolean } & (
   | { kind: "question"; number: number; total: number; term: string; options: string[]; damage: number; nextDamage: number; missDamage: number }
   | { kind: "decision"; damage: number; nextDamage: number; missDamage: number }
-  | DragonTurn
-  | { kind: "done"; damage: number; translation?: string; scene?: DragonTurn["scene"] }
+  | BossDuelTurn
+  | { kind: "done"; damage: number; translation?: string; scene?: string; duel?: DuelScene }
 );
 export type BossMove = { move: "answer"; choice: number } | { move: "stop" | "risk" }
   | { move: "phrase"; action: string; order: number[] };
 type AttackReply = { attack: BossAttack; arena?: BossState };
 
-export const startBossAttack = (stake: number, mode?: "dragon" | "practice") => postRetry<AttackReply>("/api/boss/attack", { stake, mode });
+export const startBossAttack = (stake: number, mode: "duel" | "practice", opponent: BossId) => postRetry<AttackReply>("/api/boss/attack", { stake, mode, opponent });
 export const moveBossAttack = (attack: BossAttack, move: BossMove) =>
   postRetry<AttackReply>("/api/boss/attack/move", { id: attack.id, revision: attack.revision, ...move });
 
