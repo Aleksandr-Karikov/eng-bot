@@ -47,18 +47,20 @@ const UNDO_DEPTH = 5;
 type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void }) {
+export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [mode, setMode] = useState<QueueMode>(savedMode);
   const [done, setDone] = useState(0);
+  const [sessionDamage, setSessionDamage] = useState(0);
   const [dialogueVersion, setDialogueVersion] = useState(0);
   const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number }>>([]);
   const damageSequence = useRef(0);
   const reducedMotion = useReducedMotion();
   const showDamage = useCallback((hp: number) => {
     if (hp === 0) return;
+    setSessionDamage((total) => total + hp);
     const id = ++damageSequence.current;
     setDamageBursts((bursts) => [...bursts, { id, hp }].slice(-6));
   }, []);
@@ -72,6 +74,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
   const loadVersion = useRef(0);
+  const sessionVersion = useRef(0);
 
   const load = useCallback(async (extra = false) => {
     const version = ++loadVersion.current;
@@ -104,10 +107,12 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
       // хранилище недоступно — режим просто не запомнится
     }
     loadVersion.current++;
+    sessionVersion.current++;
     setMode(next);
     setLoading(true);
     setQueue([]);
     setDone(0);
+    setSessionDamage(0);
     setHistory([]);
   }, [mode]);
 
@@ -143,8 +148,9 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
 
   /** Оценка карточки уходит в фоне; её можно отменить. */
   const rate = useCallback((card: Card, value: CardAnswer) => {
+    const session = sessionVersion.current;
     const sent = sendAnswer(card, value).then((r) => {
-      showDamage(r.damage);
+      if (session === sessionVersion.current) showDamage(r.damage);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
       if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
       if (r.result === "waiting") notify("Слово осталось в очереди.");
@@ -196,6 +202,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
   const undo = useCallback(async () => {
     const last = history.at(-1);
     if (!last) return;
+    const session = sessionVersion.current;
     setHistory((h) => h.slice(0, -1));
     haptic.tap("light");
     try {
@@ -209,6 +216,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
         return;
       }
       await undoAnswer(last.card);
+      if (session !== sessionVersion.current) return;
       showDamage(-recorded.damage);
       if (last.card.stage === "sentence") setDialogueVersion((v) => v + 1);
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
@@ -220,7 +228,9 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
   }, [history, load, showDamage]);
 
   const card = queue[0];
+  const session = sessionVersion.current;
   const typedRated = (card: Card, hp: number) => {
+    if (session !== sessionVersion.current) return;
     showDamage(hp);
     if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, damage: hp }) }].slice(-UNDO_DEPTH));
   };
@@ -287,7 +297,7 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
             transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
             onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
           >
-            {hp > 0 ? "+" : ""}{hp} <small>{me.bankDamage ? "HP в запас" : "HP"}</small>
+            {hp > 0 ? "+" : ""}{hp} <small>{me.bankDamage ? "⚡" : "HP"}</small>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -330,7 +340,8 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
             <Spinner size="l" />
           </div>
         ) : (
-          <Done done={done} me={me} mode={mode} onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} />
+          <Done done={done} energy={me?.bankDamage ? sessionDamage : 0} me={me} mode={mode}
+            onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} onBoss={onBoss} />
         )}
       </div>
     );
@@ -410,13 +421,15 @@ export function Learn({ corner, onSets, onSettings }: { corner: ReactNode; onSet
  *
  * Нативная кнопка «Закрыть» внизу — или своя, вне Telegram.
  */
-function Done({ done, me, mode, onSets, onExtra, onSettings }: {
+function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss }: {
   done: number;
+  energy: number;
   me?: Me;
   mode: QueueMode;
   onSets: (setId?: number) => void;
   onExtra: () => void;
   onSettings: () => void;
+  onBoss: () => void;
 }) {
   const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
@@ -464,12 +477,15 @@ function Done({ done, me, mode, onSets, onExtra, onSettings }: {
     <Placeholder
       header={done ? `Готово! Пройдено карточек: ${done}` : header}
       description={
-        boss
+        energy > 0
+          ? `За занятие: +${energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡. ${message}`
+          : boss
           ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. ${message}`
           : message
       }
       action={
         <div className="actions">
+          {done > 0 && me?.boss && <Button size="m" stretched onClick={onBoss}>К боссу</Button>}
           {notice ? (
             <>
               <Button mode="bezeled" size="m" stretched onClick={onExtra}>{extraLabel ?? "Ещё карточки"}</Button>

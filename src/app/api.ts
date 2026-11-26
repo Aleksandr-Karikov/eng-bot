@@ -454,7 +454,7 @@ export async function appBoss(deps: Deps, user: User) {
 }
 
 export async function appCombat(deps: Deps, user: User, input: {
-  bank?: unknown; target?: unknown; roomId?: unknown; week?: unknown; requestId?: unknown; maxDamageDeci?: unknown;
+  bank?: unknown; target?: unknown; roomId?: unknown; week?: unknown; round?: unknown; requestId?: unknown; maxDamageDeci?: unknown;
 } | null) {
   if (!bossEnabled(user, deps.bossEnabled)) return { status: 400 as const, body: { ok: false, error: "Режим босса выключен" } };
   if (typeof input?.bank === "boolean") {
@@ -467,8 +467,11 @@ export async function appCombat(deps: Deps, user: User, input: {
     || typeof input.maxDamageDeci !== "number" || !Number.isSafeInteger(input.maxDamageDeci) || input.maxDamageDeci <= 0) {
     return { status: 400 as const, body: { ok: false, error: "Выбери цель для удара" } };
   }
-  const { target, roomId, week, requestId, maxDamageDeci } = input;
-  const damage = await attackWithReserve(deps.db, user.id, { target, roomId, week, requestId, maxDamageDeci }, deps.now);
+  const { target, roomId, week, requestId, maxDamageDeci, round } = input;
+  if (round !== undefined && (typeof round !== "number" || !Number.isSafeInteger(round) || round < 1)) {
+    return { status: 400 as const, body: { ok: false, error: "Обнови состояние боя" } };
+  }
+  const damage = await attackWithReserve(deps.db, user.id, { target, roomId, week, requestId, maxDamageDeci, round }, deps.now);
   const fresh = await getUserByTelegramId(deps.db, user.telegramId);
   if (!fresh) return { status: 400 as const, body: { ok: false, error: "Пользователь недоступен" } };
   return { status: 200 as const, body: { ok: true, ...(damage === undefined ? { notice: "Удар не прошёл. Проверь цель и запас." } : { damage }), ...await appBoss(deps, fresh) } };

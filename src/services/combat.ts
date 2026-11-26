@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { HUNTER_RELICS, MOBS, type CombatTarget } from "../combat-mobs";
 import type { Db } from "../db/client";
 import { combatSpends, users, type User } from "../db/schema";
@@ -12,19 +12,21 @@ export function isCombatTarget(target: unknown): target is CombatTarget {
   return target === "boss" || MOBS.some((mob) => mob.id === target);
 }
 
+const STRIKE_DECI = 100;
+const WEAK_SPOT_DECI = 130;
+const encounterKey = (week: string, round: number) => `${week}:${round}`;
+const strikeBudget = (boss: BossState, available: number) =>
+  boss.opponent.id === "sentinel" ? Math.min(available, STRIKE_DECI) : available;
+
 async function coreState(db: Db, userId: number, roomId: number, boss: BossState) {
   if (boss.opponent.id !== "sentinel") return null;
-  if (boss.hp > boss.target / 2) return "closed";
-  return await coreUsed(db, userId, roomId, boss.week) ? "spent" : "ready";
+  if (boss.hp > boss.bossHp / 2) return "closed";
+  return await coreUsed(db, userId, roomId, encounterKey(boss.week, boss.round)) ? "spent" : "ready";
 }
 
 /** Найти минимальный расход запаса, чтобы не переплачивать за добивающий удар. */
-function reserveHit(hpDeci: number, available: number, core: boolean, rune: boolean) {
-  const bonus = (spent: number) => ({
-    core: core ? Math.floor(spent / 5) : 0,
-    rune: rune ? Math.min(100, Math.floor(spent / 4)) : 0,
-  });
-  const withBonus = (spent: number) => spent + bonus(spent).core + bonus(spent).rune;
+function reserveHit(hpDeci: number, available: number, rune: boolean) {
+  const withBonus = (spent: number) => spent + (rune ? Math.min(100, Math.floor(spent / 4)) : 0);
   let high = Math.max(0, Math.min(hpDeci, available));
   const damage = Math.min(hpDeci, withBonus(high));
   let low = 0;
@@ -33,8 +35,7 @@ function reserveHit(hpDeci: number, available: number, core: boolean, rune: bool
     if (withBonus(middle) < damage) low = middle + 1;
     else high = middle;
   }
-  const coreDamage = Math.min(damage - low, bonus(low).core);
-  return { spend: low, damage, coreBonus: coreDamage, runeBonus: damage - low - coreDamage };
+  return { spend: low, damage, runeBonus: damage - low };
 }
 
 export async function combatState(db: Db, user: User, now: Date, roomId: number, boss: BossState) {
@@ -44,8 +45,9 @@ export async function combatState(db: Db, user: User, now: Date, roomId: number,
     coreState(db, user.id, roomId, boss), availableRune(db, user), streakBuff(db, user, now),
   ]);
   const hp = Math.round(boss.hp * 10);
-  const unarmed = reserveHit(hp, balance, core === "ready", false);
-  const armed = reserveHit(hp, balance, core === "ready", true);
+  const available = strikeBudget(boss, balance);
+  const unarmed = reserveHit(hp, available, false);
+  const armed = reserveHit(hp, available, true);
   const hit = rune === null ? unarmed : armed;
   return {
     bank: user.bankDamage,
@@ -60,6 +62,9 @@ export async function combatState(db: Db, user: User, now: Date, roomId: number,
     hunt: { weeks, thisWeek: claims.length > 0, relics: HUNTER_RELICS },
     streak,
     core,
+    ...(core === "ready" && balance >= STRIKE_DECI && hp > STRIKE_DECI
+      ? { weakSpot: { spend: STRIKE_DECI / 10, damage: Math.min(hp, WEAK_SPOT_DECI) / 10 } }
+      : {}),
     hit: { spend: hit.spend / 10, damage: hit.damage / 10 },
     rune: { price: RUNE_PRICE, owned: rune !== null, extra: (armed.damage - unarmed.damage) / 10, saved: (unarmed.spend - armed.spend) / 10 },
   };
@@ -67,6 +72,8 @@ export async function combatState(db: Db, user: User, now: Date, roomId: number,
 
 export function attackWithReserve(db: Db, userId: number, input: {
   target: CombatTarget; week: string; roomId: number; requestId: string; maxDamageDeci: number;
+  round?: number;
+  weakSpot?: { round: number; correct: boolean };
 }, now: () => Date) {
   return withCombatLock(db, async () => {
     const at = now();
@@ -78,6 +85,16 @@ export function attackWithReserve(db: Db, userId: number, input: {
     const week = latestDigestMoment(at, roomTimeZone(room)).date;
     if (week !== input.week) return;
 
+    const weakSpot = input.weakSpot;
+    if (weakSpot && input.target !== "boss") return;
+    const key = weakSpot ? encounterKey(week, weakSpot.round) : null;
+    if (key) {
+      const [prior] = await db.select({ damage: combatSpends.bossDamageDeci }).from(combatSpends)
+        .where(and(eq(combatSpends.userId, userId), eq(combatSpends.roomId, room.id),
+          eq(combatSpends.requestId, input.requestId), eq(combatSpends.coreWeek, key)));
+      if (prior?.damage != null) return prior.damage / 10;
+    }
+
     const balance = await damageBalanceDeci(db, userId);
     if (!balance) return;
     const mob = MOBS.find((entry) => entry.id === input.target);
@@ -88,16 +105,23 @@ export function attackWithReserve(db: Db, userId: number, input: {
       values = { damageDeci };
     } else {
       const boss = await bossOf(db, room, at);
-      if (boss.hp <= 0) return;
-      const [core, rune] = await Promise.all([coreState(db, userId, room.id, boss), availableRune(db, user)]);
-      const hit = reserveHit(Math.round(boss.hp * 10), Math.min(balance, input.maxDamageDeci), core === "ready", rune !== null);
-      if (hit.spend <= 0) return;
-      values = {
-        damageDeci: hit.spend,
-        bossDamageDeci: hit.damage,
-        coreWeek: hit.coreBonus > 0 ? week : null,
-        runeSerial: hit.runeBonus > 0 ? rune : null,
-      };
+      if (boss.hp <= 0 || (input.round !== undefined && input.round !== boss.round)) return;
+      const hp = Math.round(boss.hp * 10);
+      if (weakSpot) {
+        if (boss.round !== weakSpot.round || balance < STRIKE_DECI || hp <= STRIKE_DECI
+          || await coreState(db, userId, room.id, boss) !== "ready") return;
+        values = { damageDeci: STRIKE_DECI, bossDamageDeci: Math.min(hp, weakSpot.correct ? WEAK_SPOT_DECI : STRIKE_DECI), coreWeek: key };
+      } else {
+        const rune = await availableRune(db, user);
+        const available = strikeBudget(boss, Math.min(balance, input.maxDamageDeci));
+        const hit = reserveHit(hp, available, rune !== null);
+        if (hit.spend <= 0) return;
+        values = {
+          damageDeci: hit.spend,
+          bossDamageDeci: hit.damage,
+          runeSerial: hit.runeBonus > 0 ? rune : null,
+        };
+      }
     }
     const [strike] = await db.insert(combatSpends)
       .values({ userId, roomId: mob ? null : room.id, target: input.target, mobWeek: mob ? week : null, requestId: input.requestId, at, ...values })

@@ -494,14 +494,34 @@ export interface BossState {
       tiers: Array<{ days: number; percent: number }>;
     };
     core?: "closed" | "ready" | "spent" | null;
+    weakSpot?: { spend: number; damage: number };
     hit?: { spend: number; damage: number };
     rune?: { price: number; owned: boolean; extra: number; saved: number };
   };
 }
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
-export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
+export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; round?: number; requestId: string; maxDamageDeci: number }) =>
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
+
+export interface WeakSpotQuestion {
+  id: string;
+  term: string;
+  options: string[];
+  spend: number;
+  damage: number;
+}
+
+export interface WeakSpotStrike {
+  damage: number;
+  correct: boolean;
+  translation: string;
+}
+
+export const openWeakSpot = () =>
+  postRetry<{ question: WeakSpotQuestion }>("/api/boss/weak-spot").then((r) => r.question);
+export const strikeWeakSpot = (id: string, choice: number) =>
+  postRetry<BossState & { strike: WeakSpotStrike }>("/api/boss/weak-spot/answer", { id, choice });
 
 /** Купить усиление; в ответ приходит новое состояние босса. */
 export const buyUpgrade = (kind: BossPurchase) => postRetry<BossState & { ok: true }>("/api/boss/upgrade", { kind });

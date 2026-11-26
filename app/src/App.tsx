@@ -79,6 +79,7 @@ export function App() {
     <Learn
       onSets={openSets}
       onSettings={() => open("settings")}
+      onBoss={() => open("boss")}
       corner={
         // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
         // а по отдельности они не действия, а навигация.

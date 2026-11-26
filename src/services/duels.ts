@@ -1,6 +1,6 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gt, gte } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { duelPoints, users, words, type Word } from "../db/schema";
+import { cards, duelPoints, users, words, type Word } from "../db/schema";
 
 export const DUEL_OPTIONS = 4;
 const WEEK_MS = 7 * 24 * 60 * 60_000;
@@ -27,12 +27,23 @@ function shuffle<T>(items: T[], rng: () => number): T[] {
  * Случайное слово комнаты и 4 варианта перевода. Неправильные — переводы других слов,
  * по возможности того же вида (слово к слову, фраза к фразе), чтобы не угадывалось по длине.
  */
-export async function buildDuelRound(db: Db, roomId: number, rng: () => number): Promise<DuelRound | undefined> {
+export async function buildDuelRound(db: Db, roomId: number, rng: () => number, studiedBy?: number): Promise<DuelRound | undefined> {
   const all = await db.select().from(words).where(eq(words.roomId, roomId));
   if (all.length < DUEL_OPTIONS) return undefined;
-  const word = all[Math.floor(rng() * all.length)];
+  let candidates = all;
+  if (studiedBy !== undefined) {
+    const studied = await db.select({ wordId: cards.wordId }).from(cards).innerJoin(words, eq(words.id, cards.wordId))
+      .where(and(eq(cards.userId, studiedBy), eq(words.roomId, roomId), gt(cards.reps, 0)));
+    const ids = new Set(studied.map(({ wordId }) => wordId));
+    candidates = all.filter(({ id }) => ids.has(id));
+  }
+  const word = candidates[Math.floor(rng() * candidates.length)];
+  if (!word) return undefined;
+  const translation = word.translation.trim();
+  if (!translation) return undefined;
+  const used = new Set([translation.toLowerCase()]);
   const others = shuffle(
-    all.filter((w) => w.id !== word.id && w.translation.trim() !== word.translation.trim()),
+    all.filter((w) => w.id !== word.id && w.translation.trim().toLowerCase() !== translation.toLowerCase()),
     rng,
   );
   const sameKind = others.filter((w) => isPhrase(w) === isPhrase(word));
@@ -40,11 +51,15 @@ export async function buildDuelRound(db: Db, roomId: number, rng: () => number):
   const distractors: string[] = [];
   for (const w of [...sameKind, ...otherKind]) {
     if (distractors.length === DUEL_OPTIONS - 1) break;
-    if (!distractors.includes(w.translation)) distractors.push(w.translation);
+    const next = w.translation.trim();
+    const key = next.toLowerCase();
+    if (!next || used.has(key)) continue;
+    used.add(key);
+    distractors.push(next);
   }
   if (distractors.length < DUEL_OPTIONS - 1) return undefined;
-  const options = shuffle([word.translation, ...distractors], rng);
-  return { wordId: word.id, term: word.term, options, correct: options.indexOf(word.translation) };
+  const options = shuffle([translation, ...distractors], rng);
+  return { wordId: word.id, term: word.term, options, correct: options.indexOf(translation) };
 }
 
 export async function recordDuelPoint(db: Db, roomId: number, userId: number, now: Date): Promise<void> {

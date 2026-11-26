@@ -15,6 +15,7 @@ import { exampleTranslation } from "../services/words";
 import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { AppDialogues } from "./dialogue";
+import { AppWeakSpot } from "./weak-spot";
 import { sendLesson } from "../bot/handlers/lesson";
 import { appCorrectWord, appApplyCorrection, correctionEffects, type CorrectionDraft, appAddWord, appChangeSetting, appEditWord, appNewMnemonic, appPrepareWord, appSettings, appWordAction, appWordDetails, appWords, memberWord, type WordAction } from "./manage";
 
@@ -39,6 +40,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   // Один черновик на пользователя; после перезапуска нужно запросить предложение заново.
   const corrections = new Map<number, CorrectionDraft>();
   const dialogues = new AppDialogues(deps);
+  const weakSpot = new AppWeakSpot(deps);
   const app = new Hono<{ Variables: { user: User } }>();
 
   app.use("/api/*", async (c, next) => {
@@ -120,6 +122,14 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.get("/api/boss", async (c) => c.json({ ok: true, ...(await appBoss(deps, c.get("user"))) }));
   app.post("/api/boss/combat", async (c) => {
     const r = await appCombat(deps, c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/boss/weak-spot", async (c) => {
+    const r = await weakSpot.open(c.get("user"));
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/boss/weak-spot/answer", async (c) => {
+    const r = await weakSpot.answer(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   // 🪙 Купить уровень усиления за монеты недели.

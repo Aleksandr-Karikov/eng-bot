@@ -166,9 +166,10 @@ describe("🐉 /boss in the bot", () => {
 });
 
 /** Ответ /api/boss так, как его увидит вкладка. */
-async function bossTab() {
+async function bossTab(secondRoom = false) {
     const h = botHarness();
     const alice = await makeUser(h.db, 100, "Alice");
+    if (secondRoom) await createRoom(h.db, { name: "Other", createdBy: alice.id, now: T0 });
     const room = await createRoom(h.db, { name: "R", createdBy: alice.id, now: T0 });
     await updateUser(h.db, alice.id, { currentRoomId: room.id });
     await setWeeklyGoal(h.db, room.id, 10);
@@ -178,6 +179,72 @@ async function bossTab() {
     const headers = { authorization: `tma ${sign({ user: { id: 100, first_name: "Alice" } }, TOKEN, new Date())}` };
     return { h, alice, room, app, headers };
 }
+
+async function sentinelArena(secondRoom = false) {
+  const state = await bossTab(secondRoom);
+  const { h, alice, room, app, headers } = state;
+  const now = nsk("2026-11-19T12:00");
+  h.setNow(now);
+  await setWeeklyGoal(h.db, room.id, 100);
+  await updateUser(h.db, alice.id, { bankDamage: true });
+  for (const [term, translation] of [["desk", "стол"], ["tree", "дерево"], ["cloud", "облако"]]) {
+    await saveWord(h.db, { roomId: room.id, addedBy: alice.id, draft: { term, translation, explanation: "", example: "" }, now: T0 });
+  }
+  await h.db.update(cardsTable).set({ reps: 1 }).where(eq(cardsTable.id, 1));
+  const credit = (damageDeci: number, banked: boolean) => h.db.insert(reviewLogs).values({
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: nsk("2026-11-19T11:50"), damageDeci, banked,
+  });
+  await credit(500, false);
+  await credit(300, true);
+  const getBoss = async () => (await app.request("/api/boss", { headers })).json();
+  const post = (path: string, body: object = {}) => app.request(`/api/boss/${path}`, {
+    method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  return { ...state, credit, getBoss, post };
+}
+
+describe("бой со Стражем за энергию", () => {
+  it.each([[true, 13, 1], [false, 10, 2]])("засчитывает выбор %s как удар на %s HP один раз в комнате %s", async (correct, damage, roomId) => {
+    const { post, getBoss, room } = await sentinelArena(roomId === 2);
+    expect(room.id).toBe(roomId);
+    expect(await getBoss()).toMatchObject({
+      combat: { core: "ready", balance: 30, hit: { spend: 10, damage: 10 }, weakSpot: { spend: 10, damage: 13 } },
+    });
+
+    const { question } = await (await post("weak-spot")).json();
+    expect(question).toMatchObject({ term: "bank", options: expect.arrayContaining(["берег", "стол", "дерево", "облако"]) });
+    expect(question).not.toHaveProperty("correct");
+    expect(await (await post("weak-spot")).json()).toMatchObject({ question: { id: question.id } });
+    expect(await getBoss()).toMatchObject({ combat: { balance: 30 }, boss: { hp: 50 } });
+    expect((await post("weak-spot/answer", { id: question.id, choice: -1 })).status).toBe(400);
+    const choice = question.options.findIndex((option: string) => (option === "берег") === correct);
+    const strike = () => post("weak-spot/answer", { id: question.id, choice });
+    for (const result of await Promise.all([strike(), strike()])) {
+      expect(await result.json()).toMatchObject({
+        strike: { correct, damage, translation: "берег" },
+        boss: { hp: 50 - damage }, combat: { balance: 20, core: "spent" },
+        hits: expect.arrayContaining([expect.objectContaining({ damage })]),
+      });
+    }
+    expect((await post("weak-spot")).status).toBe(409);
+    const state = await getBoss();
+    const normal = await post("combat", { target: "boss", roomId: room.id, week: state.boss.week, requestId: randomUUID(), maxDamageDeci: 300 });
+    expect(await normal.json()).toMatchObject({ damage: 10, combat: { balance: 10 } });
+  });
+
+  it("оставляет энергию, если друзья уже добили босса с открытым вопросом", async () => {
+    const { post, getBoss, room, credit } = await sentinelArena();
+    const { question } = await (await post("weak-spot")).json();
+    const before = await getBoss();
+    await credit(500, false);
+    expect((await post("weak-spot/answer", { id: question.id, choice: 0 })).status).toBe(409);
+    const stale = await post("combat", {
+      target: "boss", roomId: room.id, week: before.boss.week, round: before.boss.round, requestId: randomUUID(), maxDamageDeci: 100,
+    });
+    expect(await stale.json()).toMatchObject({ notice: expect.any(String) });
+    expect(await getBoss()).toMatchObject({ boss: { round: 2 }, combat: { balance: 30 } });
+  });
+});
 
 describe("урон из запаса", () => {
   // Настройка по умолчанию: ручной удар недоступен, потому что копить выключено. Экран обязан объяснить
@@ -336,25 +403,26 @@ it("открывает ядро на половине HP, тратит руну 
   await credit(500, false);
   await credit(300, true);
   const before = await state();
-  expect(before).toMatchObject({ boss: { hp: 50 }, combat: { core: "ready", hit: { spend: 30, damage: 36 }, rune: { extra: 7.5, owned: false } } });
+  expect(before).toMatchObject({ boss: { hp: 50 }, combat: { core: "ready", hit: { spend: 10, damage: 10 }, rune: { extra: 2.5, owned: false } } });
 
   const buy = () => post("/api/boss/upgrade", { kind: "rune" });
   const purchases = await Promise.all([buy(), buy()]);
   expect(purchases.filter((result) => result.ok)).toHaveLength(1);
-  expect(await state()).toMatchObject({ coins: { coins: 40 }, combat: { hit: { spend: 30, damage: 43.5 }, rune: { owned: true } } });
+  expect(await state()).toMatchObject({ coins: { coins: 40 }, combat: { hit: { spend: 10, damage: 12.5 }, rune: { owned: true } } });
 
   const strike = (hp: number, requestId = randomUUID()) => post("/api/boss/combat", {
     target: "boss", roomId: room.id, week: before.boss.week, requestId, maxDamageDeci: hp * 10,
   });
   const requestId = randomUUID();
-  expect(await strike(30, requestId)).toMatchObject({ damage: 43.5, boss: { hp: 6.5 }, combat: { balance: 0, core: "spent", rune: { owned: false } } });
-  await credit(60, true);
-  expect(await strike(30, requestId)).toMatchObject({ notice: expect.any(String), combat: { balance: 6 } });
-  expect(await strike(6)).toMatchObject({ damage: 6, boss: { hp: 0.5 } });
-  await credit(10, true);
-  expect(await strike(1)).toMatchObject({
+  expect(await strike(30, requestId)).toMatchObject({ damage: 12.5, boss: { hp: 37.5 }, combat: { balance: 20, core: "ready", rune: { owned: false } } });
+  expect(await strike(30, requestId)).toMatchObject({ notice: expect.any(String), combat: { balance: 20 } });
+  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 27.5 } });
+  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 17.5 } });
+  await credit(200, true);
+  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 7.5 } });
+  expect(await strike(10)).toMatchObject({
     // Добили — сразу второй босс с полным HP; недельный вклад при этом остаётся недельным.
-    damage: 0.5, boss: { hp: tierHp(2, 1, 100), round: 2, kills: 1, bossHp: tierHp(2, 1, 100), byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 0.5 },
+    damage: 7.5, boss: { hp: tierHp(2, 1, 100), round: 2, kills: 1, bossHp: tierHp(2, 1, 100), byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 2.5 },
     victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
   });
   expect(await buy()).toMatchObject({ combat: { rune: { owned: true } } });
