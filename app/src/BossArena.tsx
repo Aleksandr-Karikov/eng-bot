@@ -29,7 +29,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
   useEffect(() => {
     const last = previous.current;
     previous.current = { boss, attack };
-    const settled = attack?.kind === "done" && (last.attack?.id !== attack.id || last.attack.kind !== "done");
+    const settled = attack?.kind === "done" && !attack.practice && (last.attack?.id !== attack.id || last.attack.kind !== "done");
     const impact = arenaImpact(last.boss, boss, settled ? attack.damage : undefined);
     if (impact) setCue({ impact, sequence: ++sequence.current, frame });
   }, [boss, attack, frame]);
@@ -40,10 +40,13 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
     return () => clearTimeout(timer);
   }, [cue]);
 
-  const opponent = boss.opponent?.id ?? "dragon";
-  const playing = attack?.kind === "question" || attack?.kind === "decision";
-  const charge = playing ? attack.damage : 0;
-  const impact = cue?.frame === frame ? cue.impact : undefined;
+  const practice = expanded && attack?.practice;
+  const scene = expanded && (attack?.kind === "dragon" || (attack?.kind === "done" && (practice || boss.opponent?.id === "dragon")))
+    ? attack.scene : undefined;
+  const opponent = scene ? "dragon" : boss.opponent?.id ?? "dragon";
+  const playing = attack !== undefined && attack.kind !== "done";
+  const charge = attack?.kind === "question" || attack?.kind === "decision" ? attack.damage : 0;
+  const impact = !practice && cue?.frame === frame ? cue.impact : undefined;
   const maxHp = boss.bossHp ?? boss.target;
   const percent = maxHp > 0 ? Math.min(100, (boss.hp / maxHp) * 100) : 0;
   const kills = boss.kills ?? 0;
@@ -51,11 +54,12 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
   const effectKey = impact ? `impact:${cue?.sequence}` : `turn:${attack?.id}:${attack?.revision}`;
 
   return (
-    <section className="boss-stage" data-phase={boss.phase} data-opponent={opponent} data-playing={playing}>
+    <section className="boss-stage" data-phase={practice ? "fresh" : boss.phase} data-opponent={opponent}
+      data-playing={playing} data-duel={scene}>
       <div className="boss-portrait">
         <img className="arena-backdrop" src={art(opponent, "-hall")} alt="" />
         <div className="arena-floor-light" aria-hidden="true" />
-        <div className="arena-effects" data-pose={pose} key={effectKey} aria-hidden="true">
+        <div className="arena-effects" data-pose={pose} key={scene && !impact ? "duel" : effectKey} aria-hidden="true">
           {impact?.kind === "victory" && <img className="arena-defeated" src={art(impact.defeated)} alt="" />}
           <div className="arena-character">
             <img className="arena-actor" src={art(opponent)} alt="" />
@@ -65,21 +69,34 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
           {impact?.kind === "hit" && impact.own && <div className="arena-projectile" />}
           {impact?.kind === "hit" && <div className="arena-impact-light" />}
         </div>
+        {scene && (
+          <div className="dragon-props" data-settled={attack?.kind === "done"} aria-hidden="true">
+            {scene === "fire" && <div className="dragon-fire-target" />}
+            <div className="dragon-hero">
+              <img src={`${import.meta.env.BASE_URL}arena/duel-hero.webp`} alt="" />
+            </div>
+            <img className="dragon-pillar" src={`${import.meta.env.BASE_URL}arena/duel-pillar.webp`} alt="" />
+            <img className="dragon-ballista" src={`${import.meta.env.BASE_URL}arena/duel-ballista.webp`} alt="" />
+            {attack?.kind === "dragon" && (scene === "landed" || scene === "staggered") && <div className="dragon-sweep" />}
+            {attack?.kind === "dragon" && scene === "downed" && <div className="dragon-bolt" />}
+            {attack?.kind === "done" && attack.damage > 0 && <div className="dragon-slash" />}
+          </div>
+        )}
         <div className="boss-caption">
           <span className="boss-kicker">
-            {boss.tier && boss.tier > 1
+            {practice ? "Тренировка" : boss.tier && boss.tier > 1
               ? `Босс недели · ступень ${boss.tier}${boss.cycle && boss.cycle > 1 ? ` · круг ${boss.cycle}` : ""}`
               : "Босс недели"}
           </span>
-          <h1>{boss.opponent?.name ?? "Дракон библиотеки"}</h1>
+          <h1>{opponent === "dragon" ? "Дракон библиотеки" : boss.opponent?.name}</h1>
         </div>
         <button type="button" className="arena-view-toggle" onClick={onToggle}>{expanded ? "К боссу" : "На весь экран"}</button>
-        <span className="boss-phase">{PHASE[boss.phase]}</span>
+        {!scene && <span className="boss-phase">{PHASE[boss.phase]}</span>}
         {impact && <span key={cue?.sequence} className="boss-strike" aria-hidden="true">
           {impact.kind === "hit" ? `−${hpFormat.format(impact.damage)} HP` : impact.kind === "block" ? "Удар отражён" : "Новый раунд"}
         </span>}
       </div>
-      <div className="boss-hud">
+      {practice ? <div className="boss-hud arena-note">Энергия не тратится. Урон остаётся в тренировке.</div> : <div className="boss-hud">
         <div className="arena-hud-line">
           <div className="boss-hp" aria-live="polite">
             <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(maxHp)} HP
@@ -97,7 +114,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
           <span>Снято {hpFormat.format(boss.done)} HP</span>
           <span>{kills > 0 ? `Добито: ${kills}` : PACE[boss.pace]}</span>
         </div>}
-      </div>
+      </div>}
       {children}
     </section>
   );

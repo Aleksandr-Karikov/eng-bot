@@ -654,6 +654,95 @@ body {
 .arena-stake-forecast span { color: #c1cee2; font-size: 12px; }
 .arena-result { padding: 10px 12px; border-radius: 12px; background: #1e2b3f; overflow-wrap: anywhere; }
 .arena-turn:focus-visible { outline: 2px solid #92d1ff; outline-offset: 2px; border-radius: 5px; }
+.dragon-props { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.dragon-props img {
+  position: absolute;
+  bottom: 52px;
+  height: clamp(55px, 31%, 140px);
+  max-width: 25%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 6px 8px #080a12e0);
+}
+.dragon-pillar { left: 12%; }
+.dragon-ballista { right: 9%; }
+.dragon-hero { position: absolute; inset: 0; z-index: 1; transition: transform .32s ease-out; }
+.dragon-hero img {
+  left: 42%;
+  height: clamp(62px, 35%, 150px);
+  transform-origin: center bottom;
+  transition: transform .32s ease-out;
+}
+.boss-stage[data-duel] .arena-character { inset: 4% -4% 28%; }
+.boss-stage[data-duel] .arena-actor { transition: transform .42s cubic-bezier(.22,.61,.36,1); }
+.boss-stage[data-duel="fire"] .arena-actor { transform: translateY(-8%) scale(.92); }
+.boss-stage[data-duel="landed"] .arena-actor { transform: translateY(12%) scale(.96); }
+.boss-stage[data-duel="landed"] .dragon-hero { transform: translateX(-34%); }
+.boss-stage[data-duel="landed"] .dragon-hero img { transform: rotate(-14deg) scale(.83); }
+.boss-stage[data-duel="landed"] .dragon-pillar { z-index: 1; }
+.boss-stage[data-duel="downed"] .arena-actor { transform: translateY(19%) rotate(-12deg) scale(.91, .78); }
+.boss-stage[data-duel="downed"] .dragon-hero { transform: translateX(25%); }
+.boss-stage[data-duel="staggered"] .dragon-hero { transform: translateX(7%); }
+.boss-stage[data-duel="staggered"] .dragon-hero img { transform: rotate(-54deg) translateY(12%); }
+.boss-stage[data-duel] .dragon-props[data-settled="true"] :is(.dragon-hero, .dragon-hero img) { transform: none; }
+.dragon-fire-target {
+  position: absolute;
+  right: 4%;
+  bottom: 41px;
+  width: 35%;
+  height: clamp(34px, 15%, 80px);
+  border: 2px solid #ff9863eb;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #ed3a2480, #ff4e2240 63%);
+  box-shadow: 0 0 24px #fb4d29a3, inset 0 0 16px #ff9e5bb3;
+  animation: dragon-danger 1.6s ease-in-out infinite alternate;
+}
+.dragon-sweep, .dragon-bolt, .dragon-slash { position: absolute; pointer-events: none; }
+.dragon-sweep {
+  inset: 22% 5% 20% 35%;
+  transform-origin: 25% 12%;
+  background: radial-gradient(ellipse at 77% 75%, #fff8be 4%, #ff9a3be6 23%, #ed40216e 48%, transparent 68%);
+  animation: dragon-flame .62s ease-out both;
+}
+.dragon-bolt, .dragon-slash {
+  left: 48%; top: 45%; width: 28%; height: 4px;
+  border-radius: 50%;
+  background: #fff6c9;
+  box-shadow: 0 0 15px 3px #ffae57;
+  animation: dragon-bolt .4s ease-out both;
+}
+.dragon-slash { left: 37%; width: 24%; transform: rotate(-34deg); animation: arena-impact .54s ease both; }
+@keyframes dragon-danger { from { opacity: .62; } to { opacity: 1; } }
+@keyframes dragon-flame {
+  from { opacity: 0; transform: scale(.36) rotate(-14deg); }
+  34% { opacity: .92; }
+  to { opacity: 0; transform: scale(1.18) rotate(8deg); }
+}
+@keyframes dragon-bolt {
+  from { opacity: 0; transform: translate(30%, 1300%) rotate(27deg) scaleX(.4); }
+  36% { opacity: 1; }
+  to { opacity: 0; transform: translate(-58%, -600%) rotate(27deg) scaleX(.65); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boss-stage[data-duel] :is(.arena-actor, .dragon-hero, .dragon-hero img) { transition: none; }
+  .dragon-fire-target { animation: none; }
+  :is(.dragon-sweep, .dragon-bolt, .dragon-slash) { display: none; }
+}
+.dragon-choice { display: grid; gap: 3px; text-align: center; }
+.dragon-choice small { font-size: 12px; color: #c8dbec; }
+.dragon-phrase {
+  display: flex; flex-wrap: wrap; align-content: center; align-items: center; gap: 6px;
+  min-height: 49px; padding: 6px 8px; box-sizing: border-box; border-radius: 12px;
+  border: 1px solid #43556b; background: #0b1422;
+}
+.dragon-phrase span[lang] { border-radius: 6px; background: #35516d; color: #f8fbff; padding: 5px 8px; }
+.dragon-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: 6px; }
+.dragon-phrase-tools { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.dragon-phrase-tools button {
+  min-height: 44px; padding: 0 2px; border: 0; background: transparent;
+  font: inherit; font-size: 13px; color: #a8d7ff; text-decoration: underline; cursor: pointer;
+}
+.dragon-phrase-tools button:disabled { opacity: .6; cursor: default; }
 .boss-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; color: #bcc9dc; font-size: 12px; }
 .boss-hits, .boss-members {
   display: flex;

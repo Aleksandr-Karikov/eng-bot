@@ -2,6 +2,7 @@ import type { StudyLanguage } from "./language";
 import { retryServerDown } from "./retry";
 import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
+import type { DragonTurn } from "../../src/app/dragon-duel";
 export type { CombatTarget } from "../../src/combat-mobs";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
@@ -505,15 +506,17 @@ export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
 export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget, "boss">; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
-export type BossAttack = { id: string; revision: number; stake: number } & (
+export type BossAttack = { id: string; revision: number; stake: number; practice?: boolean } & (
   | { kind: "question"; number: number; total: number; term: string; options: string[]; damage: number; nextDamage: number; missDamage: number }
   | { kind: "decision"; damage: number; nextDamage: number; missDamage: number }
-  | { kind: "done"; damage: number; translation?: string }
+  | DragonTurn
+  | { kind: "done"; damage: number; translation?: string; scene?: DragonTurn["scene"] }
 );
-export type BossMove = { move: "answer"; choice: number } | { move: "stop" | "risk" };
+export type BossMove = { move: "answer"; choice: number } | { move: "stop" | "risk" }
+  | { move: "phrase"; action: string; order: number[] };
 type AttackReply = { attack: BossAttack; arena?: BossState };
 
-export const startBossAttack = (stake: number) => postRetry<AttackReply>("/api/boss/attack", { stake });
+export const startBossAttack = (stake: number, mode?: "dragon" | "practice") => postRetry<AttackReply>("/api/boss/attack", { stake, mode });
 export const moveBossAttack = (attack: BossAttack, move: BossMove) =>
   postRetry<AttackReply>("/api/boss/attack/move", { id: attack.id, revision: attack.revision, ...move });
 

@@ -14,7 +14,7 @@ export interface DuelRound {
 
 const isPhrase = (w: Word) => w.term.trim().includes(" ");
 
-function shuffle<T>(items: T[], rng: () => number): T[] {
+export function shuffle<T>(items: T[], rng: () => number): T[] {
   const a = [...items];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));

@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
+import type { DragonTurn } from "../src/app/dragon-duel";
 import { botHarness, buttonData } from "./bot-harness";
 import { at, DAY, HOUR, makeUser, T0 } from "./helpers";
 import { getUserByTelegramId, updateUser } from "../src/services/users";
@@ -309,6 +310,57 @@ describe("атака серией переводов", () => {
     expect(await (await act(second, "answer", miss(second))).json()).toMatchObject({
       attack: { kind: "done", stake: 11, damage: 2.8 }, arena: { combat: { balance: 0 } },
     });
+  });
+});
+
+describe("пошаговая дуэль с Драконом", () => {
+  type Turn = { id: string; revision: number } & DragonTurn;
+  const phrase = (attack: Turn, action: string, answer: string) => ({
+    id: attack.id, revision: attack.revision, move: "phrase", action,
+    order: answer.split(" ").map((word) => attack.choices.find(({ id }) => id === action)!.words.indexOf(word)),
+  });
+
+  it("проводит через укрытие или арбалет и списывает ставку один раз при повторе запроса", async () => {
+    const { post, getBoss } = await attackArena(nsk("2026-11-26T12:00"));
+    const start = async () => (await (await post("attack", { mode: "dragon", stake: 11 })).json()).attack;
+    const move = (turn: Turn, action: string, words: string) => post("attack/move", phrase(turn, action, words));
+    expect(await getBoss()).toMatchObject({ boss: { opponent: { id: "dragon" }, hp: 100 }, combat: { balance: 30 } });
+
+    const first = await start();
+    expect(first).toMatchObject({ kind: "dragon", scene: "fire", turn: 1, practice: false, choices: [{ id: "cover", damage: 11 }, { id: "ballista", damage: 19.8 }] });
+    expect(first.choices[0]).not.toHaveProperty("answer");
+    expect(first.choices[0].words).toEqual(["cover", "Take"]);
+    expect((await post("attack/move", { ...phrase(first, "cover", "Take cover"), order: [0, 0] })).status).toBe(400);
+    const covered = (await (await move(first, "cover", "Take cover")).json()).attack;
+    expect(covered).toMatchObject({ scene: "landed", turn: 2 });
+    expect(await start()).toEqual(covered);
+    for (const response of await Promise.all([move(covered, "strike", "Strike the dragon"), move(covered, "strike", "Strike the dragon")])) {
+      expect(await response.json()).toMatchObject({ attack: { damage: 11 }, arena: { boss: { hp: 89 }, combat: { balance: 19 } } });
+    }
+
+    const downed = (await (await move(await start(), "ballista", "Shoot at the wing")).json()).attack;
+    expect(downed).toMatchObject({ scene: "downed", turn: 2, choices: [{ id: "wing", damage: 19.8 }] });
+    expect(await (await move(downed, "wing", "Strike its wing")).json()).toMatchObject({
+      attack: { damage: 19.8 }, arena: { boss: { hp: 69.2 }, combat: { balance: 8 } },
+    });
+  });
+
+  it("даёт подняться после промаха в бесплатной тренировке при Страже без запаса энергии", async () => {
+    const { h, alice, post, getBoss } = await attackArena();
+    await h.db.delete(reviewLogs).where(eq(reviewLogs.userId, alice.id));
+    const before = await getBoss();
+    expect(before).toMatchObject({ boss: { opponent: { id: "sentinel" }, hp: 100 }, combat: { balance: 0 } });
+    expect((await post("attack", { mode: "dragon" })).status).toBe(409);
+    const start = async () => (await (await post("attack", { mode: "practice" })).json()).attack;
+    const move = async (turn: Turn, action: string, words: string) => (await (await post("attack/move", phrase(turn, action, words))).json()).attack;
+    const first = await start();
+    const miss = await move(first, "ballista", "wing the at Shoot");
+    expect(miss).toMatchObject({ scene: "staggered", turn: 2, translation: "Shoot at the wing" });
+    const recovered = await move(miss, "rise", "Get back up");
+    expect(recovered).toMatchObject({ scene: "recovered", turn: 3 });
+    expect(await move(recovered, "counter", "Strike its legs")).toMatchObject({ kind: "done", damage: 5, practice: true });
+    expect(await start()).toMatchObject({ kind: "dragon", scene: "fire", id: expect.not.stringMatching(first.id) });
+    expect(await getBoss()).toEqual(before);
   });
 });
 
