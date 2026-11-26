@@ -69,7 +69,7 @@ export function App() {
     return () => off?.();
   }, [open]);
 
-  if (page === "words") return <Words onExit={back} onSets={() => openSets()} />;
+  if (page === "words") return <Words onExit={back} onSets={() => openSets()} onSettings={() => open("settings")} />;
   if (page === "settings") return <SettingsScreen onExit={back} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
   if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;

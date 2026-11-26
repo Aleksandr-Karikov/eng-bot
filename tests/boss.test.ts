@@ -166,10 +166,9 @@ describe("🐉 /boss in the bot", () => {
 });
 
 /** Ответ /api/boss так, как его увидит вкладка. */
-async function bossTab(secondRoom = false) {
+async function bossTab() {
     const h = botHarness();
     const alice = await makeUser(h.db, 100, "Alice");
-    if (secondRoom) await createRoom(h.db, { name: "Other", createdBy: alice.id, now: T0 });
     const room = await createRoom(h.db, { name: "R", createdBy: alice.id, now: T0 });
     await updateUser(h.db, alice.id, { currentRoomId: room.id });
     await setWeeklyGoal(h.db, room.id, 10);
@@ -180,68 +179,91 @@ async function bossTab(secondRoom = false) {
     return { h, alice, room, app, headers };
 }
 
-async function sentinelArena(secondRoom = false) {
-  const state = await bossTab(secondRoom);
+const translations = new Map([["bank", "берег"], ["desk", "стол"], ["tree", "дерево"], ["cloud", "облако"]]);
+
+async function studyArenaWords(h: ReturnType<typeof botHarness>, userId: number, roomId: number) {
+  for (const [term, translation] of translations) {
+    if (term === "bank") continue;
+    await saveWord(h.db, { roomId, addedBy: userId, draft: { term, translation, explanation: "", example: "" }, now: T0 });
+  }
+  await h.db.update(cardsTable).set({ reps: 1 }).where(eq(cardsTable.userId, userId));
+}
+
+type AttackView = { id: string; revision: number; term: string; options: string[] };
+const correct = (attack: AttackView) => attack.options.findIndex((option) => option === translations.get(attack.term));
+
+async function attackArena(now = nsk("2026-11-19T12:00")) {
+  const state = await bossTab();
   const { h, alice, room, app, headers } = state;
-  const now = nsk("2026-11-19T12:00");
   h.setNow(now);
   await setWeeklyGoal(h.db, room.id, 100);
   await updateUser(h.db, alice.id, { bankDamage: true });
-  for (const [term, translation] of [["desk", "стол"], ["tree", "дерево"], ["cloud", "облако"]]) {
-    await saveWord(h.db, { roomId: room.id, addedBy: alice.id, draft: { term, translation, explanation: "", example: "" }, now: T0 });
-  }
-  await h.db.update(cardsTable).set({ reps: 1 }).where(eq(cardsTable.id, 1));
+  await studyArenaWords(h, alice.id, room.id);
   const credit = (damageDeci: number, banked: boolean) => h.db.insert(reviewLogs).values({
-    userId: alice.id, cardId: 1, rating: "good", reviewedAt: nsk("2026-11-19T11:50"), damageDeci, banked,
+    userId: alice.id, cardId: 1, rating: "good", reviewedAt: new Date(now.getTime() - HOUR), damageDeci, banked,
   });
-  await credit(500, false);
   await credit(300, true);
   const getBoss = async () => (await app.request("/api/boss", { headers })).json();
   const post = (path: string, body: object = {}) => app.request(`/api/boss/${path}`, {
     method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
   });
-  return { ...state, credit, getBoss, post };
+  const start = async () => (await (await post("attack")).json()).attack;
+  const act = (attack: AttackView, move: string, choice?: number) => post("attack/move", { id: attack.id, revision: attack.revision, move, choice });
+  const step = async (attack: AttackView, move: string, choice?: number) => (await (await act(attack, move, choice)).json()).attack;
+  return { ...state, credit, getBoss, post, start, act, step };
 }
 
-describe("бой со Стражем за энергию", () => {
-  it.each([[true, 13, 1], [false, 10, 2]])("засчитывает выбор %s как удар на %s HP один раз в комнате %s", async (correct, damage, roomId) => {
-    const { post, getBoss, room } = await sentinelArena(roomId === 2);
-    expect(room.id).toBe(roomId);
-    expect(await getBoss()).toMatchObject({
-      combat: { core: "ready", balance: 30, hit: { spend: 10, damage: 10 }, weakSpot: { spend: 10, damage: 13 } },
+describe("атака серией переводов", () => {
+  it("позволяет забрать 5 HP или дойти до 18 HP, возобновляя ту же атаку и списывая энергию один раз", async () => {
+    const { post, getBoss, start, act, step } = await attackArena();
+    const state = await getBoss();
+    expect(state).toMatchObject({ boss: { hp: 100 }, combat: { attackCost: 10, balance: 30 } });
+    expect((await post("combat", { target: "boss" })).status).toBe(409);
+
+    const first = await start();
+    expect(first).toMatchObject({ kind: "question", number: 1, total: 3 });
+    expect(first).not.toHaveProperty("correct");
+    expect(await start()).toEqual(first);
+    expect((await act(first, "stop")).status).toBe(400);
+    const decision = await step(first, "answer", correct(first));
+    expect(decision).toMatchObject({ kind: "decision", damage: 5, nextDamage: 10, missDamage: 2.5 });
+    expect(await start()).toEqual(decision);
+    expect((await getBoss()).combat.balance).toBe(30);
+
+    const results = await Promise.all([act(decision, "stop"), act(decision, "stop")]);
+    for (const response of results) expect(await response.json()).toMatchObject({
+      attack: { kind: "done", damage: 5 }, arena: { boss: { hp: 95 }, combat: { balance: 20 } },
     });
 
-    const { question } = await (await post("weak-spot")).json();
-    expect(question).toMatchObject({ term: "bank", options: expect.arrayContaining(["берег", "стол", "дерево", "облако"]) });
-    expect(question).not.toHaveProperty("correct");
-    expect(await (await post("weak-spot")).json()).toMatchObject({ question: { id: question.id } });
-    expect(await getBoss()).toMatchObject({ combat: { balance: 30 }, boss: { hp: 50 } });
-    expect((await post("weak-spot/answer", { id: question.id, choice: -1 })).status).toBe(400);
-    const choice = question.options.findIndex((option: string) => (option === "берег") === correct);
-    const strike = () => post("weak-spot/answer", { id: question.id, choice });
-    for (const result of await Promise.all([strike(), strike()])) {
-      expect(await result.json()).toMatchObject({
-        strike: { correct, damage, translation: "берег" },
-        boss: { hp: 50 - damage }, combat: { balance: 20, core: "spent" },
-        hits: expect.arrayContaining([expect.objectContaining({ damage })]),
-      });
-    }
-    expect((await post("weak-spot")).status).toBe(409);
-    const state = await getBoss();
-    const normal = await post("combat", { target: "boss", roomId: room.id, week: state.boss.week, requestId: randomUUID(), maxDamageDeci: 300 });
-    expect(await normal.json()).toMatchObject({ damage: 10, combat: { balance: 10 } });
+    const one = await start();
+    const two = await step(await step(one, "answer", correct(one)), "risk");
+    const secondDecision = await step(two, "answer", correct(two));
+    expect(secondDecision).toMatchObject({ kind: "decision", damage: 10, nextDamage: 18, missDamage: 5 });
+    const three = await step(secondDecision, "risk");
+    expect(new Set([one.term, two.term, three.term]).size).toBe(3);
+    expect(await (await act(three, "answer", correct(three))).json()).toMatchObject({
+      attack: { kind: "done", damage: 18 }, arena: { boss: { hp: 77 }, combat: { balance: 10 } },
+    });
   });
 
-  it("оставляет энергию, если друзья уже добили босса с открытым вопросом", async () => {
-    const { post, getBoss, room, credit } = await sentinelArena();
-    const { question } = await (await post("weak-spot")).json();
-    const before = await getBoss();
-    await credit(500, false);
-    expect((await post("weak-spot/answer", { id: question.id, choice: 0 })).status).toBe(409);
-    const stale = await post("combat", {
-      target: "boss", roomId: room.id, week: before.boss.week, round: before.boss.round, requestId: randomUUID(), maxDamageDeci: 100,
+  it("применяет половину урона при ошибке, а первый промах расходует энергию без удара в ленте", async () => {
+    const { start, step, act } = await attackArena(nsk("2026-11-26T12:00"));
+    const first = await start();
+    const second = await step(await step(first, "answer", correct(first)), "risk");
+    expect(await (await act(second, "answer", (correct(second) + 1) % second.options.length)).json()).toMatchObject({
+      attack: { kind: "done", damage: 2.5, translation: translations.get(second.term) }, arena: { boss: { hp: 97.5 }, combat: { balance: 20 } },
     });
-    expect(await stale.json()).toMatchObject({ notice: expect.any(String) });
+    const next = await start();
+    expect(await (await act(next, "answer", (correct(next) + 1) % next.options.length)).json()).toMatchObject({
+      attack: { kind: "done", damage: 0 }, arena: { boss: { hp: 97.5 }, combat: { balance: 10 }, total: 1 },
+    });
+  });
+
+  it("оставляет энергию, если босса добили с открытым вопросом", async () => {
+    const { start, act, getBoss, credit } = await attackArena();
+    const first = await start();
+    await credit(1000, false);
+    expect((await act(first, "answer", correct(first))).status).toBe(409);
     expect(await getBoss()).toMatchObject({ boss: { round: 2 }, combat: { balance: 30 } });
   });
 });
@@ -254,7 +276,7 @@ describe("урон из запаса", () => {
     const state = await (await app.request("/api/boss", { headers })).json();
     expect(state.combat.bank).toBe(false);
     expect(state.combat.balance).toBe(0);
-    expect(state.combat.hit).toMatchObject({ spend: 0, damage: 0 });
+    expect(state.combat.attackCost).toBe(10);
     expect(state.boss.hp).toBeGreaterThan(0);
 
     // Ответ всё равно идёт в босса комнаты напрямую — поэтому человек и не должен видеть пустой запас
@@ -276,14 +298,13 @@ describe("урон из запаса", () => {
   });
 
   it("зачисляет ответ один раз, применяет ручной удар к боссу и защищает потраченный запас от отмены", async () => {
-    const { h, app, headers, room } = await bossTab();
+    const { h, alice, app, headers, room, credit, start, step, act } = await attackArena();
     await setWeeklyGoal(h.db, room.id, 2);
+    await h.db.delete(reviewLogs).where(eq(reviewLogs.userId, alice.id));
+    await h.db.update(cardsTable).set({ reps: 0 }).where(eq(cardsTable.id, 1));
     const post = async (path: string, body: object) => (await app.request(path, {
       method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
     })).json();
-    const { combat, boss } = await post("/api/boss/combat", { bank: true });
-    expect(combat).toMatchObject({ bank: true, balance: 0, roomId: room.id });
-    expect(boss.hp).toBe(2);
 
     const answer = { cardId: 1, reps: 0, answer: "good" };
     expect(await post("/api/answer", answer)).toMatchObject({ result: "ok", damage: 2 });
@@ -293,12 +314,12 @@ describe("урон из запаса", () => {
     expect(await (await app.request("/api/boss", { headers })).json()).toMatchObject({
       combat: { balance: 2 }, boss: { hp: 2 }, hits: [],
     });
-
-    const attack = { target: "boss", roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: 20 };
-    const result = await post("/api/boss/combat", attack);
-    // Добили — и сразу следующий босс с полным HP, а не пустой экран до воскресенья.
-    expect(result).toMatchObject({ damage: 2, combat: { balance: 0 }, boss: { hp: tierHp(2, 1, 2), round: 2, kills: 1, progress: 0, bossHp: tierHp(2, 1, 2) }, hits: [{ damage: 2 }] });
-    expect(await post("/api/boss/combat", attack)).toMatchObject({ notice: expect.any(String), combat: { balance: 0 } });
+    await credit(80, true);
+    const first = await start();
+    const decision = await step(first, "answer", correct(first));
+    expect(await (await act(decision, "stop")).json()).toMatchObject({
+      attack: { damage: 2 }, arena: { combat: { balance: 0 }, boss: { hp: tierHp(2, 1, 2), round: 2, kills: 1 }, hits: [{ damage: 2 }] },
+    });
     expect(await post("/api/undo", { cardId: 1 })).toMatchObject({ ok: false });
   });
 
@@ -318,7 +339,7 @@ describe("урон из запаса", () => {
     await db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 2700, banked: true });
     const strike = (target: string, hp: number, week = combat.week) =>
       post("/api/boss/combat", { target, roomId: room.id, week, requestId: randomUUID(), maxDamageDeci: hp * 10 });
-    expect(await strike("boss", 10, latestDigestMoment(at(-7 * DAY)).date)).toMatchObject({ notice: expect.any(String), combat: { balance: 270 } });
+    expect(await strike("golem", 30, latestDigestMoment(at(-7 * DAY)).date)).toMatchObject({ notice: expect.any(String), combat: { balance: 270 } });
     expect(await strike("golem", 12)).toMatchObject({ notice: expect.any(String), combat: { balance: 270 } });
 
     const golems = await Promise.all([strike("golem", 30), strike("golem", 30)]);
@@ -331,8 +352,16 @@ describe("урон из запаса", () => {
     expect(await post("/api/answer", { cardId: 1, reps: 0, answer: "good", stage: "listen" })).toMatchObject({ damage: 4.8 });
     expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good", stage: "sentence" })).toMatchObject({ damage: 4.8 });
 
-    // Добили первого — на арене сразу второй, с полным HP.
-    expect(await strike("boss", 10)).toMatchObject({ damage: 10, combat: { balance: 24.6 }, boss: { hp: tierHp(2, 1, 10), round: 2, kills: 1, bossHp: tierHp(2, 1, 10) } });
+    await studyArenaWords(h, alice.id, room.id);
+    const first = (await post("/api/boss/attack", {})).attack;
+    const move = async (attack: AttackView, action: string, choice?: number) =>
+      post("/api/boss/attack/move", { id: attack.id, revision: attack.revision, move: action, choice });
+    const one = (await move(first, "answer", correct(first))).attack;
+    const second = (await move(one, "risk")).attack;
+    const two = (await move(second, "answer", correct(second))).attack;
+    expect(await move(two, "stop")).toMatchObject({
+      attack: { damage: 10 }, arena: { combat: { balance: 24.6 }, boss: { round: 2, kills: 1, bossHp: tierHp(2, 1, 10) } },
+    });
     await dropCard(db, alice.id, 1);
     expect(await damageBalanceDeci(db, alice.id)).toBe(246);
 
@@ -385,49 +414,26 @@ it("навсегда открывает реликвии за разные не�
   expect(await answer(4, "sentence")).toMatchObject({ damage: 4.6 });
 });
 
-it("открывает ядро на половине HP, тратит руну один раз и показывает итоги командной победы", async () => {
-  const { h, app, headers, alice, room } = await bossTab();
-  const now = nsk("2026-11-19T12:00");
-  h.setNow(now);
-  await setWeeklyGoal(h.db, room.id, 100);
+it("тратит руну на набранный в атаке урон и показывает командную победу", async () => {
+  const { h, room, credit, post, getBoss, start, step, act } = await attackArena();
   const bob = await makeUser(h.db, 200, "Bob");
-  await joinRoom(h.db, { roomId: room.id, userId: bob.id, now, makeCurrent: true });
-  const post = async (path: string, body: object) => (await app.request(path, {
-    method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
-  })).json();
-  const state = async () => (await app.request("/api/boss", { headers })).json();
-  const credit = (damageDeci: number, banked: boolean) => h.db.insert(reviewLogs).values({
-    userId: alice.id, cardId: 1, rating: "good", reviewedAt: new Date(now.getTime() - 1000), damageDeci, banked,
-  });
-  expect(await state()).toMatchObject({ boss: { opponent: { id: "sentinel" }, hp: 100 }, combat: { core: "closed" } });
-  await credit(500, false);
-  await credit(300, true);
-  const before = await state();
-  expect(before).toMatchObject({ boss: { hp: 50 }, combat: { core: "ready", hit: { spend: 10, damage: 10 }, rune: { extra: 2.5, owned: false } } });
-
-  const buy = () => post("/api/boss/upgrade", { kind: "rune" });
+  await joinRoom(h.db, { roomId: room.id, userId: bob.id, now: h.deps.now(), makeCurrent: true });
+  await credit(940, false);
+  const buy = () => post("upgrade", { kind: "rune" });
   const purchases = await Promise.all([buy(), buy()]);
   expect(purchases.filter((result) => result.ok)).toHaveLength(1);
-  expect(await state()).toMatchObject({ coins: { coins: 40 }, combat: { hit: { spend: 10, damage: 12.5 }, rune: { owned: true } } });
+  expect(await getBoss()).toMatchObject({ boss: { hp: 6 }, combat: { rune: { owned: true } } });
 
-  const strike = (hp: number, requestId = randomUUID()) => post("/api/boss/combat", {
-    target: "boss", roomId: room.id, week: before.boss.week, requestId, maxDamageDeci: hp * 10,
+  const first = await start();
+  const decision = await step(first, "answer", correct(first));
+  expect(await (await act(decision, "stop")).json()).toMatchObject({
+    attack: { damage: 6 },
+    arena: {
+      boss: { round: 2, kills: 1, byUser: [{ name: "Alice", count: 100 }] },
+      combat: { balance: 20, rune: { owned: false } },
+      victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
+    },
   });
-  const requestId = randomUUID();
-  expect(await strike(30, requestId)).toMatchObject({ damage: 12.5, boss: { hp: 37.5 }, combat: { balance: 20, core: "ready", rune: { owned: false } } });
-  expect(await strike(30, requestId)).toMatchObject({ notice: expect.any(String), combat: { balance: 20 } });
-  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 27.5 } });
-  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 17.5 } });
-  await credit(200, true);
-  expect(await strike(10)).toMatchObject({ damage: 10, boss: { hp: 7.5 } });
-  expect(await strike(10)).toMatchObject({
-    // Добили — сразу второй босс с полным HP; недельный вклад при этом остаётся недельным.
-    damage: 7.5, boss: { hp: tierHp(2, 1, 100), round: 2, kills: 1, bossHp: tierHp(2, 1, 100), byUser: [{ name: "Alice", count: 100 }] }, combat: { balance: 2.5 },
-    victory: { finalBlow: { name: "Alice" }, teamTrophy: true },
-  });
-  expect(await buy()).toMatchObject({ combat: { rune: { owned: true } } });
-  h.setNow(nsk("2026-11-26T12:00"));
-  expect(await state()).toMatchObject({ boss: { phase: "fresh" }, combat: { rune: { owned: true } } });
 });
 
 it("усиливает только диктанты и только во время ярости Дракона", async () => {

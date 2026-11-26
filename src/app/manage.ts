@@ -14,7 +14,7 @@ import { isStormHard } from "../services/storm";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
 import { isLearned } from "../services/stats";
-import { ACTIVE_LEARNING_CHOICES, setActiveLearningLimit, updateUser, type UserPatch } from "../services/users";
+import { ACTIVE_LEARNING_CHOICES, DEFAULT_ACTIVE_LEARNING_LIMIT, DEFAULT_NEW_PER_DAY, MAX_LEARNING_LIMIT, setActiveLearningLimit, setNewPerDay, updateUser, type UserPatch } from "../services/users";
 import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemonic, setUsefulness, updateWord, findWord, normalizeTerm } from "../services/words";
 import type { CorrectionWord } from "../llm/enricher";
 import { prepareWord } from "../services/prepare-word";
@@ -201,12 +201,12 @@ export async function appSettings(deps: Deps, user: User) {
     // 🐉 Рубильник выключен — переключателя нет вовсе: настройка, которая ничего не меняет, только путает.
     ...(deps.bossEnabled === false ? {} : { boss: user.modeBoss }),
     card: CARD_PART_LABELS.map(([key, label]) => ({ key, label, on: view[key] })),
-    // 🆕 Дневная порция новых слов (E30): 0 — без ограничения. Список вариантов отдаём с сервера,
-    // чтобы бот и приложение не разошлись в том, какие числа бывают.
     newPerDay: user.newPerDay,
+    // Списки нужны старой вкладке Mini App, открытой до обновления.
     newPerDayChoices: NEW_PER_DAY_CHOICES.map((c) => c.value),
     activeLearningLimit: user.activeLearningLimit,
     activeLearningChoices: ACTIVE_LEARNING_CHOICES,
+    learningLimits: { max: MAX_LEARNING_LIMIT, recommendedDaily: DEFAULT_NEW_PER_DAY, recommendedActive: DEFAULT_ACTIVE_LEARNING_LIMIT },
     // 🗣 Озвучка карточек: accent — что играть самому при показе карточки, null — выключена.
     voice: { accent: autoVoice(user) ?? null, accents: EN.accents.map((a) => ({ key: a, label: EN.accentLabel[a] })) },
   };
@@ -237,12 +237,11 @@ export async function appChangeSetting(deps: Deps, user: User, body: Record<stri
   } else if (typeof body.voice === "string" && (body.voice === "off" || (VOICE_ACCENTS as readonly string[]).includes(body.voice))) {
     patch = { voiceAccent: toggleVoiceAccent(user.voiceAccent, body.voice as VoiceAccent | "off") };
   } else if (typeof body.newPerDay === "number") {
-    // Только варианты из списка: значение приходит с клиента, а по этой колонке считается очередь.
-    if (!NEW_PER_DAY_CHOICES.some((c) => c.value === body.newPerDay)) return { ok: false, error: "Нет такого варианта порции" };
-    patch = { newPerDay: body.newPerDay };
+    const updated = await setNewPerDay(deps.db, user.id, body.newPerDay);
+    return updated ? { ok: true, user: updated } : { ok: false, error: `Введи целое число от 0 до ${MAX_LEARNING_LIMIT}` };
   } else if (typeof body.activeLearningLimit === "number") {
     const updated = await setActiveLearningLimit(deps.db, user.id, body.activeLearningLimit);
-    return updated ? { ok: true, user: updated } : { ok: false, error: "Выбери один из предложенных пределов обучения" };
+    return updated ? { ok: true, user: updated } : { ok: false, error: `Введи целое число от 1 до ${MAX_LEARNING_LIMIT}` };
   } else if (typeof body.cardPart === "string" && typeof body.on === "boolean") {
     const part = body.cardPart as CardPart;
     if (!CARD_PARTS.includes(part)) return { ok: false, error: "Нет такой части карточки" };

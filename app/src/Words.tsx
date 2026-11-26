@@ -34,7 +34,7 @@ function BackToCards({ onExit }: { onExit: () => void }) {
 }
 
 /** Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
-export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => void }) {
+export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSets: () => void; onSettings: () => void }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof getWords>>>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
@@ -137,9 +137,13 @@ export function Words({ onExit, onSets }: { onExit: () => void; onSets: () => vo
           </Chip>
         ))}
       </div>
-      <Section header={filter === "learning" ? `Учу · ${data.active.length} из ${data.limit}` : `${data.room} · ${shown.length}`}>
+      <Section header={filter === "learning" ? `Учу · сейчас ${data.active.length} · предел ${data.limit}` : `${data.room} · ${shown.length}`}
+        footer={filter === "learning" && data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела." : undefined}>
         {filter === "learning" && (
-          <Cell Component="button" type="button" className="word-list-control" onClick={() => { setQuery(""); setFilter("waiting"); }}>Выбрать слово из очереди</Cell>
+          <>
+            <Cell Component="button" type="button" className="word-list-control" onClick={onSettings}>Настроить предел «Учу»</Cell>
+            <Cell Component="button" type="button" className="word-list-control" onClick={() => { setQuery(""); setFilter("waiting"); }}>Выбрать слово из очереди</Cell>
+          </>
         )}
         {shown.length === 0 && <Cell multiline>Ничего не нашлось</Cell>}
         {shown.map((w) => (

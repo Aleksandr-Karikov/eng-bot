@@ -47,7 +47,7 @@ async function setup(started: number, fresh = 3) {
   const list = async () => {
     const res = await app.request("/api/words", { headers });
     expect(res.status).toBe(200);
-    return res.json() as Promise<{ active: AppWordItem[]; words: AppWordItem[] }>;
+    return res.json() as Promise<{ active: AppWordItem[]; words: AppWordItem[]; limit: number }>;
   };
   const answer = async (cardId: number, value: string, reps = 0) => {
     const res = await post("/api/answer", { cardId, reps, answer: value });
@@ -180,23 +180,27 @@ describe("лимит одновременно изучаемых слов", () =
   });
 
   it("меняет личный предел из бота и Mini App, сохраняя начатые карточки и дневную порцию", async () => {
-    const { h, user, queue, post, rows, answer } = await setup(DEFAULT_LIMIT);
+    const { h, user, queue, post, rows, answer, list } = await setup(DEFAULT_LIMIT);
     expect(user.activeLearningLimit).toBe(15);
     expect(await queue()).toEqual([]);
 
     await h.bot.handleUpdate(h.message(100, "/settings"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "📚 Слов одновременно")));
-    expect(buttonData(h.calls, "✅ 15")).toBeTruthy();
-    await h.bot.handleUpdate(h.callback(100, "al:999"));
+    expect(buttonData(h.calls, "Рекомендованный · 15")).toBeTruthy();
+    const before = await list();
+    expect((await post("/api/settings", { newPerDay: 30 })).status).toBe(200);
+    expect(await list()).toMatchObject({ limit: 15, active: before.active });
+    await h.bot.handleUpdate(h.callback(100, "al:1001"));
     expect(h.calls.at(-1)?.payload.text).toBe("Нет такого варианта");
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "⬜️ 20")));
+    await h.bot.handleUpdate(h.message(100, "/settings active 37"));
+    expect((await list()).limit).toBe(37);
     expect(await queue()).toHaveLength(3);
     expect(await answer(rows[DEFAULT_LIMIT].id, "good")).toMatchObject({ result: "ok" });
 
     expect((await post("/api/settings", { activeLearningLimit: 0 })).status).toBe(400);
     const changed = await post("/api/settings", { activeLearningLimit: 10 });
     expect(changed.status).toBe(200);
-    expect(await changed.json()).toMatchObject({ settings: { activeLearningLimit: 10, activeLearningChoices: [10, 15, 20, 30], newPerDay: 0 } });
+    expect(await changed.json()).toMatchObject({ settings: { activeLearningLimit: 10, learningLimits: { max: 1000, recommendedActive: 15, recommendedDaily: 15 }, newPerDay: 30 } });
     expect(await queue()).toEqual([]);
     h.setNow(at(DAY));
     expect(await queue("reviews")).toHaveLength(10);

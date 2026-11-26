@@ -15,7 +15,7 @@ import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, settledBank, UPGRADES } from "../services/boss";
 import { answerExercise, listTopics, topicView } from "../services/grammar-topics";
-import { attackWithReserve, combatState, isCombatTarget } from "../services/combat";
+import { attackWithReserve, combatState, isMobTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
 import { extraBatchLabel, gapParts, learningLimitNotice, reverseHint } from "../bot/texts";
@@ -399,7 +399,7 @@ export async function appBoss(deps: Deps, user: User) {
   await settledBank(deps.db, user.id, now);
   const [feed, combat, earnedCoins, collection, members] = await Promise.all([
     bossFeed(deps.db, room, now, 20, won ? boss.target : undefined),
-    combatState(deps.db, user, now, room.id, boss),
+    combatState(deps.db, user, now, boss),
     personalDamage(deps.db, user.id, now),
     userTrophies(deps.db, user.id),
     won ? deps.db.select({ id: roomMembers.userId }).from(roomMembers).where(eq(roomMembers.roomId, room.id)).limit(2) : [],
@@ -454,24 +454,24 @@ export async function appBoss(deps: Deps, user: User) {
 }
 
 export async function appCombat(deps: Deps, user: User, input: {
-  bank?: unknown; target?: unknown; roomId?: unknown; week?: unknown; round?: unknown; requestId?: unknown; maxDamageDeci?: unknown;
+  bank?: unknown; target?: unknown; roomId?: unknown; week?: unknown; requestId?: unknown; maxDamageDeci?: unknown;
 } | null) {
   if (!bossEnabled(user, deps.bossEnabled)) return { status: 400 as const, body: { ok: false, error: "Режим босса выключен" } };
   if (typeof input?.bank === "boolean") {
     const updated = await updateUser(deps.db, user.id, { bankDamage: input.bank });
     return { status: 200 as const, body: { ok: true, ...await appBoss(deps, updated) } };
   }
-  if (!input || !isCombatTarget(input.target)
+  if (input?.target === "boss") {
+    return { status: 409 as const, body: { ok: false, error: "Открой Mini App заново и начни атаку на арене." } };
+  }
+  if (!input || !isMobTarget(input.target)
     || typeof input.roomId !== "number" || !Number.isSafeInteger(input.roomId) || typeof input.week !== "string"
     || typeof input.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.requestId)
     || typeof input.maxDamageDeci !== "number" || !Number.isSafeInteger(input.maxDamageDeci) || input.maxDamageDeci <= 0) {
     return { status: 400 as const, body: { ok: false, error: "Выбери цель для удара" } };
   }
-  const { target, roomId, week, requestId, maxDamageDeci, round } = input;
-  if (round !== undefined && (typeof round !== "number" || !Number.isSafeInteger(round) || round < 1)) {
-    return { status: 400 as const, body: { ok: false, error: "Обнови состояние боя" } };
-  }
-  const damage = await attackWithReserve(deps.db, user.id, { target, roomId, week, requestId, maxDamageDeci, round }, deps.now);
+  const { target, roomId, week, requestId, maxDamageDeci } = input;
+  const damage = await attackWithReserve(deps.db, user.id, { target, roomId, week, requestId, maxDamageDeci }, deps.now);
   const fresh = await getUserByTelegramId(deps.db, user.telegramId);
   if (!fresh) return { status: 400 as const, body: { ok: false, error: "Пользователь недоступен" } };
   return { status: 200 as const, body: { ok: true, ...(damage === undefined ? { notice: "Удар не прошёл. Проверь цель и запас." } : { damage }), ...await appBoss(deps, fresh) } };

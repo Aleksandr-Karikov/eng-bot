@@ -11,7 +11,7 @@ import { State } from "ts-fsrs";
 import type { Db } from "../db/client";
 import { cards, combatArchive, reviewLogs, words, users, type CardRow, type Word } from "../db/schema";
 import { localMoment, localParts, nextDate } from "../time";
-import { DEFAULT_TIMEZONE } from "./users";
+import { DEFAULT_NEW_PER_DAY, DEFAULT_TIMEZONE } from "./users";
 import { review, type Answer } from "../srs/srs";
 import { isLearned } from "./stats";
 import { learningSelection, reviewableCards } from "./learning";
@@ -22,9 +22,6 @@ export interface DueItem {
 }
 
 export const LEARN_AHEAD_MS = 20 * 60_000;
-
-/** Сколько новых слов в день показывать, пока человек не выбрал своё. Совпадает с default колонки `users.new_per_day`. */
-export const DEFAULT_NEW_PER_DAY = 15;
 
 /**
  * Дневная порция новых слов (E30).

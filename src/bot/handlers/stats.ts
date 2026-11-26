@@ -7,11 +7,11 @@ import { roomTimeZone } from "../../services/digest";
 import { personalStats, roomLeaderboard } from "../../services/stats";
 import { toggleCardPart } from "../../services/card-view";
 import { autoVoice, toggleVoiceAccent } from "../../services/voice";
-import { setActiveLearningLimit, updateUser } from "../../services/users";
+import { MAX_LEARNING_LIMIT, setActiveLearningLimit, setNewPerDay, updateUser } from "../../services/users";
 import { parseHHMM } from "../../time";
 import { decodeCb } from "../callbacks";
 import { HTML, type BotContext, type Deps } from "../context";
-import { NEW_PER_DAY_CHOICES, bossKeyboard, settingsKeyboard } from "../keyboards";
+import { bossKeyboard, settingsKeyboard } from "../keyboards";
 import { bossHitsText, bossText, goalText, settingsText, statsText } from "../texts";
 import type { Stage } from "../../services/exercises";
 import type { User } from "../../db/schema";
@@ -117,6 +117,15 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
 
   bot.command("settings", async (ctx) => {
     const arg = ctx.match.trim();
+    const [screen, size, extra] = arg.split(/\s+/);
+    if (screen === "new" || screen === "active") {
+      const value = size && !extra && /^\d+$/.test(size) ? Number(size) : NaN;
+      const setLimit = screen === "new" ? setNewPerDay : setActiveLearningLimit;
+      const user = await setLimit(deps.db, ctx.user.id, value);
+      const screenOptions = { ...HTML, reply_markup: settingsKeyboard(user ?? ctx.user, screen) };
+      if (!user) return void (await ctx.reply(`Для /settings ${screen} введи целое число от ${screen === "new" ? 0 : 1} до ${MAX_LEARNING_LIMIT}.`, screenOptions));
+      return void (await ctx.reply(settingsText(user, screen), screenOptions));
+    }
     if (arg) {
       const time = parseHHMM(arg);
       if (!time) return void (await ctx.reply("Формат времени: /settings 21:30"));
@@ -193,10 +202,8 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^np:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "newPerDay") return void (await ctx.answerCallbackQuery());
-    // Значение приходит из кнопки, поэтому сверяем со списком вариантов: чужое число не должно
-    // попасть в колонку, по которой считается очередь.
-    if (!NEW_PER_DAY_CHOICES.some((c) => c.value === cb.value)) return void (await ctx.answerCallbackQuery({ text: "Нет такого варианта" }));
-    const user = await updateUser(deps.db, ctx.user.id, { newPerDay: cb.value });
+    const user = await setNewPerDay(deps.db, ctx.user.id, cb.value);
+    if (!user) return void (await ctx.answerCallbackQuery({ text: "Число вне допустимого диапазона" }));
     await ctx.answerCallbackQuery({ text: cb.value === 0 ? "Без ограничения" : `${cb.value} в день` });
     await ctx.editMessageText(settingsText(user, "new"), { ...HTML, reply_markup: settingsKeyboard(user, "new") });
   });

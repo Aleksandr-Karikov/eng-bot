@@ -1,7 +1,7 @@
 import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, buyUpgrade, fight, getBoss, openWeakSpot, strikeWeakSpot, type Boss, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies, type WeakSpotQuestion, type WeakSpotStrike } from "./api";
+import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 import { bossScreen } from "../../src/app/boss-screen";
@@ -14,6 +14,7 @@ const PHASE: Record<Boss["phase"], { title: string; art: string }> = {
 };
 
 const hpFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
 
 const PACE: Record<Boss["pace"], string> = {
   ahead: "опережаете график",
@@ -54,17 +55,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const [data, setData] = useState<BossState>();
   const [error, setError] = useState<string>();
   const [buying, setBuying] = useState<BossPurchase>();
-  const [fighting, setFighting] = useState<CombatTarget | "bank">();
-  const [question, setQuestion] = useState<WeakSpotQuestion>();
-  const [strike, setStrike] = useState<WeakSpotStrike>();
+  const [fighting, setFighting] = useState<CombatAction>();
+  const [attack, setAttack] = useState<BossAttack>();
   const [answering, setAnswering] = useState(false);
   const questionGroup = useRef<HTMLDivElement>(null);
   const busy = Boolean(buying || fighting || answering);
   useBackButton(onExit);
 
   useEffect(() => {
-    if (question) questionGroup.current?.focus();
-  }, [question]);
+    if (attack) questionGroup.current?.focus();
+  }, [attack]);
 
   useEffect(() => {
     if (busy) return;
@@ -107,19 +107,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  const fightAction = async (action: CombatTarget | "bank") => {
+  const fightAction = async (action: CombatAction) => {
     const combat = data?.combat;
     if (busy || !combat || !data.boss) return;
-    const damage = action === "boss"
-      ? (combat.hit?.spend ?? Math.min(combat.balance, data.boss.hp))
-      : combat.mobs.find((mob) => mob.id === action)?.hp ?? 0;
+    const damage = combat.mobs.find((mob) => mob.id === action)?.hp ?? 0;
     setFighting(action);
-    setStrike(undefined);
     try {
       const next = await fight(action === "bank"
         ? { bank: !combat.bank }
         : {
-          target: action, roomId: combat.roomId, week: combat.week, round: data.boss.round, requestId: crypto.randomUUID(),
+          target: action, roomId: combat.roomId, week: combat.week, requestId: crypto.randomUUID(),
           maxDamageDeci: Math.round(damage * 10),
         });
       setData(next);
@@ -133,22 +130,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  const weakSpotAction = async (choice?: number) => {
+  const attackAction = async (move?: BossMove) => {
     if (busy) return;
     setAnswering(true);
     try {
-      if (choice === undefined) {
-        setStrike(undefined);
-        setQuestion(await openWeakSpot());
-      } else if (question) {
-        const result = await strikeWeakSpot(question.id, choice);
-        setData(result);
-        setStrike(result.strike);
-        setQuestion(undefined);
-        haptic.done(result.strike.correct);
-      }
+      const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack();
+      setAttack(result.attack);
+      if (result.arena) setData(result.arena);
+      if (result.attack.kind === "done") haptic.done(result.attack.translation === undefined);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) setQuestion(undefined);
+      if (err instanceof ApiError && err.status === 409) setAttack(undefined);
       notify(err instanceof Error ? err.message : String(err));
     } finally {
       setAnswering(false);
@@ -177,36 +168,53 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     return (
       <Placeholder
         header="Боссу нужна комната"
-        description="Босс недели — это цель комнаты. Заведи комнату в боте (/room) и возвращайся: каждая повторённая карточка станет ударом."
+        description="Заведи комнату в боте через /room, чтобы копить энергию и атаковать босса."
       />
     );
   }
+  const playing = attack !== undefined && attack.kind !== "done";
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
-      victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy || Boolean(question)}
+      victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy || playing}
       actions={data.combat && (
-        <CombatPanel combat={data.combat} hp={data.boss.hp} busy={busy || Boolean(question)} fighting={fighting}
+        <CombatPanel combat={data.combat} busy={busy || playing} fighting={fighting}
           onAction={(action) => void fightAction(action)}>
-          {question ? (
-            <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Перевод ${question.term}`} className="choice-options">
-              <Text weight="2">Что значит «{question.term}»?</Text>
-              <Text className="hint">{question.spend} ⚡ за удар. За верный ответ до {hpFormat.format(question.damage)} HP.</Text>
-              {question.options.map((option, index) => (
-                <Button key={option} className="weak-spot-option" mode="bezeled" stretched disabled={busy} onClick={() => void weakSpotAction(index)}>
+          {attack?.kind === "question" && (
+            <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Перевод ${attack.term}`} className="choice-options">
+              <Text className="hint">Вопрос {attack.number} из {attack.total}</Text>
+              <Text weight="2">Что значит «{attack.term}»?</Text>
+              <Text className="hint">Верно — {attack.nextDamage} HP. Ошибка — {hpFormat.format(attack.missDamage)} HP.</Text>
+              {attack.options.map((option, index) => (
+                <Button key={option} className="attack-option" mode="bezeled" stretched disabled={busy} onClick={() => void attackAction({ move: "answer", choice: index })}>
                   <span>{option}</span>
                 </Button>
               ))}
-              <Button mode="plain" stretched disabled={busy} onClick={() => setQuestion(undefined)}>Отмена</Button>
             </div>
-          ) : data.combat.weakSpot && (
-            <Button mode="bezeled" stretched loading={answering} disabled={busy} onClick={() => void weakSpotAction()}>
-              Ударить в слабое место
-            </Button>
           )}
-          {strike && (
-            <Text role="status">
-              {strike.correct ? "Верно!" : `«${strike.translation}» — правильный перевод.`} Удар на {hpFormat.format(strike.damage)} HP.
-            </Text>
+          {attack?.kind === "decision" && (
+            <div ref={questionGroup} tabIndex={-1} role="group" aria-label="Выбор удара" className="choice-options">
+              <Text weight="2">Верно. Набрано {attack.damage} HP</Text>
+              <Button stretched disabled={busy} onClick={() => void attackAction({ move: "stop" })}>Нанести {attack.damage} HP</Button>
+              <Button mode="bezeled" stretched disabled={busy} onClick={() => void attackAction({ move: "risk" })}>
+                Рискнуть ради {attack.nextDamage} HP
+              </Button>
+              <Text className="hint">При ошибке останется {hpFormat.format(attack.missDamage)} HP.</Text>
+            </div>
+          )}
+          {attack?.kind === "done" && (
+            <div ref={questionGroup} tabIndex={-1} role="status">
+              <Text>{attack.translation ? `«${attack.translation}» — правильный перевод. ` : ""}Удар на {hpFormat.format(attack.damage)} HP.</Text>
+            </div>
+          )}
+          {!playing && data.boss.hp > 0 && (
+            <>
+              <Button stretched loading={answering} disabled={busy || data.combat.balance < data.combat.attackCost} onClick={() => void attackAction()}>
+                Начать атаку · {data.combat.attackCost} ⚡
+              </Button>
+              {data.combat.balance < data.combat.attackCost && (
+                <Text className="hint">До атаки нужно ещё {hpFormat.format(data.combat.attackCost - data.combat.balance)} ⚡.</Text>
+              )}
+            </>
           )}
         </CombatPanel>
       )} />
@@ -271,7 +279,7 @@ function BossView({
 
   return (
     <div className="screen boss-screen">
-      <div className="boss-stage" data-phase={boss.phase} data-opponent={boss.opponent?.id} data-core={combat?.core ?? undefined}>
+      <div className="boss-stage" data-phase={boss.phase} data-opponent={boss.opponent?.id}>
         <div className="boss-portrait">
           <img src={`${import.meta.env.BASE_URL}${portrait}`} alt="" />
           <div className="boss-caption">
@@ -328,14 +336,6 @@ function BossView({
           {/* Арена не пустует: следующий стоит уже сейчас, а не в воскресенье. */}
           <Text className="hint">Добито за неделю: {kills}. Неделя кончается {weekEnd} — в понедельник те же боссы, но ты сильнее.</Text>
         </section>
-      )}
-      {combat?.core && (
-        <div className={`boss-mechanic${combat.core === "ready" ? " ready" : ""}`}>
-          <b>{combat.core === "closed" ? "Ядро Стража закрыто" : "Ядро Стража открыто"}</b>
-          <span>{combat.core === "closed" ? "Откроется на половине здоровья."
-            : combat.core === "spent" ? "Попытка в этом бою уже использована."
-            : "Вопрос на перевод может усилить удар."}</span>
-        </div>
       )}
       {boss.opponent?.id === "dragon" && boss.phase === "furious" && (
         <div className="boss-mechanic ready"><b>Дракон в ярости</b><span>Диктанты в этой комнате дают +20% базового урона.</span></div>
@@ -410,7 +410,6 @@ function BossView({
               {rune.owned ? <Text className="combat-claim">Руна в запасе</Text> : (
                 <Button size="m" mode="bezeled" stretched loading={buying === "rune"} disabled={busy || coins.coins < rune.price} onClick={() => onBuy("rune")}>
                 {coins.coins < rune.price ? `Нужно ${rune.price} монет` : `Купить за ${rune.price} монет`}
-                  {rune.extra > 0 ? ` · +${hpFormat.format(rune.extra)} HP` : rune.saved > 0 ? ` · сбережёт ${hpFormat.format(rune.saved)} ⚡` : ""}
                 </Button>
               )}
             </div>
@@ -442,15 +441,13 @@ function BossView({
   );
 }
 
-function CombatPanel({ combat, hp, busy, fighting, onAction, children }: {
+function CombatPanel({ combat, busy, fighting, onAction, children }: {
   combat: NonNullable<BossState["combat"]>;
-  hp: number;
   busy: boolean;
-  fighting?: CombatTarget | "bank";
-  onAction: (action: CombatTarget | "bank") => void;
+  fighting?: CombatAction;
+  onAction: (action: CombatAction) => void;
   children?: React.ReactNode;
 }) {
-  const hit = combat.hit ?? { spend: Math.min(hp, combat.balance), damage: Math.min(hp, combat.balance) };
   return (
     <div className="boss-members combat-panel">
       <div className="boss-member">
@@ -464,23 +461,7 @@ function CombatPanel({ combat, hp, busy, fighting, onAction, children }: {
       <Text className="hint">
         {combat.bank ? "Потрать энергию на босса или мобов. Остаток переносится между неделями." : "Ответы сразу наносят урон боссу комнаты."}
       </Text>
-      {hp > 0 && (
-        <Button size="m" stretched loading={fighting === "boss"} disabled={busy || hit.spend <= 0} onClick={() => onAction("boss")}>
-          {hit.damage > 0 ? `Ударить на ${hpFormat.format(hit.damage)} HP · ${hpFormat.format(hit.spend)} ⚡` : "Ударить босса"}
-        </Button>
-      )}
       {children}
-      {/* Запас пуст, а копить выключено: без этого человек видит мёртвую кнопку и не знает причины. */}
-      {hp > 0 && hit.spend <= 0 && !combat.bank && (
-        <>
-          <Text className="hint">
-            Чтобы атаковать вручную, начни копить энергию за карточки.
-          </Text>
-          <Button size="m" mode="bezeled" stretched loading={fighting === "bank"} disabled={busy} onClick={() => onAction("bank")}>
-            Начать копить энергию
-          </Button>
-        </>
-      )}
       <details className="combat-mobs">
         <summary>Мобы недели</summary>
         {combat.mobs.map((mob) => (

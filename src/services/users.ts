@@ -6,7 +6,15 @@ import { withCombatLock } from "./combat-ledger";
 
 /** Пояс новых пользователей. В схеме default остался Europe/Moscow: менять его в SQLite — пересоздавать таблицу. */
 export const DEFAULT_TIMEZONE = "Asia/Novosibirsk";
-export const ACTIVE_LEARNING_CHOICES: readonly number[] = [10, 15, 20, 30];
+export const MAX_LEARNING_LIMIT = 1000;
+export const DEFAULT_NEW_PER_DAY = 15;
+export const DEFAULT_ACTIVE_LEARNING_LIMIT = 15;
+export const ACTIVE_LEARNING_CHOICES = [10, 15, 20, 30];
+
+export function setNewPerDay(db: Db, userId: number, limit: number) {
+  if (!Number.isInteger(limit) || limit < 0 || limit > MAX_LEARNING_LIMIT) return;
+  return updateUser(db, userId, { newPerDay: limit });
+}
 
 export interface TgUser {
   id: number;
@@ -57,7 +65,7 @@ export async function updateUser(db: Db, id: number, patch: UserPatch): Promise<
 }
 
 export async function setActiveLearningLimit(db: Db, userId: number, limit: number): Promise<User | undefined> {
-  if (!ACTIVE_LEARNING_CHOICES.includes(limit)) return undefined;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LEARNING_LIMIT) return undefined;
   // Смена предела и запись первого ответа используют одну блокировку.
   return withCombatLock(db, () => updateUser(db, userId, { activeLearningLimit: limit }));
 }

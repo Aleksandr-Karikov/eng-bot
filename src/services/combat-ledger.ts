@@ -1,4 +1,4 @@
-import { and, asc, countDistinct, eq, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
+import { and, asc, countDistinct, eq, gt, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatArchive, combatSpends, reviewLogs, users } from "../db/schema";
 
@@ -43,19 +43,14 @@ export function removeReviewHistory(db: Db, filter: SQL) {
 }
 
 export function bossStrikes(db: Db, roomId: number, from: Date, to: Date) {
+  const damage = sql<number>`coalesce(${combatSpends.bossDamageDeci}, ${combatSpends.damageDeci})`;
   return db.select({
     userId: users.id, name: users.firstName, at: combatSpends.at,
-    damageDeci: sql<number>`coalesce(${combatSpends.bossDamageDeci}, ${combatSpends.damageDeci})`,
+    damageDeci: damage,
   })
     .from(combatSpends).innerJoin(users, eq(users.id, combatSpends.userId))
-    .where(and(eq(combatSpends.target, "boss"), eq(combatSpends.roomId, roomId), gte(combatSpends.at, from), lt(combatSpends.at, to)))
+    .where(and(eq(combatSpends.target, "boss"), eq(combatSpends.roomId, roomId), gt(damage, 0), gte(combatSpends.at, from), lt(combatSpends.at, to)))
     .orderBy(asc(combatSpends.at), asc(combatSpends.id));
-}
-
-export async function coreUsed(db: Db, userId: number, roomId: number, week: string): Promise<boolean> {
-  const [hit] = await db.select({ id: combatSpends.id }).from(combatSpends)
-    .where(and(eq(combatSpends.userId, userId), eq(combatSpends.roomId, roomId), eq(combatSpends.coreWeek, week))).limit(1);
-  return Boolean(hit);
 }
 
 export async function availableRune(db: Db, user: Pick<typeof users.$inferSelect, "id" | "runesBought">): Promise<number | null> {

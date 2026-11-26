@@ -148,7 +148,7 @@ describe("дневная порция новых слов", () => {
     expect(reminderText(split)).toBe("🆕 2 новых слова ждут знакомства\n📚 Ещё 3 новых слова ждут своей очереди.");
   });
 
-  it("порция настраивается кнопкой в /settings и сразу меняет очередь", async () => {
+  it("порция принимает своё число и возвращается к рекомендованной через кнопку", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 100, "Alice");
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
@@ -157,25 +157,25 @@ describe("дневная порция новых слов", () => {
     }
     expect((await nextDue(h.db, user.id, at(1000)))!.card.state).toBe(0);
 
-    // Открываем экран порции и выбираем «5».
     await h.bot.handleUpdate(h.message(100, "/settings"));
     await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "🆕 Новые слова в день")));
     expect(h.calls.at(-1)?.method).toBe("editMessageText");
     expect(String((h.calls.at(-1)?.payload as { text?: string }).text)).toContain("15");
-    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "⬜️ 5")));
+    await h.bot.handleUpdate(h.message(100, "/settings new 4"));
 
-    // Пять — значит из шести новых за день доступны ровно пять.
     const queue = await dueQueue(h.db, user.id, at(2000), 100);
-    expect(queue).toHaveLength(5);
-    expect(await newPortion(h.db, user.id, at(2000))).toMatchObject({ limit: 5, left: 5 });
+    expect(queue).toHaveLength(4);
+    expect(await newPortion(h.db, user.id, at(2000))).toMatchObject({ limit: 4, left: 4 });
+    await h.bot.handleUpdate(h.callback(100, buttonData(h.calls, "Рекомендованный · 15")));
+    expect(await newPortion(h.db, user.id, at(2000))).toMatchObject({ limit: 15 });
   });
 
-  it("чужое число от кнопки не попадает в настройку", async () => {
+  it("API принимает произвольный предел до 1000 и отклоняет дробь и превышение", async () => {
     const { db, user } = await setup(["a"], 10);
-    // Значение вне списка вариантов невозможно получить через UI, но клиент может прислать своё.
     const { appChangeSetting } = await import("../src/app/manage");
     const deps = { db, now: () => at(1000), bossEnabled: true } as never;
-    const changed = await appChangeSetting(deps, user, { newPerDay: 999 });
-    expect(changed).toMatchObject({ ok: false });
+    expect(await appChangeSetting(deps, user, { newPerDay: 1000 })).toMatchObject({ ok: true, user: { newPerDay: 1000 } });
+    expect(await appChangeSetting(deps, user, { newPerDay: 1001 })).toMatchObject({ ok: false });
+    expect(await appChangeSetting(deps, user, { newPerDay: 10.5 })).toMatchObject({ ok: false });
   });
 });

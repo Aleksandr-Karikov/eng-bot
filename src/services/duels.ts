@@ -27,18 +27,23 @@ function shuffle<T>(items: T[], rng: () => number): T[] {
  * Случайное слово комнаты и 4 варианта перевода. Неправильные — переводы других слов,
  * по возможности того же вида (слово к слову, фраза к фразе), чтобы не угадывалось по длине.
  */
-export async function buildDuelRound(db: Db, roomId: number, rng: () => number, studiedBy?: number): Promise<DuelRound | undefined> {
+export async function buildDuelRound(db: Db, roomId: number, rng: () => number): Promise<DuelRound | undefined> {
   const all = await db.select().from(words).where(eq(words.roomId, roomId));
-  if (all.length < DUEL_OPTIONS) return undefined;
-  let candidates = all;
-  if (studiedBy !== undefined) {
-    const studied = await db.select({ wordId: cards.wordId }).from(cards).innerJoin(words, eq(words.id, cards.wordId))
-      .where(and(eq(cards.userId, studiedBy), eq(words.roomId, roomId), gt(cards.reps, 0)));
-    const ids = new Set(studied.map(({ wordId }) => wordId));
-    candidates = all.filter(({ id }) => ids.has(id));
-  }
-  const word = candidates[Math.floor(rng() * candidates.length)];
-  if (!word) return undefined;
+  if (all.length < DUEL_OPTIONS) return;
+  return choiceRound(all, all[Math.floor(rng() * all.length)], rng);
+}
+
+export async function buildBossRounds(db: Db, roomId: number, userId: number, rng: () => number, count: number): Promise<DuelRound[]> {
+  const all = await db.select().from(words).where(eq(words.roomId, roomId));
+  if (all.length < DUEL_OPTIONS) return [];
+  const studied = await db.select({ wordId: cards.wordId }).from(cards).innerJoin(words, eq(words.id, cards.wordId))
+    .where(and(eq(cards.userId, userId), eq(words.roomId, roomId), gt(cards.reps, 0)));
+  const ids = new Set(studied.map(({ wordId }) => wordId));
+  return shuffle(all.filter(({ id }) => ids.has(id)), rng).slice(0, count)
+    .map((word) => choiceRound(all, word, rng)).filter((round) => round !== undefined);
+}
+
+function choiceRound(all: Word[], word: Word, rng: () => number): DuelRound | undefined {
   const translation = word.translation.trim();
   if (!translation) return undefined;
   const used = new Set([translation.toLowerCase()]);

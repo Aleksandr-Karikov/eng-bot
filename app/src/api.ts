@@ -242,10 +242,8 @@ export interface Settings {
   card: Toggle[];
   /** 🆕 Сколько новых слов показывать за день (E30). 0 — без ограничения. */
   newPerDay: number;
-  /** Варианты порции, чтобы приложение и бот показывали один список. */
-  newPerDayChoices: number[];
   activeLearningLimit: number;
-  activeLearningChoices: number[];
+  learningLimits: { max: number; recommendedDaily: number; recommendedActive: number };
   /** Озвучка карточек: accent — что включать самим, null — выключена; accents — варианты языка комнаты. */
   voice: { accent: VoiceAccent | null; accents: Array<{ key: VoiceAccent; label: string }> };
 }
@@ -483,6 +481,7 @@ export interface BossState {
   combat?: {
     bank: boolean;
     balance: number;
+    attackCost: number;
     roomId: number;
     week: string;
     mobs: Array<{ id: MobId; icon: string; name: string; hp: number; reward: string; defeated: boolean }>;
@@ -493,35 +492,25 @@ export interface BossState {
       next: { days: number; percent: number } | null;
       tiers: Array<{ days: number; percent: number }>;
     };
-    core?: "closed" | "ready" | "spent" | null;
-    weakSpot?: { spend: number; damage: number };
-    hit?: { spend: number; damage: number };
-    rune?: { price: number; owned: boolean; extra: number; saved: number };
+    rune?: { price: number; owned: boolean };
   };
 }
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
-export const fight = (action: { bank: boolean } | { target: CombatTarget; roomId: number; week: string; round?: number; requestId: string; maxDamageDeci: number }) =>
+export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget, "boss">; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
-export interface WeakSpotQuestion {
-  id: string;
-  term: string;
-  options: string[];
-  spend: number;
-  damage: number;
-}
+export type BossAttack = { id: string; revision: number } & (
+  | { kind: "question"; number: number; total: number; term: string; options: string[]; nextDamage: number; missDamage: number }
+  | { kind: "decision"; damage: number; nextDamage: number; missDamage: number }
+  | { kind: "done"; damage: number; translation?: string }
+);
+export type BossMove = { move: "answer"; choice: number } | { move: "stop" | "risk" };
+type AttackReply = { attack: BossAttack; arena?: BossState };
 
-export interface WeakSpotStrike {
-  damage: number;
-  correct: boolean;
-  translation: string;
-}
-
-export const openWeakSpot = () =>
-  postRetry<{ question: WeakSpotQuestion }>("/api/boss/weak-spot").then((r) => r.question);
-export const strikeWeakSpot = (id: string, choice: number) =>
-  postRetry<BossState & { strike: WeakSpotStrike }>("/api/boss/weak-spot/answer", { id, choice });
+export const startBossAttack = () => postRetry<AttackReply>("/api/boss/attack");
+export const moveBossAttack = (attack: BossAttack, move: BossMove) =>
+  postRetry<AttackReply>("/api/boss/attack/move", { id: attack.id, revision: attack.revision, ...move });
 
 /** Купить усиление; в ответ приходит новое состояние босса. */
 export const buyUpgrade = (kind: BossPurchase) => postRetry<BossState & { ok: true }>("/api/boss/upgrade", { kind });

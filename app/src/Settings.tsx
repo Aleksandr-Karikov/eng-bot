@@ -1,4 +1,4 @@
-import { Cell, List, Placeholder, Section, Select, Spinner, Switch } from "@telegram-apps/telegram-ui";
+import { Button, Cell, Input, List, Placeholder, Section, Select, Spinner, Switch } from "@telegram-apps/telegram-ui";
 import { useEffect, useState } from "react";
 import { changeSetting, getSettings, type SettingChange, type Settings, type Toggle } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
@@ -21,9 +21,11 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
     haptic.select();
     try {
       setSettings(await changeSetting(c));
+      return true;
     } catch (err) {
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
+      return false;
     }
   };
 
@@ -64,19 +66,17 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
 
       <Section
         header="🆕 Новые слова в день"
-        footer="Сколько слов из очереди можно начать за день, если есть место в активном обучении."
+        footer="Сколько новых слов можно начать за день, пока есть место в «Учу». Ноль снимает дневной лимит."
       >
-        {settings.newPerDayChoices.map((value) => (
-          <Cell key={value} after={settings.newPerDay === value ? "✓" : undefined} onClick={() => void change({ newPerDay: value })}>
-            {value === 0 ? "Без дневного лимита" : `${value} в день`}
-          </Cell>
-        ))}
+        <LimitField key={settings.newPerDay} label="Новые слова в день" value={settings.newPerDay} min={0}
+          max={settings.learningLimits.max} recommended={settings.learningLimits.recommendedDaily}
+          onSave={(newPerDay) => change({ newPerDay })} />
       </Section>
 
-      <Section header="📚 Активное обучение" footer="Когда слово становится выученным, его место может занять новое. Повторения идут по расписанию.">
-        <Select header="Слов одновременно" aria-label="Слов одновременно" value={settings.activeLearningLimit} onChange={(e) => void change({ activeLearningLimit: Number(e.target.value) })}>
-          {settings.activeLearningChoices.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
+      <Section header="📚 Подборка «Учу»" footer="Сколько слов держать в активном обучении одновременно. Забытые слова могут временно увеличить подборку.">
+        <LimitField key={settings.activeLearningLimit} label="Слов одновременно" value={settings.activeLearningLimit} min={1}
+          max={settings.learningLimits.max} recommended={settings.learningLimits.recommendedActive}
+          onSave={(activeLearningLimit) => change({ activeLearningLimit })} />
       </Section>
 
       <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">
@@ -102,6 +102,39 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         </Cell>
       </Section>
     </List>
+  );
+}
+
+function LimitField({ label, value, min, max, recommended, onSave }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  recommended: number;
+  onSave: (value: number) => Promise<boolean>;
+}) {
+  const [text, setText] = useState(String(value));
+  const [busy, setBusy] = useState(false);
+  const number = Number(text);
+  const valid = /^\d+$/.test(text) && number >= min && number <= max;
+  const save = async (next: number) => {
+    if (busy) return;
+    setBusy(true);
+    if (await onSave(next)) setText(String(next));
+    setBusy(false);
+  };
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); if (valid) void save(number); }}>
+      <Input aria-label={label} inputMode="numeric" value={text} status={valid ? "default" : "error"}
+        disabled={busy} onChange={(event) => setText(event.target.value)} />
+      <div className="form-buttons actions">
+        {!valid && <span className="hint">Введи целое число от {min} до {max}.</span>}
+        <Button type="submit" disabled={busy || !valid || number === value} stretched>Сохранить</Button>
+        <Button type="button" mode="bezeled" disabled={busy} stretched onClick={() => void save(recommended)}>
+          Рекомендованный · {recommended}
+        </Button>
+      </div>
+    </form>
   );
 }
 

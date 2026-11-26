@@ -13,6 +13,7 @@ import type { LeaderRow, PersonalStats } from "../services/stats";
 import { EXTRA_BATCH_SIZE, type countDueSplit, type StudyScope } from "../services/review";
 import type { WordDraft } from "../services/words";
 import { voiceLabel } from "../services/voice";
+import { MAX_LEARNING_LIMIT } from "../services/users";
 import type { SettingsScreen } from "./keyboards";
 
 export const LEARNING_FULL_TEXT = "Места в обучении заняты. Слово осталось в очереди.";
@@ -717,15 +718,17 @@ export function settingsText(user: User, screen: SettingsScreen = "main"): strin
       "Сколько слов из очереди можно начать за день, если есть место в активном обучении.",
       "",
       `Сейчас: <b>${esc(now)}</b>.`,
+      `Своё число от 0 до ${MAX_LEARNING_LIMIT} можно задать командой /settings new 40. Ноль снимает дневной лимит.`,
     ].join("\n");
   }
   if (screen === "active") {
     return [
       "📚 <b>Сколько слов учить одновременно</b>",
       "",
-      "Когда слово становится выученным, его место может занять новое. Повторения идут по расписанию.",
+      "Этот предел указан на экране «Учу». Дневная порция отдельно задаёт число новых слов за день.",
       "",
       `Твой предел — <b>${user.activeLearningLimit} слов</b>.`,
+      `Своё число от 1 до ${MAX_LEARNING_LIMIT} можно задать командой /settings active 40.`,
     ].join("\n");
   }
   return `⚙️ Настройки\n\n⏰ Напоминание в ${user.reminderTime}`;

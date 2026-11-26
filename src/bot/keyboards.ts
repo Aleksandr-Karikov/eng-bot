@@ -4,7 +4,7 @@ import type { Room, User } from "../db/schema";
 import type { DrillQuestion } from "../llm/tutor";
 import { cardView, type CardPart } from "../services/card-view";
 import type { Stage } from "../services/exercises";
-import { ACTIVE_LEARNING_CHOICES } from "../services/users";
+import { DEFAULT_ACTIVE_LEARNING_LIMIT, DEFAULT_NEW_PER_DAY } from "../services/users";
 import type { Batch } from "./batches";
 import type { Picker } from "./pickers";
 import { encodeCb } from "./callbacks";
@@ -280,18 +280,10 @@ export function settingsKeyboard(user: User, screen: SettingsScreen = "main"): I
       .text("🗣 Озвучка карточек", encodeCb({ k: "settingsScreen", screen: "voice" }));
   }
   if (screen === "new") {
-    const kb = new InlineKeyboard();
-    for (const choice of NEW_PER_DAY_CHOICES) {
-      kb.text(`${user.newPerDay === choice.value ? "✅" : "⬜️"} ${choice.label}`, encodeCb({ k: "newPerDay", value: choice.value })).row();
-    }
-    return back(kb);
+    return back(new InlineKeyboard().text(`Рекомендованный · ${DEFAULT_NEW_PER_DAY}`, encodeCb({ k: "newPerDay", value: DEFAULT_NEW_PER_DAY })));
   }
   if (screen === "active") {
-    const kb = new InlineKeyboard();
-    for (const value of ACTIVE_LEARNING_CHOICES) {
-      kb.text(`${user.activeLearningLimit === value ? "✅" : "⬜️"} ${value}`, encodeCb({ k: "activeLearningLimit", value }));
-    }
-    return back(kb);
+    return back(new InlineKeyboard().text(`Рекомендованный · ${DEFAULT_ACTIVE_LEARNING_LIMIT}`, encodeCb({ k: "activeLearningLimit", value: DEFAULT_ACTIVE_LEARNING_LIMIT })));
   }
   if (screen === "remind") {
     const kb = hoursKeyboard().row();
