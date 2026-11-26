@@ -1,26 +1,14 @@
 import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
+import { BossArena } from "./BossArena";
+import { hpFormat } from "./format";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 import { bossScreen } from "../../src/app/boss-screen";
 
-const PHASE: Record<Boss["phase"], { title: string; art: string }> = {
-  fresh: { title: "Спокоен", art: "boss-arena.webp" },
-  angry: { title: "Разозлён", art: "boss-arena.webp" },
-  furious: { title: "В ярости", art: "boss-furious.webp" },
-  dead: { title: "Повержен", art: "boss-defeated.webp" },
-};
-
-const hpFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
 type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
-
-const PACE: Record<Boss["pace"], string> = {
-  ahead: "опережаете график",
-  "on-time": "идёте в темпе",
-  behind: "отстаёте от графика",
-};
 
 function plural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
@@ -58,12 +46,13 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const [fighting, setFighting] = useState<CombatAction>();
   const [attack, setAttack] = useState<BossAttack>();
   const [answering, setAnswering] = useState(false);
+  const attackPending = useRef(false);
   const questionGroup = useRef<HTMLDivElement>(null);
   const busy = Boolean(buying || fighting || answering);
   useBackButton(onExit);
 
   useEffect(() => {
-    if (attack) questionGroup.current?.focus();
+    if (attack) questionGroup.current?.focus({ preventScroll: true });
   }, [attack]);
 
   useEffect(() => {
@@ -131,7 +120,8 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   };
 
   const attackAction = async (move?: BossMove) => {
-    if (busy) return;
+    if (busy || attackPending.current) return;
+    attackPending.current = true;
     setAnswering(true);
     try {
       const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack();
@@ -142,6 +132,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       if (err instanceof ApiError && err.status === 409) setAttack(undefined);
       notify(err instanceof Error ? err.message : String(err));
     } finally {
+      attackPending.current = false;
       setAnswering(false);
     }
   };
@@ -176,49 +167,63 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
       victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy || playing}
-      actions={data.combat && (
-        <CombatPanel combat={data.combat} busy={busy || playing} fighting={fighting}
-          onAction={(action) => void fightAction(action)}>
+      attack={attack}
+      actions={data.combat && <CombatPanel combat={data.combat} busy={busy || playing} fighting={fighting}
+        onAction={(action) => void fightAction(action)} />}
+      fightPanel={data.combat && (
+        <div className="arena-fight">
           {attack?.kind === "question" && (
-            <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Перевод ${attack.term}`} className="choice-options">
-              <Text className="hint">Вопрос {attack.number} из {attack.total}</Text>
-              <Text weight="2">Что значит «{attack.term}»?</Text>
-              <Text className="hint">Верно — {attack.nextDamage} HP. Ошибка — {hpFormat.format(attack.missDamage)} HP.</Text>
-              {attack.options.map((option, index) => (
-                <Button key={option} className="attack-option" mode="bezeled" stretched disabled={busy} onClick={() => void attackAction({ move: "answer", choice: index })}>
-                  <span>{option}</span>
-                </Button>
-              ))}
+            <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Перевод ${attack.term}`} className="arena-turn">
+              <div className="arena-turn-head">
+                <Text weight="2" className="arena-term">Что значит «{attack.term}»?</Text>
+                <span className="arena-note">Вопрос {attack.number} из {attack.total}</span>
+              </div>
+              <span className="arena-note">Верно — заряд {hpFormat.format(attack.nextDamage)} HP. Ошибка — удар на {hpFormat.format(attack.missDamage)} HP.</span>
+              <div className="arena-options">
+                {attack.options.map((option, index) => (
+                  <Button key={option} className="arena-option" stretched disabled={busy} onClick={() => void attackAction({ move: "answer", choice: index })}>
+                    <span>{option}</span>
+                  </Button>
+                ))}
+              </div>
             </div>
           )}
           {attack?.kind === "decision" && (
-            <div ref={questionGroup} tabIndex={-1} role="group" aria-label="Выбор удара" className="choice-options">
-              <Text weight="2">Верно. Набрано {attack.damage} HP</Text>
-              <Button stretched disabled={busy} onClick={() => void attackAction({ move: "stop" })}>Нанести {attack.damage} HP</Button>
-              <Button mode="bezeled" stretched disabled={busy} onClick={() => void attackAction({ move: "risk" })}>
-                Рискнуть ради {attack.nextDamage} HP
-              </Button>
-              <Text className="hint">При ошибке останется {hpFormat.format(attack.missDamage)} HP.</Text>
+            <div ref={questionGroup} tabIndex={-1} role="group" aria-label="Выбор удара" className="arena-turn">
+              <Text weight="2">Верный перевод</Text>
+              <div className="arena-options">
+                <Button className="arena-primary" stretched disabled={busy} onClick={() => void attackAction({ move: "stop" })}>
+                  <span>Ударить · {hpFormat.format(attack.damage)} HP</span>
+                </Button>
+                <Button className="arena-option" stretched disabled={busy} onClick={() => void attackAction({ move: "risk" })}>
+                  <span>Рискнуть · до {hpFormat.format(attack.nextDamage)} HP</span>
+                </Button>
+              </div>
+              <span className="arena-note">Если ошибёшься, удар нанесёт {hpFormat.format(attack.missDamage)} HP.</span>
             </div>
           )}
           {attack?.kind === "done" && (
-            <div ref={questionGroup} tabIndex={-1} role="status" className="choice-options">
+            <div ref={questionGroup} tabIndex={-1} role="status" className="arena-turn arena-result">
               <Text weight="2">−{data.combat.attackCost} ⚡ · нанесено {hpFormat.format(attack.damage)} урона</Text>
-              {attack.translation && <Text className="hint">Правильный перевод — «{attack.translation}».</Text>}
+              {attack.translation && <span className="arena-note">Правильный перевод — «{attack.translation}».</span>}
             </div>
           )}
           {!playing && data.boss.hp > 0 && (
-            <>
-              <Text className="hint">До трёх переводов. После верного ответа можно ударить или продолжить. Ошибка оставляет половину набранного урона, на первом вопросе — 0.</Text>
-              <Button stretched loading={answering} disabled={busy || data.combat.balance < data.combat.attackCost} onClick={() => void attackAction()}>
-                Атаковать · {data.combat.attackCost} ⚡
-              </Button>
+            <div className="arena-turn">
+              <span className="arena-note">До трёх переводов. После верного ответа можно ударить или продолжить. Ошибка оставит половину набранного урона.</span>
+              <div className="arena-start">
+                <Button size="m" className="arena-primary" loading={answering} disabled={busy || data.combat.balance < data.combat.attackCost}
+                  onClick={() => void attackAction()}>
+                  Атаковать · {data.combat.attackCost} ⚡
+                </Button>
+                <strong className="arena-balance">У тебя {hpFormat.format(data.combat.balance)} ⚡</strong>
+              </div>
               {data.combat.balance < data.combat.attackCost && (
-                <Text className="hint">До атаки нужно ещё {hpFormat.format(data.combat.attackCost - data.combat.balance)} ⚡.</Text>
+                <span className="arena-note">До атаки нужно ещё {hpFormat.format(data.combat.attackCost - data.combat.balance)} ⚡.</span>
               )}
-            </>
+            </div>
           )}
-        </CombatPanel>
+        </div>
       )} />
   );
 }
@@ -235,6 +240,8 @@ function BossView({
   buying,
   busy,
   actions,
+  attack,
+  fightPanel,
 }: {
   boss: Boss;
   hits: BossState["hits"];
@@ -247,78 +254,19 @@ function BossView({
   buying: BossPurchase | undefined;
   busy: boolean;
   actions?: React.ReactNode;
+  attack?: BossAttack;
+  fightPanel?: React.ReactNode;
 }) {
-  const phase = PHASE[boss.phase];
-  const portrait = boss.opponent?.id === "sentinel" ? "boss-sentinel.webp" : phase.art;
   const reducedMotion = useReducedMotion();
-  // HP текущего босса, а не недельная цель: у второго босса он толще, и полоска должна это показывать.
-  const maxHp = boss.bossHp ?? boss.target;
-  const percent = maxHp > 0 ? Math.min(100, (boss.hp / maxHp) * 100) : 0;
-  // Добитый босс сразу уступает место следующему, поэтому «мёртв» — это не экран, а счёт побед.
   const kills = boss.kills ?? 0;
-  /** «20:00 (UTC+03:00)» — по поясу комнаты, а не зашитым «по Новосибирску». */
   const weekEnd = weekEndLabel(boss.timeZone);
-  const previous = useRef(boss);
-  const [strike, setStrike] = useState<{ damage: number; done: number }>();
-
-  useEffect(() => {
-    const last = previous.current;
-    previous.current = boss;
-    if (last.room === boss.room && last.week === boss.week && last.round === boss.round && boss.hp < last.hp) {
-      setStrike({ damage: last.hp - boss.hp, done: boss.done });
-    }
-  }, [boss]);
-
-  useEffect(() => {
-    if (!strike) return;
-    const timer = setTimeout(() => setStrike(undefined), 1400);
-    return () => clearTimeout(timer);
-  }, [strike]);
-
   const top = boss.byUser.slice(0, 4);
   const rune = combat?.rune;
   const streak = combat?.streak;
 
   return (
     <div className="screen boss-screen">
-      <div className="boss-stage" data-phase={boss.phase} data-opponent={boss.opponent?.id}>
-        <div className="boss-portrait">
-          <img src={`${import.meta.env.BASE_URL}${portrait}`} alt="" />
-          <div className="boss-caption">
-            <span className="boss-kicker">
-              {/* Номер босса: добили — на арене следующий, и это видно сразу, а не по изменившемуся имени. */}
-              {boss.tier && boss.tier > 1
-                ? `Босс недели · ступень ${boss.tier}${boss.cycle && boss.cycle > 1 ? ` · круг ${boss.cycle}` : ""}`
-                : "Босс недели"}
-            </span>
-            <h1>{boss.opponent?.name ?? "Дракон библиотеки"}</h1>
-          </div>
-          <span className="boss-phase">{phase.title}</span>
-          <AnimatePresence>
-            {strike && (
-              <motion.span key={strike.done} className="boss-strike" aria-hidden="true"
-                initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={reducedMotion ? undefined : { opacity: 0, y: -12 }}>
-                −{hpFormat.format(strike.damage)} HP
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </div>
-        <div className="boss-hud">
-          <div className="boss-hp" aria-live="polite">
-            <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(maxHp)} HP
-          </div>
-          <div className={strike ? "boss-bar struck" : "boss-bar"} role="progressbar" aria-label="Здоровье босса"
-            aria-valuemin={0} aria-valuemax={maxHp} aria-valuenow={boss.hp}>
-            <div className="boss-bar-fill" style={{ width: `${percent}%` }} />
-          </div>
-          <div className="boss-meta">
-            <span>Снято {hpFormat.format(boss.done)} HP</span>
-            <span>{kills > 0 ? `Добито: ${kills}` : PACE[boss.pace]}</span>
-          </div>
-        </div>
-      </div>
+      <BossArena boss={boss} attack={attack}>{fightPanel}</BossArena>
 
       <div className="boss-head">
         <Text weight="2">{boss.room}</Text>
@@ -443,12 +391,11 @@ function BossView({
   );
 }
 
-function CombatPanel({ combat, busy, fighting, onAction, children }: {
+function CombatPanel({ combat, busy, fighting, onAction }: {
   combat: NonNullable<BossState["combat"]>;
   busy: boolean;
   fighting?: CombatAction;
   onAction: (action: CombatAction) => void;
-  children?: React.ReactNode;
 }) {
   return (
     <div className="boss-members combat-panel">
@@ -463,7 +410,6 @@ function CombatPanel({ combat, busy, fighting, onAction, children }: {
       <Text className="hint">
         {combat.bank ? "Потрать энергию на босса или мобов. Остаток переносится между неделями." : "Ответы сразу наносят урон боссу комнаты."}
       </Text>
-      {children}
       <details className="combat-mobs">
         <summary>Мобы недели</summary>
         {combat.mobs.map((mob) => (

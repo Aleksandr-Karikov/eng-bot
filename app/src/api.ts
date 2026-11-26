@@ -505,7 +505,7 @@ export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
 export type BossAttack = { id: string; revision: number } & (
-  | { kind: "question"; number: number; total: number; term: string; options: string[]; nextDamage: number; missDamage: number }
+  | { kind: "question"; number: number; total: number; term: string; options: string[]; damage: number; nextDamage: number; missDamage: number }
   | { kind: "decision"; damage: number; nextDamage: number; missDamage: number }
   | { kind: "done"; damage: number; translation?: string }
 );

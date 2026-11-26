@@ -112,7 +112,7 @@ export class AppBossAttack {
       const { term, options } = attack.rounds[phase.index];
       view = {
         id, revision, kind: phase.kind, number: phase.index + 1, total: attack.rounds.length, term, options,
-        nextDamage: DAMAGE[phase.index + 1], missDamage: DAMAGE[phase.index] / 2,
+        damage: DAMAGE[phase.index], nextDamage: DAMAGE[phase.index + 1], missDamage: DAMAGE[phase.index] / 2,
       } as const;
     } else if (phase.kind === "decision") {
       const damage = DAMAGE[phase.index + 1];

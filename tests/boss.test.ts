@@ -221,7 +221,7 @@ describe("атака серией переводов", () => {
     expect((await post("combat", { target: "boss" })).status).toBe(409);
 
     const first = await start();
-    expect(first).toMatchObject({ kind: "question", number: 1, total: 3 });
+    expect(first).toMatchObject({ kind: "question", number: 1, total: 3, damage: 0 });
     expect(first).not.toHaveProperty("correct");
     expect(await start()).toEqual(first);
     expect((await act(first, "stop")).status).toBe(400);
@@ -237,6 +237,7 @@ describe("атака серией переводов", () => {
 
     const one = await start();
     const two = await step(await step(one, "answer", correct(one)), "risk");
+    expect(two).toMatchObject({ kind: "question", number: 2, damage: 5, missDamage: 2.5 });
     const secondDecision = await step(two, "answer", correct(two));
     expect(secondDecision).toMatchObject({ kind: "decision", damage: 10, nextDamage: 18, missDamage: 5 });
     const three = await step(secondDecision, "risk");

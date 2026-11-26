@@ -1,5 +1,7 @@
 import { studyLanguage } from "./language";
 
+export const hpFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+
 /**
  * Полезность слова — словами, а не эмодзи-кружком: в интерфейсе она рисуется точкой (icons.tsx),
  * а в разборе правки нужен текст.

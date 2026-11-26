@@ -24,3 +24,26 @@ export function bossScreen(data: { enabled: boolean } | undefined): BossScreen {
   // Выключенный режим проверяем ПЕРВЫМ: если рубильник снят, комната не поможет, и советовать её нельзя.
   return data.enabled ? { state: "enabled" } : { state: "disabled" };
 }
+
+type ArenaBoss = {
+  room: string;
+  week?: string;
+  round?: number;
+  hp: number;
+  opponent?: { id: "dragon" | "sentinel" };
+};
+
+export type ArenaImpact =
+  | { kind: "block" }
+  | { kind: "hit"; damage: number; own: boolean }
+  | { kind: "victory"; defeated: "dragon" | "sentinel" };
+
+export function arenaImpact(before: ArenaBoss, after: ArenaBoss, ownDamage?: number): ArenaImpact | undefined {
+  if (before.room !== after.room || before.week !== after.week) return;
+  const beforeRound = before.round ?? 1;
+  const afterRound = after.round ?? 1;
+  if (afterRound > beforeRound) return { kind: "victory", defeated: before.opponent?.id ?? "dragon" };
+  if (beforeRound !== afterRound) return;
+  if (ownDamage !== undefined) return ownDamage > 0 ? { kind: "hit", damage: ownDamage, own: true } : { kind: "block" };
+  if (after.hp < before.hp) return { kind: "hit", damage: before.hp - after.hp, own: false };
+}
