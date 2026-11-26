@@ -34,11 +34,13 @@ function BackToCards({ onExit }: { onExit: () => void }) {
 }
 
 /** Слова комнаты: поиск, фильтры по моему прогрессу и страница слова по тапу. */
-export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSets: () => void; onSettings: () => void }) {
+export function Words({ initialFilter, onExit, onSets, onSettings }: {
+  initialFilter: "all" | "learning"; onExit: () => void; onSets: () => void; onSettings: () => void;
+}) {
   const [data, setData] = useState<Awaited<ReturnType<typeof getWords>>>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<string>(initialFilter);
   const [open, setOpen] = useState<number>();
   const [adding, setAdding] = useState(false);
 
@@ -90,7 +92,8 @@ export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSe
     );
   }
   const back = <BackToCards onExit={onExit} />;
-  if (error) return <>{back}<Placeholder header="Не получилось загрузить" description={error} /></>;
+  if (error) return <>{back}<Placeholder header="Не получилось загрузить слова" description={error}
+    action={<Button onClick={() => { setError(undefined); void load(); }}>Попробовать снова</Button>} /></>;
   if (!data) {
     return (
       <div className="center">
@@ -100,12 +103,13 @@ export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSe
     );
   }
   if (!data.room) return <>{back}<Placeholder header="Нет комнаты" description="Выбери комнату в настройках или создай в боте: /newroom" /></>;
+  const learning = filter === "learning";
 
   return (
-    <List>
+    <List className="word-list">
       {back}
-      <div className="form-buttons add-word">
-        <Button size="m" stretched mode="bezeled" onClick={() => setAdding(true)}>
+      {!learning && <div className="form-buttons add-word">
+        <Button size="m" stretched onClick={() => setAdding(true)}>
           <ButtonIcon>
             <IconPlus size={18} />
             Добавить слово
@@ -117,9 +121,8 @@ export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSe
             Наборы слов
           </ButtonIcon>
         </Button>
-      </div>
-      <Input placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
-      <div className="chips">
+      </div>}
+      <div className="chips word-filters" aria-label="Фильтр слов" role="group">
         {FILTERS.map((f) => (
           <Chip
             key={f.id}
@@ -137,15 +140,16 @@ export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSe
           </Chip>
         ))}
       </div>
-      <Section header={filter === "learning" ? `Учу · сейчас ${data.active.length} · предел ${data.limit}` : `${data.room} · ${shown.length}`}
-        footer={filter === "learning" && data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела." : undefined}>
-        {filter === "learning" && (
-          <>
-            <Cell Component="button" type="button" className="word-list-control" onClick={onSettings}>Настроить предел «Учу»</Cell>
-            <Cell Component="button" type="button" className="word-list-control" onClick={() => { setQuery(""); setFilter("waiting"); }}>Выбрать слово из очереди</Cell>
-          </>
+      <Input aria-label="Поиск слов" placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <Section header={learning ? `Учу · ${data.active.length} из ${data.limit}` : `${data.room} · ${shown.length}`}
+        footer={learning && data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела." : undefined}>
+        {learning && (
+          <div className="form-buttons list-actions">
+            <Button mode="bezeled" size="m" onClick={() => { haptic.select(); setQuery(""); setFilter("waiting"); }}>Выбрать из очереди</Button>
+            <Button mode="plain" size="m" onClick={onSettings}>Настроить лимит</Button>
+          </div>
         )}
-        {shown.length === 0 && <Cell multiline>Ничего не нашлось</Cell>}
+        {shown.length === 0 && <Cell multiline>{learning && !query.trim() ? "В «Учу» пока нет слов" : "Ничего не нашлось"}</Cell>}
         {shown.map((w) => (
           <Cell
             key={w.id}
@@ -153,7 +157,7 @@ export function Words({ onExit, onSets, onSettings }: { onExit: () => void; onSe
             type="button"
             className="word-list-control"
             subtitle={w.room ? `${w.translation} · ${w.room}` : w.translation}
-            after={<span className={`status status-${w.status}`}>{STATUS_LABEL[w.status]}</span>}
+            after={(!learning || w.status !== "learning") && <span className={`status status-${w.status}`}>{STATUS_LABEL[w.status]}</span>}
             onClick={() => {
               haptic.tap();
               setOpen(w.id);

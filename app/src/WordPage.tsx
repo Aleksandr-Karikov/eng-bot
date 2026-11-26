@@ -127,6 +127,32 @@ export function WordPage({ id, onClose, learning }: {
         </div>
       </div>
 
+      {learning && (
+        <div className="word-learning">
+          {replacing ? (
+            <>
+              <Select header="Какое слово отложить" aria-label="Какое слово отложить" value={outgoing} disabled={busy} onChange={(event) => setOutgoing(event.target.value)}>
+                <option value="" disabled>Выбери слово из «Учу»</option>
+                {learning.active.map((item) => <option key={item.id} value={item.id}>{item.term} · {item.room}</option>)}
+              </Select>
+              <div className="form-buttons list-actions">
+                <Button mode="plain" size="m" disabled={busy} onClick={() => { setReplacing(false); setTakeError(undefined); }}>Отмена</Button>
+                <Button size="m" disabled={!outgoing || busy} loading={busy} onClick={() => void take(Number(outgoing))}>Заменить</Button>
+              </div>
+              <Cell multiline>Отложенное слово вернётся в очередь с прежним прогрессом.</Cell>
+            </>
+          ) : (
+            <div className="form-buttons">
+              <Button size="m" stretched disabled={busy} loading={busy} onClick={() => {
+                if (learning.active.length >= learning.limit) setReplacing(true);
+                else void take();
+              }}>Взять в «Учу»</Button>
+            </div>
+          )}
+          {takeError && <Cell multiline><span className="danger" role="alert">{takeError}</span></Cell>}
+        </div>
+      )}
+
       {word.explanation && (
         <Section header="Объяснение">
           <Cell multiline>{word.explanation}</Cell>
@@ -208,26 +234,6 @@ export function WordPage({ id, onClose, learning }: {
       {word.hasPicture && <div className="picture word-picture">{picture && <img src={picture} alt="" />}</div>}
 
       <Section header="Управление словом">
-        {learning && !replacing && (
-          <Cell Component="button" type="button" className="word-list-control" disabled={busy} onClick={() => {
-            if (learning.active.length >= learning.limit) setReplacing(true);
-            else void take();
-          }}>Взять в обучение</Cell>
-        )}
-        {learning && replacing && (
-          <>
-            <Select header="Какое слово отложить" aria-label="Какое слово отложить" value={outgoing} disabled={busy} onChange={(event) => setOutgoing(event.target.value)}>
-              <option value="" disabled>Выбери слово из «Учу»</option>
-              {learning.active.map((item) => <option key={item.id} value={item.id}>{item.term} · {item.room}</option>)}
-            </Select>
-            <div className="row form-buttons">
-              <Button mode="bezeled" size="m" stretched disabled={busy} onClick={() => { setReplacing(false); setTakeError(undefined); }}>Отмена</Button>
-              <Button size="m" stretched disabled={!outgoing || busy} onClick={() => void take(Number(outgoing))}>Заменить</Button>
-            </div>
-            <Cell multiline>Отложенное слово вернётся в очередь с прежним прогрессом.</Cell>
-          </>
-        )}
-        {takeError && <Cell multiline><span className="danger" role="alert">{takeError}</span></Cell>}
         <Cell onClick={() => setCorrecting(true)}>Исправить с ИИ</Cell>
         <Cell onClick={() => setEditing(true)}>Изменить перевод и объяснение</Cell>
         {word.usefulness === 1 && <Cell onClick={() => void act("promote")}>Сделать полезным — учить полностью</Cell>}

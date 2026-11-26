@@ -6,7 +6,7 @@ import { haptic, notify, useBackButton } from "./telegram";
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** Те же настройки, что /settings в боте: каждое изменение сохраняется сразу. */
-export function SettingsScreen({ onExit }: { onExit: () => void }) {
+export function SettingsScreen({ onExit, limitsFirst }: { onExit: () => void; limitsFirst: boolean }) {
   const [settings, setSettings] = useState<Settings>();
   const [error, setError] = useState<string>();
   useBackButton(onExit);
@@ -41,29 +41,8 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
   const toggles = (items: Toggle[], toChange: (t: Toggle) => SettingChange) =>
     items.map((t) => <SwitchCell key={t.key} label={t.label} on={t.on} onChange={() => void change(toChange(t))} />);
 
-  return (
-    <List>
-      <Section header="Комната" footer="Сюда попадают новые слова и отсюда — карточки.">
-        {settings.rooms.length === 0 && <Cell multiline>Пока ни одной — создай в боте: /newroom</Cell>}
-        {settings.rooms.map((r) => (
-          <Cell key={r.id} after={r.current ? "✓" : undefined} onClick={() => !r.current && void change({ room: r.id })}>
-            {r.name}
-          </Cell>
-        ))}
-      </Section>
-
-      <Section header="⏰ Напоминания">
-        <Select header="Напоминать в" value={settings.reminderHour} onChange={(e) => void change({ reminderHour: Number(e.target.value) })}>
-          {HOURS.map((h) => (
-            <option key={h} value={h}>
-              {String(h).padStart(2, "0")}:00
-            </option>
-          ))}
-        </Select>
-        <SwitchCell label="Когда снова есть что повторить" on={settings.notifyDue} onChange={() => void change({ notifyDue: !settings.notifyDue })} />
-        <SwitchCell label="Итог недели в воскресенье" on={settings.weeklyReport} onChange={() => void change({ weeklyReport: !settings.weeklyReport })} />
-      </Section>
-
+  const limits = (
+    <>
       <Section
         header="🆕 Новые слова в день"
         footer="Сколько новых слов можно начать за день, пока есть место в «Учу». Ноль снимает дневной лимит."
@@ -77,6 +56,33 @@ export function SettingsScreen({ onExit }: { onExit: () => void }) {
         <LimitField key={settings.activeLearningLimit} label="Слов одновременно" value={settings.activeLearningLimit} min={1}
           max={settings.learningLimits.max} recommended={settings.learningLimits.recommendedActive}
           onSave={(activeLearningLimit) => change({ activeLearningLimit })} />
+      </Section>
+    </>
+  );
+
+  return (
+    <List>
+      {limitsFirst && limits}
+      <Section header="Комната" footer="Сюда попадают новые слова и отсюда — карточки.">
+        {settings.rooms.length === 0 && <Cell multiline>Пока ни одной — создай в боте: /newroom</Cell>}
+        {settings.rooms.map((r) => (
+          <Cell key={r.id} after={r.current ? "✓" : undefined} onClick={() => !r.current && void change({ room: r.id })}>
+            {r.name}
+          </Cell>
+        ))}
+      </Section>
+      {!limitsFirst && limits}
+
+      <Section header="⏰ Напоминания">
+        <Select header="Напоминать в" value={settings.reminderHour} onChange={(e) => void change({ reminderHour: Number(e.target.value) })}>
+          {HOURS.map((h) => (
+            <option key={h} value={h}>
+              {String(h).padStart(2, "0")}:00
+            </option>
+          ))}
+        </Select>
+        <SwitchCell label="Когда снова есть что повторить" on={settings.notifyDue} onChange={() => void change({ notifyDue: !settings.notifyDue })} />
+        <SwitchCell label="Итог недели в воскресенье" on={settings.weeklyReport} onChange={() => void change({ weeklyReport: !settings.weeklyReport })} />
       </Section>
 
       <Section header="🎯 Упражнения" footer="Хотя бы одно должно остаться включённым.">
@@ -124,15 +130,20 @@ function LimitField({ label, value, min, max, recommended, onSave }: {
     setBusy(false);
   };
   return (
-    <form onSubmit={(event) => { event.preventDefault(); if (valid) void save(number); }}>
+    <form aria-label={label} onSubmit={(event) => { event.preventDefault(); if (valid && number !== value) void save(number); }}>
       <Input aria-label={label} inputMode="numeric" value={text} status={valid ? "default" : "error"}
         disabled={busy} onChange={(event) => setText(event.target.value)} />
       <div className="form-buttons actions">
         {!valid && <span className="hint">Введи целое число от {min} до {max}.</span>}
-        <Button type="submit" disabled={busy || !valid || number === value} stretched>Сохранить</Button>
-        <Button type="button" mode="bezeled" disabled={busy} stretched onClick={() => void save(recommended)}>
-          Рекомендованный · {recommended}
-        </Button>
+        <div className="list-actions">
+          <Button size="m" type="submit" disabled={busy || !valid || number === value}>Сохранить</Button>
+          {value === recommended && text === String(recommended) ? <span className="hint">Рекомендуем {recommended}</span> : (
+            <Button size="m" type="button" mode="plain" disabled={busy}
+              onClick={() => value === recommended ? setText(String(value)) : void save(recommended)}>
+              Сбросить до {recommended}
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   );

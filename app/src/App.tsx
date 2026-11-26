@@ -13,12 +13,12 @@ import { Words } from "./Words";
 import { IconBook, IconChart, IconClose, IconGrammar, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "settings" | "progress" | "sets" | "boss" | "grammar";
+type Page = "learn" | "words" | "learning" | "settings" | "progress" | "sets" | "boss" | "grammar";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "settings", "progress", "sets", "boss", "grammar"];
+  const pages: Page[] = ["words", "learning", "settings", "progress", "sets", "boss", "grammar"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -28,10 +28,12 @@ function startPage(): Page {
  */
 export function App() {
   const [page, setPage] = useState<Page>(startPage);
+  const [limitsBack, setLimitsBack] = useState<"learn" | "learning">();
   /** Набор, который надо открыть сразу: заполняет пустой `/learn`, когда у человека нет слов. */
   const [startSetId, setStartSetId] = useState<number>();
-  const open = useCallback((next: Page) => {
+  const open = useCallback((next: Page, returnFromLimits?: "learn" | "learning") => {
     haptic.select();
+    setLimitsBack(returnFromLimits);
     setPage(next);
   }, []);
   /** `setId` — открыть конкретный набор, а не список: так кнопка новичка ведёт прямо в A1. */
@@ -69,8 +71,11 @@ export function App() {
     return () => off?.();
   }, [open]);
 
-  if (page === "words") return <Words onExit={back} onSets={() => openSets()} onSettings={() => open("settings")} />;
-  if (page === "settings") return <SettingsScreen onExit={back} />;
+  if (page === "words" || page === "learning") {
+    return <Words initialFilter={page === "learning" ? "learning" : "all"}
+      onExit={back} onSets={() => openSets()} onSettings={() => open("settings", "learning")} />;
+  }
+  if (page === "settings") return <SettingsScreen limitsFirst={limitsBack !== undefined} onExit={() => setPage(limitsBack ?? "learn")} />;
   if (page === "progress") return <ProgressScreen onExit={back} />;
   if (page === "sets") return <Sets onExit={back} startSetId={startSetId} />;
   if (page === "boss") return <BossScreen onExit={back} />;
@@ -78,8 +83,9 @@ export function App() {
   return (
     <Learn
       onSets={openSets}
-      onSettings={() => open("settings")}
+      onSettings={() => open("settings", "learn")}
       onBoss={() => open("boss")}
+      onLearning={() => open("learning")}
       corner={
         // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
         // а по отдельности они не действия, а навигация.

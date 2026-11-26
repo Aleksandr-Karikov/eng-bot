@@ -3,7 +3,6 @@ import { cardAudioPath, preloadAudio } from "./sound";
 import { setStudyLanguage, studyLanguage } from "./language";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { miniApp } from "@telegram-apps/sdk-react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
@@ -12,7 +11,6 @@ import { TypeCard } from "./TypeCard";
 import { DialogueCard } from "./DialogueCard";
 import { LessonButton } from "./LessonButton";
 import { SwipeCard } from "./SwipeCard";
-import { useBottomButtons } from "./bottomButtons";
 import { IconChevronDown, IconChevronUp, IconPencil, IconUndo } from "./icons";
 import { haptic, notify } from "./telegram";
 
@@ -47,7 +45,9 @@ const UNDO_DEPTH = 5;
 type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void }) {
+export function Learn({ corner, onSets, onSettings, onBoss, onLearning }: {
+  corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void; onLearning: () => void;
+}) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -74,10 +74,12 @@ export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNod
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
   const loadVersion = useRef(0);
+  const requestedExtra = useRef(false);
   const sessionVersion = useRef(0);
 
   const load = useCallback(async (extra = false) => {
     const version = ++loadVersion.current;
+    requestedExtra.current = extra;
     setLoading(true);
     try {
       // Сначала дождаться отправленных оценок: иначе сервер вернёт только что пройденную карточку
@@ -308,9 +310,10 @@ export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNod
     !me ? undefined : id === "all" ? me.due.review + me.due.fresh : id === "reviews" ? me.due.review : id === "fresh" ? me.due.fresh : undefined;
   // На пустом экране режимы нужны, чтобы из «Новые» можно было перейти к повторам.
   const modes = headerFolded && card ? null : (
-    <div className="chips modes">
+    <div className="chips modes" role="group" aria-label="Режим обучения">
       {MODES.map((m) => (
-        <Chip key={m.id} mode={mode === m.id ? "mono" : "outline"} onClick={() => changeMode(m.id)}>
+        <Chip key={m.id} Component="button" type="button" className="word-filter"
+          aria-pressed={mode === m.id} mode={mode === m.id ? "mono" : "outline"} onClick={() => changeMode(m.id)}>
           {m.label}
           {count(m.id) ? ` ${count(m.id)}` : ""}
         </Chip>
@@ -329,19 +332,20 @@ export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNod
 
   if (error || (loading && !card) || !card) {
     return (
-      <div className="screen">
+      <div className="screen learn-status">
         {header}
         {modes}
-      {damageEffect}
+        {damageEffect}
         {error ? (
-          <Placeholder header="Не получилось загрузить" description={error} action={<Button onClick={() => void load()}>Попробовать снова</Button>} />
+          <Placeholder header="Не получилось загрузить" description={error}
+            action={<Button onClick={() => void load(requestedExtra.current)}>Попробовать снова</Button>} />
         ) : loading ? (
           <div className="center">
             <Spinner size="l" />
           </div>
         ) : (
           <Done done={done} energy={me?.bankDamage ? sessionDamage : 0} me={me} mode={mode}
-            onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} onBoss={onBoss} />
+            onSets={onSets} onExtra={() => void load(true)} onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} />
         )}
       </div>
     );
@@ -417,11 +421,9 @@ export function Learn({ corner, onSets, onSettings, onBoss }: { corner: ReactNod
  * - **всё повторил** (`total > 0`) — честное «появятся сами, бот напомнит», так и есть;
  * - **нечего учить** (`total === 0`) — новичок, который только что открыл бота и увидел пустоту.
  *   Ему нельзя говорить «жди»: ждать нечего, слов нет вовсе. Вместо этого один тап до готового
- *   набора A1, но только предложением — «Позже» остаётся на месте, никто ничего не навязывает.
- *
- * Нативная кнопка «Закрыть» внизу — или своя, вне Telegram.
+ *   набора A1.
  */
-function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss }: {
+function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss, onLearning }: {
   done: number;
   energy: number;
   me?: Me;
@@ -430,13 +432,9 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss }: {
   onExtra: () => void;
   onSettings: () => void;
   onBoss: () => void;
+  onLearning: () => void;
 }) {
-  const native = useBottomButtons({ text: "Закрыть", onClick: () => miniApp.close() });
   const starter = me?.starterSet;
-  /**
-   * Урон этого захода. Показываем именно здесь, на «Готово»: человек уходит с мыслью «я снял 12 HP»,
-   * а не с сухим отчётом. Вкладку босса ещё надо не забыть открыть — экран «Готово» забыть нельзя.
-   */
   const [boss, setBoss] = useState<Boss>();
   useEffect(() => {
     if (!me?.boss) return;
@@ -447,22 +445,15 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss }: {
 
   if (starter && done === 0) {
     return (
-      <Placeholder
+      <Placeholder className="learn-result"
         header="Пока нечего учить"
         description={`Возьми готовый набор — «${starter.title}», ${starter.total} слов. Листаешь: знаю / учу / не для меня. Взятое сразу появится здесь.`}
         action={
-          <div className="actions">
+          <div className="actions learn-result-actions">
             <Button size="l" stretched onClick={() => onSets(starter.id)}>
               Начать с «{starter.title}»
             </Button>
-            <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>
-              Выбрать другой набор
-            </Button>
-            {!native && (
-              <Button mode="plain" size="m" stretched onClick={() => miniApp.close()}>
-                Позже
-              </Button>
-            )}
+            <Button mode="plain" size="m" stretched onClick={() => onSets()}>Выбрать другой набор</Button>
           </div>
         }
       />
@@ -471,37 +462,28 @@ function Done({ done, energy, me, mode, onSets, onExtra, onSettings, onBoss }: {
 
   const notice = mode !== "hard" ? me?.limitNotices?.[mode] : undefined;
   const extraLabel = mode !== "hard" ? me?.extraLabels?.[mode] : undefined;
-  const message = notice ? `${notice} Лимиты можно изменить в настройках.` : "Новые слова и повторения появятся сами — бот напомнит.";
-  const header = notice ? "Лимит обучения достигнут" : mode === "fresh" ? "Сейчас нет новых карточек" : "Сейчас нечего повторять";
+  const showExtra = Boolean(notice && extraLabel);
+  const message = notice ?? (mode === "all" || mode === "reviews" ? "Повторения появятся по расписанию." : undefined);
+  const emptyHeader = { all: "Сейчас нечего повторять", reviews: "Сейчас нечего повторять", fresh: "Сейчас нет новых карточек", hard: "Сейчас нет трудных карточек" };
   return (
     <Placeholder
-      header={done ? `Готово! Пройдено карточек: ${done}` : header}
-      description={
-        energy > 0
-          ? `За занятие: +${energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡. ${message}`
-          : boss
-          ? `Босс недели: снято ${Math.round(Math.min(1, boss.damage) * 100)}% HP${boss.phase === "dead" ? " — он повержен" : `, осталось ${boss.hp}`}. ${message}`
-          : message
-      }
+      className="learn-result"
+      header={done ? `Готово! Пройдено карточек: ${done}` : notice ? "Лимит обучения достигнут" : emptyHeader[mode]}
+      description={<>
+        {energy > 0 ? <span className="result-stat">За занятие +{energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡</span>
+          : boss && <span className="result-stat">{boss.phase === "dead" ? "Босс повержен" : `У босса осталось ${boss.hp} HP`}</span>}
+        {message}
+      </>}
       action={
-        <div className="actions">
-          {done > 0 && me?.boss && <Button size="m" stretched onClick={onBoss}>К боссу</Button>}
-          {notice ? (
-            <>
-              <Button mode="bezeled" size="m" stretched onClick={onExtra}>{extraLabel ?? "Ещё карточки"}</Button>
-              <Button mode="plain" size="m" stretched onClick={onSettings}>Настройки лимитов</Button>
-            </>
-          ) : (
-            <>
-              <Button mode="bezeled" size="m" stretched onClick={() => onSets()}>Взять слова из готового набора</Button>
-              <LessonButton />
-            </>
-          )}
-          {!native && (
-            <Button size="l" stretched onClick={() => miniApp.close()}>
-              Закрыть
-            </Button>
-          )}
+        <div className="actions learn-result-actions">
+          {showExtra && <Button size="l" stretched onClick={onExtra}>{extraLabel}</Button>}
+          <Button size="l" mode={showExtra ? "bezeled" : "filled"} stretched onClick={onLearning}>Открыть «Учу»</Button>
+          <div className="row result-links">
+            {done > 0 && me?.boss && <Button mode="plain" size="m" onClick={onBoss}>К боссу</Button>}
+            {notice ? <Button mode="plain" size="m" onClick={onSettings}>Настройки лимитов</Button>
+              : <Button mode="plain" size="m" onClick={() => onSets()}>Наборы слов</Button>}
+          </div>
+          {!notice && <LessonButton />}
         </div>
       }
     />

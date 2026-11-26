@@ -65,6 +65,20 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("лимит одновременно изучаемых слов", () => {
+  it("предлагает открыть «Учу» напрямую из личного чата после конца очереди", async () => {
+    const { h, rows } = await setup(1, 0);
+    h.deps.appUrl = "https://app.example/app/?source=bot";
+    await h.db.update(cards).set({ due: at(DAY) }).where(eq(cards.id, rows[0].id));
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    expect(h.calls.filter(({ method }) => method === "sendMessage").at(-1)?.payload).toMatchObject({
+      text: expect.stringContaining("Сейчас нечего повторять"),
+      reply_markup: { inline_keyboard: [
+        [{ text: "Открыть «Учу»", web_app: { url: "https://app.example/app/?source=bot&tab=learning" } }],
+        [{ text: "🔁 Потренироваться вне зачёта" }],
+      ] },
+    });
+  });
+
   it("держит новые после смены суток, освобождает место по FSRS и допускает один ответ на последнее место", async () => {
     const { h, user, rows, queue, answer, post, getCard } = await setup(DEFAULT_LIMIT);
     await updateUser(h.db, user.id, { newPerDay: 5 });

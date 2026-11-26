@@ -14,37 +14,37 @@ const ACCENTS: Array<{ id: LessonAccent; label: string }> = [
 
 /** Аудиоурок в чат с выбором акцента: mp3 придёт от бота — его Telegram играет в фоне, с погасшим экраном. */
 export function LessonButton() {
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState<"empty" | "sent">();
+  const [pending, setPending] = useState<LessonAccent>();
   const ask = async (accent: LessonAccent) => {
+    if (pending) return;
+    setPending(accent);
     try {
-      const status = await requestLesson(accent);
-      haptic.done(status !== "empty");
-      setSent(true);
-      notify(
-        status === "empty"
-          ? "Пока нечего слушать — сначала начни учить слова."
-          : "Собираю аудиоурок — через минуту-две он придёт в чат с ботом. Его можно слушать в фоне, с погасшим экраном.",
-      );
+      const result = await requestLesson(accent);
+      haptic.done(result !== "empty");
+      setStatus(result === "empty" ? "empty" : "sent");
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPending(undefined);
     }
   };
-  if (sent) return <Text className="hint lesson-sent">Урок придёт в чат с ботом</Text>;
   return (
-    <div className="lesson">
-      <Text weight="2">
-        <ButtonIcon>
-          <IconHeadphones size={18} />
-          {studyLanguage().accents.length === 1 ? "Аудиоурок в чат" : "Аудиоурок в чат — каким акцентом?"}
-        </ButtonIcon>
-      </Text>
-      <div className="row">
-        {(studyLanguage().accents.length === 1 ? [{ id: studyLanguage().accents[0].key as LessonAccent, label: "Собрать урок" }] : ACCENTS).map((a) => (
-          <Button key={a.id} mode="bezeled" size="m" stretched onClick={() => void ask(a.id)}>
-            {a.label}
-          </Button>
-        ))}
-      </div>
-    </div>
+    <details className="lesson">
+      <summary>
+        <ButtonIcon><IconHeadphones size={18} />Аудиоурок в чат</ButtonIcon>
+      </summary>
+      {status === "sent" ? <Text className="hint lesson-sent" role="status">Урок придёт в чат с ботом</Text> : <>
+        <div className="row">
+          {(studyLanguage().accents.length === 1 ? [{ id: studyLanguage().accents[0].key as LessonAccent, label: "Собрать урок" }] : ACCENTS).map((a) => (
+            <Button key={a.id} mode="bezeled" size="m" stretched disabled={pending !== undefined}
+              loading={pending === a.id} onClick={() => void ask(a.id)}>
+              {a.label}
+            </Button>
+          ))}
+        </div>
+        {status === "empty" && <Text className="hint lesson-sent" role="status">Пока нечего слушать. Начни учить слова.</Text>}
+      </>}
+    </details>
   );
 }

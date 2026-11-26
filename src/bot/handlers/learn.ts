@@ -349,11 +349,16 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, retry?: 
     if (notice) text += `\n\n📚 ${notice}\nИзменить количество можно в /settings.`;
     // 🐉 Босс — там же, где «Готово»: человек уходит с мыслью «снял столько-то HP», а не с сухим отчётом.
     text += await bossLine(ctx, deps);
-    // Последнюю карточку оценили не той кнопкой — отменить можно и с экрана «Готово».
-    replyMarkup = addUndoRow(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length), undo);
-    if (notice) replyMarkup.row()
-      .text(extraBatchLabel(due), encodeCb({ k: "learnExtra" }))
-      .row().text("⚙️ Лимиты обучения", encodeCb({ k: "settingsScreen", screen: "main" }));
+    const actions = new InlineKeyboard([]);
+    if (notice) actions.row(InlineKeyboard.text(extraBatchLabel(due), encodeCb({ k: "learnExtra" })));
+    if (total > 0 && deps.appUrl && ctx.chat?.type === "private") {
+      const url = new URL(deps.appUrl);
+      url.searchParams.set("tab", "learning");
+      actions.row(InlineKeyboard.webApp("Открыть «Учу»", url.toString()));
+    }
+    if (notice) actions.row(InlineKeyboard.text("⚙️ Лимиты обучения", encodeCb({ k: "settingsScreen", screen: "main" })));
+    actions.append(practiceStartKeyboard((await stormCandidates(deps.db, ctx.user.id)).length));
+    replyMarkup = addUndoRow(actions, undo);
     sessionCountsOf(deps).delete(ctx.user.id);
   }
   const sent = await present(ctx, text, { ...HTML, reply_markup: replyMarkup }, mode, photo);

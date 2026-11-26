@@ -425,7 +425,7 @@ export function learningLimitNotice(
   if (fresh && due.dailyFull) reasons.push(`Дневная порция новых слов исчерпана (${user.newPerDay} в день).`);
   if (paused || (fresh && due.activeFull)) reasons.push(`Подборка «Учу» заполнена. Предел — ${user.activeLearningLimit} слов одновременно.`);
   if (!reasons.length) return undefined;
-  return [...reasons, "Лимиты оставляют время на повторение и закрепление слов. Можно продолжить сверх плана, но в длинной сессии слова могут запоминаться хуже."].join(" ");
+  return [...reasons, "При продолжении сверх плана слова могут запоминаться хуже."].join(" ");
 }
 
 export function extraBatchLabel(due: Awaited<ReturnType<typeof countDueSplit>>, scope: StudyScope = "all"): string {
