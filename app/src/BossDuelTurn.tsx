@@ -12,7 +12,7 @@ export function BossDuelTurn({ attack, bossHp, busy, onMove }: {
   const [action, setAction] = useState(attack.choices.length === 1 ? attack.choices[0].id : "");
   const [order, setOrder] = useState<number[]>([]);
   const choice = attack.choices.find(({ id }) => id === action);
-  const damage = (value: number) => hpFormat.format(attack.practice ? value : Math.min(value, bossHp));
+  const damage = (value: number) => hpFormat.format(Math.min(value, bossHp));
 
   return (
     <>

@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { BossArena } from "./BossArena";
 import { BossDuelTurn } from "./BossDuelTurn";
+import { preloadArenaArt, waitForArenaArt } from "./arenaArt";
 import { hpFormat } from "./format";
 import { IconLock } from "./icons";
 import { haptic, notify, useBackButton } from "./telegram";
 import { bossScreen } from "../../src/app/boss-screen";
-import { bossAttackDamage, BOSS_ATTACK_ROUNDS, MIN_BOSS_ATTACK_STAKE } from "../../src/boss-attack-rules";
-import { BOSS_OPPONENTS, type BossId } from "../../src/boss-opponents";
+import { bossAttackDamage, BOSS_ATTACK_ROUNDS } from "../../src/boss-attack-rules";
+import type { BossId } from "../../src/boss-opponents";
 
 type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
 
@@ -54,6 +55,9 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const attackPending = useRef(false);
   const fightPane = useRef<HTMLDivElement>(null);
   const questionGroup = useRef<HTMLDivElement>(null);
+  const opponent = data?.boss?.opponent?.id ?? "dragon";
+  const nextOpponent = data?.boss?.nextOpponent;
+  const hasBoss = Boolean(data?.boss);
   const busy = Boolean(buying || fighting || answering);
   const back = useCallback(() => {
     if (expanded) setExpanded(false);
@@ -67,6 +71,15 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
       questionGroup.current?.focus({ preventScroll: true });
     }
   }, [attack, expanded]);
+
+  useEffect(() => {
+    if (!hasBoss) return;
+    let active = true;
+    void preloadArenaArt(opponent).then(() => {
+      if (active && nextOpponent) return preloadArenaArt(nextOpponent, true);
+    });
+    return () => { active = false; };
+  }, [hasBoss, opponent, nextOpponent]);
 
   useEffect(() => {
     if (busy) return;
@@ -132,7 +145,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     }
   };
 
-  const attackAction = async (action: BossMove | { stake: number; mode: "duel" | "practice"; opponent: BossId }) => {
+  const attackAction = async (action: BossMove | { stake: number; opponent: BossId }) => {
     if (busy || attackPending.current) return;
     if ("move" in action && !attack) return;
     attackPending.current = true;
@@ -140,7 +153,8 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     setAnswering(true);
     setAttackError(undefined);
     try {
-      const result = "move" in action ? await moveBossAttack(attack!, action) : await startBossAttack(action.stake, action.mode, action.opponent);
+      const result = "move" in action ? await moveBossAttack(attack!, action) : await startBossAttack(action.stake, action.opponent);
+      if (!("move" in action) && result.attack.kind === "dragon") await waitForArenaArt(result.attack.duel.opponent);
       setAttack(result.attack);
       if (result.arena) setData(result.arena);
       if (result.attack.kind === "done") haptic.done(result.attack.translation === undefined);
@@ -180,9 +194,6 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     );
   }
   const playing = attack !== undefined && attack.kind !== "done";
-  const opponent = data.boss.opponent?.id ?? "dragon";
-  const practiceOpponent = attack?.kind === "done" && attack.practice && attack.duel?.opponent;
-  const practice = (boss: BossId) => void attackAction({ stake: MIN_BOSS_ATTACK_STAKE, mode: "practice", opponent: boss });
   const hp = data.boss.hp;
   const hit = (damage: number) => hpFormat.format(Math.min(hp, damage));
   return (
@@ -196,7 +207,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
           {attackError && <div className="arena-result" role="alert">{attackError}</div>}
           {!expanded && playing && (
             <Button size="m" className="arena-primary" onClick={() => setExpanded(true)}>
-              {attack.practice ? "Продолжить тренировку" : "Продолжить атаку"}
+              Продолжить атаку
             </Button>
           )}
           {expanded && attack?.kind === "dragon" && (
@@ -237,31 +248,16 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
               <span className="arena-note">{attack.damage >= hp ? "Заряда хватает, чтобы добить босса." : `Если ошибёшься, удар нанесёт ${hit(attack.missDamage)} HP.`}</span>
             </div>
           )}
-          {attack?.kind === "done" && (expanded || !attack.practice) && (
+          {attack?.kind === "done" && (
             <div ref={questionGroup} tabIndex={-1} role="status" className="arena-turn arena-result">
-              <Text weight="2">{attack.practice ? "Тренировка · " : `−${hpFormat.format(attack.stake)} ⚡ · `}
+              <Text weight="2">−{hpFormat.format(attack.stake)} ⚡ ·{" "}
                 {attack.damage > 0 ? `нанесено ${hpFormat.format(attack.damage)} HP` : "урона нет"}</Text>
               {attack.translation && <span className="arena-note">{attack.scene ? "Правильная фраза" : "Правильный перевод"} — «{attack.translation}».</span>}
             </div>
           )}
-          {(!playing || (attack.practice && !expanded)) && hp > 0 && (!expanded || !attack?.practice) && (
+          {!playing && hp > 0 && (
             <AttackStake combat={data.combat} hp={hp} busy={busy} loading={answering}
-              onStart={(stake) => void attackAction({ stake, mode: "duel", opponent })} />
-          )}
-          {!playing && expanded && practiceOpponent && (
-            <Button size="m" className="arena-primary" disabled={busy} onClick={() => practice(practiceOpponent)}>Следующая тренировка</Button>
-          )}
-          {!playing && (!expanded || !practiceOpponent) && (
-            <div className="arena-turn">
-              <Text weight="2">Тренировка · бесплатно</Text>
-              <div className="arena-stake-options" role="group" aria-label="Выбрать босса для тренировки">
-                {Object.values(BOSS_OPPONENTS).map((boss) => (
-                  <Button key={boss.id} size="m" className="arena-option" disabled={busy} onClick={() => practice(boss.id)}>
-                    <span>{boss.shortName}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
+              onStart={(stake) => void attackAction({ stake, opponent })} />
           )}
         </div>
       )} />

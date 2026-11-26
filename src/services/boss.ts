@@ -55,6 +55,7 @@ export function weeklyOpponent(weekStart: Date) {
 export interface BossState extends GoalProgress {
   room: string;
   opponent: (typeof BOSS_OPPONENTS)[BossId];
+  nextOpponent: BossId;
   week: string;
   /** Сколько HP осталось у ТЕКУЩЕГО босса; 0 не бывает — добитый сразу уступает место следующему. */
   hp: number;
@@ -229,6 +230,7 @@ export async function bossOf(db: Db, room: Room, now: Date, userId?: number): Pr
     room: room.name,
     // Свой противник у каждой ступени: второй босс недели — уже другой, а не тот же дракон.
     opponent: roundOpponent(weekStart, round),
+    nextOpponent: roundOpponent(weekStart, round + 1).id,
     week,
     hp,
     damage,

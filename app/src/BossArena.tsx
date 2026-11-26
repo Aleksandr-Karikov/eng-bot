@@ -3,6 +3,7 @@ import { arenaImpact, type ArenaImpact } from "../../src/app/boss-screen";
 import { BOSS_OPPONENTS, type BossId } from "../../src/boss-opponents";
 import type { Boss, BossAttack } from "./api";
 import { hpFormat } from "./format";
+import { arenaArt as art } from "./arenaArt";
 
 const PHASE: Record<Boss["phase"], string> = {
   fresh: "Спокоен",
@@ -17,8 +18,6 @@ const PACE: Record<Boss["pace"], string> = {
   behind: "отстаёте от графика",
 };
 
-const art = (name: string) => `${import.meta.env.BASE_URL}arena/${name}.webp`;
-
 export function BossArena({ boss, attack, expanded, onToggle, children }: {
   boss: Boss; attack?: BossAttack; expanded: boolean; onToggle: () => void; children?: ReactNode;
 }) {
@@ -30,7 +29,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
   useEffect(() => {
     const last = previous.current;
     previous.current = { boss, attack };
-    const settled = attack?.kind === "done" && !attack.practice && (last.attack?.id !== attack.id || last.attack.kind !== "done");
+    const settled = attack?.kind === "done" && (last.attack?.id !== attack.id || last.attack.kind !== "done");
     const impact = arenaImpact(last.boss, boss, settled ? attack.damage : undefined);
     if (impact) setCue({ impact, sequence: ++sequence.current, frame });
   }, [boss, attack, frame]);
@@ -41,14 +40,13 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
     return () => clearTimeout(timer);
   }, [cue]);
 
-  const practice = expanded && attack?.practice;
   const liveOpponent: BossId = boss.opponent?.id ?? "dragon";
-  const duel = expanded && (attack?.kind === "dragon" || (attack?.kind === "done" && (practice || liveOpponent === attack.duel?.opponent)))
+  const duel = expanded && (attack?.kind === "dragon" || (attack?.kind === "done" && liveOpponent === attack.duel?.opponent))
     ? attack.duel : undefined;
   const opponent = duel?.opponent ?? liveOpponent;
   const playing = attack !== undefined && attack.kind !== "done";
   const charge = attack?.kind === "question" || attack?.kind === "decision" ? attack.damage : 0;
-  const impact = !practice && cue?.frame === frame ? cue.impact : undefined;
+  const impact = cue?.frame === frame ? cue.impact : undefined;
   const maxHp = boss.bossHp ?? boss.target;
   const percent = maxHp > 0 ? Math.min(100, (boss.hp / maxHp) * 100) : 0;
   const kills = boss.kills ?? 0;
@@ -56,7 +54,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
   const effectKey = impact ? `impact:${cue?.sequence}` : `turn:${attack?.id}:${attack?.revision}`;
 
   return (
-    <section className="boss-stage" data-phase={practice ? "fresh" : boss.phase} data-opponent={opponent}
+    <section className="boss-stage" data-phase={boss.phase} data-opponent={opponent}
       data-playing={playing} data-duel={duel?.opening} data-enemy-pose={duel?.frame.boss}>
       <div className="boss-portrait">
         <img className="arena-backdrop" src={art(`${opponent}-hall`)} alt="" />
@@ -96,7 +94,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
         )}
         <div className="boss-caption">
           <span className="boss-kicker">
-            {practice ? "Тренировка" : boss.tier && boss.tier > 1
+            {boss.tier && boss.tier > 1
               ? `Босс недели · ступень ${boss.tier}${boss.cycle && boss.cycle > 1 ? ` · круг ${boss.cycle}` : ""}`
               : "Босс недели"}
           </span>
@@ -108,7 +106,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
           {impact.kind === "hit" ? `−${hpFormat.format(impact.damage)} HP` : impact.kind === "block" ? "Удар отражён" : "Новый раунд"}
         </span>}
       </div>
-      {practice ? <div className="boss-hud arena-note">Энергия не тратится. Урон остаётся в тренировке.</div> : <div className="boss-hud">
+      <div className="boss-hud">
         <div className="arena-hud-line">
           <div className="boss-hp" aria-live="polite">
             <strong>{hpFormat.format(boss.hp)}</strong> / {hpFormat.format(maxHp)} HP
@@ -126,7 +124,7 @@ export function BossArena({ boss, attack, expanded, onToggle, children }: {
           <span>Снято {hpFormat.format(boss.done)} HP</span>
           <span>{kills > 0 ? `Добито: ${kills}` : PACE[boss.pace]}</span>
         </div>}
-      </div>}
+      </div>
       {children}
     </section>
   );

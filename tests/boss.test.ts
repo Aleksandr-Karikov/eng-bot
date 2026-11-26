@@ -313,7 +313,7 @@ describe("атака серией переводов", () => {
   });
 });
 
-describe("пошаговая дуэль с Драконом", () => {
+describe("пошаговая дуэль с боссом", () => {
   type Turn = { id: string; revision: number } & BossDuelTurn;
   const phrase = (attack: Turn, action: string, answer: string) => {
     const words = [...attack.choices.find(({ id }) => id === action)!.words];
@@ -332,7 +332,7 @@ describe("пошаговая дуэль с Драконом", () => {
     expect(await getBoss()).toMatchObject({ boss: { opponent: { id: "dragon" }, hp: 100 }, combat: { balance: 30 } });
 
     const first = await start();
-    expect(first).toMatchObject({ kind: "dragon", scene: "fire", turn: 1, practice: false, choices: [{ id: "cover", damage: 11 }, { id: "ballista", damage: 19.8 }] });
+    expect(first).toMatchObject({ kind: "dragon", scene: "fire", turn: 1, choices: [{ id: "cover", damage: 11 }, { id: "ballista", damage: 19.8 }] });
     expect(first.choices[0]).not.toHaveProperty("answer");
     expect(first.choices[0].words).toEqual(["cover", "Take"]);
     expect((await post("attack/move", { ...phrase(first, "cover", "Take cover"), order: [0, 0] })).status).toBe(400);
@@ -350,59 +350,63 @@ describe("пошаговая дуэль с Драконом", () => {
     });
   });
 
-  it("даёт подняться после промаха в бесплатной тренировке при Страже без запаса энергии", async () => {
+  it("отказывает в старом запуске тренировки и проверяет запас обычного боя", async () => {
     const { h, alice, post, getBoss } = await attackArena();
     await h.db.delete(reviewLogs).where(eq(reviewLogs.userId, alice.id));
     const before = await getBoss();
     expect(before).toMatchObject({ boss: { opponent: { id: "sentinel" }, hp: 100 }, combat: { balance: 0 } });
-    expect((await post("attack", { mode: "dragon" })).status).toBe(409);
-    const start = async () => (await (await post("attack", { mode: "practice" })).json()).attack;
+    for (const opponent of [undefined, "sentinel", "frost"]) {
+      const response = await post("attack", { mode: "practice", opponent });
+      expect(response.status).toBe(410);
+      expect(await response.json()).toEqual({ ok: false, error: expect.stringContaining("Тренировка закрыта") });
+    }
+    expect((await post("attack", { mode: "duel", opponent: "sentinel" })).status).toBe(409);
+    expect(await getBoss()).toEqual(before);
+  });
+
+  it("даёт подняться после промаха и засчитывает ответный удар за ставку", async () => {
+    const { post } = await attackArena(nsk("2026-11-26T12:00"));
     const move = async (turn: Turn, action: string, words: string) => (await (await post("attack/move", phrase(turn, action, words))).json()).attack;
-    const first = await start();
+    const first = (await (await post("attack", { mode: "duel", opponent: "dragon" })).json()).attack;
     const miss = await move(first, "ballista", "wing the at Shoot");
     expect(miss).toMatchObject({ scene: "staggered", turn: 2, translation: "Shoot at the wing" });
     const recovered = await move(miss, "rise", "Get back up");
     expect(recovered).toMatchObject({ scene: "recovered", turn: 3 });
-    expect(await move(recovered, "counter", "Counterattack at once")).toMatchObject({ kind: "done", damage: 5, practice: true });
-    expect(await start()).toMatchObject({ kind: "dragon", scene: "fire", id: expect.not.stringMatching(first.id) });
-    expect(await getBoss()).toEqual(before);
+    const finish = await post("attack/move", phrase(recovered, "counter", "Counterattack at once"));
+    expect(await finish.json()).toMatchObject({ attack: { kind: "done", damage: 5 }, arena: { boss: { hp: 95 }, combat: { balance: 20 } } });
   });
 
   it.each([
     {
-      opponent: "dragon", date: "2026-11-26T12:00", openings: ["fire", "charge"],
+      opponent: "dragon", nextOpponent: "sentinel", date: "2026-11-26T12:00", openings: ["fire", "charge"],
       routes: [[ ["ballista", "Shoot at the wing"], ["wing", "Strike its wing"] ],
         [ ["lure", "Lure it to the pillar"], ["block", "Block the exit"], ["finish", "Aim for its belly"] ]],
     },
     {
-      opponent: "sentinel", date: "2026-11-19T12:00", openings: ["beam", "seals"],
+      opponent: "sentinel", nextOpponent: "dragon", date: "2026-11-19T12:00", openings: ["beam", "seals"],
       routes: [[ ["mirror", "Turn the mirror toward the guardian"], ["core", "Break the core"] ],
         [ ["open", "Disable both seals"], ["close", "Close the circle"], ["core", "Strike the exposed core"] ]],
     },
     {
-      opponent: "frost", date: "2026-12-01T12:00", openings: ["bridge", "blizzard"],
+      opponent: "frost", nextOpponent: "dragon", date: "2026-12-01T12:00", openings: ["bridge", "blizzard"],
       routes: [[ ["ice", "Break the ice beneath her"], ["crown", "Break her crown"] ],
         [ ["crystal", "Light the ice crystal"], ["turn", "Point the light at her"], ["attack", "Strike while she is blinded"] ]],
     },
-  ])("чередует оплачиваемые сцены и тренировки для $opponent", async ({ opponent, date, openings, routes }) => {
+  ])("чередует оплачиваемые сцены для $opponent", async ({ opponent, nextOpponent, date, openings, routes }) => {
     const { getBoss, post } = await attackArena(nsk(date));
-    expect(await getBoss()).toMatchObject({ boss: { opponent: { id: opponent }, hp: 100 }, combat: { balance: 30 } });
-    for (const mode of ["duel", "practice"]) {
-      const before = await getBoss();
-      for (const [index, route] of routes.entries()) {
-        const start = () => post("attack", { mode, opponent, stake: 10 });
-        let result = await (await start()).json();
-        expect(result.attack).toMatchObject({ scene: openings[index], duel: { opponent, opening: openings[index] }, turn: 1 });
-        expect((await (await start()).json()).attack).toEqual(result.attack);
-        for (const [action, answer] of route) {
-          result = await (await post("attack/move", phrase(result.attack, action, answer))).json();
-          expect(result.ok).toBe(true);
-        }
-        expect(result.attack).toMatchObject({ kind: "done", damage: 18 });
+    expect(await getBoss()).toMatchObject({ boss: { opponent: { id: opponent }, nextOpponent, hp: 100 }, combat: { balance: 30 } });
+    for (const [index, route] of routes.entries()) {
+      const start = () => post("attack", { mode: "duel", opponent, stake: 10 });
+      let result = await (await start()).json();
+      expect(result.attack).toMatchObject({ scene: openings[index], duel: { opponent, opening: openings[index] }, turn: 1 });
+      expect((await (await start()).json()).attack).toEqual(result.attack);
+      for (const [action, answer] of route) {
+        result = await (await post("attack/move", phrase(result.attack, action, answer))).json();
+        expect(result.ok).toBe(true);
       }
-      if (mode === "practice") expect(await getBoss()).toEqual(before);
-      else expect(await getBoss()).toMatchObject({ boss: { hp: 64 }, combat: { balance: 10 } });
+      expect(result.attack).toMatchObject({ kind: "done", damage: 18 });
     }
+    expect(await getBoss()).toMatchObject({ boss: { hp: 64 }, combat: { balance: 10 } });
   });
 });
 

@@ -435,6 +435,7 @@ export async function appBoss(deps: Deps, user: User) {
     boss: {
       room: boss.room,
       opponent: boss.opponent,
+      nextOpponent: boss.nextOpponent,
       week: boss.week,
       damage: boss.damage,
       hp: boss.hp,
