@@ -1,6 +1,6 @@
 import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
 import { BossArena } from "./BossArena";
 import { hpFormat } from "./format";
@@ -46,14 +46,23 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const [fighting, setFighting] = useState<CombatAction>();
   const [attack, setAttack] = useState<BossAttack>();
   const [answering, setAnswering] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const attackPending = useRef(false);
+  const fightPane = useRef<HTMLDivElement>(null);
   const questionGroup = useRef<HTMLDivElement>(null);
   const busy = Boolean(buying || fighting || answering);
-  useBackButton(onExit);
+  const back = useCallback(() => {
+    if (expanded) setExpanded(false);
+    else onExit();
+  }, [expanded, onExit]);
+  useBackButton(back);
 
   useEffect(() => {
-    if (attack) questionGroup.current?.focus({ preventScroll: true });
-  }, [attack]);
+    if (expanded && attack) {
+      fightPane.current?.scrollTo(0, 0);
+      questionGroup.current?.focus({ preventScroll: true });
+    }
+  }, [attack, expanded]);
 
   useEffect(() => {
     if (busy) return;
@@ -122,6 +131,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   const attackAction = async (move?: BossMove) => {
     if (busy || attackPending.current) return;
     attackPending.current = true;
+    if (!move) setExpanded(true);
     setAnswering(true);
     try {
       const result = move && attack ? await moveBossAttack(attack, move) : await startBossAttack();
@@ -167,12 +177,15 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
   return (
     <BossView boss={data.boss} hits={data.hits} total={data.total} coins={data.coins} trophies={data.trophies}
       victory={data.victory} combat={data.combat} onBuy={(kind) => void buy(kind)} buying={buying} busy={busy || playing}
-      attack={attack}
+      attack={attack} expanded={expanded} onToggleArena={() => setExpanded((value) => !value)}
       actions={data.combat && <CombatPanel combat={data.combat} busy={busy || playing} fighting={fighting}
         onAction={(action) => void fightAction(action)} />}
       fightPanel={data.combat && (
-        <div className="arena-fight">
-          {attack?.kind === "question" && (
+        <div className="arena-fight" ref={fightPane}>
+          {!expanded && playing && (
+            <Button size="m" className="arena-primary" onClick={() => setExpanded(true)}>Продолжить атаку</Button>
+          )}
+          {expanded && attack?.kind === "question" && (
             <div ref={questionGroup} tabIndex={-1} role="group" aria-label={`Перевод ${attack.term}`} className="arena-turn">
               <div className="arena-turn-head">
                 <Text weight="2" className="arena-term">Что значит «{attack.term}»?</Text>
@@ -188,7 +201,7 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
               </div>
             </div>
           )}
-          {attack?.kind === "decision" && (
+          {expanded && attack?.kind === "decision" && (
             <div ref={questionGroup} tabIndex={-1} role="group" aria-label="Выбор удара" className="arena-turn">
               <Text weight="2">Верный перевод</Text>
               <div className="arena-options">
@@ -242,6 +255,8 @@ function BossView({
   actions,
   attack,
   fightPanel,
+  expanded,
+  onToggleArena,
 }: {
   boss: Boss;
   hits: BossState["hits"];
@@ -256,6 +271,8 @@ function BossView({
   actions?: React.ReactNode;
   attack?: BossAttack;
   fightPanel?: React.ReactNode;
+  expanded: boolean;
+  onToggleArena: () => void;
 }) {
   const reducedMotion = useReducedMotion();
   const kills = boss.kills ?? 0;
@@ -263,10 +280,15 @@ function BossView({
   const top = boss.byUser.slice(0, 4);
   const rune = combat?.rune;
   const streak = combat?.streak;
+  const arena = (
+    <BossArena boss={boss} attack={attack} expanded={expanded} onToggle={onToggleArena}>{fightPanel}</BossArena>
+  );
+
+  if (expanded) return <div className="boss-fullscreen">{arena}</div>;
 
   return (
     <div className="screen boss-screen">
-      <BossArena boss={boss} attack={attack}>{fightPanel}</BossArena>
+      {arena}
 
       <div className="boss-head">
         <Text weight="2">{boss.room}</Text>

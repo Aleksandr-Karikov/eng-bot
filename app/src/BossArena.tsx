@@ -18,7 +18,9 @@ const PACE: Record<Boss["pace"], string> = {
 
 const art = (opponent: "dragon" | "sentinel", layer = "") => `${import.meta.env.BASE_URL}arena/${opponent}${layer}.webp`;
 
-export function BossArena({ boss, attack, children }: { boss: Boss; attack?: BossAttack; children?: ReactNode }) {
+export function BossArena({ boss, attack, expanded, onToggle, children }: {
+  boss: Boss; attack?: BossAttack; expanded: boolean; onToggle: () => void; children?: ReactNode;
+}) {
   const previous = useRef({ boss, attack });
   const sequence = useRef(0);
   const [cue, setCue] = useState<{ impact: ArenaImpact; sequence: number; frame: string }>();
@@ -71,6 +73,7 @@ export function BossArena({ boss, attack, children }: { boss: Boss; attack?: Bos
           </span>
           <h1>{boss.opponent?.name ?? "Дракон библиотеки"}</h1>
         </div>
+        <button type="button" className="arena-view-toggle" onClick={onToggle}>{expanded ? "К боссу" : "На весь экран"}</button>
         <span className="boss-phase">{PHASE[boss.phase]}</span>
         {impact && <span key={cue?.sequence} className="boss-strike" aria-hidden="true">
           {impact.kind === "hit" ? `−${hpFormat.format(impact.damage)} HP` : impact.kind === "block" ? "Удар отражён" : "Новый раунд"}
