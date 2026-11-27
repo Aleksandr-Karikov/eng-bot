@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic } from "../db/schema";
 import { recordMistakes } from "./mistakes";
+import { GRAMMAR_STRIKE_PREFIX } from "./combat-ledger";
 import { GRAMMAR_TOPICS } from "../grammar";
 
 /**
@@ -154,8 +155,9 @@ async function creditBossDamage(db: Db, input: { userId: number; roomId: number;
     userId: input.userId,
     roomId: input.roomId,
     target: "boss",
-    requestId: `grammar:${input.userId}:${input.exerciseId}`,
-    damageDeci,
+    requestId: `${GRAMMAR_STRIKE_PREFIX}${input.userId}:${input.exerciseId}`,
+    damageDeci: 0,
+    bossDamageDeci: damageDeci,
     at: input.now,
   }).onConflictDoNothing().returning({ id: combatSpends.id });
   return inserted ? damageDeci / 10 : 0;

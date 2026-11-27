@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes, words } from "../src/db/schema";
+import { combatArchive, combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes, words } from "../src/db/schema";
 import { createRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
+import { bossFeed } from "../src/services/boss";
+import { damageBalanceDeci } from "../src/services/combat-ledger";
 import { updateUser } from "../src/services/users";
 import { createApp } from "../src/app/server";
 import { sign } from "@telegram-apps/init-data-node";
@@ -390,6 +392,30 @@ describe("🔗 grammar is wired into mistakes and the boss", () => {
     const progress = await goalProgress(h.db, room, T0);
     expect(progress.done).toBeCloseTo(4, 1);
     expect(progress.byUser[0]).toMatchObject({ name: "Alice", count: 4 });
+  });
+
+  it("keeps old and new grammar hits in the feed without charging energy", async () => {
+    const h = botHarness();
+    const user = await makeUser(h.db, 1, "Alice");
+    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
+    const topic = await seed(h);
+    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    await h.db.insert(combatArchive).values({ reviewId: 1, userId: user.id, damageDeci: 700 });
+    await h.db.insert(combatSpends).values([
+      { userId: user.id, roomId: room.id, target: "boss", requestId: `grammar:${user.id}:999`, damageDeci: 20, at: T0 },
+      { userId: user.id, roomId: room.id, target: "boss", requestId: "old-attack", damageDeci: 100, at: T0 },
+      { userId: user.id, roomId: room.id, target: "boss", requestId: "paid-attack", damageDeci: 100, bossDamageDeci: 180, at: T0 },
+      { userId: user.id, target: "golem", requestId: "mob-attack", damageDeci: 300, at: T0 },
+    ]);
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(200);
+
+    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
+    expect(result?.bossDamage).toBe(2);
+    const [strike] = await h.db.select().from(combatSpends).where(eq(combatSpends.requestId, `grammar:${user.id}:${first.id}`));
+    expect(strike).toMatchObject({ damageDeci: 0, bossDamageDeci: 20 });
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(200);
+    expect((await goalProgress(h.db, room, T0)).done).toBe(32);
+    expect((await bossFeed(h.db, room, T0)).byUser).toEqual([{ name: "Alice", damage: 32 }]);
   });
 });
 

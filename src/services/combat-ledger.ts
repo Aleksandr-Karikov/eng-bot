@@ -1,8 +1,9 @@
-import { and, asc, countDistinct, eq, gt, gte, isNotNull, lt, notExists, sql, type SQL } from "drizzle-orm";
+import { and, asc, countDistinct, eq, gt, gte, isNotNull, lt, notExists, notLike, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatArchive, combatSpends, reviewLogs, users } from "../db/schema";
 
 const pending = new WeakMap<Db, Promise<unknown>>();
+export const GRAMMAR_STRIKE_PREFIX = "grammar:";
 
 // shortcut: один процесс бота, при нескольких писателях нужен условный дебет в БД.
 export async function withCombatLock<T>(db: Db, action: () => Promise<T>): Promise<T> {
@@ -24,7 +25,8 @@ export async function damageBalanceDeci(db: Db, userId: number): Promise<number>
       db.select({ id: combatArchive.reviewId }).from(combatArchive).where(eq(combatArchive.reviewId, reviewLogs.id)),
     )));
   const spent = db.select({ total: sql<number>`coalesce(sum(${combatSpends.damageDeci}), 0)` }).from(combatSpends)
-    .where(eq(combatSpends.userId, userId));
+    // В старых ударах грамматики в damageDeci записан нанесённый урон, а расход энергии равен нулю.
+    .where(and(eq(combatSpends.userId, userId), notLike(combatSpends.requestId, `${GRAMMAR_STRIKE_PREFIX}%`)));
   const [row] = await db.select({ balance: sql<number>`(${earned}) + (${archived}) - (${spent})` }).from(users).where(eq(users.id, userId));
   return Math.max(0, row?.balance ?? 0);
 }
