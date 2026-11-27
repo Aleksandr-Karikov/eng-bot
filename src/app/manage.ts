@@ -9,7 +9,7 @@ import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from ".
 import { dropCard, restoreCard } from "../services/cards";
 import { storedCollocations } from "../services/collocations";
 import { KNOW_STAGE } from "../services/goals";
-import { learningSelection } from "../services/learning";
+import { isSpacedReview, learningSelection } from "../services/learning";
 import { isStormHard } from "../services/storm";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { getRoom, isMember, listUserRooms } from "../services/rooms";
@@ -22,7 +22,7 @@ import { broadcastWord } from "../bot/word-flow";
 import { localPartsFormatter } from "../time";
 
 /** Как слово идёт у этого человека: нет карточки — убрал у себя («🙈 Не для меня»). */
-export type WordStatus = "new" | "learning" | "known" | "hard" | "paused" | "dropped";
+export type WordStatus = "new" | "learning" | "known" | "hard" | "scheduled" | "paused" | "dropped";
 
 export interface AppWordItem {
   id: number;
@@ -77,7 +77,7 @@ export async function appWords(deps: Deps, user: User) {
           ? "new"
           : isLearned(card) || (card.reps === 1 && markedKnown.has(card.id))
             ? "known"
-            : "paused";
+            : isSpacedReview(card) ? "scheduled" : "paused";
     return {
       id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status,
       nextReview: card && status !== "paused" ? nextReview(card) : undefined,

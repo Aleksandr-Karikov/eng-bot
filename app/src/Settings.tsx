@@ -52,7 +52,7 @@ export function SettingsScreen({ onExit, limitsFirst }: { onExit: () => void; li
           onSave={(newPerDay) => change({ newPerDay })} />
       </Section>
 
-      <Section header="📚 Подборка «Учу»" footer="Сколько слов держать в активном обучении одновременно. Забытые слова могут временно увеличить подборку.">
+      <Section header="📚 Подборка «Учу»" footer="Повторы с интервалом от недели освобождают место. Забытые слова могут временно увеличить подборку.">
         <LimitField key={settings.activeLearningLimit} label="Слов одновременно" value={settings.activeLearningLimit} min={1}
           max={settings.learningLimits.max} recommended={settings.learningLimits.recommendedActive}
           onSave={(activeLearningLimit) => change({ activeLearningLimit })} />

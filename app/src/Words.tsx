@@ -11,6 +11,7 @@ const STATUS_LABEL: Record<WordStatus, string> = {
   learning: "учу",
   known: "знаю",
   hard: "трудное",
+  scheduled: "по графику",
   paused: "отложено",
   dropped: "убрано",
 };
@@ -18,6 +19,7 @@ const STATUS_LABEL: Record<WordStatus, string> = {
 const FILTERS: Array<{ id: string; label: string; match: (s: WordStatus) => boolean }> = [
   { id: "all", label: "Все", match: (s) => s !== "dropped" },
   { id: "learning", label: "Учу", match: (s) => s === "learning" || s === "hard" },
+  { id: "reviews", label: "Повторы", match: (s) => s === "scheduled" || s === "known" },
   { id: "waiting", label: "В очереди", match: (s) => s === "new" || s === "paused" },
   { id: "known", label: "Выучено", match: (s) => s === "known" },
   { id: "hard", label: "Трудные", match: (s) => s === "hard" },
@@ -144,7 +146,8 @@ export function Words({ initialFilter, onExit, onSets, onSettings }: {
       </div>
       <Input aria-label="Поиск слов" placeholder="Найти слово или перевод" value={query} onChange={(e) => setQuery(e.target.value)} />
       <Section header={title}
-        footer={learning && data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела." : undefined}>
+        footer={learning ? (data.active.length > data.limit ? "Забытые слова могут остаться в подборке сверх предела."
+          : "Слова с интервалом от недели переходят в «Повторы».") : undefined}>
         {learning && (
           <div className="form-buttons list-actions">
             <Button mode="bezeled" size="m" onClick={() => { haptic.select(); setQuery(""); setFilter("waiting"); }}>Выбрать из очереди</Button>

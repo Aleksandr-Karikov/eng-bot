@@ -103,6 +103,39 @@ describe("лимит одновременно изучаемых слов", () =
     expect((await list()).active[0]).toMatchObject({ id: future.wordId, nextReview: null });
   });
 
+  it("освобождает место на длинном интервале и возвращает забытое слово поверх полного «Учу»", async () => {
+    const { h, user, rows, list, queue, answer, get, getCard, post } = await setup(2, 2);
+    const [spaced, close, fresh] = rows;
+    const longReview = review(newCard(T0).fsrs, "easy", T0);
+    expect(isLearned(longReview)).toBe(false);
+    const first = review(newCard(T0).fsrs, "good", T0);
+    const shortReview = review(first.fsrs, "good", first.due);
+    expect(shortReview.state).toBe(State.Review);
+    await h.db.update(cards).set(longReview).where(eq(cards.id, spaced.id));
+    await h.db.update(cards).set(shortReview).where(eq(cards.id, close.id));
+    await updateUser(h.db, user.id, { activeLearningLimit: 2, newPerDay: 1 });
+
+    const before = await list();
+    expect(before.active.map(({ id }) => id)).toEqual([close.wordId]);
+    expect(before.words.find(({ id }) => id === spaced.wordId)).toMatchObject({
+      status: "scheduled", nextReview: expect.any(String),
+    });
+    expect(await queue("reviews")).toEqual([]);
+    expect((await queue()).map(({ cardId }) => cardId)).toEqual([fresh.id]);
+    expect(await answer(fresh.id, "good")).toMatchObject({ result: "ok" });
+    expect(await (await get("/api/me")).json()).toMatchObject({ due: { dailyFull: true, activeFull: true, fresh: 0 } });
+    expect(await getCard(spaced.id)).toMatchObject(longReview);
+
+    h.setNow(longReview.due);
+    expect((await queue("reviews")).map(({ cardId }) => cardId)).toContain(spaced.id);
+    expect((await list()).words.find(({ id }) => id === spaced.wordId)).toMatchObject({ status: "scheduled", nextReview: null });
+    expect(await answer(spaced.id, "again", longReview.reps)).toMatchObject({ result: "ok" });
+    expect((await list()).active.map(({ id }) => id)).toEqual([close.wordId, fresh.wordId, spaced.wordId]);
+    expect((await post("/api/undo", { cardId: spaced.id })).status).toBe(200);
+    expect((await list()).active.map(({ id }) => id)).toEqual([close.wordId, fresh.wordId]);
+    expect(await getCard(spaced.id)).toMatchObject({ ...longReview, relearningAtLimit: null });
+  });
+
   it("предлагает открыть «Учу» напрямую из личного чата после конца очереди", async () => {
     const { h, rows } = await setup(1, 0);
     h.deps.appUrl = "https://app.example/app/?source=bot";

@@ -186,7 +186,7 @@ export const sendAnswer = (card: Card, answer: CardAnswer) =>
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
-export type WordStatus = "new" | "learning" | "known" | "hard" | "paused" | "dropped";
+export type WordStatus = "new" | "learning" | "known" | "hard" | "scheduled" | "paused" | "dropped";
 
 export interface WordItem {
   id: number;

@@ -1,15 +1,22 @@
 import { and, asc, count, desc, eq, exists, gt, gte, inArray, isNotNull, ne, not, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
-import { State } from "ts-fsrs";
+import { State, type Card } from "ts-fsrs";
 import type { Db } from "../db/client";
-import { cards, reviewLogs, users, words } from "../db/schema";
+import { cards, reviewLogs, users, words, type CardRow } from "../db/schema";
 import { withCombatLock } from "./combat-ledger";
 import { KNOW_STAGE } from "./goals";
 import { LEARNED_STABILITY_DAYS } from "./stats";
 
-function knownCard(db: Db) {
+const SPACED_REVIEW_DAYS = 7;
+
+export function isSpacedReview(card: Pick<CardRow, "state" | "fsrs">): boolean {
+  return card.state === State.Review && (JSON.parse(card.fsrs) as Card).scheduled_days >= SPACED_REVIEW_DAYS;
+}
+
+function independentReview(db: Db) {
+  const interval = sql<number>`coalesce(cast(${cards.fsrs} ->> 'scheduled_days' as integer), 0)`;
   return or(
-    and(eq(cards.state, State.Review), gte(cards.stability, LEARNED_STABILITY_DAYS)),
+    and(eq(cards.state, State.Review), or(gte(cards.stability, LEARNED_STABILITY_DAYS), gte(interval, SPACED_REVIEW_DAYS))),
     and(eq(cards.reps, 1), exists(db.select({ id: reviewLogs.id }).from(reviewLogs)
       .where(and(eq(reviewLogs.cardId, cards.id), eq(reviewLogs.stage, KNOW_STAGE))))),
   )!;
@@ -24,7 +31,7 @@ export async function learningSelection(db: Db, userId: number) {
     .innerJoin(words, eq(words.id, cards.wordId))
     .where(and(eq(cards.userId, userId), or(
       and(eq(cards.state, State.New), or(gt(cards.learningPriority, 0), isNotNull(cards.relearningAtLimit))),
-      and(ne(cards.state, State.New), not(knownCard(db))),
+      and(ne(cards.state, State.New), not(independentReview(db))),
     )))
     .orderBy(desc(cards.learningPriority), desc(sql`coalesce(${words.usefulness}, 2)`), asc(cards.id));
   // При явном снижении предела забытые слова остаются в подборке и занимают места по новому пределу.
@@ -36,7 +43,7 @@ export async function learningSelection(db: Db, userId: number) {
 }
 
 export function reviewableCards(db: Db, activeIds: number[]) {
-  return and(ne(cards.state, State.New), or(inArray(cards.id, activeIds), knownCard(db)));
+  return and(ne(cards.state, State.New), or(inArray(cards.id, activeIds), independentReview(db)));
 }
 
 export function takeLearningWord(db: Db, userId: number, wordId: number, replaceWordId?: number) {

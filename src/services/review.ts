@@ -14,7 +14,7 @@ import { localMoment, localParts, nextDate } from "../time";
 import { DEFAULT_NEW_PER_DAY, DEFAULT_TIMEZONE } from "./users";
 import { review, type Answer } from "../srs/srs";
 import { isLearned } from "./stats";
-import { learningSelection, reviewableCards } from "./learning";
+import { isSpacedReview, learningSelection, reviewableCards } from "./learning";
 
 export interface DueItem {
   card: CardRow;
@@ -289,11 +289,12 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
   const [word] = await db.select({ usefulness: words.usefulness, roomId: words.roomId }).from(words).where(eq(words.id, card.wordId));
   const damage = await reviewDamage(db, card.userId, word?.roomId, input.answer, input.now, card.id, input.stage);
   const next = review(card.fsrs, input.answer, input.now, word?.usefulness ?? null);
-  // После проверки выше начатое слово вне подборки может быть только знакомым.
-  const returning = input.answer === "again" && card.state !== State.New && !inSelection && !deferred && !isLearned(next) ? selection : undefined;
+  const graduated = isLearned(next) || isSpacedReview(next) || input.stage === KNOW_STAGE;
+  // Короткий интервал после самостоятельного повтора возвращает слово в подборку.
+  const returning = card.state !== State.New && !inSelection && !deferred && !graduated ? selection : undefined;
   const relearningAtLimit = returning
     ? returning.limit
-    : isLearned(next) || input.stage === KNOW_STAGE ? null : card.relearningAtLimit;
+    : graduated ? null : card.relearningAtLimit;
   const lastActive = Math.min(...(returning?.active.map(({ priority }) => priority) ?? []));
   const firstWaiting = returning?.waiting[0]?.priority;
   let learningPriority = returning
