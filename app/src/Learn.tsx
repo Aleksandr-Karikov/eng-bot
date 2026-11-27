@@ -134,6 +134,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
     setQueue([]);
     setDone(0);
     setSessionEnergy(0);
+    setEnergyBursts([]);
     setHistory([]);
   }, [mode]);
 

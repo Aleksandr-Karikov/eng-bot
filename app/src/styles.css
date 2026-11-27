@@ -97,7 +97,6 @@ body {
 /* Предпросмотр карточки со страницы слова: постоянной панели кнопок нет — и место под неё не нужно. */
 .screen.preview, .screen.learn-status { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .learn-result { width: 100%; max-width: 440px; padding-inline: 12px; box-sizing: border-box; align-self: center; }
-.learn-status .damage-bursts { display: none; }
 .learn-result-actions { width: 100%; }
 .result-stat { display: block; margin-bottom: 4px; color: var(--tg-theme-text-color, #1a1a1a); }
 .result-detail { display: block; margin-block: 4px; }
@@ -890,7 +889,13 @@ body {
 .trophy-detail summary { cursor: pointer; }
 .trophy-detail.locked summary { opacity: 0.65; }
 
-.damage-bursts { position: fixed; right: 26px; top: 36%; z-index: 80; pointer-events: none; }
+.damage-bursts {
+  position: fixed;
+  right: calc(26px + env(safe-area-inset-right));
+  bottom: calc(160px + env(safe-area-inset-bottom));
+  z-index: 80;
+  pointer-events: none;
+}
 .damage-burst { position: absolute; right: 0; width: max-content; font-size: 38px; font-weight: 900; color: #fbbf24; text-shadow: 0 2px 3px #181023, 0 0 22px #f59e0b80; font-variant-numeric: tabular-nums; }
 .damage-burst small { font-size: 16px; }
 .damage-burst-undo { color: #c4b5fd; text-shadow: 0 2px 3px #181023, 0 0 18px #8b5cf680; }
