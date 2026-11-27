@@ -5,6 +5,7 @@ import { cards as cardsTable, reviewLogs } from "../src/db/schema";
 import { updateUser } from "../src/services/users";
 import { createRoom, getRoom, joinRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
+import { damageBalanceDeci } from "../src/services/combat-ledger";
 import { answerCard, countDue, markKnown, nextDue, nextReviewAt } from "../src/services/review";
 import { saveWord } from "../src/services/words";
 import { DAY, MIN, T0, at, makeUser, testDb } from "./helpers";
@@ -143,15 +144,15 @@ describe("«уже знаю» — знакомство, а не работа (E5
 
     // Карточка ушла из очереди — знакомство засчитано.
     expect(await countDue(db, bob.id, T0)).toBe(0);
-    // Цель не сдвинулась ни на HP.
+    // Знакомство не пополняет запас и не влияет на цель.
     const after = await goalProgress(db, (await getRoom(db, room.id))!, T0);
     expect(after.done).toBe(before.done);
-    // Запись ответа есть, и урона в ней ноль: карточка закрылась, вклад в цель — нет.
+    expect(await damageBalanceDeci(db, bob.id)).toBe(0);
     const [card] = await db.select().from(cardsTable).where(eq(cardsTable.userId, bob.id));
     expect(await damageAt(db, card.id)).toEqual([0]);
   });
 
-  it("«Помню» на той же карточке цель двигает", async () => {
+  it("«Помню» на такой карточке пополняет энергию", async () => {
     const { db, bob, add } = await setup();
     await add("real");
     await setBossMode(db, bob.id);
@@ -159,6 +160,7 @@ describe("«уже знаю» — знакомство, а не работа (E5
     await damageOf(db, bob.id, item.card.id, "good", T0);
     expect(await damageAt(db, item.card.id)).toEqual([20]);
     const after = await goalProgress(db, (await getRoom(db, 1))!, T0);
-    expect(after.done).toBe(2);
+    expect(after.done).toBe(0);
+    expect(await damageBalanceDeci(db, bob.id)).toBe(20);
   });
 });

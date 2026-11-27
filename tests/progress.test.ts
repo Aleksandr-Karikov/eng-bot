@@ -13,7 +13,7 @@ import { T0, makeUser } from "./helpers";
 describe("📊 progress", () => {
   it("counts today's answers, a forecast without new words, the goal and open mistake topics", async () => {
     const h = botHarness();
-    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true });
+    const user = await updateUser(h.db, (await makeUser(h.db, 100)).id, { canDm: true, modeBoss: false });
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     for (const term of ["bank", "river", "tree"]) await saveWord(h.db, { roomId: room.id, addedBy: user.id, draft: { term, translation: term, explanation: "", example: "" }, now: T0 });
     const [first, second] = await h.db.select().from(cards);
@@ -30,7 +30,7 @@ describe("📊 progress", () => {
     expect(r.forecast).toHaveLength(7);
     // Ответили на две карточки — в прогнозе только они, третья (новая) не считается.
     expect(r.forecast.reduce((a, d) => a + d.count, 0)).toBe(2);
-    // Вклад в HP: «Помню» 2 + «Забыл» 1 — «Забыл» тоже удар, а не ноль.
+    // Личный режим выключен, поэтому «Помню» и «Забыл» дают 2 + 1 HP цели комнаты.
     expect(r.goal).toMatchObject({ room: "R", done: 3 });
     expect(r.topics).toEqual([
       { category: "артикли", count: 2, streak: 1 },

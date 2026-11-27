@@ -28,7 +28,7 @@ import { recordAnswer, countDueSplit, dueQueue, extraQueue, getDueItemByCard, ne
 import { practiceQueue } from "../services/practice";
 import { weakDirections } from "../services/weak-direction";
 import { ensurePersonalRoom, getRoom } from "../services/rooms";
-import { getUserByTelegramId, updateUser } from "../services/users";
+import { getUserByTelegramId } from "../services/users";
 import { EN, langForms } from "../lang";
 import type { Answer } from "../srs/srs";
 import { localParts } from "../time";
@@ -111,6 +111,7 @@ export async function appMe(deps: Deps, user: User) {
   const total = cards?.n ?? 0;
   // Плоско и коротко, как `appSets`: приложению тут нужны только id, название и размер.
   const starter = total === 0 ? await starterSet(deps.db) : undefined;
+  const boss = bossEnabled(user, deps.bossEnabled);
   return {
     name: user.firstName,
     room: room?.name ?? null,
@@ -129,8 +130,8 @@ export async function appMe(deps: Deps, user: User) {
     // 🗣 Каким произношением озвучивать карточку самим: null — озвучка выключена (как было всегда).
     voice: autoVoice(user) ?? null,
     // 🐉 Вкладка босса: личный режим И общий рубильник. Выключено — приложение не рисует кнопку вовсе.
-    boss: bossEnabled(user, deps.bossEnabled),
-    bankDamage: user.bankDamage && bossEnabled(user, deps.bossEnabled),
+    boss,
+    bankDamage: boss, // Для уже открытого Mini App: знак ⚡ у полученной награды.
     // Изучаемый язык: какие кнопки озвучки и подписи транскрипции показывать.
     language: {
       code: EN.code,
@@ -417,7 +418,7 @@ export async function appBoss(deps: Deps, user: User) {
   const coins = coinState(earnedCoins, user, now);
   return {
     enabled,
-    combat: { ...combat, roomId: room.id, week: boss.week },
+    combat: { ...combat, roomId: room.id, week: boss.week, bank: true },
     coins,
     ...(won ? {
       victory: {
@@ -468,8 +469,7 @@ export async function appCombat(deps: Deps, user: User, input: {
 } | null) {
   if (!bossEnabled(user, deps.bossEnabled)) return { status: 400 as const, body: { ok: false, error: "Режим босса выключен" } };
   if (typeof input?.bank === "boolean") {
-    const updated = await updateUser(deps.db, user.id, { bankDamage: input.bank });
-    return { status: 200 as const, body: { ok: true, ...await appBoss(deps, updated) } };
+    return { status: 410 as const, body: { ok: false, error: "Энергия теперь копится автоматически. Переоткрой Mini App." } };
   }
   if (input?.target === "boss") {
     return { status: 409 as const, body: { ok: false, error: "Открой Mini App заново и начни атаку на арене." } };

@@ -7,7 +7,6 @@ import { saveWord } from "../src/services/words";
 import { combatSpends, reviewLogs } from "../src/db/schema";
 import { cards as cardsTable } from "../src/db/schema";
 import { eq } from "drizzle-orm";
-import { answerCard } from "../src/services/review";
 import { sign } from "@telegram-apps/init-data-node";
 import { createApp } from "../src/app/server";
 import type { BossDuelTurn } from "../src/app/boss-duel";
@@ -198,7 +197,6 @@ async function attackArena(now = nsk("2026-11-19T12:00")) {
   const { h, alice, room, app, headers } = state;
   h.setNow(now);
   await setWeeklyGoal(h.db, room.id, 100);
-  await updateUser(h.db, alice.id, { bankDamage: true });
   await studyArenaWords(h, alice.id, room.id);
   const credit = (damageDeci: number, banked: boolean) => h.db.insert(reviewLogs).values({
     userId: alice.id, cardId: 1, rating: "good", reviewedAt: new Date(now.getTime() - HOUR), damageDeci, banked,
@@ -411,32 +409,54 @@ describe("пошаговая дуэль с боссом", () => {
 });
 
 describe("урон из запаса", () => {
-  // Настройка по умолчанию: ручной удар недоступен, потому что копить выключено. Экран обязан объяснить
-  // это и предложить включить — тест фиксирует состояние сервера, на котором держится объяснение (E1).
-  it("при выключенном «Копить урон» ручной удар недоступен, и это видно по состоянию", async () => {
-    const { app, headers, room } = await bossTab();
-    const state = await (await app.request("/api/boss", { headers })).json();
-    expect(state.combat.bank).toBe(false);
-    expect(state.combat.balance).toBe(0);
-    expect(state.combat.attackCost).toBe(10);
-    expect(state.boss.hp).toBeGreaterThan(0);
+  it("копит с первого ответа и сохраняет прежние урон и энергию", async () => {
+    const { h, alice, app, headers } = await bossTab();
+    const getBoss = async () => (await app.request("/api/boss", { headers })).json();
+    const post = (path: string, body: object) => app.request(path, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    expect(alice.bankDamage).toBe(false);
+    expect(await getBoss()).toMatchObject({ boss: { hp: 10 }, combat: { balance: 0, attackCost: 10 } });
+    for (const bank of [false, true]) expect((await post("/api/boss/combat", { bank })).status).toBe(410);
+    expect(await (await post("/api/answer", { cardId: 1, reps: 0, answer: "good" })).json()).toMatchObject({ result: "ok", energy: 2 });
+    expect(await getBoss()).toMatchObject({ boss: { hp: 10 }, combat: { balance: 2 }, hits: [] });
 
-    // Ответ всё равно идёт в босса комнаты напрямую — поэтому человек и не должен видеть пустой запас
-    // как «сломалось»: урон начислен, просто потратить его ударом нечего.
+    await h.db.insert(reviewLogs).values([
+      { userId: alice.id, cardId: 1, rating: "good", reviewedAt: T0, damageDeci: 30, banked: true },
+      { userId: alice.id, cardId: 1, rating: "good", reviewedAt: T0, damageDeci: 20, banked: false },
+    ]);
+    expect(await (await post("/api/answer", { cardId: 1, reps: 1, answer: "good" })).json()).toMatchObject({ result: "ok", damage: 2 });
+    expect(await getBoss()).toMatchObject({ boss: { hp: 8 }, combat: { balance: 7 }, hits: [{ damage: 2 }] });
+  });
+
+  it("отдельно сообщает начисление, даже если настройки изменились после загрузки карточек", async () => {
+    const { h, alice, app, headers } = await bossTab();
     const post = async (path: string, body: object) => (await app.request(path, {
       method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
     })).json();
-    expect(await post("/api/answer", { cardId: 1, reps: 0, answer: "good" })).toMatchObject({ result: "ok" });
-    const after = await (await app.request("/api/boss", { headers })).json();
-    expect(after.combat.balance).toBe(0);
-    expect(after.boss.hp).toBeLessThan(state.boss.hp);
+    expect(await (await app.request("/api/me", { headers })).json()).toMatchObject({ boss: true });
+    await updateUser(h.db, alice.id, { modeBoss: false });
+    const swipe = await post("/api/answer", { cardId: 1, reps: 0, answer: "good" });
+    const dictation = await post("/api/check", { cardId: 1, reps: 1, stage: "listen", answer: "bank" });
+    expect(swipe).toMatchObject({ result: "ok", damage: 2 });
+    expect(dictation).toMatchObject({ correct: true, damage: 4 });
+    expect(swipe).not.toHaveProperty("energy");
+    expect(dictation).not.toHaveProperty("energy");
+    expect(await damageBalanceDeci(h.db, alice.id)).toBe(0);
 
-    // Кнопка «Включить копить урон» делает запас ненулевым: следующий ответ уже копится.
-    const { combat } = await post("/api/boss/combat", { bank: true });
-    expect(combat).toMatchObject({ bank: true, balance: 0, roomId: room.id });
-    expect(await post("/api/answer", { cardId: 1, reps: 1, answer: "good" })).toMatchObject({ result: "ok" });
-    const banked = await (await app.request("/api/boss", { headers })).json();
-    expect(banked.combat.balance).toBeGreaterThan(0);
+    await updateUser(h.db, alice.id, { modeBoss: true });
+    expect(await post("/api/check", { cardId: 1, reps: 2, stage: "listen", answer: "bank" })).toMatchObject({ energy: 4 });
+    expect(await (await app.request("/api/boss", { headers })).json()).toMatchObject({ boss: { hp: 4 }, combat: { balance: 4 } });
+  });
+
+  it("даёт энергию за карточку в Telegram и показывает запас после занятия", async () => {
+    const { h, alice, room } = await bossTab();
+    await h.bot.handleUpdate(h.callback(100, "r:1:0:g"));
+    expect(await damageBalanceDeci(h.db, alice.id)).toBe(20);
+    expect((await bossOf(h.db, (await getRoom(h.db, room.id))!, T0)).hp).toBe(10);
+    await h.db.update(cardsTable).set({ due: at(HOUR) }).where(eq(cardsTable.id, 1));
+    await h.bot.handleUpdate(h.message(100, "/learn"));
+    expect(h.calls.some((call) => String(call.payload.text).includes("В запасе 2 ⚡"))).toBe(true);
   });
 
   it("зачисляет ответ один раз, применяет ручной удар к боссу и защищает потраченный запас от отмены", async () => {
@@ -473,7 +493,7 @@ describe("урон из запаса", () => {
     const post = async (path: string, body: object) => (await app.request(path, {
       method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
     })).json();
-    const { combat, boss } = await post("/api/boss/combat", { bank: true });
+    const { combat, boss } = await (await app.request("/api/boss", { headers })).json();
     expect(combat.mobs).toMatchObject([
       { id: "golem", hp: 30 }, { id: "ghost", hp: 45 }, { id: "spider", hp: 70 },
       { id: "mimic", hp: 100 }, { id: "chimera", hp: 150 },
@@ -535,7 +555,7 @@ it("навсегда открывает реликвии за разные не�
 
   await pastWins(1, 1);
   await h.db.insert(reviewLogs).values({ userId: alice.id, cardId: 1, rating: "good", reviewedAt: at(-7 * DAY), damageDeci: 9000, banked: true });
-  const { combat } = await post("/api/boss/combat", { bank: true });
+  const { combat } = await boss();
   const strike = (target: string, hp: number) => post("/api/boss/combat", {
     target, roomId: room.id, week: combat.week, requestId: randomUUID(), maxDamageDeci: hp * 10,
   });
@@ -592,9 +612,10 @@ it("усиливает только диктанты и только во вре
   })).json();
   await credit(650);
   expect(await answer(0, "listen")).toMatchObject({ damage: 4 });
+  await credit(40);
   expect(await answer(1, "listen")).toMatchObject({ damage: 4.8 });
   expect(await answer(2, "sentence")).toMatchObject({ damage: 4 });
-  await credit(300);
+  await credit(310);
   expect(await answer(3, "listen")).toMatchObject({ damage: 4 });
 });
 
@@ -821,20 +842,20 @@ describe("⚖️ weighted damage and upgrades", () => {
 });
 
 describe("boss damage and rewards stay consistent", () => {
-  it("freezes damage at the answer, including the first upgrade, and undo removes it", async () => {
+  it("freezes energy at the answer, including the first upgrade, and undo removes it", async () => {
     const { recordAnswer, undoAnswer } = await import("../src/services/review");
     const { users } = await import("../src/db/schema");
     const { eq } = await import("drizzle-orm");
     const { h, alice, room } = await setup();
     const now = nsk("2026-10-19T12:00");
     await h.db.update(users).set({ upgradeDamage: 1 }).where(eq(users.id, alice.id));
-    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", now })).toEqual({ result: "ok", damage: 2.2 });
+    expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "good", now })).toEqual({ result: "ok", damage: 2.2, energy: 2.2 });
     await h.db.update(users).set({ upgradeDamage: 10 }).where(eq(users.id, alice.id));
-    expect((await bossOf(h.db, room, now, alice.id)).mine).toBe(2.2);
-    expect((await bossFeed(h.db, room, now)).byUser[0].damage).toBe(2.2);
+    expect(await damageBalanceDeci(h.db, alice.id)).toBe(22);
+    expect((await bossFeed(h.db, room, now)).hits).toEqual([]);
     expect(await recordAnswer(h.db, { userId: alice.id, cardId: 1, expectedReps: 0, answer: "easy", now })).toEqual({ result: "stale", damage: 0 });
     await undoAnswer(h.db, { userId: alice.id, cardId: 1 });
-    expect((await bossOf(h.db, room, now)).done).toBe(0);
+    expect(await damageBalanceDeci(h.db, alice.id)).toBe(0);
   });
 
   it("dry run writes nothing, weekly backfill skips one-off rewards, and an idle member can be carried", async () => {
@@ -960,16 +981,18 @@ describe("🕐 boss follows the room's timezone", () => {
 
   it("counts a strike in the week where it happened by the room's clock", async () => {
     const { h, alice, room } = await moscowRoom();
-    const card = (await h.db.select().from(cardsTable).where(eq(cardsTable.userId, alice.id)))[0];
-    // Два ответа: один в прошлой неделе (вс 19:30 МСК), другой в новой (вс 20:30 МСК).
-    await answerCard(h.db, { userId: alice.id, cardId: card.id, expectedReps: card.reps, answer: "good", now: msk("2026-10-18T19:30") });
+    const strike = (at: Date, damage: number) => h.db.insert(combatSpends).values({
+      userId: alice.id, roomId: room.id, target: "boss", damageDeci: 100, bossDamageDeci: damage, requestId: randomUUID(), at,
+    });
+    // Два удара: один в прошлой неделе (вс 19:30 МСК), другой в новой (вс 20:30 МСК).
+    await strike(msk("2026-10-18T19:30"), 50);
     const afterFirst = await bossFeed(h.db, room, msk("2026-10-18T19:31"), 20);
     expect(afterFirst.total).toBe(1);
-    const freshCard = (await h.db.select().from(cardsTable).where(eq(cardsTable.userId, alice.id)))[0];
-    await answerCard(h.db, { userId: alice.id, cardId: freshCard.id, expectedReps: freshCard.reps, answer: "good", now: msk("2026-10-18T20:30") });
-    // В новой неделе — только второй ответ: первый остался в прошлой.
+    await strike(msk("2026-10-18T20:30"), 100);
+    // В новой неделе только второй удар.
     const nextWeek = await bossFeed(h.db, room, msk("2026-10-18T20:31"), 20);
     expect(nextWeek.total).toBe(1);
+    expect(nextWeek.hits[0].damage).toBe(10);
   });
 });
 
@@ -1134,7 +1157,7 @@ describe("рубильник BOSS_ENABLED не меняет числа (E7)", ()
    * а после `BOSS_ENABLED=1` возвращается ровно то, что было. Дефект был в том, что флаг просачивался
    * в расчёт ответа (через `deps.bossEnabled`) и там гасил две вещи:
    *
-   * 1. `banked: active && user.bankDamage` — запас переставал копиться, и весь накопленный урон разом
+   * 1. `banked` — запас переставал копиться, и весь накопленный урон разом
    *    попадал в `/goal`;
    * 2. бонусы (`active ? mobHuntWeeks : 0`, `active ? streakBuff : undefined`) — реликвия и серия дней
    *    переставали усиливать ответ: 21 HP при включённом режиме против 20 при выключенном.
@@ -1147,7 +1170,6 @@ describe("рубильник BOSS_ENABLED не меняет числа (E7)", ()
     h.deps.bossEnabled = bossEnabled;
     const { db } = h;
     const alice = (await getUserByTelegramId(db, 100))!;
-    await updateUser(db, alice.id, { modeBoss: true, bankDamage: true });
     // «Знак охотника» (+5% ко всему): две недели охоты до текущей недели.
     await db.insert(combatSpends).values([
       { userId: alice.id, target: "golem", mobWeek: "2026-09-06", requestId: "r1", damageDeci: 300, at: nsk("2026-09-01T11:00") },
@@ -1173,7 +1195,7 @@ describe("рубильник BOSS_ENABLED не меняет числа (E7)", ()
   it("запас копится независимо от рубильника, поэтому /goal не прыгает", async () => {
     const on = await answerVia(true);
     const off = await answerVia(false);
-    // Копить включено у человека — значит урон идёт в запас, а не в цель, при любом рубильнике.
+    // Личный режим включён и пополняет запас при любом общем рубильнике.
     expect(on.banked).toBe(true);
     expect(off.banked).toBe(true);
     expect(on.done).toBe(off.done);

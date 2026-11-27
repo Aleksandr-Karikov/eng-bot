@@ -20,6 +20,7 @@ import { isHard, leechMoment } from "../../services/hard-words";
 import { answerCard, countDueSplit, extraQueue, getDueItemByCard, markKnown, nextDue, nextReviewAt, undoAnswer } from "../../services/review";
 import { personalStats } from "../../services/stats";
 import { bossEnabled, bossOf } from "../../services/boss";
+import { damageBalanceDeci } from "../../services/combat-ledger";
 import { getRoom } from "../../services/rooms";
 import { getWord, setImageFileId } from "../../services/words";
 import type { CardRow, Word } from "../../db/schema";
@@ -347,7 +348,7 @@ async function showNext(ctx: BotContext, deps: Deps, mode: PresentMode, retry?: 
     text = doneText(sessionCountsOf(deps).get(ctx.user.id) ?? 0, next, ctx.user.timezone, total === 0);
     const notice = learningLimitNotice(due, ctx.user);
     if (notice) text += `\n\n📚 ${notice}\nИзменить количество можно в /settings.`;
-    // 🐉 Босс — там же, где «Готово»: человек уходит с мыслью «снял столько-то HP», а не с сухим отчётом.
+    // 🐉 Под итогом занятия виден запас энергии и состояние босса.
     text += await bossLine(ctx, deps);
     const actions = new InlineKeyboard([]);
     if (notice) actions.row(InlineKeyboard.text(extraBatchLabel(due), encodeCb({ k: "learnExtra" })));
@@ -416,11 +417,11 @@ async function bossLine(ctx: BotContext, deps: Deps): Promise<string> {
   if (!bossEnabled(ctx.user, deps.bossEnabled) || ctx.user.currentRoomId == null) return "";
   const room = await getRoom(deps.db, ctx.user.currentRoomId);
   if (!room) return "";
-  const boss = await bossOf(deps.db, room, deps.now());
+  const [boss, balance] = await Promise.all([bossOf(deps.db, room, deps.now()), damageBalanceDeci(deps.db, ctx.user.id)]);
   const percent = Math.round(Math.min(1, boss.damage) * 100);
   // Добитый босс сразу уступает место следующему, поэтому «повержен» — это не конец, а счёт.
   const killed = boss.kills > 0 ? ` 💀 Добито: ${boss.kills} — на арене ${boss.round}-й` : "";
-  return `\n\n🐉 Босс недели: ${percent}% · осталось ${boss.hp} HP${killed} — /boss`;
+  return `\n\nВ запасе ${(balance / 10).toLocaleString("ru-RU")} ⚡. Атаковать можно в Mini App.\n🐉 Босс недели: ${percent}% · осталось ${boss.hp} HP${killed} — /boss`;
 }
 
 async function startSession(ctx: BotContext, deps: Deps): Promise<void> {

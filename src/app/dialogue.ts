@@ -133,14 +133,14 @@ export class AppDialogues {
       return ok({ retry: true, verdict: revealsDialogueWord(review.verdict, term) ? "" : review.verdict });
     }
 
-    let damage = 0;
+    let reward: { damage: number; energy?: number } = { damage: 0 };
     if (turn === 1 && !session.practice) {
       const rated = await recordAnswer(this.deps.db, {
         userId: user.id, cardId: session.cardId, expectedReps: session.reps,
         answer: review?.usesWord ? "good" : "again", now: this.deps.now(), stage: "app_sentence",
       });
       if (rated.result !== "ok") return stale();
-      damage = rated.damage;
+      reward = { damage: rated.damage, energy: rated.energy };
     }
     const next = turn === 1 && review?.usesWord ? review.followUp : undefined;
     const followUp = next && !revealsDialogueWord(next.line, term)
@@ -149,7 +149,7 @@ export class AppDialogues {
     if (turn === 1) session.first = { answer, followUp };
     else session.finished = true;
     return ok({
-      damage, term, translation, transcriptionUk, transcriptionUs, example: review ? "" : example,
+      ...reward, term, translation, transcriptionUk, transcriptionUs, example: review ? "" : example,
       ...(review ? sentenceFeedback(this.deps, user, review) : { correct: false }), followUp,
     });
   }

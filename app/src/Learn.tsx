@@ -5,7 +5,7 @@ import { setStudyLanguage, studyLanguage } from "./language";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { type QueueMode, getBoss, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Boss, type Card, type DrillItem, type Me, type QueueItem } from "./api";
+import { type QueueMode, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
 import { DialogueCard } from "./DialogueCard";
@@ -42,7 +42,7 @@ function savedMode(): QueueMode {
 
 /** Сколько последних свайпов можно отменить подряд. */
 const UNDO_DEPTH = 5;
-type AnswerResult = Awaited<ReturnType<typeof sendAnswer>>;
+type AnswerResult = Pick<Awaited<ReturnType<typeof sendAnswer>>, "result" | "energy">;
 
 /** Карточки: очередь /learn со свайпами. */
 export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning }: {
@@ -55,22 +55,21 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
   const [done, setDone] = useState(0);
   const [sessionEnergy, setSessionEnergy] = useState(0);
   const [dialogueVersion, setDialogueVersion] = useState(0);
-  const [damageBursts, setDamageBursts] = useState<Array<{ id: number; hp: number; banked: boolean }>>([]);
+  const [energyBursts, setEnergyBursts] = useState<Array<{ id: number; energy: number }>>([]);
   const damageSequence = useRef(0);
   const reducedMotion = useReducedMotion();
-  const banked = Boolean(me?.bankDamage);
-  const showDamage = useCallback((hp: number, banked: boolean) => {
-    if (hp === 0) return;
-    if (banked) setSessionEnergy((total) => total + hp);
+  const showEnergy = useCallback((energy: number) => {
+    if (energy === 0) return;
+    setSessionEnergy((total) => total + energy);
     const id = ++damageSequence.current;
-    setDamageBursts((bursts) => [...bursts, { id, hp, banked }].slice(-6));
+    setEnergyBursts((bursts) => [...bursts, { id, energy }].slice(-6));
   }, []);
   /** Шапка с режимами свёрнута — на карточку уходит больше места. */
   const [headerFolded, setHeaderFolded] = useState(savedFolded);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   /** Отвеченные карточки (последняя — в конце) и их запросы: отмена ждёт, пока ответ дойдёт до сервера. */
-  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<AnswerResult | undefined>; banked: boolean; dropped?: boolean }>>([]);
+  const [history, setHistory] = useState<Array<{ card: Card; sent: Promise<AnswerResult | undefined>; dropped?: boolean }>>([]);
 
   /** Оценки, которые ещё летят на сервер. */
   const pending = useRef(new Set<Promise<unknown>>());
@@ -172,9 +171,9 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
   const rate = useCallback((card: Card, value: CardAnswer) => {
     const session = sessionVersion.current;
     const sent = sendAnswer(card, value).then((r) => {
-      if (session === sessionVersion.current) showDamage(r.damage, banked);
+      if (session === sessionVersion.current) showEnergy(r.energy ?? 0);
       if (r.result !== "ok") setHistory((h) => h.filter((entry) => entry.sent !== sent));
-      if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён — повторный урон не начислен");
+      if (r.result === "stale") notify(card.needsDecision ? "Карточка уже изменилась" : "Ответ уже учтён");
       if (r.result === "waiting") notify("Слово осталось в очереди.");
       return r;
     }).catch(() => {
@@ -185,9 +184,9 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
     pending.current.add(sent);
     void sent.finally(() => pending.current.delete(sent));
     // Вне зачёта отменять нечего — ответ и так не записан.
-    if (!card.practice) setHistory((h) => [...h, { card, sent, banked, dropped: value === "drop" }].slice(-UNDO_DEPTH));
+    if (!card.practice) setHistory((h) => [...h, { card, sent, dropped: value === "drop" }].slice(-UNDO_DEPTH));
     return sent;
-  }, [banked, showDamage]);
+  }, [showEnergy]);
 
   /** Свайп — сразу следующая карточка. */
   const answer = useCallback(
@@ -239,7 +238,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
       }
       await undoAnswer(last.card);
       if (session !== sessionVersion.current) return;
-      showDamage(-recorded.damage, last.banked);
+      showEnergy(-(recorded.energy ?? 0));
       if (last.card.stage === "sentence") setDialogueVersion((v) => v + 1);
       setQueue((q) => [last.card, ...q.filter((c) => c.kind !== "card" || c.cardId !== last.card.cardId)]);
       setDone((n) => Math.max(0, n - 1));
@@ -247,14 +246,14 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
       haptic.done(false);
       notify(err instanceof Error ? err.message : String(err));
     }
-  }, [history, load, showDamage]);
+  }, [history, load, showEnergy]);
 
   const card = queue[0];
   const session = sessionVersion.current;
-  const typedRated = (card: Card, hp: number) => {
+  const typedRated = (card: Card, energy: number) => {
     if (session !== sessionVersion.current) return;
-    showDamage(hp, banked);
-    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, damage: hp }), banked }].slice(-UNDO_DEPTH));
+    showEnergy(energy);
+    if (!card.practice) setHistory((h) => [...h, { card, sent: Promise.resolve({ result: "ok" as const, energy }) }].slice(-UNDO_DEPTH));
   };
   const total = done + queue.length;
   // Кнопки в углу видны всегда — и на загрузке, и на «Готово», чтобы до слов и настроек можно было дойти.
@@ -310,16 +309,16 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
   const damageEffect = me?.boss ? (
     <div className="damage-bursts" role="status" aria-live="polite" aria-atomic="false">
       <AnimatePresence>
-        {damageBursts.map(({ id, hp, banked }) => (
+        {energyBursts.map(({ id, energy }) => (
           <motion.div
             key={id}
-            className={`damage-burst${hp < 0 ? " damage-burst-undo" : ""}`}
+            className={`damage-burst${energy < 0 ? " damage-burst-undo" : ""}`}
             initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.65, y: reducedMotion ? 0 : 24 }}
             animate={{ opacity: [0, 1, 1, 0], scale: reducedMotion ? 1 : [0.65, 1.18, 1, 1], y: reducedMotion ? 0 : [24, 0, -18, -70], x: reducedMotion ? 0 : ((id % 3) - 1) * 22 }}
             transition={{ duration: 1.5, times: [0, 0.15, 0.65, 1] }}
-            onAnimationComplete={() => setDamageBursts((bursts) => bursts.filter((b) => b.id !== id))}
+            onAnimationComplete={() => setEnergyBursts((bursts) => bursts.filter((b) => b.id !== id))}
           >
-            {hp > 0 ? "+" : ""}{hp} <small>{banked ? "⚡" : "HP"}</small>
+            {energy > 0 ? "+" : ""}{energy} <small>⚡</small>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -394,7 +393,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
         <DialogueCard
           key={`${card.cardId}-${card.reps}-${dialogueVersion}`}
           card={card}
-          onRated={(hp) => typedRated(card, hp)}
+          onRated={(energy) => typedRated(card, energy)}
           onNext={advance}
           onFallback={() => setQueue((q) => q[0] === card ? [{ ...card, stage: "en_ru" }, ...q.slice(1)] : q)}
         />
@@ -404,7 +403,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
           card={card}
           voice={me?.voice}
           // Оценил сервер при проверке — в историю для отмены (запрос уже прошёл).
-          onRated={(hp) => typedRated(card, hp)}
+          onRated={(energy) => typedRated(card, energy)}
           onRateSelf={(a) => void rate(card, a)}
           onNext={advance}
         />
@@ -460,14 +459,6 @@ function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onS
   onLearning: () => void;
 }) {
   const starter = me?.starterSet;
-  const [boss, setBoss] = useState<Boss>();
-  const showBossHp = Boolean(me?.boss && done && energy <= 0);
-  useEffect(() => {
-    if (!showBossHp) return;
-    getBoss()
-      .then((state) => setBoss(state.boss))
-      .catch(() => {});
-  }, [showBossHp]);
 
   if (starter && done === 0) {
     return (
@@ -503,8 +494,7 @@ function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onS
       className="learn-result"
       header={done ? `Готово! Пройдено карточек: ${done}` : notice ? "Лимит обучения достигнут" : emptyHeader[mode]}
       description={<>
-        {energy > 0 ? <span className="result-stat">За занятие +{energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡</span>
-          : showBossHp && boss && <span className="result-stat">{boss.phase === "dead" ? "Босс повержен" : `У босса осталось ${boss.hp} HP`}</span>}
+        {me?.boss && energy > 0 && <span className="result-stat">За занятие +{energy.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ⚡</span>}
         {notice && <span className="result-detail">{notice}</span>}
         {notice && limits && <span className="result-detail">
           {limits.dailyLimit > 0 ? `Сегодня начато ${limits.introduced} из ${limits.dailyLimit} новых слов.` : "Дневной лимит выключен."}

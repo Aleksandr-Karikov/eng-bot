@@ -419,9 +419,9 @@ export async function personalDamage(db: Db, userId: number, now: Date, period?:
 }
 
 export const UPGRADES = [
-  { kind: "damage", field: "upgradeDamage", title: "⚔️ Сила", description: "+10% базового урона всех ответов за уровень", bonus: 10 },
-  { kind: "listen", field: "upgradeListen", title: "🎧 Слух", description: "+20% базового урона диктантов за уровень", bonus: 20 },
-  { kind: "writing", field: "upgradeWriting", title: "✍️ Письмо", description: "+20% базового урона пропусков и своих предложений за уровень", bonus: 20 },
+  { kind: "damage", field: "upgradeDamage", title: "⚔️ Сила", description: "+10% к базовой энергии за все ответы за уровень", bonus: 10 },
+  { kind: "listen", field: "upgradeListen", title: "🎧 Слух", description: "+20% к базовой энергии диктантов за уровень", bonus: 20 },
+  { kind: "writing", field: "upgradeWriting", title: "✍️ Письмо", description: "+20% к базовой энергии за пропуски и свои предложения за уровень", bonus: 20 },
 ] as const;
 export type UpgradeKind = typeof UPGRADES[number]["kind"];
 

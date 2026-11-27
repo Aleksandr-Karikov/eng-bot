@@ -20,14 +20,13 @@ export async function combatState(db: Db, user: User, now: Date, boss: BossState
     availableRune(db, user), streakBuff(db, user, now),
   ]);
   return {
-    bank: user.bankDamage,
     balance: balance / 10,
     attackCost: MIN_BOSS_ATTACK_STAKE,
     maxAttackStake: maxBossAttackStake(boss.hp, balance / 10),
     mobs: MOBS.map(({ coins, skill, ...mob }) => ({
       ...mob,
       reward: skill
-        ? `${skill === "listen" ? "Диктанты" : "Пропуски и свои предложения"}: +20% базового урона до конца недели`
+        ? `${skill === "listen" ? "Диктанты" : "Пропуски и свои предложения"}: +20% к базовой энергии до конца недели`
         : `Монеты: +${coins}`,
       defeated: claims.some((claim) => claim.target === mob.id),
     })),

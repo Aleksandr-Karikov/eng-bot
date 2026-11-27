@@ -92,7 +92,7 @@ export function registerStats(bot: Bot<BotContext>, deps: Deps): void {
     if (state.price === null) return void (await ctx.reply(`⚔️ Усиление уже максимальное: +${state.level * 10}% к урону.`));
     if (state.coins < state.price) {
       return void (await ctx.reply(
-        `🪙 Монет на этой неделе: ${state.coins}, а следующий уровень стоит ${state.price}.\nСнимай HP карточками в /learn — монеты это и есть твой урон.`,
+        `🪙 Монет на этой неделе: ${state.coins}, а следующий уровень стоит ${state.price}.\nКарточки дают энергию. За урон в бою с боссом начисляются монеты.`,
       ));
     }
     const result = await buyUpgrade(deps.db, ctx.user.id, await personalDamage(deps.db, ctx.user.id, now), now);

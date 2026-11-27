@@ -46,11 +46,11 @@ export async function appCheck(
   if (!item) return fail(404, "Это слово уже удалили");
   const { word } = item;
   // Вне зачёта (режим «Трудные») ответ проверяем, но карточку не оцениваем.
-  let damage = 0;
+  let reward: { damage: number; energy?: number } = { damage: 0 };
   const rate = async (good: boolean) => {
     if (body.practice === true) return;
     const recorded = await recordAnswer(deps.db, { userId: user.id, cardId, expectedReps: reps, answer: good ? "good" : "again", now: deps.now(), stage: `app_${stage}` });
-    damage = recorded.damage;
+    reward = { damage: recorded.damage, energy: recorded.energy };
     if (recorded.result === "waiting") return fail(409, LEARNING_FULL_TEXT);
     if (recorded.result === "stale") return fail(409, "Уже учтено");
   };
@@ -60,7 +60,7 @@ export async function appCheck(
     const grade = dunno ? "wrong" : gradeDictation(answer, word.term);
     const conflict = await rate(grade !== "wrong");
     if (conflict) return conflict;
-    return { status: 200, body: { ok: true, damage, correct: grade !== "wrong", grade, ...reveal } };
+    return { status: 200, body: { ok: true, ...reward, correct: grade !== "wrong", grade, ...reveal } };
   }
 
   if (stage === "cloze") {
@@ -70,7 +70,7 @@ export async function appCheck(
     if (dunno || isExactAnswer(answer, { answer: s.answer, term: word.term })) {
       const conflict = await rate(!dunno);
       if (conflict) return conflict;
-      return { status: 200, body: { ok: true, damage, correct: !dunno, ...base, ...reveal } };
+      return { status: 200, body: { ok: true, ...reward, correct: !dunno, ...base, ...reveal } };
     }
     const denied = await allowModelCheck(deps, user, "check");
     if (denied) return denied;
@@ -79,18 +79,18 @@ export async function appCheck(
       judgement = await deps.tutor.judge({ sentence: s.sentence, expected: s.answer, term: word.term, translation: word.translation, answer });
     } catch (err) {
       console.error("App cloze judge failed", err);
-      return { status: 200, body: { ok: true, damage, unchecked: true, ...base, ...reveal } };
+      return { status: 200, body: { ok: true, ...reward, unchecked: true, ...base, ...reveal } };
     }
     const conflict = await rate(judgement.correct);
     if (conflict) return conflict;
-    return { status: 200, body: { ok: true, damage, correct: judgement.correct, explanation: judgement.explanation, tip: judgement.tip, ...base, ...reveal } };
+    return { status: 200, body: { ok: true, ...reward, correct: judgement.correct, explanation: judgement.explanation, tip: judgement.tip, ...base, ...reveal } };
   }
 
   // Своё предложение: модель смотрит, верно ли употреблено слово (это и оценка), и правит остальное.
   if (dunno) {
     const conflict = await rate(false);
     if (conflict) return conflict;
-    return { status: 200, body: { ok: true, damage, correct: false, ...reveal } };
+    return { status: 200, body: { ok: true, ...reward, correct: false, ...reveal } };
   }
   const denied = await allowModelCheck(deps, user, "check");
   if (denied) return denied;
@@ -99,11 +99,11 @@ export async function appCheck(
     review = await deps.tutor.reviewSentence({ term: word.term, translation: word.translation, explanation: word.explanation, answer });
   } catch (err) {
     console.error("App sentence review failed", err);
-    return { status: 200, body: { ok: true, damage, unchecked: true, ...reveal } };
+    return { status: 200, body: { ok: true, ...reward, unchecked: true, ...reveal } };
   }
   const conflict = await rate(review.usesWord);
   if (conflict) return conflict;
-  return { status: 200, body: { ok: true, damage, ...sentenceFeedback(deps, user, review), ...reveal } };
+  return { status: 200, body: { ok: true, ...reward, ...sentenceFeedback(deps, user, review), ...reveal } };
 }
 
 export function sentenceFeedback(deps: Deps, user: User, review: SentenceReview) {

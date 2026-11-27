@@ -74,7 +74,6 @@ export interface Me {
   voice: VoiceAccent | null;
   /** Режим «босс недели» включён: без него вкладка не показывается. */
   boss?: boolean;
-  bankDamage?: boolean;
   /** Изучаемый язык текущей комнаты. */
   language?: StudyLanguage;
 }
@@ -183,7 +182,7 @@ export const getQueue = (mode: QueueMode = "all", extra = false) =>
 export const sendDrillAnswer = (item: DrillItem, correct: boolean) =>
   post<{ progress: DrillProgress | null }>("/api/drill", { category: item.category, correct }).then((r) => r.progress);
 export const sendAnswer = (card: Card, answer: CardAnswer) =>
-  postRetry<{ result: "ok" | "stale" | "practice" | "waiting"; damage: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice, extra: card.extra });
+  postRetry<{ result: "ok" | "stale" | "practice" | "waiting"; damage: number; energy?: number }>("/api/answer", { cardId: card.cardId, reps: card.reps, answer, stage: card.stage, practice: card.practice, extra: card.extra });
 export const undoAnswer = (card: Card) => postRetry("/api/undo", { cardId: card.cardId });
 
 /** Как слово идёт у меня: dropped — убрал у себя («Не для меня»). */
@@ -307,6 +306,7 @@ export const wordPictureUrl = (wordId: number) => cachedPicture(`word=${wordId}`
 /** Итог проверки ответа текстом. unchecked — проверить не вышло: человек оценивает себя сам. */
 export interface CheckResult {
   damage: number;
+  energy?: number;
   correct?: boolean;
   unchecked?: boolean;
   /** Диктант: exact — верно, close — с опечаткой (засчитано), wrong — нет. */
@@ -486,7 +486,6 @@ export interface BossState {
   trophies?: Trophies;
   victory?: { finalBlow?: { name: string; at: string }; teamTrophy: boolean };
   combat?: {
-    bank: boolean;
     balance: number;
     attackCost: number;
     maxAttackStake: number;
@@ -505,7 +504,7 @@ export interface BossState {
 }
 
 export const getBoss = () => call<BossState & { ok: true }>("/api/boss");
-export const fight = (action: { bank: boolean } | { target: Exclude<CombatTarget, "boss">; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
+export const fight = (action: { target: Exclude<CombatTarget, "boss">; roomId: number; week: string; requestId: string; maxDamageDeci: number }) =>
   postRetry<BossState & { ok: true; notice?: string }>("/api/boss/combat", action);
 
 export type BossAttack = { id: string; revision: number; stake: number } & (

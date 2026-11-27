@@ -27,7 +27,7 @@ function Marked({ text }: { text: string }) {
  * проверка и оценка — на сервере; разбор остаётся до «Дальше». onRated — карточка оценена (для отмены), onRateSelf —
  * проверить не вышло и человек оценил себя сам.
  */
-export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: Card; voice?: VoiceAccent | null; onRated: (damage: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
+export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: Card; voice?: VoiceAccent | null; onRated: (energy: number) => void; onRateSelf: (a: Answer) => void; onNext: () => void }) {
   const [answer, setAnswer] = useState("");
   // Задание с несколькими пропусками (баг #25): по ответу на каждый, заполнять можно в любом порядке
   // — человек тапает по нужному пропуску, и фокус уходит туда.
@@ -68,7 +68,7 @@ export function TypeCard({ card, voice, onRated, onRateSelf, onNext }: { card: C
         const r = await checkAnswer(card, answerText, dunno);
         setResult(r);
         haptic.done(Boolean(r.correct));
-        if (!r.unchecked) onRated(r.damage);
+        if (!r.unchecked) onRated(r.energy ?? 0);
       } catch (err) {
         haptic.done(false);
         // Карточка успела измениться или уйти в очередь, пока был открыт диктант.

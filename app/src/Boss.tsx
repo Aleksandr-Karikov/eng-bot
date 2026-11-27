@@ -1,4 +1,4 @@
-import { Button, Placeholder, Spinner, Switch, Text } from "@telegram-apps/telegram-ui";
+import { Button, Placeholder, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, buyUpgrade, fight, getBoss, moveBossAttack, startBossAttack, type Boss, type BossAttack, type BossMove, type BossPurchase, type BossState, type Coins, type CombatTarget, type HunterState, type Trophies } from "./api";
@@ -12,7 +12,7 @@ import { bossScreen } from "../../src/app/boss-screen";
 import { bossAttackDamage, BOSS_ATTACK_ROUNDS } from "../../src/boss-attack-rules";
 import type { BossId } from "../../src/boss-opponents";
 
-type CombatAction = Exclude<CombatTarget, "boss"> | "bank";
+type CombatAction = Exclude<CombatTarget, "boss">;
 
 function plural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
@@ -128,12 +128,10 @@ export function BossScreen({ onExit }: { onExit: () => void }) {
     const damage = combat.mobs.find((mob) => mob.id === action)?.hp ?? 0;
     setFighting(action);
     try {
-      const next = await fight(action === "bank"
-        ? { bank: !combat.bank }
-        : {
-          target: action, roomId: combat.roomId, week: combat.week, requestId: crypto.randomUUID(),
-          maxDamageDeci: Math.round(damage * 10),
-        });
+      const next = await fight({
+        target: action, roomId: combat.roomId, week: combat.week, requestId: crypto.randomUUID(),
+        maxDamageDeci: Math.round(damage * 10),
+      });
       setData(next);
       haptic.done(!next.notice);
       if (next.notice) notify(next.notice);
@@ -317,7 +315,7 @@ function AttackStake({ combat, hp, busy, loading, onStart }: {
             До трёх ходов за ставку. Энергия списывается после завершения боя.</span>
         </>
       ) : (
-        <span className="arena-note">До атаки нужно ещё {hpFormat.format(min - balance)} ⚡.</span>
+        <span className="arena-note">До атаки нужно ещё {hpFormat.format(min - balance)} ⚡. Энергия копится за карточки.</span>
       )}
       <Button type="submit" size="m" className="arena-primary" loading={loading} disabled={busy || !valid}>
         Атаковать{valid ? ` · ${hpFormat.format(stake)} ⚡` : ""}
@@ -395,14 +393,14 @@ function BossView({
         </section>
       )}
       {boss.opponent?.id === "dragon" && boss.phase === "furious" && (
-        <div className="boss-mechanic ready"><b>Дракон в ярости</b><span>Диктанты в этой комнате дают +20% базового урона.</span></div>
+        <div className="boss-mechanic ready"><b>Дракон в ярости</b><span>Диктанты в этой комнате дают +20% к базовой энергии.</span></div>
       )}
       {actions}
       {streak && (
         <section className="boss-members streak-buff" aria-label="Ударный режим">
           <div className="boss-member">
             <Text weight="2">🔥 Ударный режим</Text>
-            {streak.percent > 0 && <b className="combat-claim">+{streak.percent}% урона</b>}
+            {streak.percent > 0 && <b className="combat-claim">+{streak.percent}% энергии</b>}
           </div>
           <Text className="hint">
             {streak.days > 0
@@ -490,10 +488,10 @@ function BossView({
         </div>
       )}
 
-      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по поясу кошелька. Усиления остаются навсегда и действуют на новые ответы. Бонусы «Силы» и навыка складываются от базового урона.</Text>}
+      {coins && <Text className="hint">Монеты общие для комнат и сгорают в воскресенье в 20:00 по поясу кошелька. Усиления остаются навсегда. Бонусы «Силы» и навыка считаются от базовой награды за ответ.</Text>}
       {trophies && trophies.all.length > 0 && <TrophyShelf trophies={trophies} />}
 
-      <Text className="hint boss-footnote">Карточки дают энергию, если включено накопление. Режим босса можно выключить в настройках.</Text>
+      <Text className="hint boss-footnote">Режим босса можно выключить в настройках.</Text>
     </div>
   );
 }
@@ -510,12 +508,8 @@ function CombatPanel({ combat, busy, fighting, onAction }: {
         <Text weight="2">Энергия</Text>
         <strong className="combat-balance" aria-live="polite">{hpFormat.format(combat.balance)} ⚡</strong>
       </div>
-      <label className="boss-member combat-toggle">
-        <span>Копить энергию за карточки</span>
-        <Switch aria-label="Копить энергию за карточки" checked={combat.bank} disabled={busy} onChange={() => onAction("bank")} />
-      </label>
       <Text className="hint">
-        {combat.bank ? "Потрать энергию на босса или мобов. Остаток переносится между неделями." : "Ответы сразу наносят урон боссу комнаты."}
+        Карточки пополняют запас. Энергию можно потратить на босса или мобов, остаток переносится между неделями.
       </Text>
       <details className="combat-mobs">
         <summary>Мобы недели</summary>
@@ -541,7 +535,7 @@ function CombatPanel({ combat, busy, fighting, onAction }: {
 
 function HunterRelics({ hunt }: { hunt: HunterState }) {
   const next = hunt.relics.find((relic) => relic.weeks > hunt.weeks);
-  const bonusFor = { all: "ко всему урону за ответы", listen: "к урону диктантов", writing: "к урону за пропуски и свои предложения" };
+  const bonusFor = { all: "к энергии за любые ответы", listen: "к энергии за диктанты", writing: "к энергии за пропуски и свои предложения" };
   return (
     <section className="hunter-relics" aria-label="Реликвии охотника">
       <Text weight="2">Реликвии охотника</Text>

@@ -254,14 +254,13 @@ async function reviewDamage(db: Db, userId: number, roomId: number | null | unde
   const again = answer === "again" ? await againStreak(db, cardId, now) : 1;
   return {
     damageDeci: Math.round(answerWeight(answer, stage, user?.upgradeDamage ?? 0, listen, writing, relicPercent + dragonBonus + (streak?.percent ?? 0), again) * 10),
-    // `banked` — личная настройка «Копить урон» у того, кто играет. Рубильник сюда не входит (см. выше):
-    // иначе выключение режима сбрасывало флаг в false, и весь накопленный запас разом попадал в /goal.
-    banked: active && user.bankDamage,
+    // Назначение награды фиксируется в записи ответа. Старые ответы сохраняют свой вклад.
+    banked: active,
   };
 }
 
 type RecordAnswerInput = { userId: number; cardId: number; expectedReps: number; answer: Answer; now: Date; stage?: string; extra?: boolean };
-type RecordedAnswer = { result: "ok" | "stale" | "waiting"; damage: number };
+type RecordedAnswer = { result: "ok" | "stale" | "waiting"; damage: number; energy?: number };
 
 export function recordAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAnswer> {
   return withCombatLock(db, () => saveAnswer(db, input));
@@ -347,7 +346,8 @@ async function saveAnswer(db: Db, input: RecordAnswerInput): Promise<RecordedAns
         before: JSON.stringify(before),
       })
       .run();
-    return { result: "ok" as const, damage: damage.damageDeci / 10 };
+    const amount = damage.damageDeci / 10;
+    return { result: "ok" as const, damage: amount, energy: damage.banked ? amount : undefined };
   });
   return outcome;
 }

@@ -66,7 +66,7 @@ export class AppBossAttack {
     const current = pending();
     if (current) return this.reply(user, current);
     if (combat.balance < combat.attackCost) {
-      return { status: 409 as const, body: { ok: false, error: `Для атаки нужно ${combat.attackCost} ⚡. Энергия копится за карточки, если включено накопление.` } };
+      return { status: 409 as const, body: { ok: false, error: `Для атаки нужно ${combat.attackCost} ⚡. Энергия копится за карточки.` } };
     }
     if (stake > combat.maxAttackStake) {
       return { status: 409 as const, body: { ok: false, error: `Сейчас можно поставить до ${combat.maxAttackStake} ⚡.` } };

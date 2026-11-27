@@ -379,11 +379,11 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
     lines.push(b.daysLeft > 0 ? `До конца недели — ${b.daysLeft} ${plural(b.daysLeft, "день", "дня", "дней")} (${weekEndNote(b.timeZone)}).` : "Последний день недели — добиваем сегодня.");
     if (b.opponent.id === "sentinel") lines.push("В Mini App Страж атакует лучом или печатями. Угроза видна до хода.");
     if (b.opponent.id === "frost") lines.push("В Mini App Ведьма замораживает мост или скрывается в тумане.");
-    if (b.opponent.id === "dragon" && b.phase === "furious") lines.push("Диктанты дают +20% базового урона, пока Дракон в ярости.");
+    if (b.opponent.id === "dragon" && b.phase === "furious") lines.push("Диктанты дают +20% к базовой энергии, пока Дракон в ярости.");
   }
   const byUser = feed?.byUser.length ? feed.byUser : b.byUser.map((u) => ({ name: u.name, damage: u.count }));
   if (byUser.length) lines.push("", `Удары: ${byUser.map((u) => `${esc(u.name)} ${u.damage}`).join(" · ")}`);
-  lines.push("", "Каждая повторённая карточка — удар. Учить — /learn. Выключить босса — /settings.");
+  lines.push("", "При включённом режиме босса карточки дают энергию. Учить — /learn. Атаковать — в Mini App.");
   return lines.join("\n");
 }
 
@@ -391,7 +391,7 @@ export function bossText(b: BossState, feed?: { byUser: Array<{ name: string; da
  * Лента ударов: «Александр нанёс 12 урона». Своё в ленте тоже показываем — так видно, что удар засчитан.
  */
 export function bossHitsText(hits: Array<{ name: string; damage: number; at: Date }>, timeZone: string): string {
-  if (hits.length === 0) return "🐉 Пока тихо. Первый удар — любая карточка в /learn.";
+  if (hits.length === 0) return "🐉 Пока тихо. Копи энергию в /learn и атакуй босса в Mini App.";
   const lines = hits.slice(0, 10).map((h) => {
     const time = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone }).format(h.at);
     return `⚔️ <b>${esc(h.name)}</b> нанёс ${h.damage} HP урона в ${time}`;
@@ -927,7 +927,7 @@ export function welcomeText(): string {
       "• /duel — дуэль в группе: кто быстрее переведёт",
       "• Слово дня по утрам, 👏 когда кто-то употребил слово из словаря в переписке",
       "• /goal — общая цель комнаты на неделю, /stats — прогресс",
-      "• 🐉 /boss — босс недели: та же цель, но боем. Каждая повторённая карточка — удар, в приложении есть вкладка с боссом. Выключается в /settings",
+      "• 🐉 /boss — босс недели. Собирай энергию за карточки и атакуй во вкладке босса. Режим можно выключить в /settings",
       "• 🪙 /upgrade — усиление за монеты недели: монеты это твой урон, каждый уровень даёт +10%. Сгорают в воскресенье",
       "• По воскресеньям — итоги недели в группе и личный итог в личку",
     ]),

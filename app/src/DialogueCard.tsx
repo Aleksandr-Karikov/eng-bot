@@ -7,7 +7,7 @@ import { useTypeKeyboard } from "./useTypeKeyboard";
 
 export function DialogueCard({ card, onRated, onNext, onFallback }: {
   card: Card;
-  onRated: (damage: number) => void;
+  onRated: (energy: number) => void;
   onNext: () => void;
   onFallback: () => void;
 }) {
@@ -59,7 +59,7 @@ export function DialogueCard({ card, onRated, onNext, onFallback }: {
       if (!bonus) {
         setFirstAnswer(dunno ? "" : answer.trim());
         setFollowUp(response.followUp);
-        onRated(response.damage);
+        onRated(response.energy ?? 0);
       }
     } catch (err) {
       if (!active.current) return;
