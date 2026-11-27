@@ -30,11 +30,11 @@ function savedFolded(): boolean {
   }
 }
 
-/** Выбранный режим помним на этом устройстве (если хранилище недоступно — просто «Всё»). */
+/** При открытии восстанавливаем последний режим с зачётом. */
 function savedMode(): QueueMode {
   try {
     const m = localStorage.getItem("wordboss-mode");
-    return MODES.some((x) => x.id === m) ? (m as QueueMode) : "all";
+    return m === "reviews" || m === "fresh" ? m : "all";
   } catch {
     return "all";
   }
@@ -122,10 +122,12 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
   const changeMode = useCallback((next: QueueMode) => {
     if (next === mode) return;
     haptic.select();
-    try {
-      localStorage.setItem("wordboss-mode", next);
-    } catch {
-      // хранилище недоступно — режим просто не запомнится
+    if (next !== "hard") {
+      try {
+        localStorage.setItem("wordboss-mode", next);
+      } catch {
+        // хранилище недоступно — режим просто не запомнится
+      }
     }
     loadVersion.current++;
     sessionVersion.current++;
@@ -162,11 +164,11 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
     const nextIsFirstNew = next?.kind === "card" && next.isNew && !next.extra && (current?.kind !== "card" || !current.isNew);
     if (!next || nextIsFirstNew) {
       setQueue([]);
-      void load();
+      if (mode !== "hard") void load();
     } else {
       setQueue((q) => q.slice(1));
     }
-  }, [load, queue]);
+  }, [load, mode, queue]);
 
   /** Оценка карточки уходит в фоне; её можно отменить. */
   const rate = useCallback((card: Card, value: CardAnswer) => {
@@ -367,7 +369,10 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
           </div>
         ) : (
           <Done done={done} energy={sessionEnergy} me={me} mode={mode}
-            onSets={onSets} onContinue={() => void load()} onMode={changeMode} onExtra={() => void load(true)}
+            onSets={onSets} onContinue={() => {
+              if (mode === "hard") setDone(0);
+              void load();
+            }} onMode={changeMode} onExtra={() => void load(true)}
             onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} />
         )}
       </div>
@@ -379,7 +384,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
       {header}
       {modes}
       {damageEffect}
-      {mode === "hard" && <Text className="hint practice-note">Расписание повторений не меняется</Text>}
+      {mode === "hard" && <Text className="hint practice-note">Ответы не идут в зачёт</Text>}
       {card.kind === "card" && card.extra && <Text className="hint practice-note">Сверх плана · ответы засчитываются</Text>}
       <Progress value={total ? (done / total) * 100 : 0} />
       {card.kind === "drill" ? (
@@ -460,6 +465,22 @@ function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onS
   onLearning: () => void;
 }) {
   const starter = me?.starterSet;
+
+  if (mode === "hard" && done > 0) {
+    return (
+      <Placeholder
+        className="learn-result"
+        header="Тренировка завершена"
+        description={`Пройдено без зачёта: ${done}. Расписание повторений сохранено.`}
+        action={
+          <div className="actions learn-result-actions">
+            <Button size="l" stretched onClick={() => onMode("all")}>К обучению</Button>
+            <Button size="l" mode="bezeled" stretched onClick={onContinue}>Ещё круг</Button>
+          </div>
+        }
+      />
+    );
+  }
 
   if (starter && done === 0) {
     return (
