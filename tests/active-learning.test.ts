@@ -80,6 +80,29 @@ describe("лимит одновременно изучаемых слов", () =
     expect(await (await get("/api/me")).json()).not.toHaveProperty("nextReview");
   });
 
+  it("показывает сроки активных и выученных слов в местном времени, пока они не доступны", async () => {
+    const { h, user, rows, list } = await setup(4, 1);
+    await updateUser(h.db, user.id, { activeLearningLimit: 2, timezone: "Asia/Novosibirsk" });
+    const [future, ready, known, paused, fresh] = rows;
+    const due = at(9 * 60 * 60_000);
+    await h.db.update(cards).set({ due }).where(inArray(cards.id, [future.id, paused.id]));
+    await h.db.update(cards).set({ due: T0 }).where(eq(cards.id, ready.id));
+    await h.db.update(cards).set({ due: at(DAY), state: State.Review, stability: 22 }).where(eq(cards.id, known.id));
+
+    const { words, active } = await list();
+    const byId = new Map(words.map((word) => [word.id, word]));
+    expect(byId.get(future.wordId)).toMatchObject({ status: "learning", nextReview: "16.10.2026 в 01:00" });
+    expect(byId.get(ready.wordId)).toMatchObject({ status: "learning", nextReview: null });
+    expect(byId.get(known.wordId)).toMatchObject({ status: "known", nextReview: "16.10.2026 в 16:00" });
+    expect(byId.get(paused.wordId)).toMatchObject({ status: "paused" });
+    expect(byId.get(paused.wordId)).not.toHaveProperty("nextReview");
+    expect(byId.get(fresh.wordId)).not.toHaveProperty("nextReview");
+    expect(active).toMatchObject([{ id: future.wordId, nextReview: "16.10.2026 в 01:00" }, { id: ready.wordId, nextReview: null }]);
+
+    h.setNow(due);
+    expect((await list()).active[0]).toMatchObject({ id: future.wordId, nextReview: null });
+  });
+
   it("предлагает открыть «Учу» напрямую из личного чата после конца очереди", async () => {
     const { h, rows } = await setup(1, 0);
     h.deps.appUrl = "https://app.example/app/?source=bot";
@@ -300,6 +323,7 @@ describe("лимит одновременно изучаемых слов", () =
     if (added.status !== "saved") throw new Error("fixture");
     expect((await post(`/api/words/${added.word.id}/learn`, {})).status).toBe(200);
     expect((await list()).active).toContainEqual(expect.objectContaining({ id: rows[0].wordId, room: "R" }));
+    expect((await list()).active.find(({ id }) => id === added.word.id)).not.toHaveProperty("nextReview");
     expect((await queue()).map(({ word }) => word.id)).toEqual([added.word.id]);
     const card = (await queue())[0];
     expect(await answer(card.cardId, "good")).toMatchObject({ result: "ok" });

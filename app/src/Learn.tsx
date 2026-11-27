@@ -18,7 +18,7 @@ const MODES: Array<{ id: QueueMode; label: string }> = [
   { id: "all", label: "Всё" },
   { id: "reviews", label: "Повторы" },
   { id: "fresh", label: "Новые" },
-  { id: "hard", label: "Тренировка без зачёта" },
+  { id: "hard", label: "Без зачёта" },
 ];
 
 /** Свёрнута ли шапка с режимами — помним на устройстве: кто свернул ради места, не хочет сворачивать снова. */

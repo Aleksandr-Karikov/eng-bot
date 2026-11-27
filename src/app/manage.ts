@@ -3,7 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import { CARD_PART_LABELS, MODE_LABELS, NEW_PER_DAY_CHOICES } from "../bot/keyboards";
-import { cards, reviewLogs, rooms, words, type User, type Word } from "../db/schema";
+import { cards, reviewLogs, rooms, words, type CardRow, type User, type Word } from "../db/schema";
 import { CARD_PARTS, cardView, toggleCardPart, type CardPart } from "../services/card-view";
 import { autoVoice, toggleVoiceAccent, VOICE_ACCENTS, type VoiceAccent } from "../services/voice";
 import { dropCard, restoreCard } from "../services/cards";
@@ -19,6 +19,7 @@ import { deleteWord, getWord, listRoomWords, parseAddInput, saveWord, setMnemoni
 import type { CorrectionWord } from "../llm/enricher";
 import { prepareWord } from "../services/prepare-word";
 import { broadcastWord } from "../bot/word-flow";
+import { localPartsFormatter } from "../time";
 
 /** Как слово идёт у этого человека: нет карточки — убрал у себя («🙈 Не для меня»). */
 export type WordStatus = "new" | "learning" | "known" | "hard" | "paused" | "dropped";
@@ -30,6 +31,8 @@ export interface AppWordItem {
   usefulness: number | null;
   status: WordStatus;
   room?: string;
+  /** Местное время повтора. null — уже доступен, отсутствие — без расписания в обычной очереди. */
+  nextReview?: string | null;
 }
 
 /** Слова текущей комнаты и общая личная подборка активного обучения. */
@@ -55,6 +58,15 @@ export async function appWords(deps: Deps, user: User) {
   }
   const byWord = new Map(mine.map((c) => [c.wordId, c]));
   const activeIds = new Set(active.map(({ id }) => id));
+  const now = deps.now();
+  const localTime = localPartsFormatter(user.timezone);
+  const nextReview = ({ state, due }: Pick<CardRow, "state" | "due">) => {
+    if (state === State.New) return undefined;
+    if (due <= now) return null;
+    const { date, time } = localTime(due);
+    const [year, month, day] = date.split("-");
+    return `${day}.${month}.${year} в ${time}`;
+  };
   const roomItems = list.map((w): AppWordItem => {
     const card = byWord.get(w.id);
     const status: WordStatus = !card
@@ -66,7 +78,10 @@ export async function appWords(deps: Deps, user: User) {
           : isLearned(card) || (card.reps === 1 && markedKnown.has(card.id))
             ? "known"
             : "paused";
-    return { id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status };
+    return {
+      id: w.id, term: w.term, translation: w.translation, usefulness: w.usefulness, status,
+      nextReview: card && status !== "paused" ? nextReview(card) : undefined,
+    };
   });
   const activeRows = await deps.db.select({ id: words.id, term: words.term, translation: words.translation, usefulness: words.usefulness, room: rooms.name })
     .from(words).innerJoin(rooms, eq(words.roomId, rooms.id))
@@ -77,9 +92,9 @@ export async function appWords(deps: Deps, user: User) {
     room: room.name,
     words: roomItems,
     limit,
-    active: active.flatMap(({ wordId }): AppWordItem[] => {
-      const word = activeByWord.get(wordId);
-      return word ? [{ ...word, status: statusByWord.get(wordId) ?? "learning" }] : [];
+    active: active.flatMap((card): AppWordItem[] => {
+      const word = activeByWord.get(card.wordId);
+      return word ? [{ ...word, status: statusByWord.get(card.wordId) ?? "learning", nextReview: nextReview(card) }] : [];
     }),
   };
 }

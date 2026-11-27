@@ -195,6 +195,7 @@ export interface WordItem {
   usefulness: number | null;
   status: WordStatus;
   room?: string;
+  nextReview?: string | null;
 }
 
 export interface WordDetails extends Omit<Card["word"], "id"> {

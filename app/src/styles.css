@@ -275,8 +275,13 @@ body {
 
 /* Режимы тренировки */
 .chips.modes { flex-wrap: wrap; padding: 0; margin: 0 -2px; gap: 6px; }
-.chips.modes > * { padding: 4px 9px !important; min-height: 32px; }
+.chips.modes > * { padding: 4px 9px !important; min-height: 32px; white-space: nowrap; }
 .chips.modes > * * { font-size: 14px !important; }
+@media (max-width: 360px) {
+  .chips.modes { gap: 4px; }
+  .chips.modes > * { padding-inline: 5px !important; }
+  .chips.modes > * * { font-size: 13px !important; }
+}
 .practice-note { font-size: 13px; text-align: center; }
 .lesson > summary { min-height: 44px; align-content: center; border-radius: 8px; cursor: pointer; }
 .lesson[open] { padding-bottom: 10px; }

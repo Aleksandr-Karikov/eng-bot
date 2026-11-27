@@ -159,6 +159,9 @@ export function Words({ initialFilter, onExit, onSets, onSettings }: {
             type="button"
             className="word-list-control"
             subtitle={w.room ? `${w.translation} · ${w.room}` : w.translation}
+            description={w.nextReview === null ? "Можно повторить"
+              : w.nextReview ? `Повтор ${w.nextReview}`
+                : w.status === "paused" ? "Ждёт места в «Учу»" : undefined}
             after={(!learning || w.status !== "learning") && <span className={`status status-${w.status}`}>{STATUS_LABEL[w.status]}</span>}
             onClick={() => {
               haptic.tap();
