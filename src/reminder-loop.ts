@@ -1,6 +1,6 @@
 import type { Room } from "./db/schema";
 import { HTML } from "./bot/context";
-import { audioKeyboard, learnKeyboard } from "./bot/keyboards";
+import { audioKeyboard, dailyTasksKeyboard, learnKeyboard } from "./bot/keyboards";
 import { digestText, dueNoticeText, goalReachedText, reminderText, trophiesText, weeklyReportText, wordOfDayText } from "./bot/texts";
 import { collectWeeklyReports, markWeeklyReportSent } from "./services/weekly-report";
 import { collectGoalsReached, lastWeekProgress, markGoalReached } from "./services/goals";
@@ -18,17 +18,24 @@ export interface ReminderDeps {
   db: Db;
   notifier: Pick<Notifier, "dm">;
   now: () => Date;
+  appUrl?: string;
 }
 
 /** Отправляет напоминания тем, кому пора. Возвращает число доставленных. */
 export async function sendReminders(deps: ReminderDeps): Promise<number> {
+  const dailyUrl = deps.appUrl && URL.canParse(deps.appUrl) ? new URL(deps.appUrl) : undefined;
+  if (dailyUrl) dailyUrl.searchParams.set("tab", "daily-tasks");
   let sent = 0;
-  for (const { user, due, date, friend, lastChance } of await collectReminders(deps.db, deps.now())) {
+  for (const { user, due, date, friend, lastChance, daily } of await collectReminders(deps.db, deps.now(), Boolean(dailyUrl))) {
+    const hasCards = due.review + due.fresh > 0;
+    const cardsText = hasCards ? reminderText(due, friend, lastChance) : "";
+    const dailyText = daily ? `🎯 Задания на день · выполнено ${daily.completed} из ${daily.total}` : "";
+    const text = [cardsText, dailyText].filter(Boolean).join("\n\n");
+    const keyboard = daily && dailyUrl ? dailyTasksKeyboard(dailyUrl.href, hasCards) : learnKeyboard();
     try {
-      if (await deps.notifier.dm(user, reminderText(due, friend, lastChance), { ...HTML, reply_markup: learnKeyboard() })) {
+      if (await deps.notifier.dm(user, text, { ...HTML, reply_markup: keyboard })) {
         await markReminded(deps.db, user.id, date);
-        // Ежедневное напоминание тоже считается уведомлением — чтобы «слова появились» не пришло следом.
-        await markDueNotice(deps.db, user.id, deps.now());
+        if (hasCards) await markDueNotice(deps.db, user.id, deps.now());
         sent++;
       }
     } catch (err) {
@@ -38,10 +45,8 @@ export async function sendReminders(deps: ReminderDeps): Promise<number> {
   return sent;
 }
 
-export interface DigestDeps {
-  db: Db;
+export interface DigestDeps extends ReminderDeps {
   notifier: Pick<Notifier, "dm" | "group">;
-  now: () => Date;
   /**
    * Общий рубильник `BOSS_ENABLED`: false — режим выключен всем, и поздравления про босса в личку
    * не уходят тем, кто его не видит (E12). В группу сообщение всё равно отправляется: комната — не

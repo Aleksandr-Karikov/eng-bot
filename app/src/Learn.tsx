@@ -5,7 +5,7 @@ import { setStudyLanguage, studyLanguage } from "./language";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button, Chip, Placeholder, Progress, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { type QueueMode, getMe, getQueue, pictureUrl, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Card, type DrillItem, type Me, type QueueItem } from "./api";
+import { addWord, ApiError, getMe, getQueue, pictureUrl, prepareWord, sendAnswer, sendDrillAnswer, undoAnswer, wordAction, type CardAnswer, type Card, type DrillItem, type Me, type QueueItem, type QueueMode } from "./api";
 import { ChoiceCard } from "./ChoiceCard";
 import { TypeCard } from "./TypeCard";
 import { DialogueCard } from "./DialogueCard";
@@ -426,9 +426,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning,
             card.quiz.items.length > 0 && (
               <ul className="collocation-list">
                 {card.quiz.items.map((c) => (
-                  <li key={c.phrase}>
-                    <b>{c.phrase}</b> — {c.translation}
-                  </li>
+                  <CollocationReview key={c.phrase} {...c} />
                 ))}
               </ul>
             )
@@ -440,6 +438,35 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning,
         <SwipeCard key={`${card.cardId}-${card.reps}`} card={card} view={me?.view} voice={me?.voice} onAnswer={(a) => answer(card, a)} />
       )}
     </div>
+  );
+}
+
+function CollocationReview({ phrase, translation }: { phrase: string; translation: string }) {
+  const [state, setState] = useState<"ready" | "saving" | "saved">("ready");
+  const save = async () => {
+    setState("saving");
+    try {
+      await addWord(await prepareWord(`${phrase} — ${translation}`));
+      setState("saved");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setState("saved");
+        return;
+      }
+      setState("ready");
+      notify(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <li>
+      <b>{phrase}</b> — {translation}
+      <div>
+        {state === "saved" ? <Text className="hint" role="status">В словаре</Text> : (
+          <Button size="s" mode="plain" loading={state === "saving"} disabled={state === "saving"}
+            aria-label={`Добавить «${phrase}» в словарь`} onClick={() => void save()}>В словарь</Button>
+        )}
+      </div>
+    </li>
   );
 }
 

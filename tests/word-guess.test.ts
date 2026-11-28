@@ -166,7 +166,7 @@ describe("игра «Объясни слово»", () => {
     const state = async () => (await (await get("/api/daily-tasks")).json()) as DailyTasksState;
     const firstState = await state();
     const claim = (id: string, day = firstState.day) => post("/api/daily-tasks/claim", { id, day });
-    expect(firstState.tasks.map(({ progress }) => progress)).toEqual([0, 0, 0]);
+    expect(firstState.tasks.map(({ progress }) => progress)).toEqual([0, 0, 0, 0]);
     expect((await claim("cards")).status).toBe(409);
     const first = await open();
     expect((await state()).tasks[2].progress).toBe(0);
@@ -214,19 +214,19 @@ describe("игра «Объясни слово»", () => {
     await h.db.insert(reviewLogs).values([...own.slice(0, 5), own[0], own[5]].map(({ id }, index) => ({
       cardId: id, userId: user.id, rating: "good", stage: index === 6 ? "know" : "app_en_ru", reviewedAt: T0,
     })));
-    expect((await state()).tasks.map(({ progress }) => progress)).toEqual([5, 3, 2]);
+    expect((await state()).tasks.map(({ progress }) => progress)).toEqual([5, 3, 2, 0]);
     await updateUser(h.db, user.id, { modeBoss: false });
     expect((await state()).canClaim).toBe(false);
     expect((await claim("cards")).status).toBe(409);
     await updateUser(h.db, user.id, { modeBoss: true });
     const replies = await Promise.all([claim("cards"), claim("cards"), claim("translate"), claim("explain")]);
     expect(replies.map(({ status }) => status)).toEqual([200, 200, 200, 200]);
-    expect((await state()).tasks.every(({ claimed }) => claimed)).toBe(true);
+    expect((await state()).tasks.map(({ claimed }) => claimed)).toEqual([true, true, true, false]);
     expect(await damageBalanceDeci(h.db, user.id)).toBe(340);
 
     h.setNow(at(DAY));
     expect((await claim("cards")).status).toBe(409);
-    expect((await state()).tasks.map(({ progress, claimed }) => [progress, claimed])).toEqual([[0, false], [0, false], [0, false]]);
+    expect((await state()).tasks.map(({ progress, claimed }) => [progress, claimed])).toEqual([[0, false], [0, false], [0, false], [0, false]]);
     expect(await damageBalanceDeci(h.db, user.id)).toBe(340);
   });
 });

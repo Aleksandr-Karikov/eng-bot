@@ -248,6 +248,7 @@ const stopReminders = startReminderLoop({
   db,
   notifier,
   now,
+  appUrl: config.appUrl,
   // Рубильник нужен и фоновым поздравлениям: выключившим режим не пишем про босса в личку.
   bossEnabled: config.bossEnabled,
   // Пути для уборки (E29): кэш озвучки и голосовые записи.

@@ -6,6 +6,7 @@ import { countDueSplit } from "./review";
 import { listMembers, listUserRooms } from "./rooms";
 import { nearWeekEnd, roomWeekMoment } from "./digest";
 import { updateUser } from "./users";
+import { dailyTasks } from "./study-activities";
 
 export interface FriendToday {
   name: string;
@@ -20,6 +21,7 @@ export interface Reminder {
   friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */
   date: string;
+  daily?: { completed: number; total: number };
   /**
    * «Последний шанс»: у одной из комнат человека неделя кончается в ближайшие часы.
    *
@@ -31,20 +33,28 @@ export interface Reminder {
 }
 
 /**
- * Кому пора напомнить. Пользователей без карточек к повторению сразу помечает как «напомнено сегодня»;
+ * Кому пора напомнить. Пользователей без карточек и незавершённых заданий помечает как «напомнено сегодня»;
  * остальных помечать должен отправитель — только после доставки, иначе сбой сети съест напоминание.
  */
-export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
+export async function collectReminders(db: Db, now: Date, includeDailyTasks = false): Promise<Reminder[]> {
   const candidates = await db.select().from(users).where(eq(users.canDm, true));
   const reminders: Reminder[] = [];
   for (const user of candidates) {
     const { date, time } = localParts(user.timezone, now);
     if (time < user.reminderTime || user.lastReminderDate === date) continue;
     const due = await countDueSplit(db, user.id, now);
-    if (due.review + due.fresh > 0) {
+    const hasCards = due.review + due.fresh > 0;
+    let daily: Reminder["daily"];
+    if (includeDailyTasks && user.currentRoomId !== null) {
+      const { tasks } = await dailyTasks(db, user, now, false);
+      const completed = tasks.filter(({ progress, target }) => progress >= target).length;
+      if (completed < tasks.length) daily = { completed, total: tasks.length };
+    }
+    if (hasCards || daily) {
       reminders.push({
-        user, due, date, friend: await friendToday(db, user, date, now),
-        lastChance: await lastChanceFor(db, user, now),
+        user, due, date, daily,
+        friend: hasCards ? await friendToday(db, user, date, now) : undefined,
+        lastChance: hasCards ? await lastChanceFor(db, user, now) : undefined,
       });
     } else await markReminded(db, user.id, date);
   }

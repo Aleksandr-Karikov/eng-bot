@@ -119,7 +119,7 @@ export function App() {
       {page === "translate" && <TranslateScreen onExit={back} />}
       {page === "daily-tasks" && <DailyTasksScreen onExit={back} onOpen={(task) => {
         setBackToTasks(task !== "cards");
-        open(task === "cards" ? "learn" : task === "explain" ? "word-guess" : "translate");
+        open(task === "cards" ? "learn" : task === "explain" ? "word-guess" : task);
       }} />}
     </>
   );

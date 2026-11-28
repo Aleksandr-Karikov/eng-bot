@@ -2,6 +2,8 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic } from "../db/schema";
 import { recordMistakes } from "./mistakes";
+import { recordStudyActivity } from "./study-activities";
+import { getUser } from "./users";
 import { GRAMMAR_STRIKE_PREFIX } from "./combat-ledger";
 import { GRAMMAR_TOPICS } from "../grammar";
 
@@ -304,6 +306,10 @@ export async function answerExercise(
       .where(and(eq(grammarProgress.userId, input.userId), eq(grammarProgress.topicId, exercise.topicId)));
   } else {
     await db.insert(grammarProgress).values({ userId: input.userId, topicId: exercise.topicId, done, streak, passed, updatedAt: input.now });
+  }
+  if (correct) {
+    const user = await getUser(db, input.userId);
+    if (user) await recordStudyActivity(db, user, input.now, "grammar", String(exercise.id), 0);
   }
   // Урон боссу — в комнату, где человек сейчас учится: грамматика не должна открывать свою комнату.
   const bossDamage = input.roomId !== undefined

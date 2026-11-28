@@ -258,7 +258,7 @@ export const studyActivities = sqliteTable("study_activities", {
   key: text("key").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   day: text("day").notNull(),
-  kind: text("kind").$type<"explain" | "translate" | "daily">().notNull(),
+  kind: text("kind").$type<"explain" | "translate" | "grammar" | "daily">().notNull(),
   energyDeci: integer("energy_deci").notNull(),
 }, (t) => [index("study_activities_user_day_idx").on(t.userId, t.day)]);
 

@@ -5,13 +5,14 @@ import { createRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
 import { bossFeed } from "../src/services/boss";
 import { damageBalanceDeci } from "../src/services/combat-ledger";
+import type { DailyTasksState } from "../src/services/study-activities";
 import { updateUser } from "../src/services/users";
 import { createApp } from "../src/app/server";
 import { sign } from "@telegram-apps/init-data-node";
 import { answerExercise, isCorrect, listTopics, syncGrammar, topicView } from "../src/services/grammar-topics";
 import { GRAMMAR_TOPICS } from "../src/grammar";
 import { botHarness, sentTexts } from "./bot-harness";
-import { makeUser, T0 } from "./helpers";
+import { at, DAY, makeUser, T0 } from "./helpers";
 
 /** Залить одну тему в базу — как это делает scripts/build-grammar.ts, но без файла базы. */
 async function seed(h: ReturnType<typeof botHarness>, topic = GRAMMAR_TOPICS[0]) {
@@ -471,6 +472,42 @@ describe("📱 grammar in the Mini App", () => {
     expect(right.result.correct).toBe(true);
     // Урон идёт в текущую комнату — экран показывает его же.
     expect(right.result.bossDamage).toBe(2);
+  });
+
+  it("rewards three distinct correct grammar answers on the same local day", async () => {
+    const { h, app, headers, user } = await appHarness();
+    h.deps.bossEnabled = true;
+    h.setNow(T0);
+    const topic = await seed(h);
+    const tasks = async () => (await (await app.request("/api/daily-tasks", { headers })).json()) as DailyTasksState;
+    const grammarTask = async () => (await tasks()).tasks.find(({ id }) => id === "grammar");
+    const post = (route: string, body: object) => app.request(route, {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const [first, second, third] = await h.db.select().from(grammarExercises)
+      .where(eq(grammarExercises.topicId, topic.id)).orderBy(grammarExercises.position);
+    const answer = (exercise: typeof first, text = exercise.answer) =>
+      post("/api/grammar/answer", { exerciseId: exercise.id, answer: text });
+    const day = (await tasks()).day;
+    const claim = () => post("/api/daily-tasks/claim", { id: "grammar", day });
+
+    await app.request(`/api/grammar/${topic.id}`, { headers });
+    await answer(first, "ошибка");
+    expect(await grammarTask()).toMatchObject({ progress: 0, claimed: false });
+    await answer(first);
+    await answer(first);
+    await answer(second);
+    expect(await grammarTask()).toMatchObject({ progress: 2 });
+    expect((await claim()).status).toBe(409);
+    await answer(third);
+    expect(await grammarTask()).toMatchObject({ progress: 3, claimed: false });
+    expect((await claim()).status).toBe(200);
+    expect((await claim()).status).toBe(200);
+    expect(await grammarTask()).toMatchObject({ progress: 3, claimed: true });
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(100);
+
+    h.setNow(at(DAY));
+    expect(await grammarTask()).toMatchObject({ progress: 0, claimed: false });
   });
 
   it("rejects a missing or unknown exercise instead of failing silently", async () => {

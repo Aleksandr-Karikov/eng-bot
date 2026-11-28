@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getGrammar, getGrammarTopic, sendGrammarAnswer, type GrammarAnswer, type GrammarExercise, type GrammarTopic, type GrammarTopicView } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
+import { IconClose } from "./icons";
 
 /**
  * 📘 Грамматика: темы по уровням → правило → упражнения → экзамен.
@@ -12,10 +13,7 @@ import { haptic, notify, useBackButton } from "./telegram";
  * ни ошибок «модель не ответила». Приложение не знает правильный ответ до отправки — иначе подсказка
  * была бы видна в исходниках.
  *
- * Три вида упражнений выглядят одинаково: список вариантов. Вид `gap` и `order` тоже приходят вариантами —
- * сервер отдаёт их в `options`, поэтому экран не разбирает типы и не собирает ввод с клавиатуры.
- * Это осознанно: набор с клавиатуры на телефоне проверяется хуже (регистр, лишние пробелы), а сравнение
- * строк должно быть предсказуемым.
+ * Выбор проверяется по тапу. Ввод и сборка предложения отправляются кнопкой «Проверить».
  */
 export function Grammar({ onExit }: { onExit: () => void }) {
   const [list, setList] = useState<{ topics: GrammarTopic[]; passed: number; total: number }>();
@@ -167,8 +165,6 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
                   );
                 })
               : (
-                // `gap` и `order` отвечаются вводом: вариантов из ответа больше нет, иначе верный
-                // угадывался бы по форме, не зная правила.
                 <AnswerInput
                   key={current.id}
                   exercise={current}
@@ -205,79 +201,69 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
   );
 }
 
-/**
- * Ответ на `gap` и `order` — вводом, а не кнопками.
- *
- * Почему так: варианты, собранные на сервере из правильного ответа, были неязыковыми
- * («works | worksing | workss») — верный угадывался по форме, без знания правила. Здесь человек пишет
- * форму сам, поэтому упражнение тренирует вспоминание.
- *
- * У сборки предложения слова даны кнопками: на телефоне набрать целую фразу медленнее и легче ошибиться
- * в регистре, а тренируется порядок слов, а не скорость печати. Набранное руками тоже принимается.
- */
 function AnswerInput({ exercise, pending, busy, onSubmit }: {
   exercise: GrammarExercise;
   pending?: { picked: string; result: GrammarAnswer };
   busy: boolean;
   onSubmit: (text: string) => void;
 }) {
-  const [text, setText] = useState(pending?.picked ?? "");
+  const [typed, setTyped] = useState<string>();
+  const [typing, setTyping] = useState(false);
+  const [picked, setPicked] = useState<number[]>([]);
   const input = useRef<HTMLInputElement>(null);
-  // Слова, уже поставленные в предложение: второй раз то же слово не подставить, если оно одно в наборе.
-  const [taken, setTaken] = useState<number[]>([]);
   const words = exercise.words ?? [];
+  const hasBank = exercise.kind === "order" && words.length > 0;
+  const assembling = hasBank && !typing;
+  const sentence = picked.map((index) => words[index]).join(" ");
+  const text = assembling ? sentence : (typed ?? sentence);
   const answer = pending?.result;
 
-  // После разбора поле блокируется: ответ уже дан, и правки в нём ничего не изменят.
   const locked = Boolean(answer) || busy;
 
   useEffect(() => {
-    if (exercise.kind === "gap" && !answer) input.current?.focus();
-  }, [exercise.id, exercise.kind, answer]);
-
-  const append = (word: string, index: number) => {
-    if (locked) return;
-    setText((current) => {
-      const next = current.trim() ? `${current.trim()} ${word}` : word;
-      return next;
-    });
-    setTaken((current) => [...current, index]);
-    haptic.tap();
-  };
+    if (!assembling && !answer) input.current?.focus();
+  }, [assembling, answer]);
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 12 }}>
-      {exercise.kind === "order" && words.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {words.map((word, index) => (
-            <Button
-              key={`${word}-${index}`}
-              size="s"
-              mode={taken.includes(index) ? "plain" : "filled"}
-              disabled={locked || taken.includes(index)}
-              onClick={() => append(word, index)}
-            >
-              {word}
-            </Button>
-          ))}
-        </div>
+    <form className="grammar-answer actions" onSubmit={(event) => {
+      event.preventDefault();
+      if (!locked && text.trim()) onSubmit(text.trim());
+    }}>
+      {assembling ? (
+        <>
+          <div className="grammar-tiles grammar-sentence" role="group" aria-label="Собранное предложение">
+            {picked.length === 0 && <Text className="hint">Нажимай на слова по порядку</Text>}
+            {picked.map((index) => (
+              <Button key={index} size="s" mode="bezeled" disabled={locked} aria-label={`Вернуть «${words[index]}»`}
+                after={!locked && <IconClose size={12} />}
+                onClick={() => {
+                  setPicked((current) => current.filter((item) => item !== index));
+                  haptic.tap();
+                }}>{words[index]}</Button>
+            ))}
+          </div>
+          <div className="grammar-tiles" role="group" aria-label="Слова для сборки">
+            {words.map((word, index) => (
+              <Button key={index} size="s" mode={picked.includes(index) ? "plain" : "filled"}
+                disabled={locked || picked.includes(index)} onClick={() => {
+                  setPicked((current) => [...current, index]);
+                  haptic.tap();
+                }}>{word}</Button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <Input ref={input} placeholder={hasBank ? "Напиши предложение" : "Впиши ответ"} aria-label="Твой ответ"
+          value={text} disabled={locked} onChange={(event) => setTyped(event.target.value)} />
       )}
-
-      <Input
-        ref={input}
-        placeholder={exercise.kind === "order" ? "Собери предложение" : "Впиши ответ"}
-        value={text}
-        disabled={locked}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          if (!text.trim()) return;
-          onSubmit(text.trim());
-        }}
-      />
-      {exercise.kind === "order" && (
-        <Text className="hint">Слова перемешаны — нажимай по порядку. Можно и напечатать.</Text>
+      {!answer && (
+        <>
+          <Button type="submit" stretched disabled={locked || !text.trim()} loading={busy}>Проверить</Button>
+          {hasBank && <Button mode="plain" disabled={locked} onClick={() => setTyping(!typing)}>
+            {typing ? "Собрать из слов" : "Ввести вручную"}
+          </Button>}
+        </>
       )}
-    </div>
+    </form>
   );
 }

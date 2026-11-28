@@ -23,6 +23,7 @@ const DAILY_TASKS = [
   { id: "cards", title: "Пройди 5 разных карточек", target: 5, reward: 10 },
   { id: "translate", title: "Верно переведи 3 предложения", target: 3, reward: 10 },
   { id: "explain", title: "Объясни 2 разных слова", target: 2, reward: 10 },
+  { id: "grammar", title: "Реши 3 разных задания по грамматике", target: 3, reward: 10 },
 ] as const;
 
 export async function dailyTasks(db: Db, player: Player, now: Date, canClaim: boolean) {
@@ -41,6 +42,7 @@ export async function dailyTasks(db: Db, player: Player, now: Date, canClaim: bo
     cards: reviews[0]?.total ?? 0,
     translate: activities.filter(({ kind }) => kind === "translate").length,
     explain: activities.filter(({ kind }) => kind === "explain").length,
+    grammar: activities.filter(({ kind }) => kind === "grammar").length,
   };
   return {
     day, canClaim,

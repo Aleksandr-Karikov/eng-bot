@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { User } from "../src/db/schema";
+import type { SendOptions } from "../src/notifier";
 import { sendReminders } from "../src/reminder-loop";
 import { createRoom } from "../src/services/rooms";
 import { updateUser } from "../src/services/users";
@@ -12,12 +13,17 @@ const nsk = (iso: string) => new Date(`${iso}+07:00`);
 /** Фейковая доставка: по умолчанию успешна, outcomes переопределяет результаты по порядку. */
 function fakeNotifier(outcomes: Array<boolean | Error> = []) {
   const delivered: string[] = [];
+  const options: SendOptions[] = [];
   return {
     delivered,
-    dm: async (user: User, text: string) => {
+    options,
+    dm: async (user: User, text: string, sendOptions?: SendOptions) => {
       const outcome = outcomes.shift() ?? true;
       if (outcome instanceof Error) throw outcome;
-      if (outcome) delivered.push(`${user.telegramId}: ${text}`);
+      if (outcome) {
+        delivered.push(`${user.telegramId}: ${text}`);
+        options.push(sendOptions ?? {});
+      }
       return outcome;
     },
   };
@@ -63,6 +69,33 @@ describe("sendReminders", () => {
     const notifier = fakeNotifier();
     expect(await sendReminders({ db, notifier, now: () => nsk("2026-10-15T20:00") })).toBe(0);
     expect(notifier.delivered).toEqual([]);
+  });
+
+  it("links to unfinished daily tasks at the usual reminder time even without due cards", async () => {
+    const { db, alice } = await setup(false);
+    await updateUser(db, alice.id, { reminderTime: "18:45" });
+    const notifier = fakeNotifier([false, true]);
+    const run = (iso: string) => sendReminders({ db, notifier, now: () => nsk(iso), appUrl: "https://example.test/app/?theme=dark" });
+    expect(await run("2026-10-15T18:44")).toBe(0);
+    expect(await run("2026-10-15T18:45")).toBe(0);
+    expect(await run("2026-10-15T18:46")).toBe(1);
+    expect(await run("2026-10-15T20:00")).toBe(0);
+    expect(notifier.delivered).toEqual(["1: 🎯 Задания на день · выполнено 0 из 4"]);
+    expect(notifier.options[0].reply_markup).toMatchObject({
+      inline_keyboard: [[{ web_app: { url: "https://example.test/app/?theme=dark&tab=daily-tasks" } }]],
+    });
+  });
+
+  it("combines both buttons in one reminder when there are due cards", async () => {
+    const { db } = await setup();
+    const notifier = fakeNotifier();
+    expect(await sendReminders({
+      db, notifier, now: () => nsk("2026-10-15T20:00"), appUrl: "https://example.test/app/",
+    })).toBe(1);
+    expect(notifier.delivered).toEqual(["1: 🆕 1 новое слово ждёт знакомства\n\n🎯 Задания на день · выполнено 0 из 4"]);
+    expect(notifier.options[0].reply_markup).toMatchObject({
+      inline_keyboard: [[{ text: "▶️ Начать" }], [{ text: "🎯 Задания на день" }]],
+    });
   });
 
   it("retries on the next tick when delivery failed (network down right after wake)", async () => {
