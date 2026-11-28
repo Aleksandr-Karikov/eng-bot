@@ -4,7 +4,10 @@ import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
 import type { BossDuelTurn, DuelScene } from "../../src/app/boss-duel";
 import type { BossId } from "../../src/boss-opponents";
-import type { WordGuessRound } from "../../src/app/word-guess";
+import type { WordGuessFeedback, WordGuessRound } from "../../src/app/word-guess";
+import type { AppTranslation } from "../../src/app/translate";
+import type { TranslationDirection } from "../../src/llm/tutor";
+import type { DailyTasksState } from "../../src/services/study-activities";
 export type { CombatTarget } from "../../src/combat-mobs";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
@@ -355,6 +358,16 @@ export const openWordGuess = (fresh = false) =>
   post<WordGuessResponse>("/api/word-guess", { fresh });
 export const moveWordGuess = ({ id, revision }: WordGuessRound, action: "clue" | "skip" | "next", clue?: string) =>
   post<WordGuessResponse>("/api/word-guess/move", { id, revision, action, clue });
+export const getWordGuessFeedback = (id: string, index: number) =>
+  post<{ feedback: WordGuessFeedback }>("/api/word-guess/feedback", { id, index }).then(({ feedback }) => feedback);
+type AppTranslationResponse = { exercise: AppTranslation | null };
+export const getAppTranslation = () => call<AppTranslationResponse>("/api/translate");
+export const startAppTranslation = (direction: TranslationDirection, previousId?: string) =>
+  post<AppTranslationResponse>("/api/translate", { direction, previousId });
+export const answerAppTranslation = (id: string, answer: string, skip = false) =>
+  post<AppTranslationResponse>("/api/translate/answer", { id, answer, skip });
+export const getDailyTasks = () => call<DailyTasksState>("/api/daily-tasks");
+export const claimDailyTask = (id: string, day: string) => postRetry<DailyTasksState>("/api/daily-tasks/claim", { id, day });
 
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
 

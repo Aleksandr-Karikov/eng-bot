@@ -290,6 +290,17 @@ body {
 .word-guess-clue { justify-self: end; max-width: 85%; background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff)); white-space: pre-wrap; }
 .word-guess-reply { justify-self: start; max-width: 90%; border: 1px solid var(--tg-theme-section-separator-color, #8885); }
 .word-guess-phrase { color: var(--tg-theme-accent-text-color, #2481cc); }
+.word-guess-feedback { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: var(--tg-theme-secondary-bg-color, #f1f1f4); }
+.language-fixes { display: grid; gap: 10px; margin: 0; padding-inline-start: 18px; }
+.language-fixes li .hint { display: block; font-size: 14px; }
+.word-guess-details summary { padding-block: 10px; cursor: pointer; color: var(--tg-theme-accent-text-color, #2481cc); }
+.word-guess-results { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.translate-directions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.translate-directions button { white-space: normal; min-height: 44px; padding-inline: 8px; }
+.daily-task { gap: 8px; }
+.daily-task-head { display: flex; justify-content: space-between; gap: 8px; }
+.daily-task-head .word-guess-phrase { white-space: nowrap; }
+.daily-task progress { width: 100%; accent-color: var(--tg-theme-button-color, #2481cc); }
 .lesson > summary { min-height: 44px; align-content: center; border-radius: 8px; cursor: pointer; }
 .lesson[open] { padding-bottom: 10px; }
 .lesson-sent { display: block; padding-top: 8px; text-align: center; }
@@ -870,6 +881,8 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 194px;
+  max-height: calc(100dvh - 64px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
   padding: 6px;
   border-radius: 14px;
   background: var(--tg-theme-bg-color, var(--tgui--bg_color, #fff));

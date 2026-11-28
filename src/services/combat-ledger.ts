@@ -1,6 +1,6 @@
 import { and, asc, countDistinct, eq, gt, gte, isNotNull, lt, notExists, notLike, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { combatArchive, combatSpends, reviewLogs, users } from "../db/schema";
+import { combatArchive, combatSpends, reviewLogs, studyActivities, users } from "../db/schema";
 
 const pending = new WeakMap<Db, Promise<unknown>>();
 export const GRAMMAR_STRIKE_PREFIX = "grammar:";
@@ -27,7 +27,9 @@ export async function damageBalanceDeci(db: Db, userId: number): Promise<number>
   const spent = db.select({ total: sql<number>`coalesce(sum(${combatSpends.damageDeci}), 0)` }).from(combatSpends)
     // В старых ударах грамматики в damageDeci записан нанесённый урон, а расход энергии равен нулю.
     .where(and(eq(combatSpends.userId, userId), notLike(combatSpends.requestId, `${GRAMMAR_STRIKE_PREFIX}%`)));
-  const [row] = await db.select({ balance: sql<number>`(${earned}) + (${archived}) - (${spent})` }).from(users).where(eq(users.id, userId));
+  const activities = db.select({ total: sql<number>`coalesce(sum(${studyActivities.energyDeci}), 0)` }).from(studyActivities)
+    .where(eq(studyActivities.userId, userId));
+  const [row] = await db.select({ balance: sql<number>`(${earned}) + (${archived}) + (${activities}) - (${spent})` }).from(users).where(eq(users.id, userId));
   return Math.max(0, row?.balance ?? 0);
 }
 

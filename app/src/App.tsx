@@ -11,15 +11,17 @@ import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Words } from "./Words";
 import { WordGuessScreen } from "./WordGuess";
-import { IconBook, IconChart, IconClose, IconGrammar, IconMenu, IconSettings, IconShield } from "./icons";
+import { TranslateScreen } from "./Translate";
+import { DailyTasksScreen } from "./DailyTasks";
+import { IconBook, IconChart, IconChat, IconClose, IconGrammar, IconMenu, IconSettings, IconShield, IconTasks, IconTranslate } from "./icons";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "learning" | "settings" | "progress" | "sets" | "boss" | "grammar" | "word-guess";
+type Page = "learn" | "words" | "learning" | "settings" | "progress" | "sets" | "boss" | "grammar" | "word-guess" | "translate" | "daily-tasks";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "learning", "settings", "progress", "sets", "boss", "grammar", "word-guess"];
+  const pages: Page[] = ["words", "learning", "settings", "progress", "sets", "boss", "grammar", "word-guess", "translate", "daily-tasks"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -31,6 +33,7 @@ export function App() {
   const [page, setPage] = useState<Page>(startPage);
   const [limitsBack, setLimitsBack] = useState<"learn" | "learning">();
   const [keepResult, setKeepResult] = useState(false);
+  const [backToTasks, setBackToTasks] = useState(false);
   /** Набор, который надо открыть сразу: заполняет пустой `/learn`, когда у человека нет слов. */
   const [startSetId, setStartSetId] = useState<number>();
   const open = useCallback((next: Page, returnFromLimits?: "learn" | "learning", returnToResult = false) => {
@@ -44,7 +47,10 @@ export function App() {
     setStartSetId(setId);
     open("sets");
   }, [open]);
-  const back = useCallback(() => setPage("learn"), []);
+  const back = useCallback(() => {
+    setPage(backToTasks ? "daily-tasks" : "learn");
+    setBackToTasks(false);
+  }, [backToTasks]);
   // Изучаемый язык нужен и страницам, открытым сразу по ссылке (?tab=), не только карточкам.
   const [, setLanguageLoaded] = useState(false);
   /** Режим босса включён. Пока не знаем — считаем выключенным: лишняя кнопка хуже, чем её отсутствие на секунду. */
@@ -82,13 +88,16 @@ export function App() {
         onSettings={() => open("settings", "learn", true)}
         onBoss={() => open("boss", undefined, true)}
         onLearning={() => open("learning", undefined, true)}
+        onDaily={() => open("daily-tasks", undefined, true)}
         corner={
           // Переходы между экранами — в одно меню: четыре отдельных кнопки в углу отнимали место у карточки,
           // а по отдельности они не действия, а навигация.
           <CornerMenu
             items={[
               ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
-              { icon: "💬", label: "Объясни слово", onPick: () => open("word-guess") },
+              { icon: <IconTasks size={16} />, label: "Задания на день", onPick: () => open("daily-tasks") },
+              { icon: <IconChat size={16} />, label: "Объясни слово", onPick: () => open("word-guess") },
+              { icon: <IconTranslate size={16} />, label: "Перевод", onPick: () => open("translate") },
               { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
               // У «Грамматики» своя иконка: книга — это «Слова», и два одинаковых пункта меню
               // различались только подписью.
@@ -107,6 +116,11 @@ export function App() {
       {page === "boss" && <BossScreen onExit={back} />}
       {page === "grammar" && <Grammar onExit={back} />}
       {page === "word-guess" && <WordGuessScreen onExit={back} />}
+      {page === "translate" && <TranslateScreen onExit={back} />}
+      {page === "daily-tasks" && <DailyTasksScreen onExit={back} onOpen={(task) => {
+        setBackToTasks(task !== "cards");
+        open(task === "cards" ? "learn" : task === "explain" ? "word-guess" : "translate");
+      }} />}
     </>
   );
 }

@@ -43,8 +43,12 @@ import {
   buildTalkReplyPrompt,
   buildWordGuessPrompt,
   parseWordGuess,
+  buildWordGuessReviewPrompt,
+  parseWordGuessReview,
   type WordGuess,
   type WordGuessHistory,
+  type WordGuessReview,
+  type WordGuessReviewInput,
   buildExplainGrammarPrompt,
   buildSayPrompt,
   buildCollocationsPrompt,
@@ -54,6 +58,7 @@ import {
   parseTranslationReview,
   type TranslationInput,
   type TranslationReview,
+  type TranslationReviewInput,
   type TranslationTask,
   parseCollocations,
   type Collocations,
@@ -269,7 +274,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
     return parseTranslationTask(await this.ask(buildTranslationTaskPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
   }
 
-  async reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview> {
+  async reviewTranslation(input: TranslationReviewInput): Promise<TranslationReview> {
     return parseTranslationReview(await this.ask(buildTranslationReviewPrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.checker));
   }
 
@@ -318,6 +323,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async guessWord(clue: string, history: WordGuessHistory): Promise<WordGuess> {
     return parseWordGuess(await this.ask(buildWordGuessPrompt(clue, history), Math.max(this.opts.timeoutMs, 30_000)));
+  }
+
+  async reviewWordGuess(input: WordGuessReviewInput): Promise<WordGuessReview> {
+    return parseWordGuessReview(await this.ask(buildWordGuessReviewPrompt(input), Math.max(this.opts.timeoutMs, 30_000), this.checker));
   }
 
   /** Разбор разговора — сильной моделью: нужно заметить и ошибки, и неестественные фразы. */

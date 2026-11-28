@@ -254,6 +254,14 @@ export const wordGuessProgress = sqliteTable("word_guess_progress", {
   playedAt: integer("played_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const studyActivities = sqliteTable("study_activities", {
+  key: text("key").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  day: text("day").notNull(),
+  kind: text("kind").$type<"explain" | "translate" | "daily">().notNull(),
+  energyDeci: integer("energy_deci").notNull(),
+}, (t) => [index("study_activities_user_day_idx").on(t.userId, t.day)]);
+
 /** Предложения с пропуском для ступени «вставь по смыслу»; общие для всех участников комнаты. */
 export const clozeSentences = sqliteTable("cloze_sentences", {
   id: integer("id").primaryKey({ autoIncrement: true }),

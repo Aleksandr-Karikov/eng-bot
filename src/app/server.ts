@@ -5,13 +5,16 @@ import { isValid, parse } from "@telegram-apps/init-data-node";
 import type { Api } from "grammy";
 import { Hono } from "hono";
 import { AppWordGuess } from "./word-guess";
+import { AppTranslate } from "./translate";
+import { bossEnabled } from "../services/boss";
+import { claimDailyTask, dailyTasks } from "../services/study-activities";
 import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
 import { undoAnswer } from "../services/review";
 import { takeLearningWord } from "../services/learning";
 import { adoptDeviceTimeZone } from "../services/users";
-import { isTimeZone } from "../time";
+import { isTimeZone, localParts } from "../time";
 import { exampleTranslation } from "../services/words";
 import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
@@ -42,6 +45,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   const corrections = new Map<number, CorrectionDraft>();
   const dialogues = new AppDialogues(deps);
   const wordGuess = new AppWordGuess(deps);
+  const translate = new AppTranslate(deps);
   const bossAttack = new AppBossAttack(deps);
   const app = new Hono<{ Variables: { user: User } }>();
 
@@ -104,6 +108,35 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.post("/api/word-guess/move", async (c) => {
     const r = await wordGuess.move(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
+  });
+  app.post("/api/word-guess/feedback", async (c) => {
+    const r = await wordGuess.feedback(c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.get("/api/translate", (c) => {
+    const r = translate.current(c.get("user").id);
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/translate", async (c) => {
+    const r = await translate.next(c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/translate/answer", async (c) => {
+    const r = await translate.answer(c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.get("/api/daily-tasks", async (c) => {
+    const user = c.get("user");
+    return c.json(await dailyTasks(deps.db, user, deps.now(), bossEnabled(user, deps.bossEnabled)));
+  });
+  app.post("/api/daily-tasks/claim", async (c) => {
+    const user = c.get("user");
+    if (!bossEnabled(user, deps.bossEnabled)) return c.json({ error: "Включи режим босса, чтобы забрать энергию." }, 409);
+    const { id, day } = await readBody(c);
+    const now = deps.now();
+    if (day !== localParts(user.timezone, now).date) return c.json({ error: "День сменился. Обнови задания." }, 409);
+    const state = await claimDailyTask(deps.db, user, now, id);
+    return state ? c.json(state) : c.json({ error: "Сначала выполни задание." }, 409);
   });
   app.post("/api/mistakes", async (c) => {
     const r = await appSaveMistakes(deps, c.get("user"), await readBody(c));

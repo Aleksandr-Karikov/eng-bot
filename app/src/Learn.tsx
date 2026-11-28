@@ -45,8 +45,8 @@ const UNDO_DEPTH = 5;
 type AnswerResult = Pick<Awaited<ReturnType<typeof sendAnswer>>, "result" | "energy">;
 
 /** Карточки: очередь /learn со свайпами. */
-export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning }: {
-  visible: boolean; corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void; onLearning: () => void;
+export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning, onDaily }: {
+  visible: boolean; corner: ReactNode; onSets: (setId?: number) => void; onSettings: () => void; onBoss: () => void; onLearning: () => void; onDaily: () => void;
 }) {
   const [correcting, setCorrecting] = useState<Card["word"]>();
   const [me, setMe] = useState<Me>();
@@ -373,7 +373,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
               if (mode === "hard") setDone(0);
               void load();
             }} onMode={changeMode} onExtra={() => void load(true)}
-            onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} />
+            onSettings={onSettings} onBoss={onBoss} onLearning={onLearning} onDaily={onDaily} />
         )}
       </div>
     );
@@ -451,7 +451,7 @@ export function Learn({ visible, corner, onSets, onSettings, onBoss, onLearning 
  *   Ему нельзя говорить «жди»: ждать нечего, слов нет вовсе. Вместо этого один тап до готового
  *   набора A1.
  */
-function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onSettings, onBoss, onLearning }: {
+function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onSettings, onBoss, onLearning, onDaily }: {
   done: number;
   energy: number;
   me?: Me;
@@ -463,6 +463,7 @@ function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onS
   onSettings: () => void;
   onBoss: () => void;
   onLearning: () => void;
+  onDaily: () => void;
 }) {
   const starter = me?.starterSet;
 
@@ -531,6 +532,7 @@ function Done({ done, energy, me, mode, onSets, onContinue, onMode, onExtra, onS
           <Button size="l" mode={continuation || showExtra ? "bezeled" : "filled"} stretched onClick={onLearning}>Открыть «Учу»</Button>
           <div className="row result-links">
             {done > 0 && me?.boss && <Button mode="plain" size="m" onClick={onBoss}>К боссу</Button>}
+            {done > 0 && <Button mode="plain" size="m" onClick={onDaily}>Задания на день</Button>}
             {notice ? <Button mode="plain" size="m" onClick={onSettings}>Настройки лимитов</Button>
               : <Button mode="plain" size="m" onClick={() => onSets()}>Наборы слов</Button>}
           </div>

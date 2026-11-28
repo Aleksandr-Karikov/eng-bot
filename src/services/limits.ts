@@ -42,6 +42,7 @@ export type QuotaKind =
   | "word_guess"
   | "talk"
   | "translate"
+  | "app_translate"
   | "story"
   | "say"
   | "drill"
@@ -152,7 +153,7 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     kind: "word_guess",
     period: "day",
     limit: 60,
-    refusal: "На сегодня догадок достаточно. Продолжим завтра.",
+    refusal: "На сегодня лимит ходов и разборов исчерпан. Продолжим завтра.",
   },
   talk: {
     kind: "talk",
@@ -166,6 +167,12 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     period: "day",
     limit: 20,
     refusal: "Переводов на сегодня достаточно (20). Завтра продолжим — а пока повтори карточки, /learn.",
+  },
+  app_translate: {
+    kind: "app_translate",
+    period: "day",
+    limit: 60,
+    refusal: "На сегодня лимит переводов в приложении исчерпан. Продолжим завтра.",
   },
   story: {
     kind: "story",
@@ -337,9 +344,10 @@ const QUOTA_NAMES: Record<QuotaKind, string> = {
   draft: "Черновики слов",
   read_image: "Распознавание области",
   check: "Проверки текста",
-  word_guess: "Догадки в игре «Объясни слово»",
+  word_guess: "Ходы и разборы в «Объясни слово»",
   talk: "Разборы разговора",
   translate: "Переводы",
+  app_translate: "Переводы в Mini App",
   story: "Истории",
   say: "Проговорить",
   drill: "Дриллы",

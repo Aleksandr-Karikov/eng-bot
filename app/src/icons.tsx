@@ -128,6 +128,18 @@ export const IconBook = (p: IconProps) => (
   </Svg>
 );
 
+export const IconChat = (p: IconProps) => (
+  <Svg {...p}><path d="M4 5h16v11H9l-5 4V5Zm4 4h8m-8 3h5" /></Svg>
+);
+
+export const IconTranslate = (p: IconProps) => (
+  <Svg {...p}><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4" /></Svg>
+);
+
+export const IconTasks = (p: IconProps) => (
+  <Svg {...p}><path d="m3 7 2 2 4-4m2 3h10m-18 7 2 2 4-4m2 3h10" /></Svg>
+);
+
 /**
  * Буквы «Aa» — грамматика.
  *

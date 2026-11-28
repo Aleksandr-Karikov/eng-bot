@@ -1,8 +1,9 @@
-import { Button, Cell, List, Placeholder, Section, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
+import { Button, Placeholder, Spinner, Text, Textarea, Title } from "@telegram-apps/telegram-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WordGuessResult, WordGuessRound } from "../../src/app/word-guess";
-import { ApiError, moveWordGuess, openWordGuess } from "./api";
+import type { WordGuessFeedback, WordGuessResult, WordGuessRound } from "../../src/app/word-guess";
+import { ApiError, getWordGuessFeedback, moveWordGuess, openWordGuess } from "./api";
 import { useBackButton } from "./telegram";
+import { LanguageFixes } from "./LanguageFixes";
 
 function attemptLabel(attempts: number | null): string {
   if (attempts === null) return "Не угадано";
@@ -18,7 +19,53 @@ function ResultLine({ result }: { result: WordGuessResult }) {
         <Text className="hint">В прошлый раз · {attemptLabel(previous).toLowerCase()}</Text>
       )}
       {result.phrase && <Text lang="en" className="word-guess-phrase">{result.phrase}</Text>}
+      {Boolean(result.energy) && <Text className="word-guess-phrase">+{result.energy} ⚡ за объяснение</Text>}
     </>
+  );
+}
+
+function Feedback({ id, index }: { id: string; index: number }) {
+  const [data, setData] = useState<WordGuessFeedback>();
+  const [error, setError] = useState<string>();
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    getWordGuessFeedback(id, index).then((result) => {
+      if (active) setData(result);
+    }).catch((err: unknown) => {
+      if (active) setError(err instanceof Error ? err.message : "Разбор недоступен.");
+    });
+    return () => { active = false; };
+  }, [id, index, retry]);
+
+  if (error) return (
+    <div className="actions">
+      <Text className="danger" role="alert">{error}</Text>
+      <Button mode="plain" size="s" onClick={() => { setError(undefined); setRetry((value) => value + 1); }}>Повторить разбор</Button>
+    </div>
+  );
+  if (!data) return <Text className="hint" role="status">Разбираю подсказки…</Text>;
+  return (
+    <section className="word-guess-feedback" aria-label="Разбор подсказок">
+      <LanguageFixes fixes={data.fixes} lang="en" />
+      {data.fixes.length === 0 && data.hadClues && <Text className="hint">Явных ошибок в подсказках нет.</Text>}
+      {data.example && (
+        <div className="word-guess-turn">
+          <Text weight="2">Как можно объяснить</Text>
+          <Text lang="en">{data.example}</Text>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FeedbackDetails({ id, index }: { id: string; index: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="word-guess-details" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>Разбор подсказок</summary>
+      {open && <Feedback id={id} index={index} />}
+    </details>
   );
 }
 
@@ -101,6 +148,7 @@ export function WordGuessScreen({ onExit }: { onExit: () => void }) {
               <Button size="l" stretched loading={busy} disabled={busy} onClick={() => move("next")}>
                 {results.length === total ? "Смотреть итог" : "Следующее слово"}
               </Button>
+              <Feedback key={results.length} id={round.id} index={results.length - 1} />
             </div>
           ) : (
             <form className="actions" onSubmit={(event) => {
@@ -122,16 +170,13 @@ export function WordGuessScreen({ onExit }: { onExit: () => void }) {
         <>
           <Title level="2" weight="2">Угадано {results.filter(({ attempts }) => attempts !== null).length} из {total}</Title>
           <Text className="hint">С первой подсказки · {results.filter(({ attempts }) => attempts === 1).length}</Text>
-          <List>
-            <Section>
-              {results.map((result) => <Cell multiline key={result.term}>
-                <div className="word-guess-turn">
-                  <Text weight="2" lang="en">{result.term}</Text>
-                  <ResultLine result={result} />
-                </div>
-              </Cell>)}
-            </Section>
-          </List>
+          <ul className="word-guess-results">
+            {results.map((result, index) => <li className="word-guess-target word-guess-turn" key={result.term}>
+              <Text weight="2" lang="en">{result.term}</Text>
+              <ResultLine result={result} />
+              <FeedbackDetails id={round.id} index={index} />
+            </li>)}
+          </ul>
           {errorNotice}
           <div className="actions">
             <Button size="l" stretched loading={busy} disabled={busy} onClick={() => void run(() => openWordGuess(true))}>Новый раунд</Button>

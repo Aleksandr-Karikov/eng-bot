@@ -8,6 +8,7 @@ import type {
   TranslationInput,
   TranslationTask,
   TranslationReview,
+  TranslationReviewInput,
   Collocations,
   QuizCheck,
   WordGrammar,
@@ -16,6 +17,8 @@ import type {
   TalkReview,
   WordGuess,
   WordGuessHistory,
+  WordGuessReview,
+  WordGuessReviewInput,
   LeechHelp,
   StoryDraft,
   SentenceInput,
@@ -167,7 +170,7 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   translationTask(input: TranslationInput): Promise<TranslationTask> {
     return this.active.translationTask(input);
   }
-  reviewTranslation(input: { task: TranslationTask; answer: string }): Promise<TranslationReview> {
+  reviewTranslation(input: TranslationReviewInput): Promise<TranslationReview> {
     return this.active.reviewTranslation(input);
   }
   collocations(term: string, translation: string): Promise<Collocations> {
@@ -205,6 +208,9 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   }
   guessWord(clue: string, history: WordGuessHistory): Promise<WordGuess> {
     return this.active.guessWord(clue, history);
+  }
+  reviewWordGuess(input: WordGuessReviewInput): Promise<WordGuessReview> {
+    return this.active.reviewWordGuess(input);
   }
   talkReview(input: TalkInput): Promise<TalkReview> {
     return this.active.talkReview(input);

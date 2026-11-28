@@ -484,6 +484,13 @@
       "when": 1795849342934,
       "tag": "0068_word-guess-progress",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "6",
+      "when": 1795851096914,
+      "tag": "0069_study-activities",
+      "breakpoints": true
     }
   ]
 }
