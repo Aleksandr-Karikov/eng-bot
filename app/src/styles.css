@@ -172,6 +172,7 @@ body {
 .choice-review { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, rgba(127, 127, 127, 0.25)); padding-top: 12px; }
 .collocation-list { margin: 0; padding-left: 18px; line-height: 1.5; font: 15px/1.5 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-text-color, inherit); }
 .grammar-answer { padding: 16px; gap: 12px; }
+.grammar-submit { display: flex; flex-direction: column; gap: 8px; }
 .grammar-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .grammar-sentence { min-height: 36px; border-bottom: 1px solid var(--tgui--outline); padding-bottom: 8px; }
 
@@ -192,6 +193,11 @@ body {
   background: var(--tg-theme-secondary-bg-color, var(--tgui--secondary_bg_color, #f1f1f4));
 }
 .keyboard-open .type-card { min-height: 0; padding: 12px; gap: 8px; }
+.grammar-keyboard { display: flex; flex-direction: column; overflow-y: auto; }
+.grammar-keyboard .grammar-prompt { min-height: 0; overflow-y: auto; }
+.grammar-keyboard .grammar-answer { padding: 0; flex-shrink: 0; }
+.grammar-keyboard .grammar-submit { flex-direction: row; }
+.grammar-keyboard .grammar-submit > button { flex: 1; }
 .keyboard-open .type-prompt { min-height: 0; gap: 6px; overflow-y: auto; overscroll-behavior: contain; }
 .keyboard-open .type-card-reviewed .type-prompt { flex-shrink: 0; }
 .keyboard-open .type-prompt .hint { font-size: 14px; line-height: 1.35; }

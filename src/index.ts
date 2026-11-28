@@ -33,7 +33,7 @@ import { MnemonicGenerator } from "./services/hard-words";
 import { KokoroSynth, LanguageAwareSynth, MacSaySynth } from "./speech/tts";
 import { LocalRecognizer } from "./speech/stt";
 import { VoiceStore } from "./bot/voices";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Server } from "node:http";
 import { TranscriptSubtitles } from "./youtube/subtitles";
@@ -220,7 +220,17 @@ try {
   console.error("Grammar sync failed", err);
 }
 const appServer = config.appPort ? startAppServer({ deps, api: bot.api, botToken: config.botToken }, config.appPort) : undefined;
-deps.appUrl = config.appUrl;
+let appUrl = config.appUrl;
+if (appUrl && URL.canParse(appUrl)) {
+  // Telegram может удерживать HTML старой сборки по прежнему адресу.
+  const build = statSync(resolve("app/dist/index.html"), { throwIfNoEntry: false });
+  if (build) {
+    const url = new URL(appUrl);
+    url.searchParams.set("v", Math.floor(build.mtimeMs).toString(36));
+    appUrl = url.href;
+  }
+}
+deps.appUrl = appUrl;
 setupBot(bot, deps);
 await bot.api.setMyCommands(COMMANDS, { scope: { type: "all_private_chats" } });
 await bot.api.setMyCommands(GROUP_COMMANDS, { scope: { type: "all_group_chats" } });
@@ -236,7 +246,7 @@ if (config.adminTelegramId) {
 await bot.api.setMyCommands(COMMANDS);
 // Кнопка у поля ввода в личке: открывает Mini App с карточками (если задан APP_URL), иначе — обычное меню команд.
 await bot.api
-  .setChatMenuButton({ menu_button: config.appUrl ? { type: "web_app", text: "📚 Учить", web_app: { url: config.appUrl } } : { type: "commands" } })
+  .setChatMenuButton({ menu_button: appUrl ? { type: "web_app", text: "📚 Учить", web_app: { url: appUrl } } : { type: "commands" } })
   .catch((err) => console.error("Menu button failed", err));
 
 // Пульс для сторожа: жив не только процесс, но и polling. Пишется таймером, а не на апдейтах —
@@ -248,7 +258,7 @@ const stopReminders = startReminderLoop({
   db,
   notifier,
   now,
-  appUrl: config.appUrl,
+  appUrl,
   // Рубильник нужен и фоновым поздравлениям: выключившим режим не пишем про босса в личку.
   bossEnabled: config.bossEnabled,
   // Пути для уборки (E29): кэш озвучки и голосовые записи.

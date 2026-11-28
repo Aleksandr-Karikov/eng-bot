@@ -344,6 +344,10 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   app.get("/", (c) => c.redirect("/app/"));
   // APP_URL часто пишут без «/» на конце — относительные пути к файлам приложения тогда бы сломались.
   app.get("/app", (c) => c.redirect("/app/"));
+  app.use("/app/*", async (c, next) => {
+    await next();
+    if (c.res.headers.get("Content-Type")?.startsWith("text/html")) c.header("Cache-Control", "no-cache");
+  });
   app.use("/app/*", serveStatic({ root: "app/dist", rewriteRequestPath: (p) => p.replace(/^\/app/, "") || "/" }));
   return app;
 }

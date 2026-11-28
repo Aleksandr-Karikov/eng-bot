@@ -1,9 +1,10 @@
 import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
 import { motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getGrammar, getGrammarTopic, sendGrammarAnswer, type GrammarAnswer, type GrammarExercise, type GrammarTopic, type GrammarTopicView } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
 import { IconClose } from "./icons";
+import { useTypeKeyboard } from "./useTypeKeyboard";
 
 /**
  * 📘 Грамматика: темы по уровням → правило → упражнения → экзамен.
@@ -143,7 +144,7 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
       {current && (
         <List>
           <Section header={`Упражнение ${Math.min(view.done + 1, view.total)} из ${view.total}`}>
-            <Cell multiline>{current.prompt}</Cell>
+            {current.kind === "choice" && <Cell multiline>{current.prompt}</Cell>}
             {current.kind === "choice"
               ? (current.options ?? []).map((option) => {
                   const state = !answer
@@ -168,7 +169,7 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
                 <AnswerInput
                   key={current.id}
                   exercise={current}
-                  pending={answer}
+                  answered={Boolean(answer)}
                   busy={busy}
                   onSubmit={(text) => void pick(current, text)}
                 />
@@ -201,69 +202,69 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
   );
 }
 
-function AnswerInput({ exercise, pending, busy, onSubmit }: {
+function AnswerInput({ exercise, answered, busy, onSubmit }: {
   exercise: GrammarExercise;
-  pending?: { picked: string; result: GrammarAnswer };
+  answered: boolean;
   busy: boolean;
   onSubmit: (text: string) => void;
 }) {
   const [typed, setTyped] = useState<string>();
   const [typing, setTyping] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
-  const input = useRef<HTMLInputElement>(null);
   const words = exercise.words ?? [];
   const hasBank = exercise.kind === "order" && words.length > 0;
   const assembling = hasBank && !typing;
   const sentence = picked.map((index) => words[index]).join(" ");
   const text = assembling ? sentence : (typed ?? sentence);
-  const answer = pending?.result;
+  const { input, deck, keyboardOpen } = useTypeKeyboard<HTMLInputElement>(!assembling && !answered);
 
-  const locked = Boolean(answer) || busy;
+  const locked = answered || busy;
 
   useEffect(() => {
-    if (!assembling && !answer) input.current?.focus();
-  }, [assembling, answer]);
+    if (!assembling && !answered) input.current?.focus();
+  }, [assembling, answered, input]);
+
+  const toggleWord = (index: number) => {
+    setPicked((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index]);
+    haptic.tap();
+  };
 
   return (
-    <form className="grammar-answer actions" onSubmit={(event) => {
-      event.preventDefault();
-      if (!locked && text.trim()) onSubmit(text.trim());
-    }}>
-      {assembling ? (
-        <>
-          <div className="grammar-tiles grammar-sentence" role="group" aria-label="Собранное предложение">
-            {picked.length === 0 && <Text className="hint">Нажимай на слова по порядку</Text>}
-            {picked.map((index) => (
-              <Button key={index} size="s" mode="bezeled" disabled={locked} aria-label={`Вернуть «${words[index]}»`}
-                after={!locked && <IconClose size={12} />}
-                onClick={() => {
-                  setPicked((current) => current.filter((item) => item !== index));
-                  haptic.tap();
-                }}>{words[index]}</Button>
-            ))}
+    <div ref={deck} className={keyboardOpen ? "type-deck keyboard-open grammar-keyboard" : undefined}>
+      <Cell className="grammar-prompt" multiline>{exercise.prompt}</Cell>
+      <form className="grammar-answer actions" onSubmit={(event) => {
+        event.preventDefault();
+        if (!locked && text.trim()) onSubmit(text.trim());
+      }}>
+        {assembling ? (
+          <>
+            <div className="grammar-tiles grammar-sentence" role="group" aria-label="Собранное предложение">
+              {picked.length === 0 && <Text className="hint">Нажимай на слова по порядку</Text>}
+              {picked.map((index) => (
+                <Button key={index} size="s" mode="bezeled" disabled={locked} aria-label={`Вернуть «${words[index]}»`}
+                  after={!locked && <IconClose size={12} />} onClick={() => toggleWord(index)}>{words[index]}</Button>
+              ))}
+            </div>
+            <div className="grammar-tiles" role="group" aria-label="Слова для сборки">
+              {words.map((word, index) => (
+                <Button key={index} size="s" mode={picked.includes(index) ? "bezeled" : "filled"}
+                  aria-pressed={picked.includes(index)} disabled={locked} onClick={() => toggleWord(index)}>{word}</Button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <Input ref={input} placeholder={hasBank ? "Напиши предложение" : "Впиши ответ"} aria-label="Твой ответ"
+            value={text} disabled={locked} onChange={(event) => setTyped(event.target.value)} />
+        )}
+        {!answered && (
+          <div className="grammar-submit">
+            <Button type="submit" stretched disabled={locked || !text.trim()} loading={busy}>Проверить</Button>
+            {hasBank && <Button mode="plain" disabled={locked} onClick={() => setTyping(!typing)}>
+              {typing ? "Собрать из слов" : "Ввести вручную"}
+            </Button>}
           </div>
-          <div className="grammar-tiles" role="group" aria-label="Слова для сборки">
-            {words.map((word, index) => (
-              <Button key={index} size="s" mode={picked.includes(index) ? "plain" : "filled"}
-                disabled={locked || picked.includes(index)} onClick={() => {
-                  setPicked((current) => [...current, index]);
-                  haptic.tap();
-                }}>{word}</Button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <Input ref={input} placeholder={hasBank ? "Напиши предложение" : "Впиши ответ"} aria-label="Твой ответ"
-          value={text} disabled={locked} onChange={(event) => setTyped(event.target.value)} />
-      )}
-      {!answer && (
-        <>
-          <Button type="submit" stretched disabled={locked || !text.trim()} loading={busy}>Проверить</Button>
-          {hasBank && <Button mode="plain" disabled={locked} onClick={() => setTyping(!typing)}>
-            {typing ? "Собрать из слов" : "Ввести вручную"}
-          </Button>}
-        </>
-      )}
-    </form>
+        )}
+      </form>
+    </div>
   );
 }

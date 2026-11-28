@@ -2,9 +2,9 @@ import { viewport as telegramViewport } from "@telegram-apps/sdk-react";
 import { useEffect, useRef, useState } from "react";
 
 /** Оставляет поле и кнопки видимыми, когда клавиатура уменьшает высоту WebView. */
-export function useTypeKeyboard(enabled = true) {
+export function useTypeKeyboard<Field extends HTMLInputElement | HTMLTextAreaElement = HTMLTextAreaElement>(enabled = true) {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<Field>(null);
   const deck = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
