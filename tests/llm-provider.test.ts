@@ -203,6 +203,11 @@ describe("ProviderRouter", () => {
     const answer = await llm.explainGrammar({ rule: "Present Simple", task: "She ___ here.", answer: "works" });
     expect(typeof answer).toBe("string");
     expect(backend.calls.at(-1)!.prompt).toContain("Present Simple");
+    await llm.explainGrammar({
+      rule: "Present Simple", task: "She ___ here.", answer: "works", learnerAnswer: "work", question: "Почему есть s?",
+    });
+    expect(backend.calls.at(-1)!.prompt).toContain('Вопрос ученика: "Почему есть s?"');
+    expect(backend.calls.at(-1)!.prompt).toContain('Ответ ученика: "work"');
   });
 
   it("fails clearly when a request reaches an unconfigured OpenRouter", async () => {

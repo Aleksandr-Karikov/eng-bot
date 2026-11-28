@@ -420,14 +420,15 @@ export interface GrammarAnswer {
   done: number;
   total: number;
   passed: boolean;
-  /** Урон боссу за этот ответ: 0, если режим выключен или ответ уже был засчитан. */
-  bossDamage: number;
+  energy?: number;
 }
 
 export const getGrammar = () => call<{ topics: GrammarTopic[]; passed: number; total: number; ok: true }>("/api/grammar");
 export const getGrammarTopic = (id: number) => call<{ topic: GrammarTopicView; ok: true }>(`/api/grammar/${id}`);
 export const sendGrammarAnswer = (exerciseId: number, answer: string) =>
   postRetry<{ result: GrammarAnswer; ok: true }>("/api/grammar/answer", { exerciseId, answer });
+export const askGrammar = (exerciseId: number, learnerAnswer: string, question: string) =>
+  post<{ explanation: string }>("/api/grammar/ask", { exerciseId, learnerAnswer, question });
 
 /** Босс недели: состояние боя и лента ударов. `enabled: false` — режим выключен человеком. */
 export interface BossHit {

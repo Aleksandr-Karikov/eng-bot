@@ -14,7 +14,8 @@ import { cards as cardsTable, roomMembers, setItems, wordSets } from "../db/sche
 import { count, eq } from "drizzle-orm";
 import { progressReport } from "../services/progress";
 import { bossEnabled, bossFeed, bossOf, buyPiercingRune, buyUpgrade, coinState, personalDamage, settledBank, UPGRADES } from "../services/boss";
-import { answerExercise, listTopics, topicView } from "../services/grammar-topics";
+import { answerExercise, explanationPrompt, grammarExerciseWithTopic, listTopics, topicView } from "../services/grammar-topics";
+import { checkAndCount } from "../services/limits";
 import { attackWithReserve, combatState, isMobTarget } from "../services/combat";
 import { TROPHIES, userTrophies } from "../services/trophies";
 import { ensureDrillFor, rememberAsked } from "../bot/handlers/drill";
@@ -608,7 +609,7 @@ export async function appBuyUpgrade(deps: Deps, user: User, body: unknown = {}) 
  *
  * Проверка серверная и **без модели** — тот же `answerExercise`, что в боте: сравнение строк с ответом
  * из базы. Поэтому приложение не может «подсказать» себе правильный вариант, а промах попадает в общую
- * работу над ошибками и наносит урон боссу ровно так же, как ответ в чате.
+ * работу над ошибками, а верный ответ может начислить энергию.
  */
 export async function appGrammar(deps: Deps, user: User) {
   const topics = await listTopics(deps.db, user.id);
@@ -622,7 +623,7 @@ export async function appGrammarTopic(deps: Deps, user: User, topicId: number) {
 }
 
 /**
- * Ответ на упражнение. Комната берётся текущая: урон боссу идёт туда, где человек учится сейчас.
+ * Ответ на упражнение. Энергия начисляется в общий запас.
  * `ok: false` — упражнения нет (контент обновили, пока экран был открыт).
  */
 export async function appGrammarAnswer(deps: Deps, user: User, body: unknown) {
@@ -635,8 +636,31 @@ export async function appGrammarAnswer(deps: Deps, user: User, body: unknown) {
     exerciseId,
     answer: input.answer,
     now: deps.now(),
-    roomId: user.currentRoomId ?? undefined,
+    globalBossEnabled: deps.bossEnabled,
   });
   if (!result) return { status: 404 as const, body: { ok: false as const, error: "Упражнение не найдено — возможно, контент обновили" } };
   return { status: 200 as const, body: { ok: true as const, result } };
+}
+
+export async function appGrammarAsk(deps: Deps, user: User, body: Record<string, unknown>) {
+  const { exerciseId } = body;
+  const question = typeof body.question === "string" ? body.question.trim() : "";
+  if (typeof exerciseId !== "number" || !Number.isSafeInteger(exerciseId) || exerciseId <= 0 || !question || question.length > 400) {
+    return { status: 400 as const, body: { ok: false, error: "Напиши вопрос до 400 символов." } };
+  }
+  const data = await grammarExerciseWithTopic(deps.db, exerciseId);
+  if (!data) return { status: 404 as const, body: { ok: false, error: "Упражнение не найдено. Открой тему заново." } };
+  const tutor = deps.tutor;
+  if (!tutor.explainGrammar) return { status: 503 as const, body: { ok: false, error: "Ответы ИИ пока недоступны." } };
+  const quota = await checkAndCount(deps.db, { kind: "grammar_ask", userId: user.id, timeZone: user.timezone, now: deps.now() });
+  if (!quota.allowed) return { status: 429 as const, body: { ok: false, error: quota.refusal } };
+
+  const learnerAnswer = typeof body.learnerAnswer === "string" ? body.learnerAnswer.trim().slice(0, 400) : "";
+  try {
+    const explanation = (await tutor.explainGrammar({ ...explanationPrompt(data.topic, data.exercise), question, learnerAnswer })).trim();
+    if (explanation) return { status: 200 as const, body: { ok: true, explanation } };
+  } catch {
+    console.error("App grammar question failed");
+  }
+  return { status: 503 as const, body: { ok: false, error: "Не удалось получить ответ ИИ. Попробуй ещё раз." } };
 }

@@ -172,6 +172,7 @@ body {
 .choice-review { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--tg-theme-section-separator-color, rgba(127, 127, 127, 0.25)); padding-top: 12px; }
 .collocation-list { margin: 0; padding-left: 18px; line-height: 1.5; font: 15px/1.5 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif; color: var(--tg-theme-text-color, inherit); }
 .grammar-answer { padding: 16px; gap: 12px; }
+.grammar-reply { white-space: pre-wrap; overflow-wrap: anywhere; }
 .grammar-submit { display: flex; flex-direction: column; gap: 8px; }
 .grammar-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .grammar-sentence { min-height: 36px; border-bottom: 1px solid var(--tgui--outline); padding-bottom: 8px; }

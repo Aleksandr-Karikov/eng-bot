@@ -1,7 +1,7 @@
-import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text } from "@telegram-apps/telegram-ui";
+import { Button, Cell, Input, List, Placeholder, Section, Spinner, Text, Textarea } from "@telegram-apps/telegram-ui";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
-import { getGrammar, getGrammarTopic, sendGrammarAnswer, type GrammarAnswer, type GrammarExercise, type GrammarTopic, type GrammarTopicView } from "./api";
+import { askGrammar, getGrammar, getGrammarTopic, sendGrammarAnswer, type GrammarAnswer, type GrammarExercise, type GrammarTopic, type GrammarTopicView } from "./api";
 import { haptic, notify, useBackButton } from "./telegram";
 import { IconClose } from "./icons";
 import { useTypeKeyboard } from "./useTypeKeyboard";
@@ -71,7 +71,7 @@ function TopicList({ list, onOpen }: { list: { topics: GrammarTopic[]; passed: n
         </Section>
       </List>
       <Text className="hint" style={{ padding: "0 16px" }}>
-        Промах попадает в работу над ошибками и в карточки — как ошибка из /check. Верный ответ бьёт босса.
+        Ошибки попадут в «Работу над ошибками». После ответа можно спросить ИИ о задании.
       </Text>
     </div>
   );
@@ -187,7 +187,8 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
           <Text weight="2">{answer.result.correct ? "✅ Верно" : "❌ Неверно"}</Text>
           {!answer.result.correct && <Text>Правильно: <b>{answer.result.answer}</b></Text>}
           {answer.result.why && <Text className="hint">{answer.result.why}</Text>}
-          {answer.result.bossDamage > 0 && <Text className="hint">🐉 Боссу: −{answer.result.bossDamage} HP</Text>}
+          {Boolean(answer.result.energy) && <Text className="word-guess-phrase">+{answer.result.energy} ⚡ энергии</Text>}
+          <GrammarQuestion key={answer.exercise.id} exerciseId={answer.exercise.id} learnerAnswer={answer.picked} />
           <Button size="m" stretched onClick={goNext}>
             {answer.result.passed ? "Тема сдана — к упражнениям" : "▶ Дальше"}
           </Button>
@@ -199,6 +200,51 @@ function TopicScreen({ topicId, onBack }: { topicId: number; onBack: () => void 
       </div>
       {!current && <Placeholder header="Упражнений нет" description="В этой теме пока нет заданий — загляни позже." />}
     </div>
+  );
+}
+
+function GrammarQuestion({ exerciseId, learnerAnswer }: { exerciseId: number; learnerAnswer: string }) {
+  const [question, setQuestion] = useState("");
+  const [reply, setReply] = useState<{ question: string; explanation: string }>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const { input, deck, keyboardOpen } = useTypeKeyboard();
+
+  const ask = async () => {
+    const text = question.trim();
+    if (busy || !text) return;
+    input.current?.blur();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const { explanation } = await askGrammar(exerciseId, learnerAnswer, text);
+      setReply({ question: text, explanation });
+      setQuestion("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось получить ответ ИИ.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <details className="word-guess-details">
+      <summary>Спросить ИИ</summary>
+      {reply && <section className="word-guess-feedback grammar-reply" aria-label="Ответ ИИ" aria-live="polite">
+        <Text weight="2">{reply.question}</Text>
+        <Text>{reply.explanation}</Text>
+      </section>}
+      <div ref={deck} className={keyboardOpen ? "type-deck keyboard-open grammar-keyboard" : undefined}>
+        <form className="grammar-answer actions" onSubmit={(event) => { event.preventDefault(); void ask(); }}>
+          <Textarea ref={input} aria-label="Вопрос по упражнению" placeholder="Что осталось непонятно?"
+            value={question} readOnly={busy} maxLength={400} onChange={(event) => setQuestion(event.target.value)} />
+          {error && <Text className="danger" role="alert">{error}</Text>}
+          <Button type="submit" stretched disabled={busy || !question.trim()} loading={busy}>
+            {busy ? "ИИ отвечает…" : "Отправить вопрос"}
+          </Button>
+        </form>
+      </div>
+    </details>
   );
 }
 

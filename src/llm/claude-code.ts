@@ -50,6 +50,7 @@ import {
   type WordGuessReview,
   type WordGuessReviewInput,
   buildExplainGrammarPrompt,
+  type GrammarExplanationInput,
   buildSayPrompt,
   buildCollocationsPrompt,
   buildTranslationTaskPrompt,
@@ -308,7 +309,7 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
   }
 
   /** Почему верен этот ответ — сильной моделью: объяснение правила Haiku упрощает до банальности. */
-  async explainGrammar(input: { rule: string; task: string; answer: string }): Promise<string> {
+  async explainGrammar(input: GrammarExplanationInput): Promise<string> {
     return parseExplainGrammar(await this.ask(buildExplainGrammarPrompt(input), Math.max(this.opts.timeoutMs, 60_000), this.opts.mnemonicModel ?? "sonnet"));
   }
 

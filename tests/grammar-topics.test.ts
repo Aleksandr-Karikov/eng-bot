@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { combatArchive, combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes, words } from "../src/db/schema";
+import { combatArchive, combatSpends, grammarExercises, grammarProgress, grammarTopics, mistakes, usageCounters, words } from "../src/db/schema";
 import { createRoom } from "../src/services/rooms";
 import { goalProgress } from "../src/services/goals";
 import { bossFeed } from "../src/services/boss";
 import { damageBalanceDeci } from "../src/services/combat-ledger";
+import { QUOTAS } from "../src/services/limits";
 import type { DailyTasksState } from "../src/services/study-activities";
 import { updateUser } from "../src/services/users";
 import { createApp } from "../src/app/server";
@@ -326,8 +327,7 @@ describe("📘 /grammar in the bot", () => {
   });
 });
 
-// 🔗 Грамматика не отдельная игра: промах идёт в общую работу над ошибками, ответ даёт урон боссу.
-describe("🔗 grammar is wired into mistakes and the boss", () => {
+describe("🔗 grammar is wired into mistakes and energy", () => {
   it("records a wrong answer in the shared mistake list with the topic's category", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 1, "Alice");
@@ -352,50 +352,39 @@ describe("🔗 grammar is wired into mistakes and the boss", () => {
     expect(await h.db.select().from(mistakes).where(eq(mistakes.userId, user.id))).toHaveLength(0);
   });
 
-  it("deals damage to the room's boss and never twice for the same exercise", async () => {
+  it("adds energy once per correct exercise and local day", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 1, "Alice");
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     const topic = await seed(h);
     const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
 
-    const once = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
-    // Верный ответ весит как сложное упражнение — 2 HP.
-    expect(once?.bossDamage).toBe(2);
-
-    // Повторное нажатие на то же упражнение урона не добавляет: requestId уникален в базе.
-    const twice = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
-    expect(twice?.bossDamage).toBe(0);
-    expect(await h.db.select().from(combatSpends).where(eq(combatSpends.roomId, room.id))).toHaveLength(1);
+    const answer = (text: string, now = T0) => answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: text, now });
+    expect((await answer("мимо"))?.energy).toBe(0);
+    expect((await answer(first.answer))?.energy).toBe(2);
+    expect((await answer(first.answer))?.energy).toBe(0);
+    expect((await answer(first.answer, at(DAY)))?.energy).toBe(2);
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(40);
+    expect(await h.db.select().from(combatSpends).where(eq(combatSpends.roomId, room.id))).toHaveLength(0);
   });
 
-  it("gives no damage when the boss mode is off", async () => {
+  it("gives no energy when the player's or global boss mode is off", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 1, "Alice");
     await updateUser(h.db, user.id, { modeBoss: false });
-    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     const topic = await seed(h);
-    const [first] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
-    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
-    expect(result?.bossDamage).toBe(0);
+    const [first, second] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0 });
+    expect(result).toMatchObject({ correct: true, done: 1, energy: 0 });
+    await updateUser(h.db, user.id, { modeBoss: true });
+    const globalOff = await answerExercise(h.db, {
+      userId: user.id, exerciseId: second.id, answer: second.answer, now: T0, globalBossEnabled: false,
+    });
+    expect(globalOff).toMatchObject({ correct: true, done: 2, energy: 0 });
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(0);
   });
 
-  it("counts grammar damage in the room's weekly progress", async () => {
-    const h = botHarness();
-    const user = await makeUser(h.db, 1, "Alice");
-    const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
-    const topic = await seed(h);
-    const exercises = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
-    for (const exercise of exercises.slice(0, 2)) {
-      await answerExercise(h.db, { userId: user.id, exerciseId: exercise.id, answer: exercise.answer, now: T0, roomId: room.id });
-    }
-    // Два верных ответа по 2 HP — и они видны боссу как удары, а не лежат отдельно.
-    const progress = await goalProgress(h.db, room, T0);
-    expect(progress.done).toBeCloseTo(4, 1);
-    expect(progress.byUser[0]).toMatchObject({ name: "Alice", count: 4 });
-  });
-
-  it("keeps old and new grammar hits in the feed without charging energy", async () => {
+  it("keeps legacy grammar hits in the feed when new answers add energy", async () => {
     const h = botHarness();
     const user = await makeUser(h.db, 1, "Alice");
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
@@ -410,13 +399,13 @@ describe("🔗 grammar is wired into mistakes and the boss", () => {
     ]);
     expect(await damageBalanceDeci(h.db, user.id)).toBe(200);
 
-    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0, roomId: room.id });
-    expect(result?.bossDamage).toBe(2);
+    const result = await answerExercise(h.db, { userId: user.id, exerciseId: first.id, answer: first.answer, now: T0 });
+    expect(result?.energy).toBe(2);
     const [strike] = await h.db.select().from(combatSpends).where(eq(combatSpends.requestId, `grammar:${user.id}:${first.id}`));
-    expect(strike).toMatchObject({ damageDeci: 0, bossDamageDeci: 20 });
-    expect(await damageBalanceDeci(h.db, user.id)).toBe(200);
-    expect((await goalProgress(h.db, room, T0)).done).toBe(32);
-    expect((await bossFeed(h.db, room, T0)).byUser).toEqual([{ name: "Alice", damage: 32 }]);
+    expect(strike).toBeUndefined();
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(220);
+    expect((await goalProgress(h.db, room, T0)).done).toBe(30);
+    expect((await bossFeed(h.db, room, T0)).byUser).toEqual([{ name: "Alice", damage: 30 }]);
   });
 });
 
@@ -447,7 +436,7 @@ describe("📱 grammar in the Mini App", () => {
     expect(one.topic.exercises[0]).not.toHaveProperty("answer");
   });
 
-  it("checks an answer on the server and deals boss damage", async () => {
+  it("checks an answer on the server and adds energy", async () => {
     const { h, app, headers, user } = await appHarness();
     const room = await createRoom(h.db, { name: "R", createdBy: user.id, now: T0 });
     await updateUser(h.db, user.id, { currentRoomId: room.id });
@@ -458,7 +447,7 @@ describe("📱 grammar in the Mini App", () => {
       const res = await app.request("/api/grammar/answer", {
         method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
       });
-      return res.json() as Promise<{ result: { correct: boolean; answer: string; why: string; done: number; bossDamage: number } }>;
+      return res.json() as Promise<{ result: { correct: boolean; answer: string; why: string; done: number; energy: number } }>;
     };
 
     // Ошибка на первом упражнении: разбор показан, счётчик не продвинулся.
@@ -466,12 +455,38 @@ describe("📱 grammar in the Mini App", () => {
     expect(wrong.result).toMatchObject({ correct: false, answer: first.answer, done: 0 });
     expect(wrong.result.why).toBe(first.why);
 
-    // Верный ответ на СЛЕДУЮЩЕЕ упражнение: на то же самое повторно урона не будет — requestId уникален.
     const second = (await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id)))[1];
     const right = await post({ exerciseId: second.id, answer: second.answer });
     expect(right.result.correct).toBe(true);
-    // Урон идёт в текущую комнату — экран показывает его же.
-    expect(right.result.bossDamage).toBe(2);
+    expect(right.result.energy).toBe(2);
+  });
+
+  it("asks the tutor about the specific exercise, preserves retry, and respects the daily quota", async () => {
+    const { h, app, headers, user } = await appHarness();
+    h.setNow(T0);
+    const topic = await seed(h);
+    const [exercise] = await h.db.select().from(grammarExercises).where(eq(grammarExercises.topicId, topic.id));
+    const tutor = vi.fn().mockRejectedValueOnce(new Error("timeout")).mockResolvedValue("Сравни подлежащие.");
+    h.deps.tutor.explainGrammar = tutor;
+    const ask = (body: object) => app.request("/api/grammar/ask", {
+      method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const body = { exerciseId: exercise.id, question: " Почему здесь эта форма? ", learnerAnswer: " goes ", answer: "не подмена" };
+
+    expect((await ask({ ...body, question: " " })).status).toBe(400);
+    expect((await ask({ ...body, exerciseId: 12345 })).status).toBe(404);
+    expect(tutor).not.toHaveBeenCalled();
+    expect((await ask(body)).status).toBe(503);
+    const response = await ask(body);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ explanation: "Сравни подлежащие." });
+    expect(tutor).toHaveBeenLastCalledWith({
+      rule: topic.rule, task: exercise.prompt, answer: exercise.answer, question: "Почему здесь эта форма?", learnerAnswer: "goes",
+    });
+    await h.db.update(usageCounters).set({ count: QUOTAS.grammar_ask.limit }).where(eq(usageCounters.kind, "grammar_ask"));
+    expect((await ask(body)).status).toBe(429);
+    expect(tutor).toHaveBeenCalledTimes(2);
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(0);
   });
 
   it("rewards three distinct correct grammar answers on the same local day", async () => {
@@ -504,7 +519,7 @@ describe("📱 grammar in the Mini App", () => {
     expect((await claim()).status).toBe(200);
     expect((await claim()).status).toBe(200);
     expect(await grammarTask()).toMatchObject({ progress: 3, claimed: true });
-    expect(await damageBalanceDeci(h.db, user.id)).toBe(100);
+    expect(await damageBalanceDeci(h.db, user.id)).toBe(160);
 
     h.setNow(at(DAY));
     expect(await grammarTask()).toMatchObject({ progress: 0, claimed: false });

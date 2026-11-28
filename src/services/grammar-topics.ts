@@ -1,10 +1,10 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { combatSpends, grammarExercises, grammarProgress, grammarTopics, users, type GrammarExercise, type GrammarTopic } from "../db/schema";
+import { grammarExercises, grammarProgress, grammarTopics, type GrammarExercise, type GrammarTopic } from "../db/schema";
 import { recordMistakes } from "./mistakes";
 import { recordStudyActivity } from "./study-activities";
 import { getUser } from "./users";
-import { GRAMMAR_STRIKE_PREFIX } from "./combat-ledger";
+import { bossEnabled } from "./boss";
 import { GRAMMAR_TOPICS } from "../grammar";
 
 /**
@@ -15,7 +15,7 @@ import { GRAMMAR_TOPICS } from "../grammar";
  * упражнений моделью нестабильна (в проекте она уже ходит через `RetryLater`), и человек не должен
  * упираться в «модель не ответила» посреди темы.
  *
- * Модель нужна только на объяснение «почему так» — там её сбой ничего не блокирует: правило уже
+ * Модель нужна только для дополнительного вопроса — там её сбой ничего не блокирует: правило уже
  * показано, а ответ уже проверен.
  */
 
@@ -73,8 +73,7 @@ export interface AnswerResult {
   done: number;
   total: number;
   passed: boolean;
-  /** Урон боссу за этот ответ: 0, если режим выключен или ответ уже засчитан ранее. */
-  bossDamage: number;
+  energy: number;
 }
 
 /**
@@ -135,34 +134,6 @@ function normalize(value: string): string {
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/**
- * 💥 Урон боссу за ответ в грамматике — та же механика, что у ответов по карточкам.
- *
- * Пишется строкой `combat_spends` с `target = "boss"`: `bossStrikes` уже собирает урон босса из этой
- * таблицы, поэтому грамматика попадает в цель комнаты и в ленту ударов без второй механики. `requestId`
- * уникален (индекс по user+request), поэтому повторный ответ на то же упражнение не засчитается дважды —
- * это и есть идемпотентность, за которую отвечает сама база, а не память процесса.
- *
- * Вес намеренно скромный: как у одной карточки. Грамматика — дополнение к словам, а не второй способ
- * выиграть неделю в одиночку.
- */
-async function creditBossDamage(db: Db, input: { userId: number; roomId: number; exerciseId: number; correct: boolean; now: Date }): Promise<number> {
-  const [user] = await db.select({ modeBoss: users.modeBoss }).from(users).where(eq(users.id, input.userId));
-  if (!user?.modeBoss) return 0;
-  // Верный ответ весит как сложное упражнение (2 HP), ошибка — 1 HP: признаться тоже работа.
-  const damageDeci = input.correct ? 20 : 10;
-  const [inserted] = await db.insert(combatSpends).values({
-    userId: input.userId,
-    roomId: input.roomId,
-    target: "boss",
-    requestId: `${GRAMMAR_STRIKE_PREFIX}${input.userId}:${input.exerciseId}`,
-    damageDeci: 0,
-    bossDamageDeci: damageDeci,
-    at: input.now,
-  }).onConflictDoNothing().returning({ id: combatSpends.id });
-  return inserted ? damageDeci / 10 : 0;
 }
 
 /**
@@ -263,6 +234,14 @@ export async function topic(db: Db, topicId: number): Promise<GrammarTopic | und
   return row;
 }
 
+export async function grammarExerciseWithTopic(db: Db, exerciseId: number) {
+  const [row] = await db.select({ exercise: grammarExercises, topic: grammarTopics })
+    .from(grammarExercises)
+    .innerJoin(grammarTopics, eq(grammarTopics.id, grammarExercises.topicId))
+    .where(eq(grammarExercises.id, exerciseId));
+  return row;
+}
+
 /**
  * Проверить ответ и записать прогресс. Модель не зовётся — это и есть главное свойство.
  *
@@ -271,7 +250,7 @@ export async function topic(db: Db, topicId: number): Promise<GrammarTopic | und
  */
 export async function answerExercise(
   db: Db,
-  input: { userId: number; exerciseId: number; answer: string; now: Date; roomId?: number },
+  input: { userId: number; exerciseId: number; answer: string; now: Date; globalBossEnabled?: boolean },
 ): Promise<AnswerResult | undefined> {
   const [exercise] = await db.select().from(grammarExercises).where(eq(grammarExercises.id, input.exerciseId));
   if (!exercise) return undefined;
@@ -307,15 +286,15 @@ export async function answerExercise(
   } else {
     await db.insert(grammarProgress).values({ userId: input.userId, topicId: exercise.topicId, done, streak, passed, updatedAt: input.now });
   }
+  let energy = 0;
   if (correct) {
     const user = await getUser(db, input.userId);
-    if (user) await recordStudyActivity(db, user, input.now, "grammar", String(exercise.id), 0);
+    if (user) {
+      const reward = bossEnabled(user, input.globalBossEnabled) ? 2 : 0;
+      if (await recordStudyActivity(db, user, input.now, "grammar", String(exercise.id), reward)) energy = reward;
+    }
   }
-  // Урон боссу — в комнату, где человек сейчас учится: грамматика не должна открывать свою комнату.
-  const bossDamage = input.roomId !== undefined
-    ? await creditBossDamage(db, { userId: input.userId, roomId: input.roomId, exerciseId: exercise.id, correct, now: input.now })
-    : 0;
-  return { correct, answer: correctAnswer, why: exercise.why, done, total, passed, bossDamage };
+  return { correct, answer: correctAnswer, why: exercise.why, done, total, passed, energy };
 }
 
 /** Данные для подсказки модели: что спросить, когда человек нажал «почему так». */

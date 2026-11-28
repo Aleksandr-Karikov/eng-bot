@@ -16,7 +16,7 @@ import { takeLearningWord } from "../services/learning";
 import { adoptDeviceTimeZone } from "../services/users";
 import { isTimeZone, localParts } from "../time";
 import { exampleTranslation } from "../services/words";
-import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appUser, ownWord } from "./api";
+import { QUEUE_MODES, appAnswer, appAudio, appBoss, appBuyUpgrade, appCombat, appGrammar, appGrammarAnswer, appGrammarAsk, appGrammarTopic, appSetDecide, appSetItems, appSetSetTarget, appSetTarget, appSets, setItemForAudio, appDrillAnswer, appMe, appProgress, appPicture, appQueue, appUser, ownWord } from "./api";
 import { appCheck, appSaveMistakes } from "./exercises";
 import { AppDialogues } from "./dialogue";
 import { AppBossAttack } from "./boss-attack";
@@ -160,6 +160,10 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.post("/api/grammar/answer", async (c) => {
     const r = await appGrammarAnswer(deps, c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/grammar/ask", async (c) => {
+    const r = await appGrammarAsk(deps, c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   // 🐉 Вкладка босса: цель комнаты, показанная боем (services/boss.ts).

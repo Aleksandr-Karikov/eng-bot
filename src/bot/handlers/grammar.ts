@@ -1,8 +1,8 @@
 import type { Bot } from "grammy";
-import { eq } from "drizzle-orm";
-import { grammarExercises, grammarTopics } from "../../db/schema";
 import {
   answerExercise,
+  explanationPrompt,
+  grammarExerciseWithTopic,
   listTopics,
   topicView,
   type AnswerResult,
@@ -55,7 +55,7 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     await ctx.answerCallbackQuery();
     if (cb?.k !== "grammarQuestion") return;
-    const data = await exerciseWithTopic(deps, cb.exerciseId);
+    const data = await grammarExerciseWithTopic(deps.db, cb.exerciseId);
     if (!data) return void (await edit(ctx, "Упражнение не найдено."));
     const view = await topicView(deps.db, ctx.user.id, data.topic.id);
     if (!view) return;
@@ -81,7 +81,7 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
   bot.callbackQuery(/^ga:/, async (ctx) => {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "grammarAnswer") return void (await ctx.answerCallbackQuery());
-    const data = await exerciseWithTopic(deps, cb.exerciseId);
+    const data = await grammarExerciseWithTopic(deps.db, cb.exerciseId);
     if (!data) return void (await ctx.answerCallbackQuery({ text: "Упражнение не найдено" }));
     const view = await topicView(deps.db, ctx.user.id, data.topic.id);
     const exercise = view?.exercises.find((e) => e.id === cb.exerciseId);
@@ -90,9 +90,8 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     // Кнопками отвечается только выбор варианта: у `gap` и `order` кнопок с ответом больше нет.
     const picked = exercise.options?.[cb.index];
     if (picked === undefined) return void (await ctx.answerCallbackQuery({ text: "Такого варианта нет" }));
-    // Комната для урона — текущая: грамматика бьёт по боссу той комнаты, где человек учится.
     const result = await answerExercise(deps.db, {
-      userId: ctx.user.id, exerciseId: cb.exerciseId, answer: picked, now: deps.now(), roomId: ctx.user.currentRoomId ?? undefined,
+      userId: ctx.user.id, exerciseId: cb.exerciseId, answer: picked, now: deps.now(), globalBossEnabled: deps.bossEnabled,
     });
     if (!result) return void (await ctx.answerCallbackQuery({ text: "Упражнение не найдено" }));
     await ctx.answerCallbackQuery({ text: result.correct ? "Верно!" : "Мимо" });
@@ -125,14 +124,14 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
       deps.grammarAnswers.set(ctx.user.id, pending);
       return next();
     }
-    const data = await exerciseWithTopic(deps, pending.exerciseId);
+    const data = await grammarExerciseWithTopic(deps.db, pending.exerciseId);
     if (!data) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
     const view = await topicView(deps.db, ctx.user.id, data.topic.id);
     const exercise = view?.exercises.find((e) => e.id === pending.exerciseId);
     if (!view || !exercise) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
 
     const result = await answerExercise(deps.db, {
-      userId: ctx.user.id, exerciseId: pending.exerciseId, answer: text, now: deps.now(), roomId: ctx.user.currentRoomId ?? undefined,
+      userId: ctx.user.id, exerciseId: pending.exerciseId, answer: text, now: deps.now(), globalBossEnabled: deps.bossEnabled,
     });
     if (!result) return void (await ctx.reply("Упражнение не найдено — возможно, контент обновили."));
     // Задание ответило — кнопка «Почему так» под ним больше не нужна.
@@ -163,7 +162,7 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
     const cb = decodeCb(ctx.callbackQuery.data);
     if (cb?.k !== "grammarWhy") return void (await ctx.answerCallbackQuery());
     await ctx.answerCallbackQuery({ text: "Спрошу подробнее и пришлю в личку" });
-    const data = await exerciseWithTopic(deps, cb.exerciseId);
+    const data = await grammarExerciseWithTopic(deps.db, cb.exerciseId);
     if (!data) return;
     const { topic, exercise } = data;
     const user = ctx.user;
@@ -172,7 +171,7 @@ export function registerGrammar(bot: Bot<BotContext>, deps: Deps): void {
         // Спрашиваем только если провайдер умеет: проверка ответов моделью не пользуется, это отдельная
         // необязательная возможность. Нет метода — присылаем объяснение из контента.
         const body = deps.tutor.explainGrammar
-          ? (await deps.tutor.explainGrammar({ rule: topic.rule, task: exercise.prompt, answer: exercise.answer })).trim()
+          ? (await deps.tutor.explainGrammar(explanationPrompt(topic, exercise))).trim()
           : "";
         await deps.notifier.dm(user, `<b>Почему так</b>\n\n${esc(body || exercise.why)}`, HTML);
       } catch (err) {
@@ -192,14 +191,6 @@ async function edit(ctx: BotContext, text: string, keyboard?: { inline_keyboard:
     // Сообщение могло не измениться — Telegram отвечает ошибкой «message is not modified». Это не сбой.
     await ctx.reply(text, keyboard ? { ...HTML, reply_markup: keyboard } : { ...HTML });
   }
-}
-
-/** Упражнение и его тема: нужны, чтобы перерисовать экран после ответа. */
-async function exerciseWithTopic(deps: Deps, exerciseId: number) {
-  const [exercise] = await deps.db.select().from(grammarExercises).where(eq(grammarExercises.id, exerciseId));
-  if (!exercise) return undefined;
-  const [topic] = await deps.db.select().from(grammarTopics).where(eq(grammarTopics.id, exercise.topicId));
-  return topic ? { topic, exercise } : undefined;
 }
 
 function listText(topics: TopicSummary[]): string {
@@ -289,8 +280,7 @@ function answerText(view: TopicView, exercise: ExerciseView, result: AnswerResul
     result.correct ? `<b>${esc(result.answer)}</b>` : `Ты: ${esc(picked)}\nПравильно: <b>${esc(result.answer)}</b>`,
   ];
   if (result.why) lines.push("", esc(result.why));
-  // Урон боссу: показываем только когда он начислен, чтобы не пугать выключивших режим.
-  if (result.bossDamage > 0) lines.push("", `🐉 Боссу: −${result.bossDamage} HP`);
+  if (result.energy > 0) lines.push("", `+${result.energy} ⚡ энергии`);
   const left = result.total - result.done;
   lines.push(
     "",

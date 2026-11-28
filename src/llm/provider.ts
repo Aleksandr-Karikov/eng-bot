@@ -3,6 +3,7 @@ import type { LlmBackend } from "./backend";
 import type { WordEnricher, Enrichment, ExtractedItem, CheckResult, ContextMessage } from "./enricher";
 import type {
   ExerciseTutor,
+  GrammarExplanationInput,
   JudgeInput,
   Judgement,
   TranslationInput,
@@ -189,13 +190,13 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
     return this.active.grammar(term, translation);
   }
   /**
-   * «Почему так» в /grammar — единственное место, где модель объясняет правило.
+   * Модель объясняет упражнение по запросу ученика в чате или Mini App.
    *
    * Метод опциональный в интерфейсе, и именно из-за этого однажды потерялся здесь: `active.explainGrammar`
    * компилятор не требовал, а вызывающий код проверяет `if (deps.tutor.explainGrammar)`, поэтому кнопка
    * молча деградировала до объяснения из контента. Делегируем с той же необязательностью, но явно.
    */
-  explainGrammar(input: { rule: string; task: string; answer: string }): Promise<string> {
+  explainGrammar(input: GrammarExplanationInput): Promise<string> {
     // `active` — конкретный ClaudeCodeEnricher, где метод реализован всегда; опциональность живёт
     // только в интерфейсе ради тестовых подмен.
     return this.active.explainGrammar(input);

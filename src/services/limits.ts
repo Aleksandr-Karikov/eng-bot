@@ -43,6 +43,7 @@ export type QuotaKind =
   | "talk"
   | "translate"
   | "app_translate"
+  | "grammar_ask"
   | "story"
   | "say"
   | "drill"
@@ -173,6 +174,12 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     period: "day",
     limit: 60,
     refusal: "На сегодня лимит переводов в приложении исчерпан. Продолжим завтра.",
+  },
+  grammar_ask: {
+    kind: "grammar_ask",
+    period: "day",
+    limit: 20,
+    refusal: "На сегодня вопросов по грамматике достаточно. Продолжим завтра.",
   },
   story: {
     kind: "story",
@@ -348,6 +355,7 @@ const QUOTA_NAMES: Record<QuotaKind, string> = {
   talk: "Разборы разговора",
   translate: "Переводы",
   app_translate: "Переводы в Mini App",
+  grammar_ask: "Вопросы по грамматике",
   story: "Истории",
   say: "Проговорить",
   drill: "Дриллы",
