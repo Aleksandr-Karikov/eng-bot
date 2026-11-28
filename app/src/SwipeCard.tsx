@@ -2,7 +2,7 @@ import { cardAudioPath, playAudio, playAudioIfReady } from "./sound";
 import { AudioButtons } from "./AudioButtons";
 import { Button, Text } from "@telegram-apps/telegram-ui";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { useBottomButtons } from "./bottomButtons";
 import { exampleTranslation, pictureUrl, wordPictureUrl, type CardAnswer, type Card, type CardView, type VoiceAccent } from "./api";
 import { transcription } from "./format";
@@ -98,11 +98,7 @@ export function SwipeCard({
       .finally(() => setExampleBusy(false));
   }, [card.word.id, exampleOpen, exampleRu, exampleBusy]);
   const again = useCallback(() => fling("again", -1), [fling]);
-  /**
-   * Ответ показан — озвучиваем выбранным вариантом, чтобы слово ещё и услышать. Не успели загрузиться —
-   * не играем молча, показываем кнопку. Зовётся один раз на карточку: `revealed` закрывает повтор,
-   * иначе тап по карточке после кнопки «Показать ответ» играл бы второй раз.
-   */
+  // При раскрытии озвучиваем слово один раз, даже если по карточке тапнули несколько раз.
   const revealed = useRef(false);
   const spoiler = useRef<HTMLButtonElement>(null);
   const reveal = useCallback((point?: { clientX: number; clientY: number }) => {
@@ -119,10 +115,15 @@ export function SwipeCard({
     // Не успело — молчим: кнопки озвучки ниже есть всегда, и звук не заиграет сам второй раз.
     if (withVoice && voice) playAudioIfReady(audioOf(card, voice, preview));
   }, [card, voice, withVoice, preview]);
-  // Главные действия — нативными кнопками Telegram внизу: всегда под пальцем, не уезжают при прокрутке.
-  // В предпросмотре оценивать нечего: пустой вызов прячет нативные кнопки и свою панель не рисует.
-  const main = flipped ? { text: positiveLabel, onClick: good } : { text: "Показать ответ", onClick: () => reveal() };
-  const native = useBottomButtons(preview ? undefined : main, flipped && !preview ? { text: negativeLabel, onClick: again } : undefined);
+  const revealOnClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    reveal(event.detail > 0 ? event : undefined);
+  };
+  const canRate = flipped && !preview;
+  const native = useBottomButtons(
+    canRate ? { text: positiveLabel, onClick: good } : undefined,
+    canRate ? { text: negativeLabel, onClick: again } : undefined,
+  );
 
   return (
     <div className="deck">
@@ -145,7 +146,7 @@ export function SwipeCard({
           else if (info.offset.x < -SWIPE_PX) again();
           else reveal();
         }}
-        onClick={(event) => reveal(event.detail > 0 ? event : undefined)}
+        onClick={flipped ? undefined : revealOnClick}
       >
         {/* Полезность — мелким чипом в углу: при заучивании она почти не нужна и не должна спорить со словом. */}
         {/* Штампы «ПОМНЮ/ЗАБЫЛ» живут вне карточки: внутри они занимали её место. */}
@@ -191,10 +192,11 @@ export function SwipeCard({
                 {withPicture && <div className="picture">{picture && <img src={picture} alt="" />}</div>}
               </div>
             </div>
-            <button ref={spoiler} type="button" className="card-spoiler" aria-label="Показать ответ" disabled={flipped} aria-hidden={flipped}>
+            <button ref={spoiler} type="button" className="card-spoiler"
+              onClick={revealOnClick} disabled={flipped} aria-hidden={flipped}>
               <span className="card-spoiler-label">
                 <IconEye size={19} />
-                Ответ скрыт
+                Показать ответ
               </span>
             </button>
           </div>
@@ -218,22 +220,16 @@ export function SwipeCard({
       )}
 
       {/* Без нативных кнопок (браузер, старый Telegram) — своя панель, закреплённая внизу. */}
-      {!native && !preview && (
+      {!native && canRate && (
         <div className="actions fixed">
-          {flipped ? (
-            <div className="row">
-              <Button mode="gray" size="l" stretched onClick={again}>
-                {negativeLabel}
-              </Button>
-              <Button size="l" stretched onClick={good}>
-                {positiveLabel}
-              </Button>
-            </div>
-          ) : (
-            <Button size="l" stretched onClick={() => reveal()}>
-              Показать ответ
+          <div className="row">
+            <Button mode="gray" size="l" stretched onClick={again}>
+              {negativeLabel}
             </Button>
-          )}
+            <Button size="l" stretched onClick={good}>
+              {positiveLabel}
+            </Button>
+          </div>
         </div>
       )}
     </div>

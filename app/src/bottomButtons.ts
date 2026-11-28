@@ -23,7 +23,7 @@ function nativeAvailable(): boolean {
 }
 
 /**
- * Кнопки внизу экрана: «Показать ответ», «Помню» / «Забыл». В Telegram — нативные (всегда видны, в стиле
+ * Кнопки внизу экрана: например, «Помню» / «Забыл». В Telegram — нативные (всегда видны, в стиле
  * клиента, не скроллятся вместе с карточкой). Без них — вернёт false, и экран рисует свою закреплённую панель.
  */
 export function useBottomButtons(main?: BottomButton, secondary?: BottomButton): boolean {
@@ -52,7 +52,7 @@ export function useBottomButtons(main?: BottomButton, secondary?: BottomButton):
         if (secondary) offs.push(secondaryButton.onClick(secondary.onClick));
       });
     if (!ok) {
-      // Нативные кнопки не слушаются — прячем их (иначе висели бы со старым «Показать ответ») и рисуем свою панель.
+      // Нативные кнопки не слушаются — прячем их и рисуем свою панель.
       hideNative();
       native = false;
       setNative(false);
