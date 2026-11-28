@@ -6,7 +6,11 @@ import { EN } from "../src/lang";
 const reply = (content: string) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });
 
 function setup(responses: Array<unknown>, opts: { apiKey?: string; title?: string; referer?: string } = {}) {
-  const fetchImpl = vi.fn(async () => responses.shift() as never) as unknown as typeof fetch;
+  const fetchImpl = vi.fn(async () => {
+    const response = responses.shift();
+    if (response instanceof Error) throw response;
+    return response as never;
+  }) as unknown as typeof fetch;
   const backend = new OpenRouterBackend({ apiKey: opts.apiKey ?? "sk-or-test", title: opts.title, referer: opts.referer, fetchImpl });
   const body = () => JSON.parse((fetchImpl as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0][1].body as string);
   const init = () => (fetchImpl as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0][1];
@@ -50,15 +54,18 @@ describe("OpenRouterBackend", () => {
   });
 
   it("surfaces the provider's own explanation on a non-OK answer", async () => {
-    const { backend } = setup([
+    const { backend, fetchImpl } = setup([
       { ok: false, status: 402, json: async () => ({ error: { message: "Insufficient credits" } }) },
     ]);
-    await expect(ask(backend)).rejects.toThrow("OpenRouter failed: Insufficient credits");
+    await expect(ask(backend)).rejects.toMatchObject({ message: "OpenRouter failed: Insufficient credits", code: "http_402" });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("falls back to the status code when the body is not JSON", async () => {
-    const { backend } = setup([{ ok: false, status: 502, json: async () => Promise.reject(new Error("not json")) }]);
-    await expect(ask(backend)).rejects.toThrow("OpenRouter failed: HTTP 502");
+    const response = { ok: false, status: 502, json: async () => Promise.reject(new Error("not json")) };
+    const { backend, fetchImpl } = setup([response, response]);
+    await expect(ask(backend)).rejects.toMatchObject({ message: "OpenRouter failed: HTTP 502", code: "http_502" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("treats an empty choice as a failure with the reason, not as an empty answer", async () => {
@@ -66,8 +73,38 @@ describe("OpenRouterBackend", () => {
     const { backend } = setup([{ ok: true, status: 200, json: async () => ({ choices: [], error: { message: "no providers" } }) }]);
     await expect(ask(backend)).rejects.toThrow("OpenRouter returned no answer: no providers");
 
-    const empty = setup([{ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "" } }] }) }]);
-    await expect(ask(empty.backend)).rejects.toThrow("OpenRouter returned no answer: empty answer");
+    const { backend: empty, fetchImpl } = setup([reply(""), reply("")]);
+    await expect(ask(empty)).rejects.toMatchObject({ code: "empty_reply" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    new TypeError("network down"),
+    new Response('{"error":{"code":503}}', { status: 503 }),
+    new Response('{"error":{"code":502}}', { status: 200 }),
+    new Response('{"error":{"code":402,"metadata":{"reason":"in_flight_budget_exhausted"}}}', { status: 402 }),
+  ])("recovers once after a temporary provider or network failure", async (failure) => {
+    const { backend, fetchImpl, init } = setup([failure, reply("берег")]);
+    expect(await ask(backend)).toBe("берег");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenLastCalledWith("https://openrouter.ai/api/v1/chat/completions", init());
+  });
+
+  it("does not retry when Retry-After does not fit the original timeout", async () => {
+    const { backend, fetchImpl } = setup([new Response('{"error":{"code":429}}', {
+      status: 429, headers: { "Retry-After": "30" },
+    })]);
+    await expect(ask(backend)).rejects.toMatchObject({ code: "http_429", retryAfterMs: 30_000 });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("does not retry an explicit filter and preserves a partial response cut by the token limit", async () => {
+    const filtered = setup([new Response('{"choices":[{"finish_reason":"content_filter","message":{"content":""}}]}')]);
+    await expect(ask(filtered.backend)).rejects.toMatchObject({ code: "content_filter" });
+    expect(filtered.fetchImpl).toHaveBeenCalledOnce();
+    const partial = setup([new Response('{"choices":[{"finish_reason":"length","message":{"content":"partial"}}]}')]);
+    expect(await ask(partial.backend)).toBe("partial");
+    expect(partial.fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("rejects instead of hanging when the answer takes too long", async () => {

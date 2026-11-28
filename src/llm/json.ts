@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelRequestError } from "./errors";
 
 /**
  * JSON из ответа модели. Обычно он один, но модель иногда «передумывает» и пишет второй вариант
@@ -13,7 +14,7 @@ function extract(text: string, open: string, close: string, what: string): unkno
       // Не с этой скобки — пробуем следующую.
     }
   }
-  throw new Error(`No JSON ${what} in LLM response: ${text.slice(0, 200)}`);
+  throw new ModelRequestError(`No JSON ${what} in LLM response`, "invalid_model_json");
 }
 
 export const jsonObject = (text: string): unknown => extract(text, "{", "}", "object");

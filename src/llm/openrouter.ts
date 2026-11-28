@@ -1,7 +1,49 @@
+import { setTimeout as wait } from "node:timers/promises";
 import type { ImageInput } from "./enricher";
 import type { LlmBackend } from "./backend";
 import type { Language } from "../lang";
 import { systemPrompt } from "./enricher";
+import { ModelRequestError } from "./errors";
+
+type UpstreamError = { code?: unknown; message?: unknown; metadata?: { reason?: unknown } };
+type Completion = {
+  error?: UpstreamError;
+  choices?: Array<{ message?: { content?: unknown; refusal?: unknown }; finish_reason?: unknown; error?: UpstreamError }>;
+};
+
+const RETRY_DELAY_MS = 750;
+
+function retryAfterMs(header: string | null | undefined): number {
+  if (!header) return 0;
+  const seconds = Number(header);
+  const ms = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(header) - Date.now();
+  return Number.isFinite(ms) ? Math.max(0, ms) : 0;
+}
+
+async function readAnswer(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => undefined)) as Completion | undefined;
+  const choice = body?.choices?.[0];
+  const error = body?.error ?? choice?.error;
+  if (response.ok && (choice?.finish_reason === "content_filter" || choice?.message?.refusal)) {
+    throw new ModelRequestError("OpenRouter returned no answer: filtered", "content_filter");
+  }
+  const retryAfter = retryAfterMs(response.headers?.get("Retry-After"));
+  if (!response.ok || error || choice?.finish_reason === "error") {
+    const providerStatus = typeof error?.code === "number" && error.code >= 400 && error.code < 600 ? error.code : undefined;
+    const status = response.ok ? (providerStatus ?? (choice?.finish_reason === "error" ? 502 : undefined)) : response.status;
+    const reason = typeof error?.message === "string" ? error.message : status ? `HTTP ${status}` : "provider error";
+    const prefix = response.ok ? "OpenRouter returned no answer" : "OpenRouter failed";
+    const budget = status === 402 && error?.metadata?.reason === "in_flight_budget_exhausted";
+    const code = budget ? "in_flight_budget" : status ? `${response.ok ? "provider" : "http"}_${status}` : "provider_error";
+    const temporary = budget || (status !== undefined && (status === 408 || status === 429 || status >= 500));
+    throw new ModelRequestError(`${prefix}: ${reason}`, code, temporary, retryAfter);
+  }
+  const content = choice?.message?.content;
+  if (typeof content === "string" && content.trim()) return content;
+  const truncated = choice?.finish_reason === "length";
+  const code = truncated ? "empty_truncated_reply" : body === undefined ? "invalid_transport_json" : "empty_reply";
+  throw new ModelRequestError("OpenRouter returned no answer: empty answer", code, !truncated, retryAfter);
+}
 
 /**
  * Ходит в OpenRouter — OpenAI-совместимый `/api/v1/chat/completions` с ключом в заголовке.
@@ -32,45 +74,51 @@ export class OpenRouterBackend implements LlmBackend {
    */
   async ask(prompt: string, timeoutMs: number, model: string, images: ImageInput[], _lang: Language): Promise<string> {
     const controller = new AbortController();
+    const request: RequestInit = {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${this.opts.apiKey}`,
+        "content-type": "application/json",
+        ...(this.opts.referer ? { "HTTP-Referer": this.opts.referer } : {}),
+        ...(this.opts.title ? { "X-Title": this.opts.title } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        // Запас на полный результат /text с MAX_EXTRACT пунктами и JSON-обёрткой (E27).
+        max_tokens: 16000,
+        messages: [
+          { role: "system", content: systemPrompt() },
+          { role: "user", content: images.length ? contentWithImages(prompt, images) : prompt },
+        ],
+      }),
+    };
+    const deadline = Date.now() + timeoutMs;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const send = async () => {
+      const response = await (this.opts.fetchImpl ?? fetch)("https://openrouter.ai/api/v1/chat/completions", request)
+        .catch((err: unknown) => {
+          if (err instanceof TypeError) throw new ModelRequestError("OpenRouter network error", "network", true);
+          throw err;
+        });
+      return readAnswer(response);
+    };
     try {
-      const response = await (this.opts.fetchImpl ?? fetch)("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          authorization: `Bearer ${this.opts.apiKey}`,
-          "content-type": "application/json",
-          ...(this.opts.referer ? { "HTTP-Referer": this.opts.referer } : {}),
-          ...(this.opts.title ? { "X-Title": this.opts.title } : {}),
-        },
-        body: JSON.stringify({
-          model,
-          // Потолок вывода согласован с `MAX_EXTRACT`: один пункт разбора — это ~321 символ JSON
-          // с кириллицей, то есть 107–128 токенов. На 100 пунктов нужно 10 700–12 800, а стояло 8000 —
-          // поэтому длинный `/text` обрезался, и человек терял часть слов (E27). 16000 даёт запас
-          // и на обёртку ответа, и на случаи, когда модель пишет объяснения длиннее.
-          max_tokens: 16000,
-          messages: [
-            { role: "system", content: systemPrompt() },
-            { role: "user", content: images.length ? contentWithImages(prompt, images) : prompt },
-          ],
-        }),
-      });
-      // Тело читаем всегда: OpenRouter кладёт причину отказа в error.message даже при 200 с пустым выбором.
-      const body = (await response.json().catch(() => undefined)) as
-        | { choices?: Array<{ message?: { content?: unknown } }>; error?: { message?: unknown } }
-        | undefined;
-      if (!response.ok) {
-        const reason = typeof body?.error?.message === "string" ? body.error.message : `HTTP ${response.status}`;
-        // 401/402 — ключ или баланс: это чинится настройкой, а не повтором, и должно быть видно в логе как есть.
-        throw new Error(`OpenRouter failed: ${reason}`);
+      try {
+        return await send();
+      } catch (err) {
+        if (!(err instanceof ModelRequestError) || !err.retryable || controller.signal.aborted) throw err;
+        const delay = Math.max(RETRY_DELAY_MS, err.retryAfterMs);
+        if (Date.now() + delay >= deadline) throw err;
+        console.warn("OpenRouter retry", model, err.code);
+        await wait(delay, undefined, { signal: controller.signal });
+        const answer = await send();
+        console.info("OpenRouter retry succeeded", model, err.code);
+        return answer;
       }
-      const content = body?.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || content === "") {
-        const reason = typeof body?.error?.message === "string" ? body.error.message : "empty answer";
-        throw new Error(`OpenRouter returned no answer: ${reason}`);
-      }
-      return content;
+    } catch (err) {
+      if (controller.signal.aborted) throw new ModelRequestError("OpenRouter request aborted by timeout", "timeout");
+      throw err;
     } finally {
       clearTimeout(timer);
     }

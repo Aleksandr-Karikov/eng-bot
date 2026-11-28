@@ -6,6 +6,7 @@ import { compressPicture } from "../images/compress";
 import { State } from "ts-fsrs";
 import type { Deps } from "../bot/context";
 import type { User, Word } from "../db/schema";
+import { modelFailureCode } from "../llm/errors";
 import { dropNewCard } from "../services/cards";
 import { cardView } from "../services/card-view";
 import { autoVoice } from "../services/voice";
@@ -659,8 +660,8 @@ export async function appGrammarAsk(deps: Deps, user: User, body: Record<string,
   try {
     const explanation = (await tutor.explainGrammar({ ...explanationPrompt(data.topic, data.exercise), question, learnerAnswer })).trim();
     if (explanation) return { status: 200 as const, body: { ok: true, explanation } };
-  } catch {
-    console.error("App grammar question failed");
+  } catch (err) {
+    console.error("App grammar question failed", modelFailureCode(err));
   }
   return { status: 503 as const, body: { ok: false, error: "Не удалось получить ответ ИИ. Попробуй ещё раз." } };
 }

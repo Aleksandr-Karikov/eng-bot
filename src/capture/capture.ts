@@ -6,6 +6,7 @@ import { captureText } from "../bot/texts";
 import { broadcastWord } from "../bot/word-flow";
 import { cards, users, words, type User, type Word } from "../db/schema";
 import type { ImageInput } from "../llm/enricher";
+import { modelFailureCode } from "../llm/errors";
 import { findWord, getWord, MAX_CONTEXT, saveWord } from "../services/words";
 import { checkAndCount, checkAndCountWord, QUOTAS, wordsLeft } from "../services/limits";
 import { ensurePersonalRoom, isMember, listMembers } from "../services/rooms";
@@ -70,7 +71,7 @@ export async function explainSelection(deps: Deps, input: CaptureInput) {
     const answer = await deps.enricher.enrich(text, undefined, context || undefined);
     return { ok: true as const, translation: answer.translation, explanation: answer.explanation, example: answer.example };
   } catch (err) {
-    console.error("Explain selection failed", err instanceof Error ? err.name : "unknown error");
+    console.error("Explain selection failed", modelFailureCode(err));
     return { ok: false as const, status: 502, error: "Не получилось объяснить — попробуй ещё раз" };
   }
 }
@@ -88,7 +89,7 @@ async function captureInto(deps: Deps, input: CaptureInput, user: User, roomId: 
     const raw = wholeLine ? await deps.enricher.extract(context) : [{ term: selection, ...(await deps.enricher.enrich(selection, undefined, context || undefined)) }];
     drafts = await rateUsefulness(raw, deps.frequency);
   } catch (err) {
-    console.error("Capture enrichment failed", err);
+    console.error("Capture enrichment failed", modelFailureCode(err));
     return { ok: false, status: 502, error: "Не получилось перевести — попробуй ещё раз" };
   }
 
@@ -183,7 +184,7 @@ export async function readImage(deps: Deps, input: { key: string; image: string 
     const text = await deps.enricher.readImage(image);
     return { ok: true, text: text.slice(0, 2000) };
   } catch (err) {
-    console.error("Read image failed", err);
+    console.error("Read image failed", modelFailureCode(err));
     return { ok: false, status: 502, error: "Не получилось распознать — попробуй ещё раз" };
   }
 }

@@ -8,6 +8,8 @@ import type { Server } from "node:http";
 import { rooms, words } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import type { Enrichment, ExtractedItem, WordEnricher } from "../src/llm/enricher";
+import { ClaudeCodeEnricher } from "../src/llm/claude-code";
+import { OpenRouterBackend } from "../src/llm/openrouter";
 import { capture, cleanSelection, explainSelection, readImage } from "../src/capture/capture";
 import { quotaUsed, QUOTAS } from "../src/services/limits";
 import { usageCounters } from "../src/db/schema";
@@ -66,6 +68,21 @@ describe("words from the browser extension", () => {
     expect((await explainSelection(h.deps, { key: "secret-key", text: "long shot", context: line })).ok).toBe(false);
     await updateUser(h.db, user.id, { explainLimit: 100 });
     expect((await explainSelection(h.deps, { key: "secret-key", text: "long shot", context: line })).ok).toBe(true);
+  });
+
+  it("uses one extension attempt if the model needs a transport retry", async () => {
+    const { h, user } = await setup();
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('{"error":{"code":503}}', { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ choices: [{ message: {
+        content: JSON.stringify({ translation: "маловероятно", explanation: "Шанс невелик.", example: "It's a long shot." }),
+      } }] }));
+    h.deps.enricher = new ClaudeCodeEnricher({ model: "test-model", timeoutMs: 5_000 },
+      new OpenRouterBackend({ apiKey: "test-key", fetchImpl }));
+    expect(await explainSelection(h.deps, { key: "secret-key", text: "a long shot", context: line }))
+      .toMatchObject({ ok: true, translation: "маловероятно" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(await quotaUsed(h.db, { userId: user.id, kind: "explain", timeZone: user.timezone, now: T0 })).toBe(1);
   });
 
   it("trims quotes and punctuation around a selection", () => {
