@@ -4,6 +4,7 @@ import { retrieveRawInitData } from "@telegram-apps/sdk-react";
 import type { CombatTarget, HUNTER_RELICS, MobId } from "../../src/combat-mobs";
 import type { BossDuelTurn, DuelScene } from "../../src/app/boss-duel";
 import type { BossId } from "../../src/boss-opponents";
+import type { WordGuessRound } from "../../src/app/word-guess";
 export type { CombatTarget } from "../../src/combat-mobs";
 
 /** Вопрос с вариантами; filled — предложение с верным ответом на месте пропуска. */
@@ -348,6 +349,12 @@ export const openDialogue = (card: Card) =>
   post<DialogueScene>("/api/dialogue", { cardId: card.cardId, reps: card.reps, practice: card.practice });
 export const answerDialogue = (id: string, turn: 1 | 2, answer: string, dunno: boolean) =>
   post<DialogueResult>("/api/dialogue/answer", { id, turn, answer, dunno });
+
+type WordGuessResponse = { round: WordGuessRound | null };
+export const openWordGuess = (fresh = false) =>
+  post<WordGuessResponse>("/api/word-guess", { fresh });
+export const moveWordGuess = ({ id, revision }: WordGuessRound, action: "clue" | "skip" | "next", clue?: string) =>
+  post<WordGuessResponse>("/api/word-guess/move", { id, revision, action, clue });
 
 export const saveMistakes = (id: number, save: boolean) => post("/api/mistakes", { id, save });
 

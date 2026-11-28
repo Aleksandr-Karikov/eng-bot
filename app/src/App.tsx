@@ -10,15 +10,16 @@ import { ProgressScreen } from "./Progress";
 import { Sets } from "./Sets";
 import { SettingsScreen } from "./Settings";
 import { Words } from "./Words";
+import { WordGuessScreen } from "./WordGuess";
 import { IconBook, IconChart, IconClose, IconGrammar, IconMenu, IconSettings, IconShield } from "./icons";
 import { haptic } from "./telegram";
 
-type Page = "learn" | "words" | "learning" | "settings" | "progress" | "sets" | "boss" | "grammar";
+type Page = "learn" | "words" | "learning" | "settings" | "progress" | "sets" | "boss" | "grammar" | "word-guess";
 
 /** Страницу можно открыть сразу: …/app/?tab=words. */
 function startPage(): Page {
   const asked = new URLSearchParams(window.location.search).get("tab");
-  const pages: Page[] = ["words", "learning", "settings", "progress", "sets", "boss", "grammar"];
+  const pages: Page[] = ["words", "learning", "settings", "progress", "sets", "boss", "grammar", "word-guess"];
   return pages.find((p) => p === asked) ?? "learn";
 }
 
@@ -87,6 +88,7 @@ export function App() {
           <CornerMenu
             items={[
               ...(bossOn ? [{ icon: <IconShield size={16} />, label: "Босс недели", onPick: () => open("boss") }] : []),
+              { icon: "💬", label: "Объясни слово", onPick: () => open("word-guess") },
               { icon: <IconChart size={16} />, label: "Прогресс", onPick: () => open("progress") },
               // У «Грамматики» своя иконка: книга — это «Слова», и два одинаковых пункта меню
               // различались только подписью.
@@ -104,6 +106,7 @@ export function App() {
       {page === "sets" && <Sets onExit={back} startSetId={startSetId} />}
       {page === "boss" && <BossScreen onExit={back} />}
       {page === "grammar" && <Grammar onExit={back} />}
+      {page === "word-guess" && <WordGuessScreen onExit={back} />}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { isValid, parse } from "@telegram-apps/init-data-node";
 import type { Api } from "grammy";
 import { Hono } from "hono";
+import { AppWordGuess } from "./word-guess";
 import { proxy } from "hono/proxy";
 import type { Deps } from "../bot/context";
 import type { User } from "../db/schema";
@@ -40,6 +41,7 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   // Один черновик на пользователя; после перезапуска нужно запросить предложение заново.
   const corrections = new Map<number, CorrectionDraft>();
   const dialogues = new AppDialogues(deps);
+  const wordGuess = new AppWordGuess(deps);
   const bossAttack = new AppBossAttack(deps);
   const app = new Hono<{ Variables: { user: User } }>();
 
@@ -92,6 +94,15 @@ export function createApp(ctx: AppContext): Hono<{ Variables: { user: User } }> 
   });
   app.post("/api/dialogue/answer", async (c) => {
     const r = await dialogues.answer(c.get("user"), await readBody(c));
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/word-guess", async (c) => {
+    const { fresh } = await readBody(c);
+    const r = await wordGuess.open(c.get("user").id, fresh === true);
+    return c.json(r.body, r.status);
+  });
+  app.post("/api/word-guess/move", async (c) => {
+    const r = await wordGuess.move(c.get("user"), await readBody(c));
     return c.json(r.body, r.status);
   });
   app.post("/api/mistakes", async (c) => {

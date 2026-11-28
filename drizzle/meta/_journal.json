@@ -477,6 +477,13 @@
       "when": 1795609287741,
       "tag": "0067_real_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1795849342934,
+      "tag": "0068_word-guess-progress",
+      "breakpoints": true
     }
   ]
 }

@@ -282,6 +282,14 @@ body {
   .chips.modes > * * { font-size: 13px !important; }
 }
 .practice-note { font-size: 13px; text-align: center; }
+
+.word-guess { width: 100%; max-width: 580px; margin-inline: auto; gap: 16px; overflow-wrap: anywhere; }
+.word-guess-target { display: grid; gap: 4px; padding: 14px 16px; border-radius: 16px; background: var(--tg-theme-bg-color, #fff); }
+.word-guess-dialogue, .word-guess-turn, .word-guess-reply { display: grid; gap: 8px; }
+.word-guess-clue, .word-guess-reply { padding: 10px 12px; border-radius: 14px; }
+.word-guess-clue { justify-self: end; max-width: 85%; background: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff)); white-space: pre-wrap; }
+.word-guess-reply { justify-self: start; max-width: 90%; border: 1px solid var(--tg-theme-section-separator-color, #8885); }
+.word-guess-phrase { color: var(--tg-theme-accent-text-color, #2481cc); }
 .lesson > summary { min-height: 44px; align-content: center; border-radius: 8px; cursor: pointer; }
 .lesson[open] { padding-bottom: 10px; }
 .lesson-sent { display: block; padding-top: 8px; text-align: center; }

@@ -39,6 +39,7 @@ export type QuotaKind =
   | "draft"
   | "read_image"
   | "check"
+  | "word_guess"
   | "talk"
   | "translate"
   | "story"
@@ -146,6 +147,12 @@ export const QUOTAS: Record<QuotaKind, Quota> = {
     limit: 30,
     // Самый частый вызов модели: /check висит на ответе, им можно проверять каждую фразу.
     refusal: "Проверок на сегодня достаточно (30). Ты молодец — вернёмся к этому завтра.",
+  },
+  word_guess: {
+    kind: "word_guess",
+    period: "day",
+    limit: 60,
+    refusal: "На сегодня догадок достаточно. Продолжим завтра.",
   },
   talk: {
     kind: "talk",
@@ -330,6 +337,7 @@ const QUOTA_NAMES: Record<QuotaKind, string> = {
   draft: "Черновики слов",
   read_image: "Распознавание области",
   check: "Проверки текста",
+  word_guess: "Догадки в игре «Объясни слово»",
   talk: "Разборы разговора",
   translate: "Переводы",
   story: "Истории",

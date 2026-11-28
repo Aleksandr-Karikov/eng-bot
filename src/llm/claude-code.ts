@@ -41,6 +41,10 @@ import {
   buildStoryPrompt,
   buildUntanglePrompt,
   buildTalkReplyPrompt,
+  buildWordGuessPrompt,
+  parseWordGuess,
+  type WordGuess,
+  type WordGuessHistory,
   buildExplainGrammarPrompt,
   buildSayPrompt,
   buildCollocationsPrompt,
@@ -154,7 +158,7 @@ async function* withImages(text: string, images: ImageInput[]): AsyncIterable<SD
 }
 
 /**
- * Все 19 методов `WordEnricher` + `ExerciseTutor`: собирает промпт, разбирает ответ, выбирает модель.
+ * Методы `WordEnricher` и `ExerciseTutor` собирают промпт, разбирают ответ и выбирают модель.
  * Сам в модель не ходит — это делает `backend`, поэтому один и тот же класс обслуживает и Claude Code,
  * и OpenRouter (см. `provider.ts`).
  *
@@ -310,6 +314,10 @@ export class ClaudeCodeEnricher implements WordEnricher, ExerciseTutor {
 
   async talkReply(input: TalkInput): Promise<string> {
     return parseTalkReply(await this.ask(buildTalkReplyPrompt(input), Math.max(this.opts.timeoutMs, 45_000)));
+  }
+
+  async guessWord(clue: string, history: WordGuessHistory): Promise<WordGuess> {
+    return parseWordGuess(await this.ask(buildWordGuessPrompt(clue, history), Math.max(this.opts.timeoutMs, 30_000)));
   }
 
   /** Разбор разговора — сильной моделью: нужно заметить и ошибки, и неестественные фразы. */

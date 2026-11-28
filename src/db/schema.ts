@@ -247,6 +247,13 @@ export const cards = sqliteTable(
     index("cards_user_due_idx").on(t.userId, t.due)],
 );
 
+/** Последний исход игры по личной карточке. null — слово пропущено или не угадано. */
+export const wordGuessProgress = sqliteTable("word_guess_progress", {
+  cardId: integer("card_id").primaryKey().references(() => cards.id, { onDelete: "cascade" }),
+  attempts: integer("attempts"),
+  playedAt: integer("played_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 /** Предложения с пропуском для ступени «вставь по смыслу»; общие для всех участников комнаты. */
 export const clozeSentences = sqliteTable("cloze_sentences", {
   id: integer("id").primaryKey({ autoIncrement: true }),

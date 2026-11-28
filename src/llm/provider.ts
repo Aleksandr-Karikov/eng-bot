@@ -14,6 +14,8 @@ import type {
   SayAnswer,
   TalkInput,
   TalkReview,
+  WordGuess,
+  WordGuessHistory,
   LeechHelp,
   StoryDraft,
   SentenceInput,
@@ -39,7 +41,7 @@ export function isProvider(value: unknown): value is Provider {
 /**
  * Переключение провайдера на лету.
  *
- * Все 19 методов `WordEnricher` + `ExerciseTutor` — тонкие обёртки над одним запросом, вся содержательная
+ * Методы `WordEnricher` и `ExerciseTutor` — тонкие обёртки над одним запросом, вся содержательная
  * работа (сборка промптов и разбор ответов) общая. Поэтому вместо второго класса-дублёра здесь держатся
  * два готовых экземпляра — по одному на провайдера, с разными наборами моделей, — и переключение
  * сводится к замене ссылки. `Deps.enricher` уже интерфейсного типа, так что больше менять нечего,
@@ -200,6 +202,9 @@ export class ProviderRouter implements WordEnricher, ExerciseTutor {
   }
   talkReply(input: TalkInput): Promise<string> {
     return this.active.talkReply(input);
+  }
+  guessWord(clue: string, history: WordGuessHistory): Promise<WordGuess> {
+    return this.active.guessWord(clue, history);
   }
   talkReview(input: TalkInput): Promise<TalkReview> {
     return this.active.talkReview(input);
