@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { reviewLogs, users, type User } from "../db/schema";
 import { localParts } from "../time";
@@ -21,7 +21,6 @@ export interface Reminder {
   friend?: FriendToday;
   /** Локальная дата пользователя — её нужно пометить через markReminded после успешной отправки. */
   date: string;
-  daily?: { completed: number; total: number };
   /**
    * «Последний шанс»: у одной из комнат человека неделя кончается в ближайшие часы.
    *
@@ -33,32 +32,42 @@ export interface Reminder {
 }
 
 /**
- * Кому пора напомнить. Пользователей без карточек и незавершённых заданий помечает как «напомнено сегодня»;
+ * Кому пора напомнить. Пользователей без карточек к повторению помечает как «напомнено сегодня»;
  * остальных помечать должен отправитель — только после доставки, иначе сбой сети съест напоминание.
  */
-export async function collectReminders(db: Db, now: Date, includeDailyTasks = false): Promise<Reminder[]> {
+export async function collectReminders(db: Db, now: Date): Promise<Reminder[]> {
   const candidates = await db.select().from(users).where(eq(users.canDm, true));
   const reminders: Reminder[] = [];
   for (const user of candidates) {
     const { date, time } = localParts(user.timezone, now);
     if (time < user.reminderTime || user.lastReminderDate === date) continue;
     const due = await countDueSplit(db, user.id, now);
-    const hasCards = due.review + due.fresh > 0;
-    let daily: Reminder["daily"];
-    if (includeDailyTasks && user.currentRoomId !== null) {
-      const { tasks } = await dailyTasks(db, user, now, false);
-      const completed = tasks.filter(({ progress, target }) => progress >= target).length;
-      if (completed < tasks.length) daily = { completed, total: tasks.length };
-    }
-    if (hasCards || daily) {
+    if (due.review + due.fresh > 0) {
       reminders.push({
-        user, due, date, daily,
-        friend: hasCards ? await friendToday(db, user, date, now) : undefined,
-        lastChance: hasCards ? await lastChanceFor(db, user, now) : undefined,
+        user, due, date, friend: await friendToday(db, user, date, now),
+        lastChance: await lastChanceFor(db, user, now),
       });
     } else await markReminded(db, user.id, date);
   }
   return reminders;
+}
+
+export async function collectDailyTasksNotices(db: Db, now: Date) {
+  const candidates = await db.select().from(users).where(and(eq(users.canDm, true), isNotNull(users.currentRoomId)));
+  const notices: Array<{ user: User; date: string; completed: number; total: number }> = [];
+  for (const user of candidates) {
+    const { date, time } = localParts(user.timezone, now);
+    // После сбоя можно догнать отправку в течение часа после полудня.
+    if (!time.startsWith("12:") || user.lastDailyTasksNoticeDate === date) continue;
+    const { tasks } = await dailyTasks(db, user, now, false);
+    const completed = tasks.filter(({ progress, target }) => progress >= target).length;
+    if (completed < tasks.length) notices.push({ user, date, completed, total: tasks.length });
+  }
+  return notices;
+}
+
+export async function markDailyTasksNotified(db: Db, userId: number, date: string): Promise<void> {
+  await db.update(users).set({ lastDailyTasksNoticeDate: date }).where(eq(users.id, userId));
 }
 
 /**

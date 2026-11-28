@@ -14,6 +14,7 @@ export const users = sqliteTable("users", {
   /** Последняя текущая комната, JSON {"en": id}. Поле оставлено ради совместимости со старыми строками. */
   lastRooms: text("last_rooms").notNull().default("{}"),
   lastReminderDate: text("last_reminder_date"),
+  lastDailyTasksNoticeDate: text("last_daily_tasks_notice_date"),
   canDm: integer("can_dm", { mode: "boolean" }).notNull().default(false),
   groupHintSent: integer("group_hint_sent", { mode: "boolean" }).notNull().default(false),
   // Режимы тренажёра (ступени лесенки), см. services/exercises.ts.

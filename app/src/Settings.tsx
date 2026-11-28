@@ -73,8 +73,8 @@ export function SettingsScreen({ onExit, limitsFirst }: { onExit: () => void; li
       </Section>
       {!limitsFirst && limits}
 
-      <Section header="⏰ Напоминания">
-        <Select header="Напоминать в" value={settings.reminderHour} onChange={(e) => void change({ reminderHour: Number(e.target.value) })}>
+      <Section header="⏰ Напоминания" footer="О заданиях дня бот напоминает в 12:00 по твоему времени.">
+        <Select header="Карточки в" value={settings.reminderHour} onChange={(e) => void change({ reminderHour: Number(e.target.value) })}>
           {HOURS.map((h) => (
             <option key={h} value={h}>
               {String(h).padStart(2, "0")}:00

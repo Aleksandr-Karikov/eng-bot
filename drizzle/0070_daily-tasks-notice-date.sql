@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `last_daily_tasks_notice_date` text;

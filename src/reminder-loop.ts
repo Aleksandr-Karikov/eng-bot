@@ -11,7 +11,7 @@ import { listMembers } from "./services/rooms";
 import { bossEnabled, bossFeed } from "./services/boss";
 import type { Db } from "./db/client";
 import type { Notifier } from "./notifier";
-import { collectDueNotices, collectReminders, markDueNotice, markReminded } from "./services/reminders";
+import { collectDailyTasksNotices, collectDueNotices, collectReminders, markDailyTasksNotified, markDueNotice, markReminded } from "./services/reminders";
 import { sweep } from "./services/sweep";
 
 export interface ReminderDeps {
@@ -23,23 +23,36 @@ export interface ReminderDeps {
 
 /** Отправляет напоминания тем, кому пора. Возвращает число доставленных. */
 export async function sendReminders(deps: ReminderDeps): Promise<number> {
-  const dailyUrl = deps.appUrl && URL.canParse(deps.appUrl) ? new URL(deps.appUrl) : undefined;
-  if (dailyUrl) dailyUrl.searchParams.set("tab", "daily-tasks");
   let sent = 0;
-  for (const { user, due, date, friend, lastChance, daily } of await collectReminders(deps.db, deps.now(), Boolean(dailyUrl))) {
-    const hasCards = due.review + due.fresh > 0;
-    const cardsText = hasCards ? reminderText(due, friend, lastChance) : "";
-    const dailyText = daily ? `🎯 Задания на день · выполнено ${daily.completed} из ${daily.total}` : "";
-    const text = [cardsText, dailyText].filter(Boolean).join("\n\n");
-    const keyboard = daily && dailyUrl ? dailyTasksKeyboard(dailyUrl.href, hasCards) : learnKeyboard();
+  for (const { user, due, date, friend, lastChance } of await collectReminders(deps.db, deps.now())) {
     try {
-      if (await deps.notifier.dm(user, text, { ...HTML, reply_markup: keyboard })) {
+      if (await deps.notifier.dm(user, reminderText(due, friend, lastChance), { ...HTML, reply_markup: learnKeyboard() })) {
         await markReminded(deps.db, user.id, date);
-        if (hasCards) await markDueNotice(deps.db, user.id, deps.now());
+        // Ежедневное напоминание тоже считается уведомлением, чтобы «слова появились» не пришло следом.
+        await markDueNotice(deps.db, user.id, deps.now());
         sent++;
       }
     } catch (err) {
       console.error("Reminder failed, will retry next tick", user.telegramId, err);
+    }
+  }
+  return sent;
+}
+
+export async function sendDailyTasksNotices(deps: ReminderDeps): Promise<number> {
+  if (!deps.appUrl || !URL.canParse(deps.appUrl)) return 0;
+  const url = new URL(deps.appUrl);
+  url.searchParams.set("tab", "daily-tasks");
+  const reply_markup = dailyTasksKeyboard(url.href);
+  let sent = 0;
+  for (const { user, date, completed, total } of await collectDailyTasksNotices(deps.db, deps.now())) {
+    try {
+      if (await deps.notifier.dm(user, `🎯 Задания на день · выполнено ${completed} из ${total}`, { ...HTML, reply_markup })) {
+        await markDailyTasksNotified(deps.db, user.id, date);
+        sent++;
+      }
+    } catch (err) {
+      console.error("Daily tasks notice failed, will retry", user.telegramId, err);
     }
   }
   return sent;
@@ -175,6 +188,7 @@ export function startReminderLoop(deps: DigestDeps, intervalMs = 60_000): () => 
     running = true;
     try {
       await sendReminders(deps);
+      await sendDailyTasksNotices(deps);
       await sendDueNotices(deps);
       await sendDigests(deps);
       await sendGoalsReached(deps);

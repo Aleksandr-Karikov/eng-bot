@@ -90,8 +90,8 @@ export function learnKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("▶️ Начать", encodeCb({ k: "learn" }));
 }
 
-export function dailyTasksKeyboard(url: string, hasCards: boolean): InlineKeyboard {
-  return (hasCards ? learnKeyboard().row() : new InlineKeyboard()).webApp("🎯 Задания на день", url);
+export function dailyTasksKeyboard(url: string): InlineKeyboard {
+  return new InlineKeyboard().webApp("🎯 Задания на день", url);
 }
 
 export function draftKeyboard(id: number, inBatch = false): InlineKeyboard {
